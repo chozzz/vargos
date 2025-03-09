@@ -1,7 +1,21 @@
 {
   "name": "vargos",
   "version": "0.0.1",
+  "description": "Vargos is a scalable orchestration platform that bridges Large Language Models (LLMs) to real-world system actions through modular function execution, OpenAPI endpoints, and Model Context Protocol (MCP) compatibility.",
+  "keywords": [
+    "orchestration",
+    "ai-infrastructure",
+    "openapi",
+    "mcp",
+    "llm-agent",
+    "system-automation",
+    "nestjs",
+    "turborepo",
+    "self-hosted"
+  ],
+  "author": "Vadi Taslim",
   "private": true,
+  "license": "SEE LICENSE IN LICENSE.md",
   "scripts": {
     "build": "turbo build",
     "dev": "turbo dev",
