@@ -1,6 +1,6 @@
 import { Controller, Get, Query } from "@nestjs/common";
 import { FunctionsService } from "./functions.service";
-import { FunctionListResponse } from "./functions.class";
+import { FunctionListResponse } from "../common/classes/functions-metadata.class";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 
 @Controller("functions")
