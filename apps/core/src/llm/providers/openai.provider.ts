@@ -18,7 +18,7 @@ export class OpenAIProvider implements LLMProvider, OnModuleInit {
   }
 
   async initialize(): Promise<void> {
-    const apiKey = this.configService.get<string>("OPENAI_API_KEY");
+    const apiKey = this.configService.get<string>("llm.openai.apiKey");
     if (!apiKey) {
       throw new Error(
         "OPENAI_API_KEY environment variable is required for OpenAI provider",

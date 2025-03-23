@@ -22,9 +22,9 @@ export class QdrantProvider implements VectorDBProvider, OnModuleInit {
 
   async initialize(): Promise<void> {
     try {
-      const url = this.configService.get<string>("QDRANT_URL");
-      const apiKey = this.configService.get<string>("QDRANT_API_KEY");
-      const port = this.configService.get<number>("QDRANT_PORT") || 443;
+      const url = this.configService.get<string>("vector.qdrant.url");
+      const apiKey = this.configService.get<string>("vector.qdrant.apiKey");
+      const port = this.configService.get<number>("vector.qdrant.port");
 
       if (!url || !apiKey) {
         throw new Error(
@@ -39,6 +39,7 @@ export class QdrantProvider implements VectorDBProvider, OnModuleInit {
       });
 
       this.logger.debug("Qdrant client initialized successfully");
+      console.trace("Qdrant client initialized successfully");
     } catch (error) {
       this.logger.error("Failed to initialize Qdrant client", error);
       throw error;

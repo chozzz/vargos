@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from "@nestjs/common";
+import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import {
   LLMClient,
@@ -9,7 +9,7 @@ import {
 import { OpenAIProvider } from "./providers/openai.provider";
 
 @Injectable()
-export class LLMService implements LLMClient, OnModuleInit {
+export class LLMService implements LLMClient {
   private provider: LLMProvider;
 
   constructor(
@@ -18,10 +18,6 @@ export class LLMService implements LLMClient, OnModuleInit {
   ) {
     // Default to OpenAI for now, but this could be configurable
     this.provider = this.openAIProvider;
-  }
-
-  async onModuleInit() {
-    await this.provider.initialize?.();
   }
 
   async generateEmbedding(text: string): Promise<number[]> {

@@ -2,9 +2,9 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { FunctionsController } from "./functions.controller";
 import { FunctionsService } from "./functions.service";
 import { ConfigModule, ConfigService } from "@nestjs/config";
-import { FunctionListResponse } from "../common/classes/functions-metadata.class";
 import { VectorService } from "../vector/vector.service";
 import { LLMService } from "../llm/llm.service";
+import { FunctionListResponse } from "../common/classes/functions-list.class";
 
 describe("FunctionsController", () => {
   let controller: FunctionsController;
