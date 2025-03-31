@@ -15,6 +15,28 @@ async function bootstrap() {
   const documentFactory = () => SwaggerModule.createDocument(app, config);
   SwaggerModule.setup("api/swagger", app, documentFactory, {
     jsonDocumentUrl: "api/json",
+    customCss: `
+      @media (prefers-color-scheme: dark) {
+        body {
+          background: #000000;
+        }
+
+        .swagger-ui .topbar {
+          background: #000000;
+          color: #ffffff;
+        }
+
+        div.swagger-ui *:not([class*="opblock"]) * {
+          filter: invert(100%) hue-rotate(180deg);
+        }
+
+        div.swagger-ui [class*="opblock"] {
+          filter: invert(100%) hue-rotate(180deg);
+        }
+      }
+    `,
+    customSiteTitle: "Vargos API Documentation",
+    customfavIcon: "/favicon.ico"
   });
 
   await app.listen(process.env.PORT ?? 3000);
