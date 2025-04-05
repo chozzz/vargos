@@ -36,7 +36,7 @@ async function bootstrap() {
       }
     `,
     customSiteTitle: "Vargos API Documentation",
-    customfavIcon: "/favicon.ico"
+    customfavIcon: "/favicon.ico",
   });
 
   await app.listen(process.env.PORT ?? 3000);

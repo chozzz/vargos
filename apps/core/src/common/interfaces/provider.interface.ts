@@ -1,4 +1,4 @@
 export interface Provider {
-  initialize?(): Promise<void>;
+  initialize(): Promise<void>;
   healthCheck?(): Promise<boolean>;
 }

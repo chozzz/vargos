@@ -3,12 +3,13 @@ import { ConfigService } from "@nestjs/config";
 import { VectorService } from "./vector.service";
 import { QdrantProvider } from "./providers/qdrant.provider";
 import { LLMService } from "../llm/llm.service";
-import { QdrantClient } from "@qdrant/js-client-rest";
 
 // Mock QdrantClient
 const mockQdrantClient = {
   api: jest.fn().mockReturnValue({
-    collectionExists: jest.fn().mockResolvedValue({ data: { result: { exists: true } } }),
+    collectionExists: jest
+      .fn()
+      .mockResolvedValue({ data: { result: { exists: true } } }),
   }),
 };
 
@@ -65,7 +66,8 @@ describe("VectorService", () => {
     llmService = module.get<LLMService>(LLMService);
 
     // Mock the client property directly
-    (qdrantProvider as any).client = mockQdrantClient;
+    (qdrantProvider as unknown as { client: typeof mockQdrantClient }).client =
+      mockQdrantClient;
   });
 
   it("should be defined", () => {
@@ -86,4 +88,4 @@ describe("VectorService", () => {
       expect(initializeSpy).toHaveBeenCalledTimes(1);
     });
   });
-}); 
+});

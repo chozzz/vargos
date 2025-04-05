@@ -2,7 +2,6 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { ConfigService } from "@nestjs/config";
 import { LLMService } from "./llm.service";
 import { OpenAIProvider } from "./providers/openai.provider";
-import OpenAI from "openai";
 
 // Mock OpenAI
 const mockOpenAIClient = {
@@ -68,7 +67,8 @@ describe("LLMService", () => {
     openAIProvider = module.get<OpenAIProvider>(OpenAIProvider);
 
     // Mock the client property directly
-    (openAIProvider as any).client = mockOpenAIClient;
+    (openAIProvider as unknown as { client: typeof mockOpenAIClient }).client =
+      mockOpenAIClient;
   });
 
   it("should be defined", () => {
@@ -89,4 +89,4 @@ describe("LLMService", () => {
       expect(initializeSpy).toHaveBeenCalledTimes(1);
     });
   });
-}); 
+});

@@ -12,6 +12,7 @@ export const nestConfig = tseslint.config(
       'eslint.config.mjs',
       'dist/**',
       'node_modules/**',
+      '**/*.spec.ts',
     ],
   },
   eslint.configs.recommended,

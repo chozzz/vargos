@@ -5,6 +5,18 @@
     "build": {
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
+      "env": [
+        "PORT",
+        "DATA_DIR",
+        "FUNCTIONS_DIR",
+
+        "DB_TYPE",
+        "QDRANT_URL",
+        "QDRANT_API_KEY",
+        "QDRANT_PORT",
+        "OPENAI_API_KEY",
+        "SERP_API_KEY"
+      ],
       "outputs": [".next/**", "!.next/cache/**"]
     },
     "lint": {
