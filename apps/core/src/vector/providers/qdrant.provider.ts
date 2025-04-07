@@ -85,6 +85,7 @@ export class QdrantProvider implements VectorDBProvider, OnModuleInit {
         limit: options.limit || 10,
         score_threshold: options.threshold,
         filter: options.filter,
+        with_payload: true,
       });
 
       if (!response.data.result) {

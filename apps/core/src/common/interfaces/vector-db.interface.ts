@@ -1,10 +1,11 @@
-import { Provider } from "./provider.interface";
+import type { Provider } from "./provider.interface";
+import type { Schemas } from "@qdrant/js-client-rest";
 
 export interface VectorSearchOptions {
   collectionName: string;
   limit?: number;
   threshold?: number;
-  filter?: Record<string, any>;
+  filter?: Schemas["SearchRequest"]["filter"];
 }
 
 export interface VectorSearchResult<T = Record<string, any>> {

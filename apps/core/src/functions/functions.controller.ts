@@ -1,34 +1,49 @@
-import { Controller, Get } from "@nestjs/common";
+import { Controller, Get, Query, ParseIntPipe, DefaultValuePipe, Optional } from "@nestjs/common";
 import { FunctionsService } from "./functions.service";
 import { FunctionListResponse } from "../common/classes/functions-list.class";
-import { ApiOperation, ApiResponse } from "@nestjs/swagger";
+import { ApiOperation, ApiQuery, ApiResponse } from "@nestjs/swagger";
 
 @Controller("functions")
 export class FunctionsController {
   constructor(private readonly functionsService: FunctionsService) {}
 
-  @Get()
-  getDataDir(): string {
-    return this.functionsService.getDataDir();
-  }
-
-  @Get("list")
+  @Get("reindex")
   @ApiOperation({
-    summary: "List available functions",
-    description:
-      "Returns a list of all available functions with their metadata including name, description, category, tags and required environment variables",
+    summary: "Reindex all functions",
+    description: "Reindexes all functions from the functions directory",
   })
   @ApiResponse({
     status: 200,
-    description: "List of functions retrieved successfully",
-    type: [FunctionListResponse],
+    description: "Functions reindexed successfully",
   })
-  async listFunctions(): Promise<FunctionListResponse> {
-    return await this.functionsService.listFunctions();
-  }
-
-  @Get("reindex")
   async reindexFunctions() {
     return await this.functionsService.reindexFunctions();
+  }
+
+  @Get("search")
+  @ApiOperation({
+    summary: "Search for functions",
+    description: "Searches for functions based on a query",
+  })
+  @ApiQuery({
+    name: "query",
+    description: "The query to search for",
+    required: true,
+  })
+  @ApiQuery({
+    name: "limit",
+    description: "The number of functions to return",
+    required: false,
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Functions found successfully",
+    type: [FunctionListResponse],
+  })
+  async searchFunctions(
+    @Query("query") query: string,
+    @Optional() @Query("limit", new DefaultValuePipe(10), ParseIntPipe) limit: number,
+  ) {
+    return await this.functionsService.searchFunctions(query, limit);
   }
 }

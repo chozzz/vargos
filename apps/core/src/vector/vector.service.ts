@@ -34,7 +34,13 @@ export class VectorService {
     query: string,
     options: VectorSearchOptions,
   ): Promise<VectorSearchResult[]> {
-    const queryVector = await this.llmService.generateEmbedding(query);
+    const embeddings = await this.llmService.generateEmbeddings([query]);
+    const queryVector = embeddings?.[0];
+
+    if (!queryVector) {
+      throw new Error("Failed to generate query vector");
+    }
+
     return this.provider.search(queryVector, options);
   }
 

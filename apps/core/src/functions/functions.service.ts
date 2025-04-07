@@ -24,6 +24,9 @@ export class FunctionsService {
     }
 
     const functionsSourceDir = path.join(functionsDir, "src");
+
+    this.logger.debug(`Listing functions from ${functionsSourceDir}`);
+
     const functions = readdirSync(functionsSourceDir).filter((dir) => {
       return !dir.startsWith(".");
     });
@@ -46,6 +49,8 @@ export class FunctionsService {
       })
       .filter(Boolean);
 
+    this.logger.debug(`Found ${allFunctions.length} functions`);
+
     return {
       functions: allFunctions,
       total: allFunctions.length,
@@ -58,11 +63,7 @@ export class FunctionsService {
     totalChunks: number;
   }> {
     // Get list of all functions
-    this.logger.debug("Fetching function metadata...");
     const functionMetas = await this.listFunctions();
-    this.logger.debug(
-      `Found ${functionMetas.functions.length} functions to index`,
-    );
 
     // Split functions into chunks for batch processing
     const chunkSize = 100;
@@ -78,43 +79,42 @@ export class FunctionsService {
     let processedChunks = 0;
     for (const chunk of chunks) {
       this.logger.debug(
-        `Processing chunk ${++processedChunks} of ${chunks.length}...`,
+        `Processing chunk ${++processedChunks}/${chunks.length} (${Math.round((processedChunks / chunks.length) * 100)}% complete)`,
       );
 
       // Generate embeddings for each function in chunk
-      this.logger.debug("Generating embeddings...");
-      const functionVectors = await Promise.all(
+      this.logger.debug(
+        `Generating embeddings for ${chunk.length} functions in current chunk...`,
+      );
+
+      const functionMetaWithVectors = await Promise.all(
         chunk.map(async (functionMeta: FunctionMetadata) => {
-          const text = `Function: ${functionMeta.name}\nDescription: ${functionMeta.description}\nTags: ${functionMeta.tags.join(", ")}`;
-          return await this.llmService.generateEmbedding(text);
+          const text = `Name: ${functionMeta.name}\nDescription: ${functionMeta.description}\nTags: ${functionMeta.tags.join(", ")}`;
+          const vector = await this.llmService.generateEmbeddings(text);
+          return {
+            collectionName: this.functionMetaCollection,
+            id: functionMeta.id,
+            vector,
+            payload: functionMeta,
+          };
         }),
       );
 
-      // Combine metadata with vectors
-      const functionMetaWithVectors = chunk.map((functionMeta, index) => {
-        const vector = functionVectors[index];
-        if (!vector) {
-          throw new Error(
-            `Failed to generate embedding for function ${functionMeta.id}`,
-          );
-        }
-        return {
-          collectionName: this.functionMetaCollection,
-          id: functionMeta.id,
-          vector,
-          payload: functionMeta,
-        };
-      });
-
       // Index points
-      this.logger.debug("Indexing points...");
+      this.logger.debug(
+        `Indexing ${functionMetaWithVectors.length} function vectors into collection "${this.functionMetaCollection}"...`,
+      );
       await Promise.all(
         functionMetaWithVectors.map((data) => this.vectorService.index(data)),
       );
-      this.logger.debug(`Chunk ${processedChunks} processed successfully`);
+      this.logger.debug(
+        `Chunk ${processedChunks}/${chunks.length} processed successfully (${chunk.length} functions)`,
+      );
     }
 
-    this.logger.debug("Reindexing completed successfully");
+    this.logger.debug(
+      `Reindexing completed successfully - processed ${functionMetas.functions.length} functions in ${chunks.length} chunks`,
+    );
     return {
       success: true,
       totalFunctions: functionMetas.functions.length,
@@ -122,26 +122,14 @@ export class FunctionsService {
     };
   }
 
-  async searchFunctions(query: string) {
+  async searchFunctions(query: string, limit: number = 10) {
     return this.vectorService.search(query, {
       collectionName: this.functionMetaCollection,
-      limit: 10,
+      limit,
     });
-  }
-
-  getDataDir(): string {
-    const dataDir = this.configService.get<string>("DATA_DIR");
-    if (!dataDir) {
-      throw new Error("DATA_DIR environment variable is not set");
-    }
-    return dataDir;
   }
 
   async executeFunction(functionId: string, params: any) {
     // Execute function with proper error handling
-  }
-
-  async indexFunctions() {
-    // Use vector service for indexing
   }
 }
