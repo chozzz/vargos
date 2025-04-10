@@ -27,12 +27,13 @@ export class FunctionsController {
   })
   @ApiQuery({
     name: "query",
-    description: "The query to search for",
+    description: "The query to search for (e.g. 'weather', 'temperature', 'forecast')",
     required: true,
   })
   @ApiQuery({
     name: "limit",
-    description: "The number of functions to return",
+    description: "The maximum number of functions to return",
+    default: 10,
     required: false,
   })
   @ApiResponse({
