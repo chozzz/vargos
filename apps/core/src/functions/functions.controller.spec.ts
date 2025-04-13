@@ -5,10 +5,26 @@ import { ConfigModule, ConfigService } from "@nestjs/config";
 import { VectorService } from "../vector/vector.service";
 import { LLMService } from "../llm/llm.service";
 import { FunctionListResponse } from "../common/classes/functions-list.class";
+import { FunctionMetadata } from "../common/classes/functions-metadata.class";
+import { VectorSearchResult } from "../common/interfaces/vector-db.interface";
 
 describe("FunctionsController", () => {
   let controller: FunctionsController;
   let service: FunctionsService;
+
+  const mockFunctionMetadata: FunctionMetadata = {
+    id: "test-function",
+    name: "Test Function",
+    description: "A test function",
+    category: ["test"],
+    tags: ["test", "example"],
+    requiredEnvVars: ["TEST_VAR"],
+  };
+
+  const mockFunctionListResponse: FunctionListResponse = {
+    functions: [mockFunctionMetadata],
+    total: 1,
+  };
 
   const mockVectorService = {
     search: jest.fn(),
@@ -59,31 +75,97 @@ describe("FunctionsController", () => {
 
     controller = module.get<FunctionsController>(FunctionsController);
     service = module.get<FunctionsService>(FunctionsService);
+
+    // Reset all mocks before each test
+    jest.clearAllMocks();
   });
 
   it("should be defined", () => {
     expect(controller).toBeDefined();
   });
 
-  it("should return list of functions", async () => {
-    const mockFunctions = {
-      functions: [
-        {
-          id: "web-search",
-          name: "Web Search",
-          category: "Search",
-          description: "Performs web searches using SERP API",
-          tags: ["search", "web"],
-          requiredEnvVars: ["SERP_API_KEY"],
-        },
-      ],
-      total: 1,
-    };
+  describe("reindexFunctions", () => {
+    it("should reindex all functions successfully", async () => {
+      // Mock the service methods
+      jest.spyOn(service, "listFunctions").mockResolvedValue(mockFunctionListResponse);
+      jest.spyOn(service, "indexFunction").mockResolvedValue(undefined);
 
-    jest
-      .spyOn(service, "listFunctions")
-      .mockResolvedValue(mockFunctions as unknown as FunctionListResponse);
-    const result = await controller.listFunctions();
-    expect(result).toBe(mockFunctions);
+      const result = await controller.reindexFunctions();
+
+      expect(result).toEqual({
+        success: true,
+        totalFunctions: mockFunctionListResponse.functions.length,
+      });
+      expect(service.listFunctions).toHaveBeenCalledTimes(1);
+      expect(service.indexFunction).toHaveBeenCalledTimes(mockFunctionListResponse.functions.length);
+      expect(service.indexFunction).toHaveBeenCalledWith(mockFunctionMetadata);
+    });
+
+    it("should handle empty function list", async () => {
+      const emptyResponse: FunctionListResponse = {
+        functions: [],
+        total: 0,
+      };
+      jest.spyOn(service, "listFunctions").mockResolvedValue(emptyResponse);
+      jest.spyOn(service, "indexFunction").mockResolvedValue(undefined);
+
+      const result = await controller.reindexFunctions();
+
+      expect(result).toEqual({
+        success: true,
+        totalFunctions: 0,
+      });
+      expect(service.listFunctions).toHaveBeenCalledTimes(1);
+      expect(service.indexFunction).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("searchFunctions", () => {
+    const mockSearchResults: VectorSearchResult[] = [
+      {
+        id: "test-function",
+        score: 0.95,
+        payload: mockFunctionMetadata,
+      },
+    ];
+
+    beforeEach(() => {
+      mockVectorService.search.mockResolvedValue(mockSearchResults);
+    });
+
+    it("should search functions with default limit", async () => {
+      const query = "test query";
+      const result = await controller.searchFunctions(query, 10);
+
+      expect(result).toEqual(mockSearchResults);
+      expect(mockVectorService.search).toHaveBeenCalledWith(query, {
+        collectionName: "vargos-functions-meta",
+        limit: 10,
+      });
+    });
+
+    it("should search functions with custom limit", async () => {
+      const query = "test query";
+      const limit = 5;
+      const result = await controller.searchFunctions(query, limit);
+
+      expect(result).toEqual(mockSearchResults);
+      expect(mockVectorService.search).toHaveBeenCalledWith(query, {
+        collectionName: "vargos-functions-meta",
+        limit,
+      });
+    });
+
+    it("should handle empty search results", async () => {
+      mockVectorService.search.mockResolvedValue([]);
+      const query = "nonexistent query";
+      const result = await controller.searchFunctions(query, 10);
+
+      expect(result).toEqual([]);
+      expect(mockVectorService.search).toHaveBeenCalledWith(query, {
+        collectionName: "vargos-functions-meta",
+        limit: 10,
+      });
+    });
   });
 });
