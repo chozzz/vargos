@@ -6,6 +6,7 @@ import { FunctionsService } from "./functions/functions.service";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { VectorService } from "./vector/vector.service";
 import { LLMService } from "./llm/llm.service";
+import { LocalDirectoryProvider } from "./functions/providers/local-directory.provider";
 
 describe("AppController", () => {
   let appController: AppController;
@@ -24,6 +25,12 @@ describe("AppController", () => {
     generateEmbedding: jest.fn(),
     generateEmbeddings: jest.fn(),
     chat: jest.fn(),
+  };
+
+  const mockLocalDirectoryProvider = {
+    listFunctions: jest.fn(),
+    getFunctionMetadata: jest.fn(),
+    executeFunction: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -56,6 +63,10 @@ describe("AppController", () => {
         {
           provide: LLMService,
           useValue: mockLLMService,
+        },
+        {
+          provide: LocalDirectoryProvider,
+          useValue: mockLocalDirectoryProvider,
         },
       ],
     }).compile();

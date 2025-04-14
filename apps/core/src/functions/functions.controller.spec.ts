@@ -7,6 +7,7 @@ import { LLMService } from "../llm/llm.service";
 import { FunctionListResponse } from "../common/classes/functions-list.class";
 import { FunctionMetadata } from "../common/classes/functions-metadata.class";
 import { VectorSearchResult } from "../common/interfaces/vector-db.interface";
+import { LocalDirectoryProvider } from "./providers/local-directory.provider";
 
 describe("FunctionsController", () => {
   let controller: FunctionsController;
@@ -40,6 +41,12 @@ describe("FunctionsController", () => {
     chat: jest.fn(),
   };
 
+  const mockLocalDirectoryProvider = {
+    listFunctions: jest.fn(),
+    getFunctionMetadata: jest.fn(),
+    executeFunction: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       imports: [ConfigModule],
@@ -70,6 +77,10 @@ describe("FunctionsController", () => {
           provide: LLMService,
           useValue: mockLLMService,
         },
+        {
+          provide: LocalDirectoryProvider,
+          useValue: mockLocalDirectoryProvider,
+        },
       ],
     }).compile();
 
@@ -87,7 +98,7 @@ describe("FunctionsController", () => {
   describe("reindexFunctions", () => {
     it("should reindex all functions successfully", async () => {
       // Mock the service methods
-      jest.spyOn(service, "listFunctions").mockResolvedValue(mockFunctionListResponse);
+      mockLocalDirectoryProvider.listFunctions.mockResolvedValue(mockFunctionListResponse);
       jest.spyOn(service, "indexFunction").mockResolvedValue(undefined);
 
       const result = await controller.reindexFunctions();
@@ -96,7 +107,7 @@ describe("FunctionsController", () => {
         success: true,
         totalFunctions: mockFunctionListResponse.functions.length,
       });
-      expect(service.listFunctions).toHaveBeenCalledTimes(1);
+      expect(mockLocalDirectoryProvider.listFunctions).toHaveBeenCalledTimes(1);
       expect(service.indexFunction).toHaveBeenCalledTimes(mockFunctionListResponse.functions.length);
       expect(service.indexFunction).toHaveBeenCalledWith(mockFunctionMetadata);
     });
@@ -106,7 +117,7 @@ describe("FunctionsController", () => {
         functions: [],
         total: 0,
       };
-      jest.spyOn(service, "listFunctions").mockResolvedValue(emptyResponse);
+      mockLocalDirectoryProvider.listFunctions.mockResolvedValue(emptyResponse);
       jest.spyOn(service, "indexFunction").mockResolvedValue(undefined);
 
       const result = await controller.reindexFunctions();
@@ -115,7 +126,7 @@ describe("FunctionsController", () => {
         success: true,
         totalFunctions: 0,
       });
-      expect(service.listFunctions).toHaveBeenCalledTimes(1);
+      expect(mockLocalDirectoryProvider.listFunctions).toHaveBeenCalledTimes(1);
       expect(service.indexFunction).not.toHaveBeenCalled();
     });
   });
