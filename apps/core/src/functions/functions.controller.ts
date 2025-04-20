@@ -6,10 +6,22 @@ import {
   DefaultValuePipe,
   Optional,
   Logger,
+  Post,
+  Body,
+  Param,
+  HttpException,
+  HttpStatus,
 } from "@nestjs/common";
 import { FunctionsService } from "./functions.service";
 import { FunctionListResponse } from "../common/classes/functions-list.class";
-import { ApiOperation, ApiQuery, ApiResponse } from "@nestjs/swagger";
+import {
+  ApiOperation,
+  ApiQuery,
+  ApiResponse,
+  ApiParam,
+  ApiBody,
+} from "@nestjs/swagger";
+import { ParseJsonPipe } from "../common/pipes/parse-json.pipe";
 
 @Controller("functions")
 export class FunctionsController {
@@ -69,5 +81,63 @@ export class FunctionsController {
     limit: number,
   ) {
     return await this.functionsService.searchFunctions(query, limit);
+  }
+
+  @Post(":functionId/execute")
+  @ApiOperation({
+    summary: "Execute a function",
+    description: "Executes a function with the given parameters",
+  })
+  @ApiParam({
+    name: "functionId",
+    description: "The ID of the function to execute",
+    required: true,
+  })
+  @ApiBody({
+    schema: {
+      type: "object",
+      properties: {
+        params: { type: "object" },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Function executed successfully",
+  })
+  @ApiResponse({
+    status: 400,
+    description: "Invalid parameters or function execution failed",
+  })
+  async executeFunction(
+    @Param("functionId") functionId: string,
+    @Body(new ParseJsonPipe()) params: Record<string, unknown>,
+  ): Promise<unknown> {
+    try {
+      return await this.functionsService.executeFunction(functionId, params);
+    } catch (serviceError) {
+      try {
+        const errorMessage = JSON.parse(serviceError as string);
+        throw new HttpException(
+          {
+            status: HttpStatus.BAD_REQUEST,
+            ...errorMessage,
+          },
+          HttpStatus.BAD_REQUEST,
+        );
+      } catch (err) {
+        if (err instanceof HttpException) {
+          throw err;
+        }
+
+        throw new HttpException(
+          {
+            status: HttpStatus.BAD_REQUEST,
+            error: `Failed to execute function: ${err instanceof Error ? err.message : "Unknown error"}`,
+          },
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+    }
   }
 }

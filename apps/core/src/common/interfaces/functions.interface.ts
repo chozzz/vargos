@@ -19,5 +19,8 @@ export interface FunctionsProvider extends Provider {
    * @param functionId The ID of the function to execute
    * @param params The parameters to pass to the function
    */
-  executeFunction(functionId: string, params: any): Promise<any>;
+  executeFunction<T = Record<string, unknown>, R = unknown>(
+    functionId: string,
+    params: T,
+  ): Promise<R>;
 }

@@ -5,11 +5,13 @@ import { FunctionsService } from "./functions.service";
 import { LLMModule } from "../llm/llm.module";
 import { VectorModule } from "../vector/vector.module";
 import { FunctionsProvidersModule } from "./providers/providers.module";
+import { LocalDirectoryProvider } from "./providers/local-directory.provider";
+import { ParseJsonPipe } from "../common/pipes/parse-json.pipe";
 
 @Module({
   imports: [ConfigModule, LLMModule, VectorModule, FunctionsProvidersModule],
   controllers: [FunctionsController],
-  providers: [FunctionsService],
-  exports: [FunctionsService],
+  providers: [FunctionsService, LocalDirectoryProvider, ParseJsonPipe],
+  exports: [FunctionsService, ParseJsonPipe],
 })
 export class FunctionsModule {}

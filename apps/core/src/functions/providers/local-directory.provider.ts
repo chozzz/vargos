@@ -1,7 +1,14 @@
-import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
+import {
+  Injectable,
+  Logger,
+  OnModuleInit,
+  HttpException,
+  HttpStatus,
+} from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { readdirSync, readFileSync } from "fs";
-import path from "path";
+import { existsSync, readdirSync, readFileSync } from "fs";
+import path, { resolve } from "path";
+import { spawn } from "child_process";
 import { FunctionListResponse } from "../../common/classes/functions-list.class";
 import { FunctionMetadata } from "../../common/classes/functions-metadata.class";
 import { FunctionsProvider } from "../../common/interfaces/functions.interface";
@@ -9,6 +16,7 @@ import { FunctionsProvider } from "../../common/interfaces/functions.interface";
 @Injectable()
 export class LocalDirectoryProvider implements FunctionsProvider, OnModuleInit {
   private readonly logger = new Logger(LocalDirectoryProvider.name);
+  private functionsDir!: string;
   private functionsSourceDir!: string;
 
   constructor(private configService: ConfigService) {}
@@ -18,60 +26,29 @@ export class LocalDirectoryProvider implements FunctionsProvider, OnModuleInit {
   }
 
   async initialize(): Promise<void> {
-    const functionsDir = this.configService.get<string>("FUNCTIONS_DIR");
+    this.functionsDir = this.configService.get<string>("FUNCTIONS_DIR") || "";
 
-    if (!functionsDir) {
+    if (!this.functionsDir) {
       throw new Error("FUNCTIONS_DIR environment variable is not set");
     }
 
-    this.functionsSourceDir = path.join(functionsDir, "src");
-  }
-
-  async listFunctions(): Promise<FunctionListResponse> {
-    this.logger.debug(`Listing functions from ${this.functionsSourceDir}`);
-
-    const functions = readdirSync(this.functionsSourceDir).filter((dir) => {
-      return !dir.startsWith(".");
-    });
-
-    this.logger.debug(`Found ${functions.length} functions`);
-
-    const allFunctions = functions
-      .map((functionName) => {
-        try {
-          const metaFile = readFileSync(
-            `${this.functionsSourceDir}/${functionName}/${functionName}.meta.json`,
-            "utf8",
-          );
-          const meta = JSON.parse(metaFile);
-          return {
-            id: functionName,
-            ...meta,
-          };
-        } catch {
-          return null;
-        }
-      })
-      .filter(Boolean);
-
-    this.logger.debug(`Found ${allFunctions.length} functions`);
-
-    return {
-      functions: allFunctions,
-      total: allFunctions.length,
-    };
+    this.functionsSourceDir = path.join(this.functionsDir, "src");
   }
 
   async getFunctionMetadata(functionId: string): Promise<FunctionMetadata> {
-    const metaFilePath = path.join(
-      this.functionsSourceDir,
-      functionId,
-      `${functionId}.meta.json`,
-    );
-
     try {
+      const metaFilePath = path.join(
+        this.functionsSourceDir,
+        functionId,
+        `${functionId}.meta.json`,
+      );
       const metaFile = readFileSync(metaFilePath, "utf8");
-      const meta = JSON.parse(metaFile);
+      const meta: Omit<FunctionMetadata, "id"> = JSON.parse(metaFile);
+
+      this.logger.debug(
+        `Found metadata for function ${functionId}: ${JSON.stringify(meta)}`,
+      );
+
       return {
         id: functionId,
         ...meta,
@@ -86,9 +63,73 @@ export class LocalDirectoryProvider implements FunctionsProvider, OnModuleInit {
     }
   }
 
-  async executeFunction(functionId: string, params: any): Promise<any> {
-    // TODO: Implement function execution
-    // This will require dynamic module loading and execution
-    throw new Error("Function execution not implemented yet");
+  async listFunctions(): Promise<FunctionListResponse> {
+    this.logger.debug(`Listing functions from ${this.functionsSourceDir}`);
+
+    const functions = readdirSync(this.functionsSourceDir).filter((dir) => {
+      return !dir.startsWith(".");
+    });
+
+    this.logger.debug(`Found ${functions.length} functions`);
+
+    const allFunctions = await Promise.all(
+      functions.map((functionId) => this.getFunctionMetadata(functionId)),
+    );
+
+    this.logger.debug(`Found ${allFunctions.length} functions`);
+
+    return {
+      functions: allFunctions,
+      total: allFunctions.length,
+    };
+  }
+
+  async executeFunction<T = Record<string, unknown>, R = unknown>(
+    functionId: string,
+    params: T,
+  ): Promise<R> {
+    // Check if function exists
+    const functionPath = resolve(this.functionsSourceDir, functionId);
+    if (!existsSync(functionPath)) {
+      throw new Error(`Function "${functionId}" not found`);
+    }
+
+    return new Promise((resolve, reject) => {
+      const childProcess = spawn(
+        "pnpm",
+        ["--silent", "run-function", functionId, JSON.stringify(params)],
+        {
+          env: process.env,
+          cwd: this.functionsDir,
+        },
+      );
+
+      let stdout = "";
+      let stderr = "";
+
+      childProcess.stdout.on("data", (data) => {
+        stdout += data.toString();
+      });
+
+      childProcess.stderr.on("data", (data) => {
+        stderr += data.toString();
+      });
+
+      childProcess.on("close", (code) => {
+        if (code !== 0) {
+          reject(stderr.trim());
+          return;
+        }
+
+        try {
+          const result = JSON.parse(stdout.trim());
+          resolve(result);
+        } catch (e) {
+          reject(
+            `Failed to parse function output: ${e instanceof Error ? e.message : "Unknown error"}`,
+          );
+        }
+      });
+    });
   }
 }
