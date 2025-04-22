@@ -45,10 +45,6 @@ export class LocalDirectoryProvider implements FunctionsProvider, OnModuleInit {
       const metaFile = readFileSync(metaFilePath, "utf8");
       const meta: Omit<FunctionMetadata, "id"> = JSON.parse(metaFile);
 
-      this.logger.debug(
-        `Found metadata for function ${functionId}: ${JSON.stringify(meta)}`,
-      );
-
       return {
         id: functionId,
         ...meta,
@@ -69,8 +65,6 @@ export class LocalDirectoryProvider implements FunctionsProvider, OnModuleInit {
     const functions = readdirSync(this.functionsSourceDir).filter((dir) => {
       return !dir.startsWith(".");
     });
-
-    this.logger.debug(`Found ${functions.length} functions`);
 
     const allFunctions = await Promise.all(
       functions.map((functionId) => this.getFunctionMetadata(functionId)),
