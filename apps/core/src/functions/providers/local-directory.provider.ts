@@ -111,17 +111,31 @@ export class LocalDirectoryProvider implements FunctionsProvider, OnModuleInit {
 
       childProcess.on("close", (code) => {
         if (code !== 0) {
-          reject(stderr.trim());
+          // Try to parse stdout as JSON error
+          let errorObj: any = {};
+          try {
+            errorObj = JSON.parse(stdout.trim());
+          } catch {
+            try {
+              errorObj = JSON.parse(stderr.trim());
+            } catch {
+              errorObj = { error: "UnknownError", message: stderr.trim() || stdout.trim() };
+            }
+          }
+          // Always shape to { error, message }
+          if (typeof errorObj === "string") {
+            errorObj = { error: "UnknownError", message: errorObj };
+          }
+          if (!errorObj.error) errorObj.error = "UnknownError";
+          if (!errorObj.message) errorObj.message = errorObj.error;
+          reject(errorObj);
           return;
         }
-
         try {
           const result = JSON.parse(stdout.trim());
           resolve(result);
         } catch (e) {
-          reject(
-            `Failed to parse function output: ${e instanceof Error ? e.message : "Unknown error"}`,
-          );
+          reject({ error: "ParseError", message: "Failed to parse function output" });
         }
       });
     });

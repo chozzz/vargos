@@ -49,7 +49,7 @@ const initializeDirectories = () => {
     
     // Install dependencies
     logger.log('Installing dependencies for functions template...');
-    execSync('pnpm install', { cwd: functionsDir });
+    execSync('./setup.sh', { cwd: functionsDir });
     logger.info('Successfully installed dependencies');
   }
 
