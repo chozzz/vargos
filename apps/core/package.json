@@ -1,15 +1,16 @@
 {
-  "name": "cli",
+  "name": "vargos-core",
   "version": "0.0.1",
   "description": "",
-  "author": "",
+  "author": "Vadi Taslim",
   "private": true,
   "license": "Apache-2.0",
   "scripts": {
+    "prebuild": "ts-node scripts/prebuild.ts",
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
-    "dev": "nest start --watch",
+    "dev": "ts-node scripts/prebuild.ts && nest start --watch --preserve-logs",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
@@ -23,6 +24,8 @@
     "@nestjs/common": "^11.1.0",
     "@nestjs/core": "^11.1.0",
     "@nestjs/platform-express": "^11.1.0",
+    "@nestjs/swagger": "^11.1.5",
+    "eslint": "^9.25.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2"
   },
@@ -38,6 +41,8 @@
     "@types/jest": "^29.5.14",
     "@types/node": "^22.14.1",
     "@types/supertest": "^6.0.3",
+    "@workspace/eslint-config": "workspace:^",
+    "@workspace/typescript-config": "workspace:*",
     "globals": "^16.0.0",
     "jest": "^29.7.0",
     "source-map-support": "^0.5.21",
@@ -46,9 +51,7 @@
     "ts-loader": "^9.5.2",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
-    "typescript": "^5.8.3",
-    "@workspace/eslint-config": "workspace:^",
-    "@workspace/typescript-config": "workspace:*"
+    "typescript": "^5.8.3"
   },
   "jest": {
     "moduleFileExtensions": [
