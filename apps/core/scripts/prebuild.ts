@@ -1,6 +1,7 @@
 import { homedir } from 'os';
 import { join } from 'path';
 import { existsSync, mkdirSync, accessSync, constants } from 'fs';
+import { execSync } from 'child_process';
 
 // Create logger wrapper
 const logger = {
@@ -32,6 +33,14 @@ if (!existsSync(dataDir)) {
 if (!existsSync(functionsDir)) {
   mkdirSync(functionsDir);
   logger.log(`Created functions directory at: ${functionsDir}`);
+
+  // Git clone from git@github.com:chozzz/vargos-functions-template.git
+  logger.log(`Cloning template for vargos-functions in ${functionsDir}`);
+  execSync(`git clone git@github.com:chozzz/vargos-functions-template.git ${functionsDir}`);
+
+  // Do pnpm install in the functions directory
+  logger.log(`Installing pnpm dependencies in ${functionsDir}`);
+  execSync(`pnpm install`, { cwd: functionsDir });
 } else {
   logger.log(`Functions directory exists at: ${functionsDir}`);
 }
