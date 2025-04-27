@@ -1,5 +1,5 @@
 import { ApiProperty } from "@nestjs/swagger";
-import { FunctionMetadata } from "./functions-metadata.class";
+import { FunctionMetadata } from "./functions-metadata.dto";
 
 export class FunctionListResponse {
   @ApiProperty({

@@ -9,8 +9,8 @@ import { ConfigService } from "@nestjs/config";
 import { existsSync, readdirSync, readFileSync } from "fs";
 import path, { resolve } from "path";
 import { spawn } from "child_process";
-import { FunctionListResponse } from "../../common/classes/functions-list.class";
-import { FunctionMetadata } from "../../common/classes/functions-metadata.class";
+import { FunctionListResponse } from "../../common/classes/functions-list.dto";
+import { FunctionMetadata } from "../../common/classes/functions-metadata.dto";
 import { FunctionsProvider } from "../../common/interfaces/functions.interface";
 
 @Injectable()
@@ -119,7 +119,10 @@ export class LocalDirectoryProvider implements FunctionsProvider, OnModuleInit {
             try {
               errorObj = JSON.parse(stderr.trim());
             } catch {
-              errorObj = { error: "UnknownError", message: stderr.trim() || stdout.trim() };
+              errorObj = {
+                error: "UnknownError",
+                message: stderr.trim() || stdout.trim(),
+              };
             }
           }
           // Always shape to { error, message }
@@ -135,7 +138,10 @@ export class LocalDirectoryProvider implements FunctionsProvider, OnModuleInit {
           const result = JSON.parse(stdout.trim());
           resolve(result);
         } catch (e) {
-          reject({ error: "ParseError", message: "Failed to parse function output" });
+          reject({
+            error: "ParseError",
+            message: "Failed to parse function output",
+          });
         }
       });
     });
