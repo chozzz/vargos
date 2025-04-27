@@ -1,9 +1,9 @@
 import { homedir } from 'os';
 import { join } from 'path';
-import { existsSync, mkdirSync, accessSync, constants } from 'fs';
+import { existsSync, mkdirSync, accessSync, constants, copyFileSync, writeFileSync, readFileSync } from 'fs';
 import { execSync } from 'child_process';
 
-// Create logger wrapper
+// Logger with colors
 const logger = {
   log: (...args: any[]) => console.log('\x1b[0m[Prebuild]', ...args),
   warn: (...args: any[]) => console.warn('\x1b[33m[Prebuild]', ...args),
@@ -11,74 +11,160 @@ const logger = {
   info: (...args: any[]) => console.info('\x1b[36m[Prebuild]', ...args),
 };
 
-const home = homedir();
-const vargosDir = join(home, '.vargos');
-const dataDir = process.env.DATA_DIR || join(vargosDir, 'data');
-const functionsDir = process.env.FUNCTIONS_DIR || join(vargosDir, 'functions');
+// Constants
+const HOME = homedir();
+const VARGOS_DIR = join(HOME, '.vargos');
+const ROOT_DIR = process.cwd();
+const ENV_FILE = join(ROOT_DIR, '.env');
+const ENV_EXAMPLE_FILE = join(ROOT_DIR, '.env.example');
 
-// Create base .vargos directory if it doesn't exist
-if (!existsSync(vargosDir)) {
-  mkdirSync(vargosDir);
-}
+// Initialize directories
+const initializeDirectories = () => {
+  // Create .vargos directory if it doesn't exist
+  if (!existsSync(VARGOS_DIR)) {
+    mkdirSync(VARGOS_DIR);
+    logger.log(`Created .vargos directory at: ${VARGOS_DIR}`);
+  }
 
-// Check and create data directory
-if (!existsSync(dataDir)) {
-  mkdirSync(dataDir);
-  logger.log(`Created data directory at: ${dataDir}`);
-} else {
-  logger.log(`Data directory exists at: ${dataDir}`);
-}
+  // Set default directories
+  const dataDir = process.env.DATA_DIR || join(VARGOS_DIR, 'data');
+  const functionsDir = process.env.FUNCTIONS_DIR || join(VARGOS_DIR, 'functions');
 
-// Check and create functions directory  
-if (!existsSync(functionsDir)) {
-  mkdirSync(functionsDir);
-  logger.log(`Created functions directory at: ${functionsDir}`);
+  // Create data directory
+  if (!existsSync(dataDir)) {
+    mkdirSync(dataDir);
+    logger.log(`Created data directory at: ${dataDir}`);
+  }
 
-  // Git clone from git@github.com:chozzz/vargos-functions-template.git
-  logger.log(`Cloning template for vargos-functions in ${functionsDir}`);
-  execSync(`git clone git@github.com:chozzz/vargos-functions-template.git ${functionsDir}`);
+  // Create functions directory and initialize template
+  if (!existsSync(functionsDir)) {
+    mkdirSync(functionsDir);
+    logger.info(`Functions directory does not exist at: ${functionsDir}`);
+    logger.info('Will clone template from official Vargos functions repository...');
+    
+    // Clone template repository
+    logger.log('Cloning functions template from https://github.com/chozzz/vargos-functions-template...');
+    execSync(`git clone git@github.com:chozzz/vargos-functions-template.git ${functionsDir}`);
+    logger.info('Successfully cloned functions template');
+    
+    // Install dependencies
+    logger.log('Installing dependencies for functions template...');
+    execSync('pnpm install', { cwd: functionsDir });
+    logger.info('Successfully installed dependencies');
+  }
 
-  // Do pnpm install in the functions directory
-  logger.log(`Installing pnpm dependencies in ${functionsDir}`);
-  execSync(`pnpm install`, { cwd: functionsDir });
-} else {
-  logger.log(`Functions directory exists at: ${functionsDir}`);
-}
+  return { dataDir, functionsDir };
+};
+
+// Update environment variable in .env file
+const updateEnvVariable = (key: string, value: string) => {
+  if (!existsSync(ENV_FILE)) {
+    writeFileSync(ENV_FILE, `${key}=${value}\n`);
+    return;
+  }
+
+  const envContent = readFileSync(ENV_FILE, 'utf-8') || '';
+  const lines = envContent.split('\n');
+  let found = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i]?.startsWith(`${key}=`)) {
+      lines[i] = `${key}=${value}`;
+      found = true;
+      break;
+    }
+  }
+
+  if (!found) {
+    lines.push(`${key}=${value}`);
+  }
+
+  writeFileSync(ENV_FILE, lines.join('\n'));
+};
+
+// Handle environment file
+const setupEnvironmentFile = () => {
+  if (!existsSync(ENV_FILE)) {
+    if (existsSync(ENV_EXAMPLE_FILE)) {
+      // Copy from example if it exists
+      copyFileSync(ENV_EXAMPLE_FILE, ENV_FILE);
+      logger.log('Created .env file from .env.example');
+    } else {
+      // Create new .env file with default values
+      const defaultEnv = `# Vargos Environment Configuration
+DATA_DIR=${join(VARGOS_DIR, 'data')}
+FUNCTIONS_DIR=${join(VARGOS_DIR, 'functions')}
+`;
+      writeFileSync(ENV_FILE, defaultEnv);
+      logger.log('Created new .env file with default values');
+    }
+  }
+};
 
 // Check directory permissions
 const checkPermissions = (dir: string) => {
+  const permissions = {
+    read: false,
+    write: false,
+    execute: false,
+  };
+
   try {
     accessSync(dir, constants.R_OK);
-    process.env[`${dir}_READ`] = 'true';
+    permissions.read = true;
     logger.info(`Read permission granted for ${dir}`);
   } catch {
-    process.env[`${dir}_READ`] = 'false';
     logger.warn(`No read permission for ${dir}`);
   }
 
   try {
     accessSync(dir, constants.W_OK);
-    process.env[`${dir}_WRITE`] = 'true';
+    permissions.write = true;
     logger.info(`Write permission granted for ${dir}`);
   } catch {
-    process.env[`${dir}_WRITE`] = 'false'; 
     logger.warn(`No write permission for ${dir}`);
   }
 
   try {
     accessSync(dir, constants.X_OK);
-    process.env[`${dir}_EXECUTE`] = 'true';
+    permissions.execute = true;
     logger.info(`Execute permission granted for ${dir}`);
   } catch {
-    process.env[`${dir}_EXECUTE`] = 'false';
     logger.warn(`No execute permission for ${dir}`);
+  }
+
+  return permissions;
+};
+
+// Main execution
+const main = async () => {
+  try {
+    // Setup environment file
+    setupEnvironmentFile();
+
+    // Initialize directories
+    const { dataDir, functionsDir } = initializeDirectories();
+
+    // Check permissions
+    const dataPermissions = checkPermissions(dataDir);
+    const functionsPermissions = checkPermissions(functionsDir);
+
+    // Update environment variables if using defaults
+    if (!process.env.DATA_DIR) {
+      updateEnvVariable('DATA_DIR', dataDir);
+      logger.log('Updated DATA_DIR in .env file');
+    }
+    if (!process.env.FUNCTIONS_DIR) {
+      updateEnvVariable('FUNCTIONS_DIR', functionsDir);
+      logger.log('Updated FUNCTIONS_DIR in .env file');
+    }
+
+    logger.log('Prebuild completed successfully');
+  } catch (error) {
+    logger.error('Prebuild failed:', error);
+    process.exit(1);
   }
 };
 
-checkPermissions(dataDir);
-checkPermissions(functionsDir);
-
-// Wait 5s
-setTimeout(() => {
-  logger.log('Prebuild completed successfully');
-}, 5000);
+// Run the script
+main();
