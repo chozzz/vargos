@@ -5,5 +5,10 @@
     "declaration": true,
     "removeComments": true,
     "emitDecoratorMetadata": true,
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ]
+    }
   }
 }

@@ -2,11 +2,27 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { FunctionsController } from "./functions.controller";
 import { FunctionsService } from "./functions.service";
 import { ConfigModule, ConfigService } from "@nestjs/config";
-import { FunctionListResponse } from "./functions.class";
+import { FunctionListResponse } from "../common/classes/functions-metadata.class";
+import { VectorService } from "../vector/vector.service";
+import { LLMService } from "../llm/llm.service";
 
 describe("FunctionsController", () => {
   let controller: FunctionsController;
   let service: FunctionsService;
+
+  const mockVectorService = {
+    search: jest.fn(),
+    index: jest.fn(),
+    delete: jest.fn(),
+    createCollection: jest.fn(),
+    collectionExists: jest.fn(),
+  };
+
+  const mockLLMService = {
+    generateEmbedding: jest.fn(),
+    generateEmbeddings: jest.fn(),
+    chat: jest.fn(),
+  };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -29,6 +45,14 @@ describe("FunctionsController", () => {
               return envVars[key];
             }),
           },
+        },
+        {
+          provide: VectorService,
+          useValue: mockVectorService,
+        },
+        {
+          provide: LLMService,
+          useValue: mockLLMService,
         },
       ],
     }).compile();
