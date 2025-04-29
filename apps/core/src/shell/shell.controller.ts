@@ -6,7 +6,7 @@ import {
   ShellHistoryItemDto,
 } from "../common/classes/shell.dto";
 
-@ApiTags("shell")
+@ApiTags("Shell")
 @Controller("shell")
 export class ShellController {
   constructor(private readonly shellService: ShellService) {}
