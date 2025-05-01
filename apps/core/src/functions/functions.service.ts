@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { readdirSync, readFileSync } from "fs";
 import path from "path";
@@ -9,6 +9,7 @@ import { FunctionMetadata } from "../common/classes/functions-metadata.class";
 @Injectable()
 export class FunctionsService {
   private readonly functionMetaCollection = "vargos-functions-meta";
+  private readonly logger = new Logger(FunctionsService.name);
 
   constructor(
     private configService: ConfigService,
@@ -57,9 +58,11 @@ export class FunctionsService {
     totalChunks: number;
   }> {
     // Get list of all functions
-    console.log("Fetching function metadata...");
+    this.logger.debug("Fetching function metadata...");
     const functionMetas = await this.listFunctions();
-    console.log(`Found ${functionMetas.functions.length} functions to index`);
+    this.logger.debug(
+      `Found ${functionMetas.functions.length} functions to index`,
+    );
 
     // Split functions into chunks for batch processing
     const chunkSize = 100;
@@ -67,17 +70,19 @@ export class FunctionsService {
     for (let i = 0; i < functionMetas.functions.length; i += chunkSize) {
       chunks.push(functionMetas.functions.slice(i, i + chunkSize));
     }
-    console.log(`Split functions into ${chunks.length} chunks of ${chunkSize}`);
+    this.logger.debug(
+      `Split functions into ${chunks.length} chunks of ${chunkSize}`,
+    );
 
     // Process each chunk
     let processedChunks = 0;
     for (const chunk of chunks) {
-      console.log(
+      this.logger.debug(
         `Processing chunk ${++processedChunks} of ${chunks.length}...`,
       );
 
       // Generate embeddings for each function in chunk
-      console.log("Generating embeddings...");
+      this.logger.debug("Generating embeddings...");
       const functionVectors = await Promise.all(
         chunk.map(async (functionMeta: FunctionMetadata) => {
           const text = `Function: ${functionMeta.name}\nDescription: ${functionMeta.description}\nTags: ${functionMeta.tags.join(", ")}`;
@@ -102,14 +107,14 @@ export class FunctionsService {
       });
 
       // Index points
-      console.log("Indexing points...");
+      this.logger.debug("Indexing points...");
       await Promise.all(
         functionMetaWithVectors.map((data) => this.vectorService.index(data)),
       );
-      console.log(`Chunk ${processedChunks} processed successfully`);
+      this.logger.debug(`Chunk ${processedChunks} processed successfully`);
     }
 
-    console.log("Reindexing completed successfully");
+    this.logger.debug("Reindexing completed successfully");
     return {
       success: true,
       totalFunctions: functionMetas.functions.length,

@@ -38,7 +38,7 @@ export class QdrantProvider implements VectorDBProvider, OnModuleInit {
         apiKey,
       });
 
-      this.logger.log("Qdrant client initialized successfully");
+      this.logger.debug("Qdrant client initialized successfully");
     } catch (error) {
       this.logger.error("Failed to initialize Qdrant client", error);
       throw error;
@@ -54,7 +54,7 @@ export class QdrantProvider implements VectorDBProvider, OnModuleInit {
           distance: "Cosine",
         },
       });
-      this.logger.log(`Collection ${name} created successfully`);
+      this.logger.debug(`Collection ${name} created successfully`);
     } catch (error) {
       this.logger.error(`Failed to create collection ${name}`, error);
       throw error;
@@ -117,7 +117,7 @@ export class QdrantProvider implements VectorDBProvider, OnModuleInit {
           },
         ],
       });
-      this.logger.log(
+      this.logger.debug(
         `Indexed data for ${data.id} in collection ${data.collectionName}`,
       );
     } catch (error) {
@@ -135,7 +135,9 @@ export class QdrantProvider implements VectorDBProvider, OnModuleInit {
         collection_name: collectionName,
         points: [uuidv5(id, uuidv5.URL)],
       });
-      this.logger.log(`Deleted point ${id} from collection ${collectionName}`);
+      this.logger.debug(
+        `Deleted point ${id} from collection ${collectionName}`,
+      );
     } catch (error) {
       this.logger.error(
         `Failed to delete point ${id} from collection ${collectionName}`,
