@@ -1,7 +1,7 @@
-import { Controller, Get, Query } from "@nestjs/common";
+import { Controller, Get } from "@nestjs/common";
 import { FunctionsService } from "./functions.service";
-import { FunctionListResponse } from "../common/classes/functions-metadata.class";
-import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
+import { FunctionListResponse } from "../common/classes/functions-list.class";
+import { ApiOperation, ApiResponse } from "@nestjs/swagger";
 
 @Controller("functions")
 export class FunctionsController {

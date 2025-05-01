@@ -2,11 +2,10 @@ import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { readdirSync, readFileSync } from "fs";
 import path from "path";
-import { FunctionListResponse } from "../common/classes/functions-metadata.class";
-import { v5 as uuidv5 } from "uuid";
+import { FunctionListResponse } from "../common/classes/functions-list.class";
 import { VectorService } from "../vector/vector.service";
 import { LLMService } from "../llm/llm.service";
-
+import { FunctionMetadata } from "../common/classes/functions-metadata.class";
 @Injectable()
 export class FunctionsService {
   private readonly functionMetaCollection = "vargos-functions-meta";
@@ -80,7 +79,7 @@ export class FunctionsService {
       // Generate embeddings for each function in chunk
       console.log("Generating embeddings...");
       const functionVectors = await Promise.all(
-        chunk.map(async (functionMeta) => {
+        chunk.map(async (functionMeta: FunctionMetadata) => {
           const text = `Function: ${functionMeta.name}\nDescription: ${functionMeta.description}\nTags: ${functionMeta.tags.join(", ")}`;
           return await this.llmService.generateEmbedding(text);
         }),
