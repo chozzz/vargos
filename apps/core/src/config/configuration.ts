@@ -3,6 +3,7 @@ export default () => ({
     qdrant: {
       url: process.env.QDRANT_URL,
       apiKey: process.env.QDRANT_API_KEY,
+      port: process.env.QDRANT_PORT || 443,
     },
     // Add other vector DB configs
   },

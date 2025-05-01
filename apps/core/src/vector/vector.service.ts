@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from "@nestjs/common";
+import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import {
   VectorClient,
@@ -11,7 +11,7 @@ import { LLMService } from "../llm/llm.service";
 import { QdrantProvider } from "./providers/qdrant.provider";
 
 @Injectable()
-export class VectorService implements VectorClient, OnModuleInit {
+export class VectorService implements VectorClient {
   private provider: VectorDBProvider;
 
   constructor(
@@ -21,10 +21,6 @@ export class VectorService implements VectorClient, OnModuleInit {
   ) {
     // Default to Qdrant for now, but this could be configurable
     this.provider = this.qdrantProvider;
-  }
-
-  async onModuleInit() {
-    await this.provider.initialize?.();
   }
 
   async createCollection(name: string, vectorSize: number): Promise<void> {
