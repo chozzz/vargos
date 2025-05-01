@@ -39,7 +39,6 @@ export class QdrantProvider implements VectorDBProvider, OnModuleInit {
       });
 
       this.logger.debug("Qdrant client initialized successfully");
-      console.trace("Qdrant client initialized successfully");
     } catch (error) {
       this.logger.error("Failed to initialize Qdrant client", error);
       throw error;
