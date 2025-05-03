@@ -1,60 +1,30 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { readdirSync, readFileSync } from "fs";
-import path from "path";
 import { FunctionListResponse } from "../common/classes/functions-list.class";
 import { VectorService } from "../vector/vector.service";
 import { LLMService } from "../llm/llm.service";
 import { FunctionMetadata } from "../common/classes/functions-metadata.class";
+import { FunctionsProvider } from "../common/interfaces/functions.interface";
+import { LocalDirectoryProvider } from "./providers/local-directory.provider";
+
 @Injectable()
 export class FunctionsService {
   private readonly functionMetaCollection = "vargos-functions-meta";
   private readonly logger = new Logger(FunctionsService.name);
+  private provider: FunctionsProvider;
 
   constructor(
     private configService: ConfigService,
     private vectorService: VectorService,
     private llmService: LLMService,
-  ) {}
+    private localDirectoryProvider: LocalDirectoryProvider,
+  ) {
+    // Default to local directory provider for now
+    this.provider = this.localDirectoryProvider;
+  }
 
   async listFunctions(): Promise<FunctionListResponse> {
-    const functionsDir = this.configService.get<string>("FUNCTIONS_DIR");
-    if (!functionsDir) {
-      throw new Error("FUNCTIONS_DIR environment variable is not set");
-    }
-
-    const functionsSourceDir = path.join(functionsDir, "src");
-
-    this.logger.debug(`Listing functions from ${functionsSourceDir}`);
-
-    const functions = readdirSync(functionsSourceDir).filter((dir) => {
-      return !dir.startsWith(".");
-    });
-
-    const allFunctions = functions
-      .map((functionName) => {
-        try {
-          const metaFile = readFileSync(
-            `${functionsSourceDir}/${functionName}/${functionName}.meta.json`,
-            "utf8",
-          );
-          const meta = JSON.parse(metaFile);
-          return {
-            id: functionName,
-            ...meta,
-          };
-        } catch {
-          return null;
-        }
-      })
-      .filter(Boolean);
-
-    this.logger.debug(`Found ${allFunctions.length} functions`);
-
-    return {
-      functions: allFunctions,
-      total: allFunctions.length,
-    };
+    return this.provider.listFunctions();
   }
 
   async indexFunction(functionMeta: FunctionMetadata) {
@@ -78,6 +48,6 @@ export class FunctionsService {
   }
 
   async executeFunction(functionId: string, params: any) {
-    // Execute function with proper error handling
+    return this.provider.executeFunction(functionId, params);
   }
 }
