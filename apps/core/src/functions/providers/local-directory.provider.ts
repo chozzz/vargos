@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { readdirSync, readFileSync } from "fs";
 import path from "path";
@@ -7,30 +7,40 @@ import { FunctionMetadata } from "../../common/classes/functions-metadata.class"
 import { FunctionsProvider } from "../../common/interfaces/functions.interface";
 
 @Injectable()
-export class LocalDirectoryProvider implements FunctionsProvider {
+export class LocalDirectoryProvider implements FunctionsProvider, OnModuleInit {
   private readonly logger = new Logger(LocalDirectoryProvider.name);
+  private functionsSourceDir!: string;
 
   constructor(private configService: ConfigService) {}
 
-  async listFunctions(): Promise<FunctionListResponse> {
+  async onModuleInit() {
+    await this.initialize();
+  }
+
+  async initialize(): Promise<void> {
     const functionsDir = this.configService.get<string>("FUNCTIONS_DIR");
+
     if (!functionsDir) {
       throw new Error("FUNCTIONS_DIR environment variable is not set");
     }
 
-    const functionsSourceDir = path.join(functionsDir, "src");
+    this.functionsSourceDir = path.join(functionsDir, "src");
+  }
 
-    this.logger.debug(`Listing functions from ${functionsSourceDir}`);
+  async listFunctions(): Promise<FunctionListResponse> {
+    this.logger.debug(`Listing functions from ${this.functionsSourceDir}`);
 
-    const functions = readdirSync(functionsSourceDir).filter((dir) => {
+    const functions = readdirSync(this.functionsSourceDir).filter((dir) => {
       return !dir.startsWith(".");
     });
+
+    this.logger.debug(`Found ${functions.length} functions`);
 
     const allFunctions = functions
       .map((functionName) => {
         try {
           const metaFile = readFileSync(
-            `${functionsSourceDir}/${functionName}/${functionName}.meta.json`,
+            `${this.functionsSourceDir}/${functionName}/${functionName}.meta.json`,
             "utf8",
           );
           const meta = JSON.parse(metaFile);
@@ -53,14 +63,8 @@ export class LocalDirectoryProvider implements FunctionsProvider {
   }
 
   async getFunctionMetadata(functionId: string): Promise<FunctionMetadata> {
-    const functionsDir = this.configService.get<string>("FUNCTIONS_DIR");
-    if (!functionsDir) {
-      throw new Error("FUNCTIONS_DIR environment variable is not set");
-    }
-
     const metaFilePath = path.join(
-      functionsDir,
-      "src",
+      this.functionsSourceDir,
       functionId,
       `${functionId}.meta.json`,
     );
