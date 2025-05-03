@@ -57,69 +57,17 @@ export class FunctionsService {
     };
   }
 
-  async reindexFunctions(): Promise<{
-    success: boolean;
-    totalFunctions: number;
-    totalChunks: number;
-  }> {
-    // Get list of all functions
-    const functionMetas = await this.listFunctions();
-
-    // Split functions into chunks for batch processing
-    const chunkSize = 100;
-    const chunks = [];
-    for (let i = 0; i < functionMetas.functions.length; i += chunkSize) {
-      chunks.push(functionMetas.functions.slice(i, i + chunkSize));
-    }
-    this.logger.debug(
-      `Split functions into ${chunks.length} chunks of ${chunkSize}`,
-    );
-
-    // Process each chunk
-    let processedChunks = 0;
-    for (const chunk of chunks) {
-      this.logger.debug(
-        `Processing chunk ${++processedChunks}/${chunks.length} (${Math.round((processedChunks / chunks.length) * 100)}% complete)`,
-      );
-
-      // Generate embeddings for each function in chunk
-      this.logger.debug(
-        `Generating embeddings for ${chunk.length} functions in current chunk...`,
-      );
-
-      const functionMetaWithVectors = await Promise.all(
-        chunk.map(async (functionMeta: FunctionMetadata) => {
-          const text = `Name: ${functionMeta.name}\nDescription: ${functionMeta.description}\nTags: ${functionMeta.tags.join(", ")}`;
-          const vector = await this.llmService.generateEmbeddings(text);
-          return {
-            collectionName: this.functionMetaCollection,
-            id: functionMeta.id,
-            vector,
-            payload: functionMeta,
-          };
-        }),
-      );
-
-      // Index points
-      this.logger.debug(
-        `Indexing ${functionMetaWithVectors.length} function vectors into collection "${this.functionMetaCollection}"...`,
-      );
-      await Promise.all(
-        functionMetaWithVectors.map((data) => this.vectorService.index(data)),
-      );
-      this.logger.debug(
-        `Chunk ${processedChunks}/${chunks.length} processed successfully (${chunk.length} functions)`,
-      );
-    }
-
-    this.logger.debug(
-      `Reindexing completed successfully - processed ${functionMetas.functions.length} functions in ${chunks.length} chunks`,
-    );
-    return {
-      success: true,
-      totalFunctions: functionMetas.functions.length,
-      totalChunks: chunks.length,
+  async indexFunction(functionMeta: FunctionMetadata) {
+    const text = `Name: ${functionMeta.name}\nDescription: ${functionMeta.description}\nTags: ${functionMeta.tags.join(", ")}`;
+    const vector = await this.llmService.generateEmbeddings(text);
+    const functionMetaWithVector = {
+      collectionName: this.functionMetaCollection,
+      id: functionMeta.id,
+      vector,
+      payload: functionMeta,
     };
+
+    return await this.vectorService.index(functionMetaWithVector);
   }
 
   async searchFunctions(query: string, limit: number = 10) {

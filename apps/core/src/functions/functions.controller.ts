@@ -1,10 +1,19 @@
-import { Controller, Get, Query, ParseIntPipe, DefaultValuePipe, Optional } from "@nestjs/common";
+import {
+  Controller,
+  Get,
+  Query,
+  ParseIntPipe,
+  DefaultValuePipe,
+  Optional,
+  Logger,
+} from "@nestjs/common";
 import { FunctionsService } from "./functions.service";
 import { FunctionListResponse } from "../common/classes/functions-list.class";
 import { ApiOperation, ApiQuery, ApiResponse } from "@nestjs/swagger";
 
 @Controller("functions")
 export class FunctionsController {
+  private readonly logger = new Logger(FunctionsController.name);
   constructor(private readonly functionsService: FunctionsService) {}
 
   @Get("reindex")
@@ -17,7 +26,18 @@ export class FunctionsController {
     description: "Functions reindexed successfully",
   })
   async reindexFunctions() {
-    return await this.functionsService.reindexFunctions();
+    const functionMetas = await this.functionsService.listFunctions();
+    this.logger.log(`Indexing ${functionMetas.functions.length} functions`);
+    await Promise.all(
+      functionMetas.functions.map((functionMeta) =>
+        this.functionsService.indexFunction(functionMeta),
+      ),
+    );
+    this.logger.log(`Indexed ${functionMetas.functions.length} functions`);
+    return {
+      success: true,
+      totalFunctions: functionMetas.functions.length,
+    };
   }
 
   @Get("search")
@@ -27,7 +47,8 @@ export class FunctionsController {
   })
   @ApiQuery({
     name: "query",
-    description: "The query to search for (e.g. 'weather', 'temperature', 'forecast')",
+    description:
+      "The query to search for (e.g. 'weather', 'temperature', 'forecast')",
     required: true,
   })
   @ApiQuery({
@@ -43,7 +64,9 @@ export class FunctionsController {
   })
   async searchFunctions(
     @Query("query") query: string,
-    @Optional() @Query("limit", new DefaultValuePipe(10), ParseIntPipe) limit: number,
+    @Optional()
+    @Query("limit", new DefaultValuePipe(10), ParseIntPipe)
+    limit: number,
   ) {
     return await this.functionsService.searchFunctions(query, limit);
   }
