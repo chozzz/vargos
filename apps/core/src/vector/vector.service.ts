@@ -1,17 +1,16 @@
 import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import {
-  VectorClient,
-  SearchOptions,
-  SearchResult,
-  IndexData,
+  VectorSearchOptions,
+  VectorSearchResult,
+  VectorIndexData,
   VectorDBProvider,
 } from "../common/interfaces/vector-db.interface";
 import { LLMService } from "../llm/llm.service";
 import { QdrantProvider } from "./providers/qdrant.provider";
 
 @Injectable()
-export class VectorService implements VectorClient {
+export class VectorService {
   private provider: VectorDBProvider;
 
   constructor(
@@ -24,19 +23,22 @@ export class VectorService implements VectorClient {
   }
 
   async createCollection(name: string, vectorSize: number): Promise<void> {
-    await this.provider.createCollection(name, vectorSize);
+    return await this.provider.createCollection(name, vectorSize);
   }
 
   async collectionExists(name: string): Promise<boolean> {
     return this.provider.collectionExists(name);
   }
 
-  async search(query: string, options: SearchOptions): Promise<SearchResult[]> {
+  async search(
+    query: string,
+    options: VectorSearchOptions,
+  ): Promise<VectorSearchResult[]> {
     const queryVector = await this.llmService.generateEmbedding(query);
     return this.provider.search(queryVector, options);
   }
 
-  async index(data: IndexData): Promise<void> {
+  async index(data: VectorIndexData): Promise<void> {
     await this.provider.index(data);
   }
 

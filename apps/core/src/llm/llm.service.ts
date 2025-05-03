@@ -1,7 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import {
-  LLMClient,
   Message,
   ChatResponse,
   LLMProvider,
@@ -9,7 +8,7 @@ import {
 import { OpenAIProvider } from "./providers/openai.provider";
 
 @Injectable()
-export class LLMService implements LLMClient {
+export class LLMService {
   private provider: LLMProvider;
 
   constructor(

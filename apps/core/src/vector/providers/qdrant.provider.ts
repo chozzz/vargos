@@ -4,9 +4,9 @@ import { QdrantClient } from "@qdrant/js-client-rest";
 import { v5 as uuidv5 } from "uuid";
 import {
   VectorDBProvider,
-  SearchOptions,
-  SearchResult,
-  IndexData,
+  VectorSearchOptions,
+  VectorSearchResult,
+  VectorIndexData,
 } from "../../common/interfaces/vector-db.interface";
 
 @Injectable()
@@ -76,8 +76,8 @@ export class QdrantProvider implements VectorDBProvider, OnModuleInit {
 
   async search(
     vector: number[],
-    options: SearchOptions,
-  ): Promise<SearchResult[]> {
+    options: VectorSearchOptions,
+  ): Promise<VectorSearchResult[]> {
     try {
       const response = await this.client.api("points").searchPoints({
         collection_name: options.collectionName,
@@ -105,7 +105,7 @@ export class QdrantProvider implements VectorDBProvider, OnModuleInit {
     }
   }
 
-  async index(data: IndexData): Promise<void> {
+  async index(data: VectorIndexData): Promise<void> {
     try {
       await this.client.api("points").upsertPoints({
         collection_name: data.collectionName,
