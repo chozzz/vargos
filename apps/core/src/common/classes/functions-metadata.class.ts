@@ -1,5 +1,51 @@
 import { ApiProperty } from "@nestjs/swagger";
 
+class FunctionInput {
+  @ApiProperty({
+    description:
+      "The identifier or label used to reference this input parameter in the function",
+    type: String,
+  })
+  public name!: string;
+
+  @ApiProperty({
+    description:
+      "The data type that this input parameter accepts (e.g. string, number, boolean, object)",
+    type: String,
+  })
+  public type!: string;
+
+  @ApiProperty({
+    description:
+      "A detailed explanation of what this input parameter is used for and any constraints or requirements",
+    type: String,
+  })
+  public description!: string;
+
+  @ApiProperty({
+    description:
+      "The fallback value that will be used if no value is provided for this input parameter",
+    type: String,
+  })
+  public defaultValue!: string;
+}
+
+class FunctionOutput {
+  @ApiProperty({
+    description:
+      "The identifier or label used to reference this output value from the function",
+    type: String,
+  })
+  public name!: string;
+
+  @ApiProperty({
+    description:
+      "The data type that this output value will return (e.g. string, number, boolean, object)",
+    type: String,
+  })
+  public type!: string;
+}
+
 export class FunctionMetadata {
   @ApiProperty({
     description: "Unique identifier for the function",
@@ -36,4 +82,7 @@ export class FunctionMetadata {
     type: [String],
   })
   public requiredEnvVars!: string[];
+
+  public input!: FunctionInput[];
+  public output!: FunctionOutput[];
 }

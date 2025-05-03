@@ -47,7 +47,10 @@ export class FunctionsService {
     });
   }
 
-  async executeFunction(functionId: string, params: any) {
+  async executeFunction(
+    functionId: string,
+    params: Record<string, unknown>,
+  ): Promise<unknown> {
     return this.provider.executeFunction(functionId, params);
   }
 }
