@@ -116,28 +116,29 @@ export class FunctionsController {
     try {
       return await this.functionsService.executeFunction(functionId, params);
     } catch (serviceError) {
-      try {
-        const errorMessage = JSON.parse(serviceError as string);
+      if (
+        typeof serviceError === "object" &&
+        serviceError !== null &&
+        "error" in serviceError &&
+        "message" in serviceError
+      ) {
         throw new HttpException(
           {
             status: HttpStatus.BAD_REQUEST,
-            ...errorMessage,
-          },
-          HttpStatus.BAD_REQUEST,
-        );
-      } catch (err) {
-        if (err instanceof HttpException) {
-          throw err;
-        }
-
-        throw new HttpException(
-          {
-            status: HttpStatus.BAD_REQUEST,
-            error: `Failed to execute function: ${err instanceof Error ? err.message : "Unknown error"}`,
+            error: (serviceError as any).error,
+            message: (serviceError as any).message,
           },
           HttpStatus.BAD_REQUEST,
         );
       }
+      throw new HttpException(
+        {
+          status: HttpStatus.BAD_REQUEST,
+          error: "UnknownError",
+          message: typeof serviceError === "string" ? serviceError : "Unknown error",
+        },
+        HttpStatus.BAD_REQUEST,
+      );
     }
   }
 }
