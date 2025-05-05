@@ -4,7 +4,7 @@ import { ApiOperation, ApiResponse, ApiTags, ApiBody } from "@nestjs/swagger";
 import {
   ShellExecuteDto,
   ShellHistoryItemDto,
-} from "../common/classes/shell.dto";
+} from "./dto/shell.dto";
 
 @ApiTags("Shell")
 @Controller("shell")
