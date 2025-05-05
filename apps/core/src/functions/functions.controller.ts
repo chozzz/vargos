@@ -20,9 +20,11 @@ import {
   ApiResponse,
   ApiParam,
   ApiBody,
+  ApiTags,
 } from "@nestjs/swagger";
 import { ParseJsonPipe } from "../common/pipes/parse-json.pipe";
 
+@ApiTags("Functions")
 @Controller("functions")
 export class FunctionsController {
   private readonly logger = new Logger(FunctionsController.name);
