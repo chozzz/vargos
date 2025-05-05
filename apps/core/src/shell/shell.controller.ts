@@ -39,4 +39,18 @@ export class ShellController {
   getHistory() {
     return this.shellService.getHistory();
   }
+
+  @Post("interrupt")
+  @ApiOperation({
+    summary: "Interrupt the current shell command",
+    description: "Sends a SIGINT signal to the currently running shell command.",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Interrupt signal sent to shell",
+  })
+  async interrupt() {
+    this.shellService.interrupt();
+    return { success: true, message: "Interrupt signal sent to shell." };
+  }
 }
