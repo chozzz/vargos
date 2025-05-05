@@ -9,8 +9,8 @@ import { ConfigService } from "@nestjs/config";
 import { existsSync, readdirSync, readFileSync } from "fs";
 import path, { resolve } from "path";
 import { spawn } from "child_process";
-import { FunctionListResponse } from "../../common/classes/functions-list.dto";
-import { FunctionMetadata } from "../../common/classes/functions-metadata.dto";
+import { FunctionListResponse } from "../dto/functions-list.dto";
+import { FunctionMetadata } from "../dto/functions-metadata.dto";
 import { FunctionsProvider } from "../../common/interfaces/functions.interface";
 
 @Injectable()

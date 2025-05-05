@@ -13,7 +13,7 @@ import {
   HttpStatus,
 } from "@nestjs/common";
 import { FunctionsService } from "./functions.service";
-import { FunctionListResponse } from "../common/classes/functions-list.dto";
+import { FunctionListResponse } from "./dto/functions-list.dto";
 import {
   ApiOperation,
   ApiQuery,
