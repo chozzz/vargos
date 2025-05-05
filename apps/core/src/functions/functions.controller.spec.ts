@@ -4,8 +4,8 @@ import { FunctionsService } from "./functions.service";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { VectorService } from "../vector/vector.service";
 import { LLMService } from "../llm/llm.service";
-import { FunctionListResponse } from "../common/classes/functions-list.class";
-import { FunctionMetadata } from "../common/classes/functions-metadata.class";
+import { FunctionListResponse } from "../common/classes/functions-list.dto";
+import { FunctionMetadata } from "../common/classes/functions-metadata.dto";
 import { VectorSearchResult } from "../common/interfaces/vector-db.interface";
 import { LocalDirectoryProvider } from "./providers/local-directory.provider";
 

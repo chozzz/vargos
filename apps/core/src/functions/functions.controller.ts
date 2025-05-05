@@ -13,7 +13,7 @@ import {
   HttpStatus,
 } from "@nestjs/common";
 import { FunctionsService } from "./functions.service";
-import { FunctionListResponse } from "../common/classes/functions-list.class";
+import { FunctionListResponse } from "../common/classes/functions-list.dto";
 import {
   ApiOperation,
   ApiQuery,
@@ -135,7 +135,8 @@ export class FunctionsController {
         {
           status: HttpStatus.BAD_REQUEST,
           error: "UnknownError",
-          message: typeof serviceError === "string" ? serviceError : "Unknown error",
+          message:
+            typeof serviceError === "string" ? serviceError : "Unknown error",
         },
         HttpStatus.BAD_REQUEST,
       );

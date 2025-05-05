@@ -1,9 +1,9 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { FunctionListResponse } from "../common/classes/functions-list.class";
+import { FunctionListResponse } from "../common/classes/functions-list.dto";
 import { VectorService } from "../vector/vector.service";
 import { LLMService } from "../llm/llm.service";
-import { FunctionMetadata } from "../common/classes/functions-metadata.class";
+import { FunctionMetadata } from "../common/classes/functions-metadata.dto";
 import { FunctionsProvider } from "../common/interfaces/functions.interface";
 import { LocalDirectoryProvider } from "./providers/local-directory.provider";
 

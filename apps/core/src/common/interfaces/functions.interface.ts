@@ -1,6 +1,6 @@
 import { Provider } from "./provider.interface";
-import { FunctionListResponse } from "../classes/functions-list.class";
-import { FunctionMetadata } from "../classes/functions-metadata.class";
+import { FunctionListResponse } from "../classes/functions-list.dto";
+import { FunctionMetadata } from "../classes/functions-metadata.dto";
 
 export interface FunctionsProvider extends Provider {
   /**

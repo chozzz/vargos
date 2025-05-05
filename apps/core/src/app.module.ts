@@ -6,7 +6,7 @@ import { FunctionsModule } from "./functions/functions.module";
 import { LLMModule } from "./llm/llm.module";
 import { VectorModule } from "./vector/vector.module";
 import configuration from "./config/configuration";
-
+import { ShellModule } from "./shell/shell.module";
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -15,6 +15,7 @@ import configuration from "./config/configuration";
     }),
     LLMModule,
     VectorModule,
+    ShellModule,
     FunctionsModule,
   ],
   controllers: [AppController],
