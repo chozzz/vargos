@@ -6,6 +6,7 @@ import * as path from "path";
 export class EnvService {
   private readonly logger = new Logger(EnvService.name);
   private readonly envPath: string;
+  private readonly censoredKeys = ["_KEY", "_SECRET", "_PASSWORD", "_TOKEN"];
 
   constructor() {
     this.envPath = path.resolve(process.cwd(), ".env");
@@ -38,15 +39,42 @@ export class EnvService {
     return this.parseEnv(content);
   }
 
-  search(keyword: string): Record<string, string> {
+  /**
+   * Search environment variables by keyword and optionally censor sensitive values
+   * @param keyword - Search term to filter env vars by key or value
+   * @param censor - Whether to censor sensitive values (defaults to false)
+   * @returns Record of matching environment variables
+   */
+  search(keyword: string, censor = false): Record<string, string> {
+    // Get all env vars and filter if keyword provided
     const env = this.getAll();
-    if (!keyword) return env;
-    const lower = keyword.toLowerCase();
+    const filtered = !keyword
+      ? env
+      : Object.fromEntries(
+          Object.entries(env).filter(([k, v]) => {
+            const lower = keyword.toLowerCase();
+            return (
+              k.toLowerCase().includes(lower) || v.toLowerCase().includes(lower)
+            );
+          }),
+        );
+
+    // Return as-is if no censoring needed
+    if (!censor) return filtered;
+
+    // Censor sensitive values
     return Object.fromEntries(
-      Object.entries(env).filter(
-        ([k, v]) =>
-          k.toLowerCase().includes(lower) || v.toLowerCase().includes(lower),
-      ),
+      Object.entries(filtered).map(([key, value]) => {
+        if (this.censoredKeys.some((k) => key.endsWith(k))) {
+          this.logger.debug(`[Search] Censoring key: ${key}`);
+          const keepChars = Math.max(1, Math.floor(value.length * 0.05));
+          const censored =
+            value.substring(0, keepChars) +
+            "*".repeat(value.length - keepChars);
+          return [key, censored];
+        }
+        return [key, value];
+      }),
     );
   }
 
