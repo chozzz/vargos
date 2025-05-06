@@ -43,7 +43,8 @@ export class ShellController {
   @Post("interrupt")
   @ApiOperation({
     summary: "Interrupt the current shell command",
-    description: "Sends a SIGINT signal to the currently running shell command.",
+    description:
+      "Sends a SIGINT signal to the currently running shell command.",
   })
   @ApiResponse({
     status: 200,
