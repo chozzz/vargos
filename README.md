@@ -1,7 +1,10 @@
 # Vargos
 
-> **Vargos** is a next-generation orchestration platform designed to bridge Large Language Models (LLMs) with real-world system execution.  
+**Vargos** is a next-generation orchestration platform designed to bridge Large Language Models (LLMs) with real-world system execution.
+
 > Built for extensibility, modularity, and self-hosting from the ground up.
+
+> Focusing more on providing Agents to your Machine.
 
 ## Overview
 
@@ -30,7 +33,7 @@ vargos/
   - [OpenAPI 3.1](https://spec.openapis.org/oas/latest.html)
   - [Model Context Protocol (MCP)](https://modelcontextprotocol.io/introduction)
 - **Package Manager**: [pnpm](https://pnpm.io/)
-- **Deployment**: Docker, DigitalOcean (initially)
+- **Deployment**: Docker
 
 ## Getting Started
 
@@ -73,18 +76,17 @@ The API server will be available at `http://localhost:3000`
 
 ### Project Structure
 
-- `apps/core/` - Main API server
-  - `src/` - Source code
-  - `test/` - Test files
-  - `scripts/` - Build and deployment scripts
+```
+vargos/
+├── apps/                        # Application entrypoints
+│   ├── core/                    # Main API server (NestJS)
+│   ├── ...                      # (Future plan) Docs, UI (Chat, Portal Hub)
+├── packages/                    # Shared packages and libraries
+│   ├── eslint-config/           # Shared ESLint configuration
+│   ├── typescript-config/       # Shared TypeScript configuration
+│   └── ui/                      # Shared UI component library (shadcn)
+```
 
-- `packages/` - Shared packages
-  - `eslint-config/` - Shared ESLint configuration
-  - `tsconfig/` - Shared TypeScript configuration
-  - `ui/` - shadcn component UI library
-
-- `functions/` - System-level functions
-  - See [functions/README.md](./functions/README.md) for details
 
 ## Deployment
 
@@ -110,10 +112,9 @@ We welcome contributions! Please see our [Contributing Guide](./CONTRIBUTING.md)
 
 ## License
 
-Copyright (c) [Vadi Taslim]
+See [LICENSE.md](./LICENSE.md) for full license terms.
 
-All rights reserved.
-This project is fully owned by its creator and not open source.
+Copyright (c) 2024 Vadi Taslim. All rights reserved.
 
 ## Related Projects
 
