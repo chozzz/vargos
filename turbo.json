@@ -17,7 +17,7 @@
         "OPENAI_API_KEY",
         "SERP_API_KEY"
       ],
-      "outputs": [".next/**", "!.next/cache/**"]
+      "outputs": [".next/**", "!.next/cache/**", "dist/**"]
     },
     "lint": {
       "dependsOn": ["^lint"]
