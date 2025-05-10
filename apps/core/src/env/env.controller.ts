@@ -1,4 +1,12 @@
-import { Controller, Get, Query, Param, Post, Body } from "@nestjs/common";
+import {
+  Controller,
+  Get,
+  Query,
+  Param,
+  Post,
+  Body,
+  Logger,
+} from "@nestjs/common";
 import {
   ApiTags,
   ApiOperation,
@@ -10,15 +18,18 @@ import {
 import { EnvService } from "./env.service";
 import { EnvSetDto } from "./dto/env-set.dto";
 import { EnvVarDto } from "./dto/env-var.dto";
-import { EnvSearchDto } from "./dto/env-search.dto";
 
 @ApiTags("Env")
 @Controller("env")
 export class EnvController {
+  private readonly logger = new Logger(EnvController.name);
+
   constructor(private readonly envService: EnvService) {}
 
   @Get()
-  @ApiOperation({ summary: "Search or list environment variables" })
+  @ApiOperation({
+    summary: "Search or list environment variables, censoring sensitive values",
+  })
   @ApiQuery({
     name: "search",
     required: false,
@@ -30,7 +41,7 @@ export class EnvController {
     type: [EnvVarDto],
   })
   search(@Query("search") search?: string): EnvVarDto[] {
-    const result = this.envService.search(search || "");
+    const result = this.envService.search(search || "", true);
     return Object.entries(result).map(([key, value]) => ({ key, value }));
   }
 
