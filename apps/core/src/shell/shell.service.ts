@@ -29,7 +29,7 @@ export class ShellService {
   async execute(command: string): Promise<string> {
     if (!this.ready) {
       throw new Error(
-        `Shell is busy. Last running command: '${this.lastCommand ?? "unknown"}'. Please wait for it to finish or interrupt.`
+        `Shell is busy. Last running command: '${this.lastCommand ?? "unknown"}'. Please wait for it to finish or interrupt.`,
       );
     }
     this.ready = false;
