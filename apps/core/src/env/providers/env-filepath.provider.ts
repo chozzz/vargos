@@ -10,7 +10,6 @@ export class EnvFilepathProvider implements EnvProvider, OnModuleInit {
   private readonly censoredKeys = ["_KEY", "_SECRET", "_PASSWORD", "_TOKEN"];
 
   constructor() {
-    // Always resolve .env from the monorepo root (4 levels up from this file)
     this.envFilePath = path.resolve(process.cwd(), ".env");
     this.logger.log(`Env path: ${this.envFilePath}`);
   }

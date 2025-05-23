@@ -63,7 +63,7 @@ curl -X POST http://localhost:3000/functions/FUNCTION_ID/execute -H 'Content-Typ
 
 - [Vargos Functions Template README](https://github.com/chozzz/vargos-functions-template#readme)
 - [LocalDirectoryProvider](./providers/local-directory.provider.ts)
-- [Prebuild Script](../scripts/prebuild.ts)
+- [Prebuild Script](../../scripts/prebuild.ts)
 
 ---
 
@@ -77,4 +77,4 @@ curl -X POST http://localhost:3000/functions/FUNCTION_ID/execute -H 'Content-Typ
 
 ## 🤝 Contributing
 
-PRs and issues welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) or open an issue. 
+PRs and issues welcome! See [CONTRIBUTING.md](../../../../CONTRIBUTING.md) or open an issue. 

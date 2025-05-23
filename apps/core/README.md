@@ -22,7 +22,7 @@ The server will be available at `http://localhost:3000`
 
 ## 📁 Local Directories
 
-Vargos uses the following local directories:
+By default, Vargos core uses the following local directories:
 
 ```
 ~/.vargos/
@@ -63,9 +63,8 @@ The prebuild script (`scripts/prebuild.ts`) handles:
 | `pnpm start:prod` | Start production server |
 | `pnpm test` | Run tests |
 
-## 📜 License
+## License
 
-Copyright (c) Vadi Taslim
+See [LICENSE.md](../../LICENSE.md) for full license terms.
 
-All rights reserved.
-This project is fully owned by its creator and not open source.
+Copyright (c) 2024 Vadi Taslim. All rights reserved.
