@@ -44,7 +44,7 @@ export FUNCTIONS_DIR=/path/to/functions
 
 - Swagger UI: `/api/swagger`
 - OpenAPI JSON: `/api/json`
-- MCP Spec: `/mcp`
+- MCP Spec: `/mcp` (Note: MCP is currently under development, considered unstable, and may not be necessary for VARGOS at this time.)
 
 ## 🛠️ Development
 

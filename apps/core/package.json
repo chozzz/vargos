@@ -1,7 +1,7 @@
 {
   "name": "vargos-core",
-  "version": "0.0.1",
-  "description": "Vargos Core is the NestJS API server responsible for managing functions, executing system actions, and exposing OpenAPI and Model Context Protocol (MCP) endpoints.",
+  "version": "0.1.0",
+  "description": "Vargos Core is the NestJS API server responsible for managing functions, executing system actions, and exposing OpenAPI endpoints.",
   "keywords": [
     "nestjs",
     "api-server",
