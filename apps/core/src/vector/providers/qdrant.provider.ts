@@ -47,8 +47,7 @@ export class QdrantProvider implements VectorDBProvider, OnModuleInit {
 
   async createCollection(name: string, vectorSize: number): Promise<void> {
     try {
-      await this.client.api("collections").createCollection({
-        collection_name: name,
+      await this.client.createCollection(name, {
         vectors: {
           size: vectorSize,
           distance: "Cosine",
@@ -63,11 +62,9 @@ export class QdrantProvider implements VectorDBProvider, OnModuleInit {
 
   async collectionExists(name: string): Promise<boolean> {
     try {
-      const response = await this.client.api("collections").collectionExists({
-        collection_name: name,
-      });
+      const response = await this.client.collectionExists(name);
 
-      return response.data.result?.exists ?? false;
+      return response?.exists ?? false;
     } catch (error) {
       this.logger.error(`Failed to check if collection ${name} exists`, error);
       throw error;
@@ -79,8 +76,7 @@ export class QdrantProvider implements VectorDBProvider, OnModuleInit {
     options: VectorSearchOptions,
   ): Promise<VectorSearchResult[]> {
     try {
-      const response = await this.client.api("points").searchPoints({
-        collection_name: options.collectionName,
+      const response = await this.client.search(options.collectionName, {
         vector,
         limit: options.limit || 10,
         score_threshold: options.threshold,
@@ -88,11 +84,11 @@ export class QdrantProvider implements VectorDBProvider, OnModuleInit {
         with_payload: true,
       });
 
-      if (!response.data.result) {
+      if (!response) {
         return [];
       }
 
-      return response.data.result.map((point) => ({
+      return response.map((point) => ({
         id: String(point.id),
         score: point.score,
         payload: point.payload as Record<string, any>,
@@ -108,8 +104,7 @@ export class QdrantProvider implements VectorDBProvider, OnModuleInit {
 
   async index(data: VectorIndexData): Promise<void> {
     try {
-      await this.client.api("points").upsertPoints({
-        collection_name: data.collectionName,
+      await this.client.upsert(data.collectionName, {
         points: [
           {
             id: uuidv5(data.id, uuidv5.URL),
@@ -132,8 +127,7 @@ export class QdrantProvider implements VectorDBProvider, OnModuleInit {
 
   async delete(collectionName: string, id: string): Promise<void> {
     try {
-      await this.client.api("points").deletePoints({
-        collection_name: collectionName,
+      await this.client.delete(collectionName, {
         points: [uuidv5(id, uuidv5.URL)],
       });
       this.logger.debug(
