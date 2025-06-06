@@ -1,7 +1,7 @@
 import Form from 'next/form';
 
-import { Input } from './ui/input';
-import { Label } from './ui/label';
+import { Input } from '@workspace/ui/components/input';
+import { Label } from '@workspace/ui/components/label';
 
 export function AuthForm({
   action,
