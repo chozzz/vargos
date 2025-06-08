@@ -3,7 +3,7 @@ import {
   SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
-} from './ui/sidebar';
+} from '@workspace/ui/components/sidebar';
 import Link from 'next/link';
 import {
   DropdownMenu,
@@ -14,7 +14,7 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
-} from './ui/dropdown-menu';
+} from '@workspace/ui/components/dropdown-menu';
 import {
   CheckCircleFillIcon,
   GlobeIcon,

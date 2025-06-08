@@ -1,5 +1,5 @@
 import { TerminalWindowIcon, LoaderIcon, CrossSmallIcon } from './icons';
-import { Button } from './ui/button';
+import { Button } from '@workspace/ui/components/button';
 import {
   Dispatch,
   SetStateAction,

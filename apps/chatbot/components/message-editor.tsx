@@ -1,9 +1,9 @@
 'use client';
 
 import { ChatRequestOptions, Message } from 'ai';
-import { Button } from './ui/button';
+import { Button } from '@workspace/ui/components/button';
 import { Dispatch, SetStateAction, useEffect, useRef, useState } from 'react';
-import { Textarea } from './ui/textarea';
+import { Textarea } from '@workspace/ui/components/textarea';
 import { deleteTrailingMessages } from '@/app/(chat)/actions';
 import { UseChatHelpers } from '@ai-sdk/react';
 
