@@ -41,6 +41,7 @@
     "@qdrant/js-client-rest": "^1.14.1",
     "@rekog/mcp-nest": "^1.6.2",
     "eslint": "^9.30.0",
+    "nestjs-zod": "^4.3.1",
     "openai": "^5.8.2",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
