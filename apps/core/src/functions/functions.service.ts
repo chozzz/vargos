@@ -1,9 +1,8 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { FunctionListResponse } from "./dto/functions-list.dto";
 import { VectorService } from "../vector/vector.service";
 import { LLMService } from "../llm/llm.service";
-import { FunctionMetadata } from "./dto/functions-metadata.dto";
+import { FunctionListResponseDto, FunctionMetadataDto } from "./schemas/functions.schema";
 import { FunctionsProvider } from "../common/interfaces/functions.interface";
 import { LocalDirectoryProvider } from "./providers/local-directory.provider";
 
@@ -23,11 +22,11 @@ export class FunctionsService {
     this.provider = this.localDirectoryProvider;
   }
 
-  async listFunctions(): Promise<FunctionListResponse> {
+  async listFunctions(): Promise<FunctionListResponseDto> {
     return this.provider.listFunctions();
   }
 
-  async indexFunction(functionMeta: FunctionMetadata) {
+  async indexFunction(functionMeta: FunctionMetadataDto) {
     const text = `Name: ${functionMeta.name}\nDescription: ${functionMeta.description}\nTags: ${functionMeta.tags.join(", ")}`;
     const vector = await this.llmService.generateEmbeddings(text);
     const functionMetaWithVector = {
