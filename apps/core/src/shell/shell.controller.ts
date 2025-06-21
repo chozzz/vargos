@@ -1,18 +1,7 @@
 import { Controller, Post, Body, Get } from "@nestjs/common";
-import { ZodValidationPipe } from 'nestjs-zod';
 import { ShellService } from "./shell.service";
-import { ApiOperation, ApiTags, ApiBody, ApiOkResponse } from "@nestjs/swagger";
-import { 
-  ShellExecuteDto, 
-  ShellHistoryItemDto, 
-  ShellExecuteResponseDto,
-  ShellInterruptResponseDto, 
-  ShellExecuteResponseSchema,
-  ShellHistoryItemSchema,
-  ShellInterruptResponseSchema
-} from "./schemas/shell.schema";
-import { z } from "zod";
-import { Tool } from "@rekog/mcp-nest";
+import { ApiOperation, ApiResponse, ApiTags, ApiBody } from "@nestjs/swagger";
+import { ShellExecuteDto, ShellHistoryItemDto } from "./dto/shell.dto";
 
 @ApiTags("Shell")
 @Controller("shell")
@@ -26,19 +15,12 @@ export class ShellController {
       "Executes a command in the persistent shell session and returns the output.",
   })
   @ApiBody({ type: ShellExecuteDto })
-  @ApiOkResponse({
+  @ApiResponse({
+    status: 200,
     description: "Command executed successfully",
-    type: ShellExecuteResponseDto,
+    schema: { example: { command: "ls", output: "file1.txt\\nfile2.txt" } },
   })
-  @Tool({
-    name: 'execute-shell',
-    description: 'Execute a shell command',
-    parameters: z.object({
-      command: z.string().describe('The command to execute'),
-    }),
-    outputSchema: ShellExecuteResponseSchema,
-  })
-  async execute(@Body(new ZodValidationPipe()) body: ShellExecuteDto): Promise<ShellExecuteResponseDto> {
+  async execute(@Body() body: ShellExecuteDto) {
     const output = await this.shellService.execute(body.command);
     return { command: body.command, output };
   }
@@ -49,16 +31,12 @@ export class ShellController {
     description:
       "Returns the history of all commands executed in the current shell session.",
   })
-  @ApiOkResponse({
+  @ApiResponse({
+    status: 200,
     description: "Command history",
     type: [ShellHistoryItemDto],
   })
-  @Tool({
-    name: 'get-shell-history',
-    description: 'Get shell command history',
-    outputSchema: z.array(ShellHistoryItemSchema),
-  })
-  getHistory(): ShellHistoryItemDto[] {
+  getHistory() {
     return this.shellService.getHistory();
   }
 
@@ -68,16 +46,11 @@ export class ShellController {
     description:
       "Sends a SIGINT signal to the currently running shell command.",
   })
-  @ApiOkResponse({
+  @ApiResponse({
+    status: 200,
     description: "Interrupt signal sent to shell",
-    type: ShellInterruptResponseDto,
   })
-  @Tool({
-    name: 'interrupt-shell',
-    description: 'Interrupt the current shell command',
-    outputSchema: ShellInterruptResponseSchema,
-  })
-  async interrupt(): Promise<ShellInterruptResponseDto> {
+  async interrupt() {
     this.shellService.interrupt();
     return { success: true, message: "Interrupt signal sent to shell." };
   }
