@@ -9,7 +9,8 @@ import { ConfigService } from "@nestjs/config";
 import { existsSync, readdirSync, readFileSync } from "fs";
 import path, { resolve } from "path";
 import { spawn } from "child_process";
-import { FunctionListResponseDto, FunctionMetadataDto } from "../schemas/functions.schema";
+import { FunctionListResponse } from "../dto/functions-list.dto";
+import { FunctionMetadata } from "../dto/functions-metadata.dto";
 import { FunctionsProvider } from "../../common/interfaces/functions.interface";
 
 @Injectable()
@@ -34,7 +35,7 @@ export class LocalDirectoryProvider implements FunctionsProvider, OnModuleInit {
     this.functionsSourceDir = path.join(this.functionsDir, "src");
   }
 
-  async getFunctionMetadata(functionId: string): Promise<FunctionMetadataDto> {
+  async getFunctionMetadata(functionId: string): Promise<FunctionMetadata> {
     try {
       const metaFilePath = path.join(
         this.functionsSourceDir,
@@ -42,7 +43,7 @@ export class LocalDirectoryProvider implements FunctionsProvider, OnModuleInit {
         `${functionId}.meta.json`,
       );
       const metaFile = readFileSync(metaFilePath, "utf8");
-      const meta: Omit<FunctionMetadataDto, "id"> = JSON.parse(metaFile);
+      const meta: Omit<FunctionMetadata, "id"> = JSON.parse(metaFile);
 
       return {
         id: functionId,
@@ -58,7 +59,7 @@ export class LocalDirectoryProvider implements FunctionsProvider, OnModuleInit {
     }
   }
 
-  async listFunctions(): Promise<FunctionListResponseDto> {
+  async listFunctions(): Promise<FunctionListResponse> {
     this.logger.debug(`Listing functions from ${this.functionsSourceDir}`);
 
     const functions = readdirSync(this.functionsSourceDir).filter((dir) => {
