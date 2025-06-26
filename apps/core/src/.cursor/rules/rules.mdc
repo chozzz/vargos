@@ -1,0 +1,44 @@
+---
+description: Useful during implementation of a Module
+alwaysApply: false
+---
+# Vargos Core Module Implementation Rule
+
+## Architecture
+- **Controller**: HTTP endpoints + Swagger only. No business logic.
+- **Service**: Business logic, logging, error handling.
+- **Tool**: MCP tools that map 1:1 to controller methods.
+- **Module**: Dependency injection configuration.
+
+## Controller Rules
+- Prioritize Swagger and testability.
+- Follow existing `env.controller.ts` practice.
+- Return service method results directly
+- No try-catch, no logging
+- Use DTOs for request/response validation
+- For any method in controller, it needs to also be mapped in the MCP Tool if asked.
+
+## Tool Rules
+- File named as `*.tool.ts`
+- Use `@Tool()` from `@rekog/mcp-nest`
+- Must have 1:1 mapping to controller methods
+- Return MCP format: `{ content, structuredContent, isError }`
+- For structured content output (such as array or object), provide outputSchema in @Tool. Follow `env.tool.ts` practice.
+- Include progress reporting
+
+## Tool Testing
+- Include a test file `*.tool.spec.ts`
+- Test tools through controller mocks, we're testing both tool and controller here.
+- Verify MCP response structure
+- Mock context and progress reporting
+- Test success and error paths
+
+## MCP Response Format
+```typescript
+{
+  content: [{ type: "text", text: JSON.stringify(data) }],
+  structuredContent: data,
+  isError: false
+}
+```
+For more details around all supported response format, read more about it at https://modelcontextprotocol.io/specification/2025-06-18/server/tools
