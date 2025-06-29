@@ -1,6 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { spawn, ChildProcessWithoutNullStreams } from "child_process";
-import * as path from "path";
 
 @Injectable()
 export class ShellService {
