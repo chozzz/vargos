@@ -13,7 +13,6 @@ import {
   HttpStatus,
 } from "@nestjs/common";
 import { FunctionsService } from "./functions.service";
-import { FunctionListResponse } from "./dto/functions-list.dto";
 import {
   ApiOperation,
   ApiQuery,
@@ -21,8 +20,12 @@ import {
   ApiParam,
   ApiBody,
   ApiTags,
+  ApiOkResponse,
 } from "@nestjs/swagger";
+import { Tool } from '@rekog/mcp-nest';
 import { ParseJsonPipe } from "../common/pipes/parse-json.pipe";
+import z from "zod";
+import { FunctionListResponseDto, FunctionListResponseSchema } from "./schemas/functions.schema";
 
 @ApiTags("Functions")
 @Controller("functions")
@@ -38,6 +41,11 @@ export class FunctionsController {
   @ApiResponse({
     status: 200,
     description: "Functions reindexed successfully",
+  })
+  @Tool({
+    name: 'reindex-functions',
+    description:
+      'Reindex all functions'
   })
   async reindexFunctions() {
     const functionMetas = await this.functionsService.listFunctions();
@@ -71,10 +79,19 @@ export class FunctionsController {
     default: 10,
     required: false,
   })
-  @ApiResponse({
-    status: 200,
+  @ApiOkResponse({
     description: "Functions found successfully",
-    type: [FunctionListResponse],
+    type: [FunctionListResponseDto],
+  })
+  @Tool({
+    name: 'search-functions',
+    description:
+      'Search for functions',
+    parameters: z.object({
+      query: z.string().describe('The query to search for (e.g. "weather", "temperature", "forecast")'),
+      limit: z.number().optional().describe('The maximum number of functions to return'),
+    }),
+    outputSchema: FunctionListResponseSchema,
   })
   async searchFunctions(
     @Query("query") query: string,
@@ -103,13 +120,21 @@ export class FunctionsController {
       },
     },
   })
-  @ApiResponse({
-    status: 200,
+  @ApiOkResponse({
     description: "Function executed successfully",
   })
   @ApiResponse({
     status: 400,
     description: "Invalid parameters or function execution failed",
+  })
+  @Tool({
+    name: 'execute-function',
+    description: 'Execute a function',
+    parameters: z.object({
+      functionId: z.string().describe('The ID of the function to execute'),
+      params: z.object({}).describe('The parameters to pass to the function'),
+    }),
+    outputSchema: z.any(),
   })
   async executeFunction(
     @Param("functionId") functionId: string,

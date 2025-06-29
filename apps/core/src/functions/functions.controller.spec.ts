@@ -4,8 +4,7 @@ import { FunctionsService } from "./functions.service";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { VectorService } from "../vector/vector.service";
 import { LLMService } from "../llm/llm.service";
-import { FunctionListResponse } from "./dto/functions-list.dto";
-import { FunctionMetadata } from "./dto/functions-metadata.dto";
+import { FunctionListResponseDto, FunctionMetadataDto } from "./schemas/functions.schema";
 import { VectorSearchResult } from "../common/interfaces/vector-db.interface";
 import { LocalDirectoryProvider } from "./providers/local-directory.provider";
 
@@ -13,16 +12,18 @@ describe("FunctionsController", () => {
   let controller: FunctionsController;
   let service: FunctionsService;
 
-  const mockFunctionMetadata: FunctionMetadata = {
+  const mockFunctionMetadata: FunctionMetadataDto = {
     id: "test-function",
     name: "Test Function",
     description: "A test function",
     category: ["test"],
     tags: ["test", "example"],
     requiredEnvVars: ["TEST_VAR"],
+    input: [],
+    output: [],
   };
 
-  const mockFunctionListResponse: FunctionListResponse = {
+  const mockFunctionListResponse: FunctionListResponseDto = {
     functions: [mockFunctionMetadata],
     total: 1,
   };
@@ -113,7 +114,7 @@ describe("FunctionsController", () => {
     });
 
     it("should handle empty function list", async () => {
-      const emptyResponse: FunctionListResponse = {
+      const emptyResponse: FunctionListResponseDto = {
         functions: [],
         total: 0,
       };
