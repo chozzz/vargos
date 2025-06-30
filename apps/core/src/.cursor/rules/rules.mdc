@@ -33,6 +33,11 @@ alwaysApply: false
 - Mock context and progress reporting
 - Test success and error paths
 
+## General Implementation Rules
+- Controller uses DTO, MCP Tool uses Schema. DTO always extends 1:1 to Schema.
+- Output of Tool is 1:1 to Controller. If output shape needs to change, do it from Controller.
+- Remove any unused or deprecated stuffs.
+
 ## MCP Response Format
 ```typescript
 {

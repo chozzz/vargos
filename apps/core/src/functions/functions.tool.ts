@@ -1,34 +1,28 @@
-// env.tool.ts
+// functions.tool.ts
 import type { Request } from "express";
 import { Injectable } from "@nestjs/common";
-import { Tool, Context } from "@rekog/mcp-nest";
+import { Context, Tool } from "@rekog/mcp-nest";
 import { z } from "zod";
 import { Progress } from "@modelcontextprotocol/sdk/types";
-import { EnvController } from "./env.controller";
+import { FunctionsController } from "./functions.controller";
 import {
-  EnvGetResponseSchema,
-  EnvSetResponseSchema,
-  EnvSearchResponseSchema,
-  EnvListResponseSchema,
-} from "../common/schemas/env.schemas";
+  FunctionListResponseSchema,
+  FunctionExecuteResponseSchema,
+  FunctionSearchResponseSchema,
+  FunctionReindexResponseSchema,
+} from "../common/schemas/functions.schemas";
 
 @Injectable()
-export class EnvTool {
-  constructor(private readonly envController: EnvController) {}
+export class FunctionsTool {
+  constructor(private readonly functionsController: FunctionsController) {}
 
   @Tool({
-    name: "env-get",
-    description: "Get a specific environment variable by key",
-    parameters: z.object({
-      key: z.string().describe("The environment variable key to retrieve"),
-    }),
-    outputSchema: EnvGetResponseSchema,
+    name: "functions-reindex",
+    description: "Reindex all functions from the functions directory",
+    parameters: z.object({}),
+    outputSchema: FunctionReindexResponseSchema,
   })
-  async getEnvVar(
-    { key }: { key: string },
-    context: Context,
-    request: Request,
-  ) {
+  async reindexFunctions(params: {}, context: Context, request: Request) {
     try {
       // Simulate progress for the operation
       await context.reportProgress({
@@ -36,70 +30,7 @@ export class EnvTool {
         total: 100,
       } as Progress);
 
-      const result = this.envController.get(key);
-
-      await context.reportProgress({
-        progress: 100,
-        total: 100,
-      } as Progress);
-
-      // Generate structured content
-      const structuredContent = {
-        data: result,
-        success: true,
-      };
-
-      // Return the result in this specific structured format as per MCP specification.
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(structuredContent),
-          },
-        ],
-        structuredContent,
-        isError: false,
-      };
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Failed to get environment variable: ${errorMessage}`,
-          },
-        ],
-        structuredContent: {},
-        isError: true,
-      };
-    }
-  }
-
-  @Tool({
-    name: "env-set",
-    description: "Set or update an environment variable",
-    parameters: z.object({
-      key: z.string().describe("The environment variable key to set"),
-      value: z
-        .string()
-        .describe("The value to set for the environment variable"),
-    }),
-    outputSchema: EnvSetResponseSchema,
-  })
-  async setEnvVar(
-    { key, value }: { key: string; value: string },
-    context: Context,
-    request: Request,
-  ) {
-    try {
-      // Simulate progress for the operation
-      await context.reportProgress({
-        progress: 50,
-        total: 100,
-      } as Progress);
-
-      const result = this.envController.set({ key, value });
+      const result = await this.functionsController.reindexFunctions();
 
       await context.reportProgress({
         progress: 100,
@@ -109,11 +40,10 @@ export class EnvTool {
       // Generate structured content
       const structuredContent = {
         success: result.success,
-        key: result.key,
-        value: result.value,
+        totalFunctions: result.totalFunctions,
       };
 
-      // Return the result in this specific structured format as per MCP specification.
+      // Return the result in MCP format
       return {
         content: [
           {
@@ -131,7 +61,7 @@ export class EnvTool {
         content: [
           {
             type: "text",
-            text: `Failed to set environment variable: ${errorMessage}`,
+            text: `Failed to reindex functions: ${errorMessage}`,
           },
         ],
         structuredContent: {},
@@ -141,49 +71,50 @@ export class EnvTool {
   }
 
   @Tool({
-    name: "env-search",
-    description:
-      "Search environment variables by keyword, censoring sensitive values",
+    name: "functions-search",
+    description: "Search for functions based on a query",
     parameters: z.object({
-      keyword: z
+      query: z
         .string()
-        .optional()
-        .default("")
         .describe(
-          "Search keyword for env variable key or value (optional, defaults to empty string to list all)",
-        ),
+          "The query to search for (e.g. 'weather', 'temperature', 'forecast')",
+        )
+        .optional()
+        .default("browse"),
+      limit: z
+        .number()
+        .optional()
+        .default(10)
+        .describe("The maximum number of functions to return"),
     }),
-    outputSchema: EnvSearchResponseSchema,
+    outputSchema: FunctionSearchResponseSchema,
   })
-  async searchEnvVars(
-    { keyword }: { keyword?: string },
+  async searchFunctions(
+    { query, limit }: { query: string; limit?: number },
     context: Context,
     request: Request,
   ) {
     try {
-      // Use empty string if keyword is undefined, matching controller behavior
-      const searchKeyword = keyword || "";
-
       // Simulate progress for the operation
       await context.reportProgress({
         progress: 50,
         total: 100,
       } as Progress);
 
-      const result = this.envController.search(searchKeyword);
+      const result = await this.functionsController.searchFunctions(
+        query,
+        limit || 10,
+      );
 
       await context.reportProgress({
         progress: 100,
         total: 100,
       } as Progress);
 
-      // Generate structured content
-      const structuredContent = {
-        data: result,
-        count: result.length,
-      };
+      // Generate structured content - controller now returns transformed data
+      const structuredContent = result;
 
-      // Return the result in this specific structured format as per MCP specification.
+      // Return the result in MCP format
       return {
         content: [
           {
@@ -201,7 +132,73 @@ export class EnvTool {
         content: [
           {
             type: "text",
-            text: `Failed to search environment variables: ${errorMessage}`,
+            text: `Failed to search functions: ${errorMessage}`,
+          },
+        ],
+        structuredContent: {},
+        isError: true,
+      };
+    }
+  }
+
+  @Tool({
+    name: "functions-execute",
+    description: "Execute a function with the given parameters",
+    parameters: z.object({
+      functionId: z.string().describe("The ID of the function to execute"),
+      params: z
+        .record(z.any())
+        .describe("The parameters to pass to the function"),
+    }),
+    outputSchema: FunctionExecuteResponseSchema,
+  })
+  async executeFunction(
+    {
+      functionId,
+      params,
+    }: { functionId: string; params: Record<string, unknown> },
+    context: Context,
+    request: Request,
+  ) {
+    try {
+      // Simulate progress for the operation
+      await context.reportProgress({
+        progress: 50,
+        total: 100,
+      } as Progress);
+
+      const result = await this.functionsController.executeFunction(
+        functionId,
+        params,
+      );
+
+      await context.reportProgress({
+        progress: 100,
+        total: 100,
+      } as Progress);
+
+      // Generate structured content - controller now returns wrapped data
+      const structuredContent = result;
+
+      // Return the result in MCP format
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(structuredContent),
+          },
+        ],
+        structuredContent,
+        isError: false,
+      };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Failed to execute function: ${errorMessage}`,
           },
         ],
         structuredContent: {},

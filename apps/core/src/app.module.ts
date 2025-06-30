@@ -23,13 +23,13 @@ import packageJson from "../package.json";
     EnvModule,
     FunctionsModule,
     McpModule.forRoot({
-      name: 'vargos-mcp-server',
+      name: "vargos-mcp-server",
       version: packageJson.version,
       transport: McpTransportType.STREAMABLE_HTTP,
       streamableHttp: {
         enableJsonResponse: true,
-        statelessMode: true
-      }
+        statelessMode: true,
+      },
     }),
   ],
   controllers: [AppController],

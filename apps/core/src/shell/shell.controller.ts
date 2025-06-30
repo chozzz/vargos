@@ -2,6 +2,11 @@ import { Controller, Post, Body, Get } from "@nestjs/common";
 import { ShellService } from "./shell.service";
 import { ApiOperation, ApiResponse, ApiTags, ApiBody } from "@nestjs/swagger";
 import { ShellExecuteDto, ShellHistoryItemDto } from "./dto/shell.dto";
+import { 
+  ShellExecuteResponseDto, 
+  ShellHistoryResponseDto, 
+  ShellInterruptResponseDto 
+} from "./dto/shell-response.dto";
 
 @ApiTags("Shell")
 @Controller("shell")
@@ -18,7 +23,7 @@ export class ShellController {
   @ApiResponse({
     status: 200,
     description: "Command executed successfully",
-    schema: { example: { command: "ls", output: "file1.txt\\nfile2.txt" } },
+    type: ShellExecuteResponseDto,
   })
   async execute(@Body() body: ShellExecuteDto) {
     const output = await this.shellService.execute(body.command);
@@ -34,7 +39,7 @@ export class ShellController {
   @ApiResponse({
     status: 200,
     description: "Command history",
-    type: [ShellHistoryItemDto],
+    type: ShellHistoryResponseDto,
   })
   getHistory() {
     return this.shellService.getHistory();
@@ -49,6 +54,7 @@ export class ShellController {
   @ApiResponse({
     status: 200,
     description: "Interrupt signal sent to shell",
+    type: ShellInterruptResponseDto,
   })
   async interrupt() {
     this.shellService.interrupt();

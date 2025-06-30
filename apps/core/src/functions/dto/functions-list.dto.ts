@@ -1,16 +1,6 @@
-import { ApiProperty } from "@nestjs/swagger";
-import { FunctionMetadata } from "./functions-metadata.dto";
+import { createZodDto } from "nestjs-zod";
+import { FunctionListResponseSchema } from "../../common/schemas/functions.schemas";
 
-export class FunctionListResponse {
-  @ApiProperty({
-    description: "Array of available functions",
-    type: [FunctionMetadata],
-  })
-  public functions!: FunctionMetadata[];
-
-  @ApiProperty({
-    description: "Total number of functions",
-    type: Number,
-  })
-  public total!: number;
-}
+export class FunctionListResponse extends createZodDto(
+  FunctionListResponseSchema,
+) {}
