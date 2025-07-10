@@ -96,7 +96,7 @@ export class FunctionsController {
     };
   }
 
-  @Post(":functionId/execute")
+  @Post("execute")
   @ApiOperation({
     summary: "Execute a function",
     description: "Executes a function with the given parameters",

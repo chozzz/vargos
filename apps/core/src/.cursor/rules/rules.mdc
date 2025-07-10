@@ -9,7 +9,6 @@ alwaysApply: false
 - **Service**: Business logic, logging, error handling.
 - **Tool**: MCP tools that map 1:1 to controller methods.
 - **Module**: Dependency injection configuration.
-
 ## Controller Rules
 - Prioritize Swagger and testability.
 - Follow existing `env.controller.ts` practice.
@@ -18,6 +17,12 @@ alwaysApply: false
 - Use DTOs for request/response validation
 - For any method in controller, it needs to also be mapped in the MCP Tool if asked.
 
+## Decorators
+- `@Injectable()` for services
+- `@Controller()` for controllers
+- `@Module()` for modules
+- `@Tool()` for MCP tools
+- `@ApiTags()`, `@ApiOperation()` for Swagger
 ## Tool Rules
 - File named as `*.tool.ts`
 - Use `@Tool()` decorator from existing practice
