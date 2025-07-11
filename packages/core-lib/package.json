@@ -1,0 +1,36 @@
+{
+  "name": "@vargos/core-lib",
+  "version": "0.1.0",
+  "description": "Core business logic library for Vargos - functions, LLM, and vector services",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "jest",
+    "test:watch": "jest --watch"
+  },
+  "dependencies": {
+    "@qdrant/js-client-rest": "^1.15.1",
+    "openai": "^5.16.0",
+    "uuid": "^11.1.0",
+    "zod": "^3.25.67"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^24.3.0",
+    "@workspace/typescript-config": "workspace:*",
+    "jest": "^30.1.1",
+    "ts-jest": "^29.4.1",
+    "typescript": "^5.9.2"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "rootDir": ".",
+    "testMatch": ["**/*.test.ts"],
+    "collectCoverageFrom": ["src/**/*.ts", "!src/**/*.test.ts"]
+  }
+}
+
