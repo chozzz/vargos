@@ -1,10 +1,11 @@
 type Factory<T> = () => T | Promise<T>;
 type Token = string | symbol;
+type UnknownFactory = Factory<unknown>;
 
 export class ServiceContainer {
-  private services = new Map<Token, any>();
-  private factories = new Map<Token, Factory<any>>();
-  private singletons = new Map<Token, any>();
+  private services = new Map<Token, unknown>();
+  private factories = new Map<Token, UnknownFactory>();
+  private singletons = new Map<Token, unknown>();
 
   register<T>(token: Token, factory: Factory<T>, singleton = true): void {
     this.factories.set(token, factory);

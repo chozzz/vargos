@@ -21,10 +21,11 @@ export class FilepathEnvProvider implements EnvProvider {
     ];
   }
 
-  async initialize(): Promise<void> {
+  initialize(): Promise<void> {
     if (!fs.existsSync(this.envFilePath)) {
       fs.writeFileSync(this.envFilePath, "");
     }
+    return Promise.resolve();
   }
 
   getPath(): string {
@@ -36,10 +37,10 @@ export class FilepathEnvProvider implements EnvProvider {
     content.split("\n").forEach((line) => {
       const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
       if (match) {
-        let [, key, value] = match;
+        const [, key, value] = match;
         if (typeof key !== "string" || typeof value !== "string") return;
-        value = value.replace(/^['"]|['"]$/g, "");
-        env[key] = value;
+        const cleanValue = value.replace(/^['"]|['"]$/g, "");
+        env[key] = cleanValue;
       }
     });
     return env;

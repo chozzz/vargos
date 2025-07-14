@@ -25,12 +25,12 @@ export class ShellService {
       stdio: "pipe",
     });
 
-    this.shell.stdout.on("data", (data) => {
-      this.buffer += data.toString();
+    this.shell.stdout.on("data", (data: Buffer) => {
+      this.buffer += data.toString("utf-8");
     });
 
-    this.shell.stderr.on("data", (data) => {
-      this.buffer += data.toString();
+    this.shell.stderr.on("data", (data: Buffer) => {
+      this.buffer += data.toString("utf-8");
     });
   }
 
@@ -63,8 +63,9 @@ export class ShellService {
     }
   }
 
-  async initialize(): Promise<void> {
+  initialize(): Promise<void> {
     // Shell is ready after construction
+    return Promise.resolve();
   }
 }
 

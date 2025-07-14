@@ -1,5 +1,5 @@
 export class ProviderRegistry {
-  private providers = new Map<string, Map<string, any>>();
+  private providers = new Map<string, Map<string, unknown>>();
 
   register<T>(type: string, name: string, provider: T): void {
     if (!this.providers.has(type)) {
