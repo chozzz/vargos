@@ -35,12 +35,23 @@ describe("FunctionsController", () => {
     delete: jest.fn(),
     createCollection: jest.fn(),
     collectionExists: jest.fn(),
+    coreService: {
+      search: jest.fn(),
+      index: jest.fn(),
+      delete: jest.fn(),
+      createCollection: jest.fn(),
+      collectionExists: jest.fn(),
+    },
   };
 
   const mockLLMService = {
     generateEmbedding: jest.fn(),
     generateEmbeddings: jest.fn(),
     chat: jest.fn(),
+    coreService: {
+      generateEmbeddings: jest.fn(),
+      chat: jest.fn(),
+    },
   };
 
   const mockLocalDirectoryProvider = {
@@ -143,7 +154,9 @@ describe("FunctionsController", () => {
     ];
 
     beforeEach(() => {
-      mockVectorService.search.mockResolvedValue(mockSearchResults);
+      mockVectorService.coreService.search.mockResolvedValue(
+        mockSearchResults,
+      );
     });
 
     it("should search functions with default limit", async () => {
@@ -154,7 +167,7 @@ describe("FunctionsController", () => {
         functions: mockSearchResults.map(item => item.payload),
         total: mockSearchResults.length,
       });
-      expect(mockVectorService.search).toHaveBeenCalledWith(query, {
+      expect(mockVectorService.coreService.search).toHaveBeenCalledWith(query, {
         collectionName: "vargos-functions-meta",
         limit: 10,
       });
@@ -169,14 +182,14 @@ describe("FunctionsController", () => {
         functions: mockSearchResults.map(item => item.payload),
         total: mockSearchResults.length,
       });
-      expect(mockVectorService.search).toHaveBeenCalledWith(query, {
+      expect(mockVectorService.coreService.search).toHaveBeenCalledWith(query, {
         collectionName: "vargos-functions-meta",
         limit,
       });
     });
 
     it("should handle empty search results", async () => {
-      mockVectorService.search.mockResolvedValue([]);
+      mockVectorService.coreService.search.mockResolvedValue([]);
       const query = "nonexistent query";
       const result = await controller.searchFunctions(query, 10);
 
@@ -184,7 +197,7 @@ describe("FunctionsController", () => {
         functions: [],
         total: 0,
       });
-      expect(mockVectorService.search).toHaveBeenCalledWith(query, {
+      expect(mockVectorService.coreService.search).toHaveBeenCalledWith(query, {
         collectionName: "vargos-functions-meta",
         limit: 10,
       });

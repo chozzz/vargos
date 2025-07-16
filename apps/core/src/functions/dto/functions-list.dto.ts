@@ -1,5 +1,5 @@
 import { createZodDto } from "nestjs-zod";
-import { FunctionListResponseSchema } from "../../common/schemas/functions.schemas";
+import { FunctionListResponseSchema } from "@vargos/core-lib";
 
 export class FunctionListResponse extends createZodDto(
   FunctionListResponseSchema,

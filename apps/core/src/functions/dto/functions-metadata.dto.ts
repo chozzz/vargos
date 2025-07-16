@@ -1,4 +1,4 @@
 import { createZodDto } from "nestjs-zod";
-import { FunctionMetadataSchema } from "../../common/schemas/functions.schemas";
+import { FunctionMetadataSchema } from "@vargos/core-lib";
 
 export class FunctionMetadata extends createZodDto(FunctionMetadataSchema) {}

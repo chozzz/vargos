@@ -1,27 +1,19 @@
 import { Injectable, OnModuleInit, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { QdrantClient } from "@qdrant/js-client-rest";
-import { v5 as uuidv5 } from "uuid";
 import {
+  QdrantProvider as CoreQdrantProvider,
   VectorDBProvider,
   VectorSearchOptions,
   VectorSearchResult,
   VectorIndexData,
-} from "../../common/interfaces/vector-db.interface";
+} from "@vargos/core-lib";
 
 @Injectable()
 export class QdrantProvider implements VectorDBProvider, OnModuleInit {
   private readonly logger = new Logger(QdrantProvider.name);
-  private client!: QdrantClient;
+  private coreProvider: CoreQdrantProvider;
 
-  constructor(private configService: ConfigService) {}
-
-  async onModuleInit() {
-    await this.initialize();
-  }
-
-  async initialize(): Promise<void> {
-    try {
+  constructor(private configService: ConfigService) {
       const url = this.configService.get<string>("vector.qdrant.url");
       const apiKey = this.configService.get<string>("vector.qdrant.apiKey");
       const port = this.configService.get<number>("vector.qdrant.port");
@@ -32,12 +24,16 @@ export class QdrantProvider implements VectorDBProvider, OnModuleInit {
         );
       }
 
-      this.client = new QdrantClient({
-        url,
-        port,
-        apiKey,
-      });
+    this.coreProvider = new CoreQdrantProvider({ url, apiKey, port });
+  }
 
+  async onModuleInit() {
+    await this.initialize();
+  }
+
+  async initialize(): Promise<void> {
+    try {
+      await this.coreProvider.initialize();
       this.logger.debug("Qdrant client initialized successfully");
     } catch (error) {
       this.logger.error("Failed to initialize Qdrant client", error);
@@ -47,12 +43,7 @@ export class QdrantProvider implements VectorDBProvider, OnModuleInit {
 
   async createCollection(name: string, vectorSize: number): Promise<void> {
     try {
-      await this.client.createCollection(name, {
-        vectors: {
-          size: vectorSize,
-          distance: "Cosine",
-        },
-      });
+      await this.coreProvider.createCollection(name, vectorSize);
       this.logger.debug(`Collection ${name} created successfully`);
     } catch (error) {
       this.logger.error(`Failed to create collection ${name}`, error);
@@ -62,9 +53,7 @@ export class QdrantProvider implements VectorDBProvider, OnModuleInit {
 
   async collectionExists(name: string): Promise<boolean> {
     try {
-      const response = await this.client.collectionExists(name);
-
-      return response?.exists ?? false;
+      return await this.coreProvider.collectionExists(name);
     } catch (error) {
       this.logger.error(`Failed to check if collection ${name} exists`, error);
       throw error;
@@ -76,23 +65,7 @@ export class QdrantProvider implements VectorDBProvider, OnModuleInit {
     options: VectorSearchOptions,
   ): Promise<VectorSearchResult[]> {
     try {
-      const response = await this.client.search(options.collectionName, {
-        vector,
-        limit: options.limit || 10,
-        score_threshold: options.threshold,
-        filter: options.filter,
-        with_payload: true,
-      });
-
-      if (!response) {
-        return [];
-      }
-
-      return response.map((point) => ({
-        id: String(point.id),
-        score: point.score,
-        payload: point.payload as Record<string, any>,
-      }));
+      return await this.coreProvider.search(vector, options);
     } catch (error) {
       this.logger.error(
         `Failed to search in collection ${options.collectionName}`,
@@ -104,15 +77,7 @@ export class QdrantProvider implements VectorDBProvider, OnModuleInit {
 
   async index(data: VectorIndexData): Promise<void> {
     try {
-      await this.client.upsert(data.collectionName, {
-        points: [
-          {
-            id: uuidv5(data.id, uuidv5.URL),
-            vector: data.vector,
-            payload: data.payload,
-          },
-        ],
-      });
+      await this.coreProvider.index(data);
       this.logger.debug(
         `Indexed data for ${data.id} in collection ${data.collectionName}`,
       );
@@ -127,9 +92,7 @@ export class QdrantProvider implements VectorDBProvider, OnModuleInit {
 
   async delete(collectionName: string, id: string): Promise<void> {
     try {
-      await this.client.delete(collectionName, {
-        points: [uuidv5(id, uuidv5.URL)],
-      });
+      await this.coreProvider.delete(collectionName, id);
       this.logger.debug(
         `Deleted point ${id} from collection ${collectionName}`,
       );
