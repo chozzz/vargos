@@ -4,6 +4,7 @@ export {
   FunctionOutputSchema,
   FunctionMetadataSchema,
   FunctionListResponseSchema,
+  FunctionExecuteRequestSchema,
   FunctionExecuteResponseSchema,
   FunctionSearchResponseSchema,
   FunctionReindexResponseSchema,

@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  Logger,
-  OnModuleInit,
-} from "@nestjs/common";
+import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import {
   LocalDirectoryProvider as CoreLocalDirectoryProvider,
@@ -61,11 +57,8 @@ export class LocalDirectoryProvider implements FunctionsProvider, OnModuleInit {
     try {
       return await this.coreProvider.executeFunction(functionId, params);
     } catch (error) {
-      this.logger.error(
-        `Failed to execute function ${functionId}`,
-        error,
-      );
+      this.logger.error(`Failed to execute function ${functionId}`, error);
       throw error;
-        }
+    }
   }
 }

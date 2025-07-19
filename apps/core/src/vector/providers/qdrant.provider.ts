@@ -14,15 +14,15 @@ export class QdrantProvider implements VectorDBProvider, OnModuleInit {
   private coreProvider: CoreQdrantProvider;
 
   constructor(private configService: ConfigService) {
-      const url = this.configService.get<string>("vector.qdrant.url");
-      const apiKey = this.configService.get<string>("vector.qdrant.apiKey");
-      const port = this.configService.get<number>("vector.qdrant.port");
+    const url = this.configService.get<string>("vector.qdrant.url");
+    const apiKey = this.configService.get<string>("vector.qdrant.apiKey");
+    const port = this.configService.get<number>("vector.qdrant.port");
 
-      if (!url || !apiKey) {
-        throw new Error(
-          "QDRANT_URL and QDRANT_API_KEY environment variables are required for Qdrant provider",
-        );
-      }
+    if (!url || !apiKey) {
+      throw new Error(
+        "QDRANT_URL and QDRANT_API_KEY environment variables are required for Qdrant provider",
+      );
+    }
 
     this.coreProvider = new CoreQdrantProvider({ url, apiKey, port });
   }

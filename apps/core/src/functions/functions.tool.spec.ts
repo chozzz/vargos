@@ -170,7 +170,7 @@ describe("FunctionsTool", () => {
 
       const result = await functionsTool.executeFunction({ functionId, params }, mockContext, {} as any);
 
-      expect(functionsController.executeFunction).toHaveBeenCalledWith(functionId, params);
+      expect(functionsController.executeFunction).toHaveBeenCalledWith({ functionId, params });
       expect(mockContext.reportProgress).toHaveBeenCalledTimes(2);
       expect(result.isError).toBe(false);
       expect(result.structuredContent).toEqual({
