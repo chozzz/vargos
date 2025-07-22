@@ -99,8 +99,10 @@ export class ShellTool {
         total: 100,
       } as Progress);
 
-      // Generate structured content
-      const structuredContent = result;
+      // Generate structured content - wrap array in object for MCP format
+      const structuredContent = {
+        history: result,
+      };
 
       // Return the result in MCP format
       return {
