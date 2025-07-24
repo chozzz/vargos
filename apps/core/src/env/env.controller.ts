@@ -5,7 +5,6 @@ import {
   Param,
   Post,
   Body,
-  Logger,
 } from "@nestjs/common";
 import {
   ApiTags,
@@ -22,8 +21,6 @@ import { EnvVarDto } from "./dto/env-var.dto";
 @ApiTags("Env")
 @Controller("env")
 export class EnvController {
-  private readonly logger = new Logger(EnvController.name);
-
   constructor(private readonly envService: EnvService) {}
 
   @Get()

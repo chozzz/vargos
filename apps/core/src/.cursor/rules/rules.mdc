@@ -1,54 +1,225 @@
 ---
-description: Useful during implementation of a Module
+description: Vargos Core Module Implementation Rules
 alwaysApply: false
 ---
-# Vargos Core Module Implementation Rule
 
-## Architecture
-- **Controller**: HTTP endpoints + Swagger only. No business logic.
-- **Service**: Business logic, logging, error handling.
-- **Tool**: MCP tools that map 1:1 to controller methods.
-- **Module**: Dependency injection configuration.
+# Vargos Core Module Implementation Rules
+
+## Architecture Overview
+
+Vargos Core follows a **dual-protocol architecture** supporting both **OpenAPI** (REST) and **MCP** (Model Context Protocol). All business logic lives in `@vargos/core-lib` - this app provides NestJS wrappers.
+
+```
+Controller (OpenAPI) ←→ Service (NestJS wrapper) ←→ @vargos/core-lib
+     ↓
+Tool (MCP) ←→ Controller (delegates) ←→ Service
+```
+
+## Module Structure
+
+Each module should have:
+```
+module-name/
+├── module-name.controller.ts    # OpenAPI endpoints
+├── module-name.service.ts        # NestJS wrapper around core-lib
+├── module-name.tool.ts           # MCP tools (1:1 with controller)
+├── module-name.module.ts         # DI configuration
+├── dto/                          # Request/response DTOs (nestjs-zod)
+├── providers/                    # NestJS providers wrapping core-lib providers
+└── *.spec.ts                     # Tests
+```
+
 ## Controller Rules
-- Prioritize Swagger and testability.
-- Follow existing `env.controller.ts` practice.
-- Return service method results directly
-- No try-catch, no logging
-- Use DTOs for request/response validation
-- For any method in controller, it needs to also be mapped in the MCP Tool if asked.
 
-## Decorators
-- `@Injectable()` for services
-- `@Controller()` for controllers
-- `@Module()` for modules
-- `@Tool()` for MCP tools
-- `@ApiTags()`, `@ApiOperation()` for Swagger
-## Tool Rules
-- File named as `*.tool.ts`
-- Use `@Tool()` decorator from existing practice
-- Must have 1:1 mapping to controller methods
-- Return MCP format: `{ content, structuredContent, isError }`
-- For structured content output (such as array or object), provide outputSchema in @Tool. Follow `env.tool.ts` practice.
-- Include progress reporting
+**Purpose**: HTTP endpoints + Swagger documentation only.
 
-## Tool Testing
-- Include a test file `*.tool.spec.ts`
-- Test tools through controller mocks, we're testing both tool and controller here.
+**Rules**:
+- ✅ Return service method results directly
+- ✅ Use DTOs for request/response validation (via `ZodValidationPipe`)
+- ✅ Add Swagger decorators (`@ApiTags`, `@ApiOperation`, `@ApiResponse`)
+- ❌ **NO business logic** - delegate to service
+- ❌ **NO logging** - services handle logging
+- ❌ **NO try-catch** - let NestJS exception filters handle errors
+- ❌ **NO validation logic** - DTOs handle validation
+
+**Example**:
+```typescript
+@ApiTags("Example")
+@Controller("example")
+export class ExampleController {
+  constructor(private readonly exampleService: ExampleService) {}
+
+  @Get()
+  @ApiOperation({ summary: "Get example" })
+  @ApiResponse({ status: 200, type: ExampleResponseDto })
+  getExample(@Query() query: ExampleQueryDto): ExampleResponseDto {
+    return this.exampleService.getExample(query);
+  }
+}
+```
+
+## Service Rules
+
+**Purpose**: NestJS wrapper around `@vargos/core-lib` services.
+
+**Rules**:
+- ✅ Wrap `@vargos/core-lib` services (expose `coreService` if needed)
+- ✅ Handle logging with `Logger`
+- ✅ Handle error transformation if needed
+- ✅ Keep business logic in `core-lib`, not here
+
+**Example**:
+```typescript
+@Injectable()
+export class ExampleService {
+  private readonly logger = new Logger(ExampleService.name);
+  public readonly coreService: CoreExampleService;
+
+  constructor(private coreProvider: CoreProvider) {
+    this.coreService = new CoreExampleService(coreProvider);
+  }
+
+  async getExample(query: ExampleQuery): Promise<ExampleResult> {
+    this.logger.log(`Getting example: ${query.id}`);
+    return this.coreService.getExample(query);
+  }
+}
+```
+
+## Tool Rules (MCP)
+
+**Purpose**: MCP tools that map 1:1 to controller methods.
+
+**Rules**:
+- ✅ File named as `*.tool.ts`
+- ✅ Use `@Tool()` decorator from `@rekog/mcp-nest`
+- ✅ **Must have 1:1 mapping** to controller methods
+- ✅ Return MCP format: `{ content, structuredContent, isError }`
+- ✅ Include progress reporting via `context.reportProgress()`
+- ✅ Provide `outputSchema` in `@Tool()` for structured content
+- ✅ Delegate to controller (don't duplicate logic)
+
+**MCP Response Format**:
+```typescript
+{
+  content: [{ type: "text", text: JSON.stringify(data) }],
+  structuredContent: data,  // Must be object (wrap arrays)
+  isError: false
+}
+```
+
+**Example**:
+```typescript
+@Tool({
+  name: "example-get",
+  description: "Get example data",
+  parameters: z.object({ id: z.string() }),
+  outputSchema: ExampleResponseSchema,
+})
+async getExample(
+  { id }: { id: string },
+  context: Context,
+  request: Request,
+) {
+  try {
+    await context.reportProgress({ progress: 50, total: 100 });
+    const result = await this.controller.getExample({ id });
+    await context.reportProgress({ progress: 100, total: 100 });
+    return {
+      content: [{ type: "text", text: JSON.stringify(result) }],
+      structuredContent: result,
+      isError: false,
+    };
+  } catch (error) {
+    return {
+      content: [{ type: "text", text: `Error: ${error.message}` }],
+      structuredContent: {},
+      isError: true,
+    };
+  }
+}
+```
+
+## DTO & Schema Rules
+
+**Purpose**: Request/response validation and type safety.
+
+**Rules**:
+- ✅ Use `nestjs-zod` with `createZodDto()`
+- ✅ Import schemas from `@vargos/core-lib` when available
+- ✅ DTOs extend schemas 1:1 (no transformation in DTO)
+- ✅ Controller uses DTOs, Tool uses Schemas
+- ✅ Output shape changes happen in Controller, not Tool
+
+**Example**:
+```typescript
+// Schema (in core-lib or common/schemas)
+export const ExampleRequestSchema = z.object({
+  id: z.string(),
+});
+
+// DTO (in module/dto)
+export class ExampleRequestDto extends createZodDto(ExampleRequestSchema) {}
+```
+
+## Error Handling
+
+**Controller**: Let errors bubble up - NestJS exception filters handle them.
+
+**Service**: Log errors, transform if needed, re-throw.
+
+**Tool**: Catch errors, return MCP error format.
+
+## Testing Rules
+
+**Controller Tests** (`*.controller.spec.ts`):
+- Test controller methods directly
+- Mock services
+- Verify Swagger decorators work
+- Test error cases
+
+**Tool Tests** (`*.tool.spec.ts`):
+- Test tools through controller mocks
 - Verify MCP response structure
 - Mock context and progress reporting
 - Test success and error paths
 
-## General Implementation Rules
-- Controller uses DTO, MCP Tool uses Schema. DTO always extends 1:1 to Schema.
-- Output of Tool is 1:1 to Controller. If output shape needs to change, do it from Controller.
-- Remove any unused or deprecated stuffs. Less code is better.
+## General Principles
 
-## MCP Response Format
+1. **Separation of Concerns**: Controllers = HTTP, Services = NestJS wrappers, core-lib = business logic
+2. **DRY**: Don't duplicate logic between Controller and Tool - Tool delegates to Controller
+3. **Type Safety**: Use Zod schemas and DTOs everywhere
+4. **Less Code**: Remove unused code, deprecated patterns, and unnecessary abstractions
+5. **Dual Protocol**: Every API must work for both OpenAPI (Swagger) and MCP
+
+## Common Patterns
+
+### Pattern: Controller → Service → core-lib
 ```typescript
-{
-  content: [{ type: "text", text: JSON.stringify(data) }],
-  structuredContent: data,
-  isError: false
+// Controller
+@Get()
+getData() {
+  return this.service.getData();
+}
+
+// Service
+getData() {
+  return this.coreService.getData();
 }
 ```
-For more details around all supported response format, read more about it at https://modelcontextprotocol.io/specification/2025-06-18/server/tools
+
+### Pattern: Tool → Controller
+```typescript
+// Tool
+@Tool({ name: "get-data" })
+async getData() {
+  const result = await this.controller.getData();
+  return { content: [...], structuredContent: result, isError: false };
+}
+```
+
+## References
+
+- [MCP Specification](https://modelcontextprotocol.io/specification/2025-06-18/server/tools)
+- [NestJS Documentation](https://docs.nestjs.com)
+- [nestjs-zod](https://github.com/risenforces/nestjs-zod)
