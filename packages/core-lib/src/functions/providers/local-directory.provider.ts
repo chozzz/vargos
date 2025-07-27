@@ -30,7 +30,7 @@ export class LocalDirectoryProvider implements FunctionsProvider {
     return Promise.resolve();
   }
 
-  getFunctionMetadata(functionId: string): Promise<FunctionMetadata> {
+  async getFunctionMetadata(functionId: string): Promise<FunctionMetadata> {
     try {
       const metaFilePath = path.join(
         this.functionsSourceDir,
@@ -48,10 +48,10 @@ export class LocalDirectoryProvider implements FunctionsProvider {
       }
       const meta = parsedMeta as Omit<FunctionMetadata, "id">;
 
-      return {
+      return Promise.resolve({
         id: functionId,
         ...meta,
-      };
+      });
     } catch (error: unknown) {
       const errorMessage =
         error instanceof Error ? error.message : "Unknown error";
