@@ -2,6 +2,7 @@
 import { Mastra } from '@mastra/core/mastra';
 import { PinoLogger } from '@mastra/loggers';
 import { weatherWorkflow } from './workflows/weather-workflow';
+import { createFunctionWorkflow } from './workflows/create-function-workflow';
 import { weatherAgent } from './agents/weather-agent';
 import { PostgresStore } from "@mastra/pg";
 import { vargosAgent } from './agents/vargos-agent';
@@ -11,7 +12,10 @@ export const mastra = new Mastra({
   server: {
     port: parseInt(process.env.MASTRA_PORT ?? '4862'),
   },
-  workflows: { weatherWorkflow },
+  workflows: {
+    weatherWorkflow,
+    createFunctionWorkflow,
+  },
   mcpServers: {
     vargos: myMcpServer,
   },
@@ -25,10 +29,10 @@ export const mastra = new Mastra({
   }),
   telemetry: {
     // Telemetry is deprecated and will be removed in the Nov 4th release
-    enabled: false, 
+    enabled: false,
   },
   observability: {
     // Enables DefaultExporter and CloudExporter for AI tracing
-    default: { enabled: true }, 
+    default: { enabled: true },
   },
 });
