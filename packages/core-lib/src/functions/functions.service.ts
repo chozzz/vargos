@@ -1,5 +1,5 @@
 import { FunctionListResponse, FunctionMetadata } from "./types/functions.types";
-import { FunctionsProvider } from "./interfaces/functions.interface";
+import { FunctionsProvider, CreateFunctionInput } from "./interfaces/functions.interface";
 import { VectorService } from "../vector/vector.service";
 import { LLMService } from "../llm/llm.service";
 
@@ -30,6 +30,10 @@ export class FunctionsService {
     return this.provider.listFunctions();
   }
 
+  async getFunctionMetadata(functionId: string): Promise<FunctionMetadata> {
+    return this.provider.getFunctionMetadata(functionId);
+  }
+
   async indexFunction(functionMeta: FunctionMetadata) {
     const text = `Name: ${functionMeta.name}\nDescription: ${functionMeta.description}\nTags: ${functionMeta.tags.join(", ")}`;
     const vector = await this.llmService.generateEmbeddings(text);
@@ -55,6 +59,16 @@ export class FunctionsService {
     params: Record<string, unknown>,
   ): Promise<unknown> {
     return this.provider.executeFunction(functionId, params);
+  }
+
+  async createFunction(input: CreateFunctionInput): Promise<FunctionMetadata> {
+    // Create function via provider (generates files)
+    const functionMeta = await this.provider.createFunction(input);
+
+    // Auto-index the new function for semantic search
+    await this.indexFunction(functionMeta);
+
+    return functionMeta;
   }
 }
 
