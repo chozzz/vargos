@@ -5,6 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # MUSTS
 - Understand that every code written is a liability, therefore removing unused codes or reusing existing one is best practice.
 - Make use of Context7 MCP if you're equipped with it and suggests 3rd party library that might do it easier.
+- During committing, redact any Claude signature in it.
 
 ## Project Overview
 

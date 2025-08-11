@@ -27,6 +27,9 @@ out/
 build
 dist
 
+# Rust build artifacts
+**/target/
+
 # TypeScript
 **/*.tsbuildinfo
 
