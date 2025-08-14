@@ -1,0 +1,19 @@
+{
+  "name": "vargos-cli",
+  "version": "0.1.0",
+  "description": "Vargos CLI - Interactive terminal interface for Mastra agents",
+  "private": true,
+  "scripts": {
+    "build": "cargo build --release",
+    "dev": "cargo run",
+    "start": "cargo run --release --",
+    "lint": "cargo clippy -- -D warnings",
+    "test": "cargo test",
+    "check": "cargo check",
+    "clean": "cargo clean"
+  },
+  "engines": {
+    "rust": ">=1.70"
+  }
+}
+
