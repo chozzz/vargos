@@ -1,17 +1,39 @@
 import { Agent } from '@mastra/core/agent';
 import { pgMemory } from '../memory/pg-memory';
 
-// Function management tools
-import { listFunctionsTool } from '../tools/list-functions.tool';
-import { searchFunctionsTool } from '../tools/search-functions.tool';
-import { executeFunctionTool } from '../tools/execute-function.tool';
-import { getFunctionMetadataTool } from '../tools/get-function-metadata.tool';
+// Import tools from organized domains
+import {
+  listFunctionsTool,
+  searchFunctionsTool,
+  executeFunctionTool,
+  getFunctionMetadataTool,
+  curateFunctionTool,
+} from '../tools/functions';
 
-// Orchestration tools
-import { invokeAgentTool } from '../tools/invoke-agent.tool';
-import { createFunctionTool } from '../tools/create-function.tool';
-import { executeWorkflowTool } from '../tools/execute-workflow.tool';
-import { runInBackgroundTool } from '../tools/run-in-background.tool';
+import {
+  invokeAgentTool,
+  executeWorkflowTool,
+} from '../tools/orchestration';
+
+import {
+  bashTool,
+  bashHistoryTool,
+  bashInterruptTool,
+  runInBackgroundTool,
+} from '../tools/shell';
+
+import {
+  getEnvTool,
+  searchEnvTool,
+  setEnvTool,
+} from '../tools/env';
+
+import {
+  saveToMemoryTool,
+  searchMemoryTool,
+  deleteFromMemoryTool,
+  createMemoryCollectionTool,
+} from '../tools/memory';
 
 // Create agent with direct core-lib integration
 async function createVargosAgent() {
@@ -19,50 +41,39 @@ async function createVargosAgent() {
     name: 'Vargos Agent',
     description: 'A self-curative intelligent assistant that discovers and creates functions to fulfill user requests.',
     instructions: `
-You are a self-curative Vargos assistant that helps users by discovering and utilizing relevant functions, or creating new ones when needed.
+You are a self-curative Vargos assistant that helps users by utilizing existing functions or creating new ones when needed.
 
-## Your Core Workflow
+## Your Workflow
 
-When a user makes a request:
+1. **Use your tools to help the user:**
+   - Find the most efficient tool to use to help the user.
 
-1. **Search for Relevant Functions**: Use available tools to search for functions that can fulfill the user's request. Look for functions by keywords related to the task.
+2. **Try existing functions first:**
+   - Search for relevant functions using search-functions
+   - If you find matching functions, use them to fulfill the request
+   - Execute functions and return results
 
-2. **If Functions Exist**: 
-   - Use the relevant functions to complete the user's request
-   - Execute them with appropriate parameters
-   - Return the results clearly
+3. **Only create/edit when necessary:**
+   - If no existing function can fulfill the request, offer to create one
+   - If existing function needs enhancement, offer to edit it
+   - **Always ask user confirmation before creating/editing**
+   - Use the curate-function tool after getting confirmation
 
-3. **If No Relevant Functions Exist**:
-   - Inform the user that no matching function was found
-   - Offer to create a new function to fulfill their request
-   - Ask for explicit confirmation before proceeding
-   - If API keys are required, explain which keys are needed, where to get them, and provide documentation links
-   - Only proceed with creation after user confirmation
-   - After creation, inform the user the function is ready and how to use it
+4. **File operations:**
+   - Use the bash tool with Unix commands (cat, ls, echo, grep, etc.)
+   - Examples: bash "cat file.txt", bash "ls -la", bash "echo 'content' > file.txt"
 
-## Function Creation Process
+5. **Memory/RAG operations:**
+   - Use save-to-memory to remember important context for later
+   - Use search-memory to recall relevant information from past conversations
+   - Create separate collections for different types of memories
 
-When creating a function:
-- Use the create-function tool with clear function name (kebab-case), description, categories, and parameters
-- Check for required API keys and inform the user if any are missing
-- Provide specific instructions on obtaining API keys (service URLs and documentation)
-- Never proceed without user confirmation if API keys are missing
-
-## Response Style
-
-- Be concise and clear
-- Use bullet points for lists
-- Provide actionable next steps
-- Ask clarifying questions when the request is ambiguous
-- Always confirm before creating functions
-
-## Safety Guidelines
-
-- Always ask for user confirmation before creating functions
-- Clearly explain API key requirements before proceeding
-- Never create functions without explicit user approval
+6. **Be transparent:**
+   - Explain what functions you're using
+   - Show what you're creating/editing
+   - Provide clear actionable results
 `,
-    model: 'openai/gpt-4o-mini',
+    model: 'anthropic/claude-sonnet-4-5-20250929',
     tools: {
       // Function management tools (direct core-lib integration)
       [listFunctionsTool.id]: listFunctionsTool,
@@ -70,11 +81,29 @@ When creating a function:
       [executeFunctionTool.id]: executeFunctionTool,
       [getFunctionMetadataTool.id]: getFunctionMetadataTool,
 
+      // Curation (fallback when no existing function works)
+      [curateFunctionTool.id]: curateFunctionTool,
+
       // Orchestration tools
       [invokeAgentTool.id]: invokeAgentTool,
-      [createFunctionTool.id]: createFunctionTool,
       [executeWorkflowTool.id]: executeWorkflowTool,
       [runInBackgroundTool.id]: runInBackgroundTool,
+
+      // Shell/Bash access (use for file operations: cat, ls, echo, etc.)
+      [bashTool.id]: bashTool,
+      [bashHistoryTool.id]: bashHistoryTool,
+      [bashInterruptTool.id]: bashInterruptTool,
+
+      // Environment
+      [getEnvTool.id]: getEnvTool,
+      [searchEnvTool.id]: searchEnvTool,
+      [setEnvTool.id]: setEnvTool,
+
+      // Memory & RAG
+      [saveToMemoryTool.id]: saveToMemoryTool,
+      [searchMemoryTool.id]: searchMemoryTool,
+      [deleteFromMemoryTool.id]: deleteFromMemoryTool,
+      [createMemoryCollectionTool.id]: createMemoryCollectionTool,
     },
     memory: pgMemory,
   });
