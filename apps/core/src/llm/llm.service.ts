@@ -3,7 +3,7 @@ import {
   Message,
   ChatResponse,
   LLMService as CoreLLMService,
-} from "@vargos/core-lib";
+} from "@workspace/core-lib";
 import { OpenAIProvider } from "./providers/openai.provider";
 
 @Injectable()

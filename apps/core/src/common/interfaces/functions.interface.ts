@@ -3,4 +3,4 @@ export type {
   FunctionsProvider,
   FunctionListResponse,
   FunctionMetadata,
-} from "@vargos/core-lib";
+} from "@workspace/core-lib";

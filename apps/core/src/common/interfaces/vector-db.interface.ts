@@ -4,4 +4,4 @@ export type {
   VectorSearchResult,
   VectorIndexData,
   VectorDBProvider,
-} from "@vargos/core-lib";
+} from "@workspace/core-lib";
