@@ -4,7 +4,7 @@ import {
   VectorSearchResult,
   VectorIndexData,
   VectorService as CoreVectorService,
-} from "@vargos/core-lib";
+} from "@workspace/core-lib";
 import { LLMService } from "../llm/llm.service";
 import { QdrantProvider } from "./providers/qdrant.provider";
 

@@ -3,7 +3,7 @@ import {
   FunctionsService as CoreFunctionsService,
   FunctionListResponse,
   FunctionMetadata,
-} from "@vargos/core-lib";
+} from "@workspace/core-lib";
 import { VectorService } from "../vector/vector.service";
 import { LLMService } from "../llm/llm.service";
 import { LocalDirectoryProvider } from "./providers/local-directory.provider";

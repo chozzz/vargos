@@ -12,7 +12,7 @@ pnpm dev  # Server at http://localhost:4861
 ## Architecture
 
 - **Controller**: HTTP endpoints + Swagger only. No business logic.
-- **Service**: Business logic, logging, error handling. Wraps `@vargos/core-lib`.
+- **Service**: Business logic, logging, error handling. Wraps `@workspace/core-lib`.
 - **Tool**: MCP tools that map 1:1 to controller methods.
 - **Module**: Dependency injection configuration.
 
@@ -58,7 +58,7 @@ Persistent, programmatic shell access for automation and agent-driven workflows.
 - One command at a time (interrupt support)
 
 ### LLM
-Large Language Model service wrapper around `@vargos/core-lib`. Provides embeddings and chat completions.
+Large Language Model service wrapper around `@workspace/core-lib`. Provides embeddings and chat completions.
 
 **Features:**
 - OpenAI provider (extensible)
@@ -66,7 +66,7 @@ Large Language Model service wrapper around `@vargos/core-lib`. Provides embeddi
 - Chat completions
 
 ### Vector
-Vector database service wrapper around `@vargos/core-lib`. Provides semantic search and indexing.
+Vector database service wrapper around `@workspace/core-lib`. Provides semantic search and indexing.
 
 **Features:**
 - Qdrant provider (extensible)
@@ -144,9 +144,9 @@ See [`.cursor/rules/rules.mdc`](./src/.cursor/rules/rules.mdc) for detailed modu
 
 **Key Principles:**
 - Controllers: No business logic, no logging, no try-catch
-- Services: Wrap `@vargos/core-lib`, handle logging/errors
+- Services: Wrap `@workspace/core-lib`, handle logging/errors
 - Tools: 1:1 mapping to controller methods, MCP format
-- DTOs: Use `nestjs-zod` with schemas from `@vargos/core-lib`
+- DTOs: Use `nestjs-zod` with schemas from `@workspace/core-lib`
 
 ## License
 

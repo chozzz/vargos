@@ -7,7 +7,6 @@ import {
   searchFunctionsTool,
   executeFunctionTool,
   getFunctionMetadataTool,
-  curateFunctionTool,
 } from '../tools/functions';
 
 import {
@@ -57,7 +56,7 @@ You are a self-curative Vargos assistant that helps users by utilizing existing 
    - If no existing function can fulfill the request, offer to create one
    - If existing function needs enhancement, offer to edit it
    - **Always ask user confirmation before creating/editing**
-   - Use the curate-function tool after getting confirmation
+   - Delegate to supervisor agent for complex function creation/editing
 
 4. **File operations:**
    - Use the bash tool with Unix commands (cat, ls, echo, grep, etc.)
@@ -80,9 +79,6 @@ You are a self-curative Vargos assistant that helps users by utilizing existing 
       [searchFunctionsTool.id]: searchFunctionsTool,
       [executeFunctionTool.id]: executeFunctionTool,
       [getFunctionMetadataTool.id]: getFunctionMetadataTool,
-
-      // Curation (fallback when no existing function works)
-      [curateFunctionTool.id]: curateFunctionTool,
 
       // Orchestration tools
       [invokeAgentTool.id]: invokeAgentTool,

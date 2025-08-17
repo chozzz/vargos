@@ -37,7 +37,7 @@ Mastra provides the **agent runtime** for Vargos - it hosts intelligent agents t
 └─────────────────────────────────────────────────────────┘
                       ▼
          ┌─────────────────────────┐
-         │   @vargos/core-lib      │
+         │   @workspace/core-lib      │
          │  - FunctionsService     │
          │  - EnvService           │
          │  - VectorService        │

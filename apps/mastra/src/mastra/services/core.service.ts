@@ -1,7 +1,7 @@
 import {
   createCoreServices,
   CoreServices,
-} from '@vargos/core-lib';
+} from '@workspace/core-lib';
 
 let coreServices: CoreServices | null = null;
 

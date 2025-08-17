@@ -3,7 +3,7 @@ import { ConfigService } from "@nestjs/config";
 import {
   LocalDirectoryProvider as CoreLocalDirectoryProvider,
   FunctionsProvider,
-} from "@vargos/core-lib";
+} from "@workspace/core-lib";
 
 @Injectable()
 export class LocalDirectoryProvider implements FunctionsProvider, OnModuleInit {

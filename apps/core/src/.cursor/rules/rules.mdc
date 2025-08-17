@@ -7,10 +7,10 @@ alwaysApply: false
 
 ## Architecture Overview
 
-Vargos Core follows a **dual-protocol architecture** supporting both **OpenAPI** (REST) and **MCP** (Model Context Protocol). All business logic lives in `@vargos/core-lib` - this app provides NestJS wrappers.
+Vargos Core follows a **dual-protocol architecture** supporting both **OpenAPI** (REST) and **MCP** (Model Context Protocol). All business logic lives in `@workspace/core-lib` - this app provides NestJS wrappers.
 
 ```
-Controller (OpenAPI) ←→ Service (NestJS wrapper) ←→ @vargos/core-lib
+Controller (OpenAPI) ←→ Service (NestJS wrapper) ←→ @workspace/core-lib
      ↓
 Tool (MCP) ←→ Controller (delegates) ←→ Service
 ```
@@ -60,10 +60,10 @@ export class ExampleController {
 
 ## Service Rules
 
-**Purpose**: NestJS wrapper around `@vargos/core-lib` services.
+**Purpose**: NestJS wrapper around `@workspace/core-lib` services.
 
 **Rules**:
-- ✅ Wrap `@vargos/core-lib` services (expose `coreService` if needed)
+- ✅ Wrap `@workspace/core-lib` services (expose `coreService` if needed)
 - ✅ Handle logging with `Logger`
 - ✅ Handle error transformation if needed
 - ✅ Keep business logic in `core-lib`, not here
@@ -146,7 +146,7 @@ async getExample(
 
 **Rules**:
 - ✅ Use `nestjs-zod` with `createZodDto()`
-- ✅ Import schemas from `@vargos/core-lib` when available
+- ✅ Import schemas from `@workspace/core-lib` when available
 - ✅ DTOs extend schemas 1:1 (no transformation in DTO)
 - ✅ Controller uses DTOs, Tool uses Schemas
 - ✅ Output shape changes happen in Controller, not Tool

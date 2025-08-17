@@ -28,7 +28,7 @@
     "@mastra/mcp": "^0.14.3",
     "@mastra/memory": "^0.15.11",
     "@mastra/pg": "^0.17.8",
-    "@vargos/core-lib": "workspace:*",
+    "@workspace/core-lib": "workspace:*",
     "zod": "^4.1.12"
   },
   "devDependencies": {

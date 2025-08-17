@@ -1,12 +1,21 @@
 {
-  "name": "@vargos/core-lib",
+  "name": "@workspace/core-lib",
   "version": "0.1.0",
   "description": "Core business logic library for Vargos - functions, LLM, and vector services",
   "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
   "private": true,
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && npm run build:mjs",
+    "build:mjs": "node scripts/build-mjs.js",
     "dev": "tsc --watch",
     "test": "vitest run",
     "test:watch": "vitest",
