@@ -9,7 +9,14 @@ export const invokeAgentTool = createTool({
   id: 'invoke-agent' as const,
   description: 'Invoke another specialized agent to handle a specific task',
   inputSchema: z.object({
-    agentName: z.enum(['vargos', 'weather']).describe('Name of the agent to invoke'),
+    agentName: z.enum([
+      'vargos',
+      'weather',
+      'supervisor',
+      'seniorSoftwareEngineer',
+      'programmer',
+      'qaEngineer',
+    ]).describe('Name of the agent to invoke'),
     query: z.string().describe('Query to send to the agent'),
   }),
   outputSchema: z.object({

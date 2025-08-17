@@ -30,7 +30,7 @@ ERROR: "createCoreServices" is not exported by "../../packages/core-lib/dist/ind
 
 **Verified:** Running `pnpm build` on main branch (outside worktree) produces the identical error.
 
-**Root Cause:** Mastra's bundler has issues resolving CommonJS exports from `@vargos/core-lib` when Mastra uses ES modules (`"type": "module"`).
+**Root Cause:** Mastra's bundler has issues resolving CommonJS exports from `@workspace/core-lib` when Mastra uses ES modules (`"type": "module"`).
 
 ### Type Check Status
 
@@ -42,7 +42,7 @@ ERROR: "createCoreServices" is not exported by "../../packages/core-lib/dist/ind
 ## Fixes Applied
 
 1. **get-function-metadata.tool.ts** - Fixed to use FunctionsProvider instead of non-existent FunctionsService method
-2. **package.json** - Moved `@vargos/core-lib` from devDependencies to dependencies (better semantic correctness, though doesn't resolve bundler issue)
+2. **package.json** - Moved `@workspace/core-lib` from devDependencies to dependencies (better semantic correctness, though doesn't resolve bundler issue)
 
 ## Functional Verification
 

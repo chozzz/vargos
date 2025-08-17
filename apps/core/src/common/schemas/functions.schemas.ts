@@ -8,4 +8,4 @@ export {
   FunctionExecuteResponseSchema,
   FunctionSearchResponseSchema,
   FunctionReindexResponseSchema,
-} from "@vargos/core-lib";
+} from "@workspace/core-lib";

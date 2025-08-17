@@ -6,7 +6,7 @@ import {
   VectorSearchOptions,
   VectorSearchResult,
   VectorIndexData,
-} from "@vargos/core-lib";
+} from "@workspace/core-lib";
 
 @Injectable()
 export class QdrantProvider implements VectorDBProvider, OnModuleInit {

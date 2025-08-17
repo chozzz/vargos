@@ -4,4 +4,4 @@ export type {
   ChatResponse,
   EmbeddingResponse,
   LLMProvider,
-} from "@vargos/core-lib";
+} from "@workspace/core-lib";

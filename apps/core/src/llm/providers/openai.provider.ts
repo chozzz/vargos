@@ -5,7 +5,7 @@ import {
   LLMProvider,
   Message,
   ChatResponse,
-} from "@vargos/core-lib";
+} from "@workspace/core-lib";
 
 @Injectable()
 export class OpenAIProvider implements LLMProvider, OnModuleInit {

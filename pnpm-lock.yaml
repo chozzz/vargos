@@ -54,7 +54,7 @@ importers:
       '@rekog/mcp-nest':
         specifier: ^1.8.2
         version: 1.8.2(b48dae775376129f8744333ed200e8d7)
-      '@vargos/core-lib':
+      '@workspace/core-lib':
         specifier: workspace:*
         version: link:../../packages/core-lib
       class-transformer:
@@ -175,7 +175,7 @@ importers:
       '@mastra/pg':
         specifier: ^0.17.8
         version: 0.17.8(@mastra/core@0.24.5(@sinclair/typebox@0.34.37)(encoding@0.1.13)(openapi-types@12.1.3)(react@19.1.1)(zod@4.1.12))(pg-query-stream@4.10.3(pg@8.16.3))
-      '@vargos/core-lib':
+      '@workspace/core-lib':
         specifier: workspace:*
         version: link:../../packages/core-lib
       zod:

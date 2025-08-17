@@ -7,4 +7,3 @@ export { executeFunctionTool } from './execute-function.tool';
 export { listFunctionsTool } from './list-functions.tool';
 export { searchFunctionsTool } from './search-functions.tool';
 export { getFunctionMetadataTool } from './get-function-metadata.tool';
-export { curateFunctionTool } from './curate-function.tool';
