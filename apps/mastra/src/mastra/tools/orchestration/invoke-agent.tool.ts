@@ -11,11 +11,6 @@ export const invokeAgentTool = createTool({
   inputSchema: z.object({
     agentName: z.enum([
       'vargos',
-      'weather',
-      'supervisor',
-      'seniorSoftwareEngineer',
-      'programmer',
-      'qaEngineer',
     ]).describe('Name of the agent to invoke'),
     query: z.string().describe('Query to send to the agent'),
   }),

@@ -10,7 +10,6 @@ import {
 } from '../tools/functions';
 
 import {
-  invokeAgentTool,
   executeWorkflowTool,
 } from '../tools/orchestration';
 
@@ -40,39 +39,51 @@ async function createVargosAgent() {
     name: 'Vargos Agent',
     description: 'A self-curative intelligent assistant that discovers and creates functions to fulfill user requests.',
     instructions: `
-You are a self-curative Vargos assistant that helps users by utilizing existing functions or creating new ones when needed.
+You help users by finding and using existing Vargos functions, or creating new ones when needed.
 
-## Your Workflow
+## Workflow
 
-1. **Use your tools to help the user:**
-   - Find the most efficient tool to use to help the user.
+1. **Understand the request**
+   - What does the user want to accomplish?
+   - What parameters might be needed?
 
-2. **Try existing functions first:**
-   - Search for relevant functions using search-functions
-   - If you find matching functions, use them to fulfill the request
-   - Execute functions and return results
+2. **Search for existing functions first**
+   - Use search-functions to find relevant functions
+   - Check function metadata if needed (get-function-metadata)
+   - Try to use existing functions before creating new ones
 
-3. **Only create/edit when necessary:**
-   - If no existing function can fulfill the request, offer to create one
-   - If existing function needs enhancement, offer to edit it
-   - **Always ask user confirmation before creating/editing**
-   - Delegate to supervisor agent for complex function creation/editing
+3. **Execute if found**
+   - Run the function with appropriate parameters (execute-function)
+   - Return results clearly to the user
 
-4. **File operations:**
-   - Use the bash tool with Unix commands (cat, ls, echo, grep, etc.)
-   - Examples: bash "cat file.txt", bash "ls -la", bash "echo 'content' > file.txt"
+4. **Create new functions only when necessary**
+   - If no existing function works, offer to create one
+   - **Always ask user confirmation before creating/editing files**
+   - Use bash to inspect similar functions for patterns and conventions
+   - Create following project structure and naming conventions
+   - Test the function after creation
 
-5. **Memory/RAG operations:**
-   - Use save-to-memory to remember important context for later
-   - Use search-memory to recall relevant information from past conversations
-   - Create separate collections for different types of memories
+5. **File operations**
+   - Use bash tool for all file operations: cat, ls, echo, grep, mkdir, etc.
+   - Inspect code structure: \`bash "ls -la ~/.vargos/functions/src"\`
+   - Read examples: \`bash "cat ~/.vargos/functions/src/example.ts"\`
+   - Create files: Use echo with heredoc or multiple commands
 
-6. **Be transparent:**
-   - Explain what functions you're using
-   - Show what you're creating/editing
-   - Provide clear actionable results
+6. **Environment management**
+   - Use get-env, search-env, set-env tools for environment variables
+   - Validate required env vars exist before using functions
+
+7. **Memory for context**
+   - Use save-to-memory for important information
+   - Use search-memory to recall past interactions
+   - Create collections for different types of memories
+
+8. **Be transparent**
+   - Explain what you're doing at each step
+   - Show which functions you're using or creating
+   - Provide clear, actionable results
 `,
-    model: 'anthropic/claude-sonnet-4-5-20250929',
+    model: 'openai/gpt-4o', // Switched from Claude to avoid rate limits
     tools: {
       // Function management tools (direct core-lib integration)
       [listFunctionsTool.id]: listFunctionsTool,
@@ -81,7 +92,6 @@ You are a self-curative Vargos assistant that helps users by utilizing existing 
       [getFunctionMetadataTool.id]: getFunctionMetadataTool,
 
       // Orchestration tools
-      [invokeAgentTool.id]: invokeAgentTool,
       [executeWorkflowTool.id]: executeWorkflowTool,
       [runInBackgroundTool.id]: runInBackgroundTool,
 

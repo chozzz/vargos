@@ -1,14 +1,20 @@
 
 import { Mastra } from '@mastra/core/mastra';
 import { PinoLogger } from '@mastra/loggers';
-import { weatherWorkflow } from './workflows/weather-workflow';
-import { weatherAgent } from './agents/weather-agent';
 import { PostgresStore } from "@mastra/pg";
+
+// Phase 1 Agents (Foundation)
+import { routerAgent } from './agents/router-agent';
+import { plannerAgent } from './agents/planner-agent';
+import { curatorAgent } from './agents/curator-agent';
+import { permissionAgent } from './agents/permission-agent';
+
+// Legacy agent (to be refactored)
 import { vargosAgent } from './agents/vargos-agent';
-import { supervisorAgent } from './agents/supervisor-agent';
-import { seniorSoftwareEngineerAgent } from './agents/senior-software-engineer-agent';
-import { programmerAgent } from './agents/programmer-agent';
-import { qaEngineerAgent } from './agents/qa-engineer-agent';
+
+// Workflows
+import { functionSearchWorkflow } from './workflows/function-search.workflow';
+
 import { initializeCoreServices } from './services/core.service';
 
 // Initialize all core services before creating Mastra instance
@@ -32,22 +38,25 @@ const logger = new PinoLogger({
 export const mastra = new Mastra({
   bundler: {
     transpilePackages: ["@workspace/core-lib"],
-    // externals: ["@workspace/core-lib"],
+    externals: ["@workspace/core-lib"],
     sourcemap: true,
   },
   server: {
     port: parseInt(process.env.MASTRA_PORT ?? '4862'),
   },
-  workflows: {
-    weatherWorkflow,
-  },
+
+  // Phase 1: Foundation agents
   agents: {
-    weatherAgent,
-    vargosAgent,
-    supervisorAgent,
-    seniorSoftwareEngineerAgent,
-    programmerAgent,
-    qaEngineerAgent,
+    routerAgent,
+    plannerAgent,
+    curatorAgent,
+    permissionAgent,
+    vargosAgent, // Legacy - to be refactored
+  },
+
+  // Workflows
+  workflows: {
+    functionSearchWorkflow,
   },
   storage: new PostgresStore({
     connectionString: process.env.DATABASE_URL,
