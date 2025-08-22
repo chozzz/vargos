@@ -9,11 +9,17 @@ import { plannerAgent } from './agents/planner-agent';
 import { curatorAgent } from './agents/curator-agent';
 import { permissionAgent } from './agents/permission-agent';
 
+// Phase 2 Agents (Creation Pipeline)
+import { functionCreatorAgent } from './agents/function-creator-agent';
+import { sandboxAgent } from './agents/sandbox-agent';
+
 // Legacy agent (to be refactored)
 import { vargosAgent } from './agents/vargos-agent';
 
 // Workflows
 import { functionSearchWorkflow } from './workflows/function-search.workflow';
+import { functionCreationWorkflow } from './workflows/function-creation-simple.workflow';
+import { functionTestingWorkflow } from './workflows/function-testing.workflow';
 
 import { initializeCoreServices } from './services/core.service';
 
@@ -45,18 +51,27 @@ export const mastra = new Mastra({
     port: parseInt(process.env.MASTRA_PORT ?? '4862'),
   },
 
-  // Phase 1: Foundation agents
+  // Agents
   agents: {
+    // Phase 1: Foundation
     routerAgent,
     plannerAgent,
     curatorAgent,
     permissionAgent,
-    vargosAgent, // Legacy - to be refactored
+
+    // Phase 2: Creation Pipeline
+    functionCreatorAgent,
+    sandboxAgent,
+
+    // Legacy
+    vargosAgent, // To be refactored
   },
 
   // Workflows
   workflows: {
     functionSearchWorkflow,
+    functionCreationWorkflow,
+    functionTestingWorkflow,
   },
   storage: new PostgresStore({
     connectionString: process.env.DATABASE_URL,
