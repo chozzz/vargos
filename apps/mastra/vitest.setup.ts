@@ -49,6 +49,11 @@ beforeAll(() => {
     process.env.QDRANT_API_KEY = 'test-qdrant-key';
   }
 
+  if (!process.env.DATABASE_URL) {
+    // Provide a mock DATABASE_URL for tests (won't actually connect)
+    process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/test';
+  }
+
   console.log('✅ Test environment initialized');
   console.log(`   FUNCTIONS_DIR: ${process.env.FUNCTIONS_DIR}`);
   console.log(`   DATA_DIR: ${process.env.DATA_DIR}`);

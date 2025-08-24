@@ -12,7 +12,7 @@ describe('Phase 1 Agent Integration Tests', () => {
   });
 
   describe('Router Agent', () => {
-    it('should route function search requests to curator', async () => {
+    it('should route function search requests to curator', { timeout: 30000 }, async () => {
       const userMessage = 'Find functions related to weather';
 
       const response = await routerAgent.generate(userMessage, {
@@ -30,7 +30,7 @@ describe('Phase 1 Agent Integration Tests', () => {
       expect(routerOutput.confidence).toBeGreaterThan(0.7);
     });
 
-    it('should route complex tasks to planner', async () => {
+    it('should route complex tasks to planner', { timeout: 30000 }, async () => {
       const userMessage = 'Create a function to send emails via SendGrid';
 
       const response = await routerAgent.generate(userMessage, {
@@ -47,7 +47,7 @@ describe('Phase 1 Agent Integration Tests', () => {
       expect(routerOutput.extractedEntities.taskDescription).not.toBe('');
     });
 
-    it('should handle direct answers without agent routing', async () => {
+    it('should handle direct answers without agent routing', { timeout: 30000 }, async () => {
       const userMessage = 'What can Vargos do?';
 
       const response = await routerAgent.generate(userMessage, {
@@ -67,7 +67,7 @@ describe('Phase 1 Agent Integration Tests', () => {
   });
 
   describe('Planner Agent', () => {
-    it('should create execution plan for function creation', async () => {
+    it('should create execution plan for function creation', { timeout: 30000 }, async () => {
       const taskDescription = 'Create a function to fetch weather data from OpenWeatherMap API';
 
       const response = await plannerAgent.generate(taskDescription, {
@@ -93,7 +93,7 @@ describe('Phase 1 Agent Integration Tests', () => {
       expect(hasPermissionStep).toBe(true);
     });
 
-    it('should create simple plan for function execution', async () => {
+    it('should create simple plan for function execution', { timeout: 30000 }, async () => {
       const taskDescription = 'Find and run the user-lookup function with id=123';
 
       const response = await plannerAgent.generate(taskDescription, {
@@ -153,7 +153,7 @@ describe('Phase 1 Agent Integration Tests', () => {
   });
 
   describe('Permission Agent', () => {
-    it('should create permission request for function creation', async () => {
+    it('should create permission request for function creation', { timeout: 30000 }, async () => {
       const actionDescription = 'Create a new function called send-email that uses SendGrid API';
 
       const response = await permissionAgent.generate(
@@ -177,7 +177,7 @@ describe('Phase 1 Agent Integration Tests', () => {
       expect(permissionRequest.userFriendlyPrompt).toBeDefined();
     });
 
-    it('should assess impact correctly for shell commands', async () => {
+    it('should assess impact correctly for shell commands', { timeout: 30000 }, async () => {
       const actionDescription = 'Execute shell command: rm -rf /tmp/test';
 
       const response = await permissionAgent.generate(
