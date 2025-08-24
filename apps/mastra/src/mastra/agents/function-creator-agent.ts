@@ -23,7 +23,7 @@ const FunctionGenerationSchema = z.object({
     name: z.string(),
     type: z.string(),
     description: z.string(),
-    defaultValue: z.union([z.string(), z.number()]).describe('Optional default value, empty string if none'),
+    defaultValue: z.string().describe('Default value as string, empty string if none'),
   })).describe('Input parameters schema'),
   output: z.array(z.object({
     name: z.string(),
