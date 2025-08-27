@@ -2,15 +2,20 @@ import {
   createCoreServices,
   CoreServices,
 } from '@workspace/core-lib';
+import path from 'path';
 
 let coreServices: CoreServices | null = null;
 
 /**
  * Initialize core services for Mastra
  * This should be called once at application startup
+ * In test mode, recreates services to ensure proper isolation
  */
 export async function initializeCoreServices(): Promise<CoreServices> {
-  if (coreServices) {
+  // In test mode, always recreate to ensure fresh FilepathEnvProvider with correct path
+  const isTestMode = process.env.NODE_ENV === 'test';
+
+  if (coreServices && !isTestMode) {
     return coreServices;
   }
 
@@ -43,7 +48,7 @@ export async function initializeCoreServices(): Promise<CoreServices> {
     env: {
       provider: 'filepath',
       config: {
-        envFilePath: '.env'
+        envFilePath: isTestMode ? path.resolve(process.cwd(), ".env.test") : ".env",
       },
     },
     shell: {
@@ -66,4 +71,12 @@ export function getCoreServices(): CoreServices {
     throw new Error('Core services not initialized. Make sure initializeCoreServices() was called in index.ts');
   }
   return coreServices;
+}
+
+/**
+ * Reset core services (for testing only)
+ * This clears the singleton cache, allowing a fresh instance to be created
+ */
+export function resetCoreServices(): void {
+  coreServices = null;
 }

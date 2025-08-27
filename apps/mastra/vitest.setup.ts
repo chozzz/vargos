@@ -2,13 +2,18 @@ import { beforeAll } from 'vitest';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
+import { config as dotenvConfig } from 'dotenv';
 
 /**
  * Vitest setup file
- * Sets up required environment variables for tool tests
+ * Sets up required environment variables for tool tests with proper isolation
  */
 
 beforeAll(() => {
+  // Load .env.test file for test configuration
+  // NODE_ENV is already set to 'test' in vitest.globalSetup.ts
+  dotenvConfig({ path: path.resolve(process.cwd(), '.env.test') });
+
   // Set up required environment variables if not already set
   const testDataDir = path.join(os.tmpdir(), 'vargos-test-data');
   const testFunctionsDir = path.join(os.tmpdir(), 'vargos-test-functions');

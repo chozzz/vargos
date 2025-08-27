@@ -1,5 +1,6 @@
 import { Agent } from '@mastra/core/agent';
 import { z } from 'zod';
+import { pgMemory } from '../memory/pg-memory';
 import { createFunctionTool } from '../tools/functions';
 
 /**
@@ -16,6 +17,7 @@ import { createFunctionTool } from '../tools/functions';
 const FunctionGenerationSchema = z.object({
   name: z.string().describe('Function name in kebab-case (e.g., send-email, get-weather)'),
   description: z.string().describe('Detailed description of what the function does'),
+  version: z.string().describe('Function version in semver format (default: "1.0.0")'),
   category: z.union([z.string(), z.array(z.string())]).describe('Category or categories'),
   tags: z.array(z.string()).describe('Tags for categorization and search, empty array if none'),
   requiredEnvVars: z.array(z.string()).describe('Required environment variables, empty array if none'),
@@ -39,12 +41,6 @@ export type FunctionGeneration = z.infer<typeof FunctionGenerationSchema>;
 export { FunctionGenerationSchema };
 
 async function createFunctionCreatorAgent() {
-  // Only import pgMemory if DATABASE_URL exists
-  let memory;
-  if (process.env.DATABASE_URL) {
-    const { pgMemory } = await import('../memory/pg-memory');
-    memory = pgMemory;
-  }
 
   return new Agent({
     name: 'Function Creator Agent',
@@ -149,6 +145,7 @@ describe('Function Name', () => {
 {
   "name": "function-name",
   "description": "What the function does",
+  "version": "1.0.0",
   "category": "category-name",
   "tags": ["tag1", "tag2"],
   "requiredEnvVars": ["API_KEY"],
@@ -169,6 +166,13 @@ describe('Function Name', () => {
 }
 \`\`\`
 
+## Versioning
+
+- **New functions** start at version "1.0.0"
+- Use semantic versioning (MAJOR.MINOR.PATCH)
+- When creating a new function, always set version to "1.0.0"
+- Future updates will increment version numbers
+
 ## Example Function
 
 **Input**: "Create a function to send emails via SendGrid"
@@ -178,6 +182,7 @@ describe('Function Name', () => {
 {
   "name": "send-email-sendgrid",
   "description": "Send emails using SendGrid API with template support",
+  "version": "1.0.0",
   "category": "communication",
   "tags": ["email", "sendgrid", "notification"],
   "requiredEnvVars": ["SENDGRID_API_KEY"],
@@ -229,7 +234,7 @@ Your goal is to generate production-ready functions that are maintainable, testa
     `,
 
     model: 'openai/gpt-4o', // Need strong model for code generation
-    ...(memory && { memory }),
+    memory: pgMemory,
 
     tools: {
       [createFunctionTool.id]: createFunctionTool,
