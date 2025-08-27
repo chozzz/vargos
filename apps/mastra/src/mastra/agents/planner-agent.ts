@@ -1,5 +1,6 @@
 import { Agent } from '@mastra/core/agent';
 import { z } from 'zod';
+import { pgMemory } from '../memory/pg-memory';
 
 /**
  * Planner Agent - Task decomposition and execution planning
@@ -53,12 +54,6 @@ export type ExecutionStep = z.infer<typeof ExecutionStepSchema>;
 export { PlannerOutputSchema, ExecutionStepSchema };
 
 async function createPlannerAgent() {
-  // Only import pgMemory if DATABASE_URL exists
-  let memory;
-  if (process.env.DATABASE_URL) {
-    const { pgMemory } = await import('../memory/pg-memory');
-    memory = pgMemory;
-  }
 
   return new Agent({
     name: 'Planner Agent',
@@ -216,7 +211,7 @@ Create clear, actionable plans that other agents can execute.
     `,
 
     model: 'openai/gpt-4o', // Need stronger model for planning
-    ...(memory && { memory }),
+    memory: pgMemory,
 
     // Planner doesn't need tools - it only creates plans
     tools: {},

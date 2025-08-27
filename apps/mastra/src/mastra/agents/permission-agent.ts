@@ -1,5 +1,6 @@
 import { Agent } from '@mastra/core/agent';
 import { z } from 'zod';
+import { pgMemory } from '../memory/pg-memory';
 
 /**
  * Permission Agent - User approval and authorization
@@ -65,12 +66,6 @@ export type PermissionResponse = z.infer<typeof PermissionResponseSchema>;
 export { PermissionRequestSchema, PermissionResponseSchema };
 
 async function createPermissionAgent() {
-  // Only import pgMemory if DATABASE_URL exists
-  let memory;
-  if (process.env.DATABASE_URL) {
-    const { pgMemory } = await import('../memory/pg-memory');
-    memory = pgMemory;
-  }
 
   return new Agent({
     name: 'Permission Agent',
@@ -266,7 +261,7 @@ Your role is to empower users with transparency and control.
     `,
 
     model: 'openai/gpt-4o', // Need good model for clear communication
-    ...(memory && { memory }),
+    memory: pgMemory,
 
     // Permission agent doesn't need tools - it only creates permission requests
     tools: {},

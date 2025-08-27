@@ -1,5 +1,6 @@
 import { Agent } from '@mastra/core/agent';
 import { z } from 'zod';
+import { pgMemory } from '../memory/pg-memory';
 import {
   searchFunctionsTool,
   listFunctionsTool,
@@ -54,12 +55,6 @@ export type FunctionRecommendation = z.infer<typeof FunctionRecommendationSchema
 export { CuratorOutputSchema, FunctionRecommendationSchema };
 
 async function createCuratorAgent() {
-  // Only import pgMemory if DATABASE_URL exists
-  let memory;
-  if (process.env.DATABASE_URL) {
-    const { pgMemory } = await import('../memory/pg-memory');
-    memory = pgMemory;
-  }
 
   return new Agent({
     name: 'Function Curator Agent',
@@ -81,25 +76,38 @@ You are the Function Curator Agent - the gatekeeper of the Vargos function repos
 - **list-functions**: List all available functions (use sparingly - repo grows indefinitely)
 - **get-function-metadata**: Get detailed metadata for a specific function
 
+## Version Awareness
+
+When evaluating functions, consider their versions:
+
+- **Latest Version Priority**: Always prefer the highest version number (e.g., 2.0.0 over 1.0.0)
+- **Semantic Versioning**: Functions use MAJOR.MINOR.PATCH format
+  - MAJOR: Breaking changes (e.g., 1.x.x → 2.0.0)
+  - MINOR: New features, backward compatible (e.g., 1.0.x → 1.1.0)
+  - PATCH: Bug fixes (e.g., 1.0.0 → 1.0.1)
+- **Multiple Versions**: If multiple versions exist, recommend the latest unless user needs specific version
+- **Version in Recommendations**: Always include version in your recommendations
+
 ## Decision Framework
 
 ### use_existing (confidence > 0.8)
 - Function matches requirement closely
 - Minor parameter adjustments acceptable
 - Function is not deprecated
+- Latest version is stable
 - User can use it directly
 
 ### extend_existing (confidence 0.5 - 0.8)
 - Function does similar thing but missing features
 - Parameters need to be extended
 - Better to modify than create from scratch
-- Version 2 might be appropriate
+- Would create a new major version (e.g., 1.0.0 → 2.0.0)
 
 ### create_new (confidence < 0.5)
 - No relevant functions found
 - Existing functions solve different problems
 - Requirements are unique
-- Safe to create brand new function
+- Safe to create brand new function (starts at 1.0.0)
 
 ### needs_clarification
 - Search query is too vague
@@ -215,7 +223,7 @@ Your goal is to maximize function reuse and minimize repository bloat.
     `,
 
     model: 'openai/gpt-4o', // Need good model for analysis
-    ...(memory && { memory }),
+    memory: pgMemory,
 
     tools: {
       [searchFunctionsTool.id]: searchFunctionsTool,
