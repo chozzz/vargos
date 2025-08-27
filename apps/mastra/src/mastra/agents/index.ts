@@ -1,5 +1,5 @@
 /**
- * Vargos Agent Layer - Phase 1 & Phase 2 Agents
+ * Vargos Agent Layer - Phase 1, Phase 2 & Phase 3 Agents
  */
 
 // Phase 1 Agents
@@ -11,6 +11,10 @@ export { permissionAgent, PermissionRequestSchema, PermissionResponseSchema, Per
 // Phase 2 Agents
 export { functionCreatorAgent, FunctionGenerationSchema, FunctionGeneration } from './function-creator-agent';
 export { sandboxAgent, TestAnalysisSchema, TestAnalysis } from './sandbox-agent';
+
+// Phase 3 Agents
+export { researchAgent, ResearchResultSchema, ResearchResult } from './research-agent';
+export { memoryAgent, MemoryOperationSchema, MemoryOperation } from './memory-agent';
 
 // Legacy Agent
 export { vargosAgent } from './vargos-agent';

@@ -13,6 +13,7 @@ export const createFunctionTool = createTool({
   inputSchema: z.object({
     name: z.string().describe('Function name (kebab-case)'),
     description: z.string().describe('Detailed description of what the function does'),
+    version: z.string().describe('Function version in semver format (default: "1.0.0")'),
     category: z.union([z.string(), z.array(z.string())]).describe('Category or categories'),
     tags: z.array(z.string()).describe('Tags for categorization and search'),
     requiredEnvVars: z.array(z.string()).describe('Required environment variables, empty array if none'),
@@ -39,7 +40,7 @@ export const createFunctionTool = createTool({
     functionId: string;
     message: string;
   }> => {
-    const { name, description, category, tags, requiredEnvVars, input, output, code } = context;
+    const { name, description, version, category, tags, requiredEnvVars, input, output, code } = context;
 
     try {
       const coreServices = getCoreServices();
@@ -49,6 +50,7 @@ export const createFunctionTool = createTool({
         metadata: {
           name,
           description,
+          version,
           category,
           tags,
           requiredEnvVars,

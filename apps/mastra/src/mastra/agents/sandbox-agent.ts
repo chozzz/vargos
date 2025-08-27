@@ -1,5 +1,6 @@
 import { Agent } from '@mastra/core/agent';
 import { z } from 'zod';
+import { pgMemory } from '../memory/pg-memory';
 import { testFunctionTool } from '../tools/functions';
 
 /**
@@ -39,12 +40,6 @@ export type TestAnalysis = z.infer<typeof TestAnalysisSchema>;
 export { TestAnalysisSchema };
 
 async function createSandboxAgent() {
-  // Only import pgMemory if DATABASE_URL exists
-  let memory;
-  if (process.env.DATABASE_URL) {
-    const { pgMemory } = await import('../memory/pg-memory');
-    memory = pgMemory;
-  }
 
   return new Agent({
     name: 'Sandbox Agent',
@@ -207,7 +202,7 @@ Your goal is to help debug and fix function issues quickly.
     `,
 
     model: 'openai/gpt-4o', // Need good model for error analysis
-    ...(memory && { memory }),
+    memory: pgMemory,
 
     tools: {
       [testFunctionTool.id]: testFunctionTool,

@@ -29,6 +29,7 @@
     "@mastra/memory": "^0.15.11",
     "@mastra/pg": "^0.17.8",
     "@workspace/core-lib": "workspace:*",
+    "dotenv": "^17.2.3",
     "zod": "^4.1.12"
   },
   "devDependencies": {

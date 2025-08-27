@@ -1,5 +1,6 @@
 import { Agent } from '@mastra/core/agent';
 import { z } from 'zod';
+import { pgMemory } from '../memory/pg-memory';
 
 /**
  * Router Agent - Entry point for all user requests
@@ -62,13 +63,6 @@ export { RouterOutputSchema };
  */
 
 async function createRouterAgent() {
-  // Only import pgMemory if DATABASE_URL exists
-  let memory;
-  if (process.env.DATABASE_URL) {
-    const { pgMemory } = await import('../memory/pg-memory');
-    memory = pgMemory;
-  }
-
   return new Agent({
     name: 'Router Agent',
     description: 'Entry point agent that analyzes user requests and routes to appropriate agents',
@@ -202,7 +196,7 @@ Be concise, accurate, and always return valid structured output.
     `,
 
     model: 'openai/gpt-4o-mini', // Fast, cheap for routing decisions
-    ...(memory && { memory }),
+    memory: pgMemory,
 
     // Router doesn't need tools - it only makes routing decisions
     tools: {},

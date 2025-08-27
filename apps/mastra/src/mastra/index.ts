@@ -13,6 +13,10 @@ import { permissionAgent } from './agents/permission-agent';
 import { functionCreatorAgent } from './agents/function-creator-agent';
 import { sandboxAgent } from './agents/sandbox-agent';
 
+// Phase 3 Agents (Research & Memory)
+import { researchAgent } from './agents/research-agent';
+import { memoryAgent } from './agents/memory-agent';
+
 // Legacy agent (to be refactored)
 import { vargosAgent } from './agents/vargos-agent';
 
@@ -62,6 +66,10 @@ export const mastra = new Mastra({
     // Phase 2: Creation Pipeline
     functionCreatorAgent,
     sandboxAgent,
+
+    // Phase 3: Research & Memory
+    researchAgent,
+    memoryAgent,
 
     // Legacy
     vargosAgent, // To be refactored
