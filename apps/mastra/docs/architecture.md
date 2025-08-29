@@ -1,340 +1,729 @@
-# Architecture
+# Vargos Architecture
 
-Design decisions and patterns for Vargos Mastra.
+## Overview
 
-## Design Principles
+Vargos is a next-generation orchestration platform that bridges Large Language Models (LLMs) with real-world system execution. It enables AI agents to interact with systems through standardized interfaces (OpenAPI and Model Context Protocol).
 
-### 1. Self-Curative Capability
+**Core Philosophy:** Providing Agents to your Machine - focusing on giving AI agents practical capabilities to execute system actions.
 
-**Problem:** Users request functionality that doesn't exist yet.
+## Architecture Layers
 
-**Solution:** Auto-generate function scaffolds when missing functionality is detected.
+Vargos is organized into 4 distinct architectural layers:
 
-**Implementation:**
-- Agent searches for relevant function via semantic search
-- If not found, offers to create it
-- Workflow generates complete scaffold (types, metadata, tests)
-- Auto-indexes for immediate availability
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      Agent Layer                             │
+│  9 Specialized Agents (Router, Planner, Curator, etc.)      │
+└─────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────┐
+│                    Workflow Layer                            │
+│  Orchestration (Search, Creation, Testing)                   │
+└─────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────┐
+│                      Tool Layer                              │
+│  MCP Tools (1:1 passthrough to Core Services)               │
+└─────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────┐
+│                   Core Services Layer                        │
+│  LLM, Vector, Functions, Env, Shell Services                │
+└─────────────────────────────────────────────────────────────┘
+```
 
-**Trade-offs:**
-- ✅ Extends capabilities automatically
-- ✅ Reduces manual development overhead
-- ⚠️ Generated code needs manual implementation
-- ⚠️ Requires API key validation before creation
+### Layer 1: Agent Layer
 
-### 2. Direct core-lib Integration
+**Location:** `apps/mastra/src/mastra/agents/`
 
-**Problem:** MCP adds HTTP overhead and complexity.
+Nine specialized agents organized into three phases:
 
-**Decision:** Use core-lib directly instead of through MCP.
+#### Phase 1: Foundation Agents
+- **Router Agent** - Analyzes requests and routes to appropriate agent/workflow
+- **Planner Agent** - Breaks down goals into actionable task sequences
+- **Curator Agent** - Searches and recommends existing functions (RAG-first)
+- **Permission Agent** - Handles user approval and authorization
 
-**Why:**
-- **Performance** - No serialization/deserialization
-- **Simplicity** - Direct function calls
-- **Consistency** - Single source of truth
-- **Maintainability** - Easier to debug and extend
+#### Phase 2: Creation Pipeline Agents
+- **Function Creator Agent** - Generates new functions from specifications
+- **Sandbox Agent** - Executes tests safely and provides diagnostics
 
-**Trade-off:**
-- ✅ Faster execution
-- ✅ Simpler architecture
-- ⚠️ Less decoupled (acceptable for internal use)
+#### Phase 3: Research & Memory Agents
+- **Research Agent** - Gathers information from various sources
+- **Memory Agent** - Manages hybrid global + thread memory
 
-### 3. Tool-Per-File Organization
+**Legacy:**
+- **Vargos Agent** - Original monolithic agent (to be refactored)
 
-**Problem:** Grouped tool files become large and hard to navigate.
+#### Key Characteristics:
+- All agents use OpenAI GPT-4o model for reasoning
+- Structured output via Zod schemas ensures type safety
+- PostgreSQL-based memory (pgMemory) for conversation context
+- Each agent has focused, single-purpose responsibilities
+- Agents delegate to other agents (lazy loading to avoid circular deps)
 
-**Decision:** One tool per file (`tool-name.tool.ts`).
+### Layer 2: Workflow Layer
 
-**Why:**
-- **Discoverability** - Easy to find specific tools
-- **Maintainability** - Changes isolated to one file
-- **Clarity** - Single responsibility per file
-- **Testing** - Isolated unit tests
+**Location:** `apps/mastra/src/mastra/workflows/`
 
-### 4. Singleton Service Pattern
+Three main workflows orchestrate multi-agent interactions:
 
-**Problem:** Initializing core-lib services multiple times wastes resources.
+#### 1. Function Search Workflow
+**File:** `function-search.workflow.ts`
 
-**Decision:** Initialize once, reuse across tools.
+**Purpose:** Semantic search of function repository
 
-**Implementation:**
+**Steps:**
+1. **searchFunctions** - Initial semantic search via vector DB
+2. **rankResults** - Score and prioritize matches
+3. **selectBest** - Choose optimal function(s)
+
+**Output:** Ranked list of relevant functions with metadata
+
+#### 2. Function Creation Workflow (Simple)
+**File:** `function-creation-simple.workflow.ts`
+
+**Purpose:** End-to-end function generation and validation
+
+**Agent Flow:**
+```
+Router → Planner → Curator → Permission → Creator → Sandbox
+```
+
+**Steps:**
+1. **analyzeRequest** - Router parses user intent
+2. **createPlan** - Planner generates implementation steps
+3. **checkExisting** - Curator searches for alternatives (RAG-first)
+4. **getApproval** - Permission agent requests user consent
+5. **generateCode** - Creator writes function code
+6. **runTests** - Sandbox validates and provides diagnostics
+
+**Output:** Complete function with tests or actionable error diagnostics
+
+#### 3. Function Testing Workflow
+**File:** `function-testing.workflow.ts`
+
+**Purpose:** Isolated test execution and analysis
+
+**Steps:**
+1. **executeTests** - Run vitest in sandbox
+2. **parseResults** - Extract test outcomes
+3. **diagnoseFailures** - Categorize issues (syntax, runtime, env, deps)
+4. **suggestFixes** - Provide actionable recommendations
+
+**Output:** TestAnalysis with structured diagnostics
+
+### Layer 3: Tool Layer
+
+**Location:** `apps/mastra/src/mastra/tools/`
+
+Tools organized by domain, following 1:1 passthrough pattern:
+
+#### Functions Domain
+- **list-functions.tool.ts** - Get all available functions
+- **get-function-metadata.tool.ts** - Retrieve function details
+- **execute-function.tool.ts** - Run specific function
+
+#### Environment Domain
+- **get-env.tool.ts** - Read environment variables
+- **set-env.tool.ts** - Write environment variables
+- **search-env.tool.ts** - Query environment variables
+
+#### Shell Domain
+- **bash.tool.ts** - Execute persistent shell commands
+- **bash-history.tool.ts** - View command history
+- **bash-interrupt.tool.ts** - Stop running commands
+
+#### Memory Domain
+- **search-memory.tool.ts** - Query conversation history
+
+#### Orchestration Domain
+- **delegate-to-curator.tool.ts** - Hand off to Curator agent
+- **delegate-to-creator.tool.ts** - Hand off to Creator agent
+- **delegate-to-sandbox.tool.ts** - Hand off to Sandbox agent
+
+#### Tool Design Pattern:
 ```typescript
-// services/functions.service.ts
-let coreServices: CoreServices | null = null;
+// 1:1 passthrough to core service
+export const getEnvTool = createTool({
+  id: 'get-env',
+  description: 'Get environment variable value',
+  inputSchema: z.object({
+    key: z.string().describe('Environment variable name'),
+  }),
+  outputSchema: z.object({
+    key: z.string(),
+    value: z.string(),
+    exists: z.boolean(),
+  }),
+  execute: async ({ context }) => {
+    const { key } = context;
+    const envService = await getEnvService();
+    const result = await envService.getEnv(key);
 
-export async function initializeCoreServices() {
-  if (coreServices) return coreServices;
-  coreServices = await createCoreServices({...});
-  return coreServices;
+    return {
+      key: result.key,
+      value: result.value,
+      exists: result.exists,
+    };
+  },
+});
+```
+
+**Key Principles:**
+- Tools are thin wrappers around core services
+- No business logic in tools (lives in services)
+- Structured input/output schemas for type safety
+- Tools expose core capabilities to agents via MCP
+
+### Layer 4: Core Services Layer
+
+**Location:** `packages/core-lib/src/`
+
+Five singleton services providing system capabilities:
+
+#### 1. LLM Service
+**File:** `llm/llm.service.ts`
+
+**Responsibilities:**
+- OpenAI API integration
+- Generate embeddings for semantic search
+- Chat completions (future)
+
+**Key Methods:**
+- `generateEmbeddings(texts: string[]): Promise<number[][]>`
+
+#### 2. Vector Service
+**File:** `vector/vector.service.ts`
+
+**Responsibilities:**
+- Qdrant vector database integration
+- Store and search embeddings
+- Semantic similarity matching
+
+**Key Methods:**
+- `search(query: string, limit: number): Promise<SearchResult[]>`
+- `upsert(points: VectorPoint[]): Promise<void>`
+
+#### 3. Functions Service
+**File:** `functions/functions.service.ts`
+
+**Responsibilities:**
+- Function repository management
+- Execute functions via subprocess
+- Handle function metadata
+- Support versioning (v1, v2, etc.)
+
+**Key Methods:**
+- `listFunctions(): Promise<FunctionMetadata[]>`
+- `getFunctionMetadata(functionId: string): Promise<FunctionMetadata>`
+- `executeFunction(functionId: string, input: unknown): Promise<ExecutionResult>`
+
+**Function Repository Structure:**
+```
+~/.vargos/functions/src/
+├── category/
+│   └── function-name/
+│       ├── v1/
+│       │   ├── index.ts              # Main implementation
+│       │   ├── function-name.meta.json  # Metadata
+│       │   └── function-name.test.ts    # Vitest tests
+│       └── v2/                       # Version 2 (if exists)
+```
+
+#### 4. Env Service
+**File:** `env/env.service.ts`
+
+**Responsibilities:**
+- Environment variable management
+- .env file operations
+- Test isolation (.env.test support)
+
+**Key Methods:**
+- `getEnv(key: string): Promise<EnvVariable>`
+- `setEnv(key: string, value: string): Promise<void>`
+- `searchEnv(query: string): Promise<EnvVariable[]>`
+
+**Providers:**
+- **FilepathEnvProvider** - .env file operations with test mode
+- **MemoryEnvProvider** - In-memory (testing only)
+
+#### 5. Shell Service
+**File:** `shell/shell.service.ts`
+
+**Responsibilities:**
+- Persistent shell sessions
+- Command execution and history
+- Process management
+
+**Key Methods:**
+- `executeCommand(command: string, sessionId?: string): Promise<CommandResult>`
+- `getHistory(sessionId: string): Promise<string[]>`
+- `interruptCommand(sessionId: string): Promise<void>`
+
+### Service Initialization Pattern
+
+All core services use singleton pattern with lazy initialization:
+
+```typescript
+// apps/mastra/src/mastra/services/core.service.ts
+
+let coreServicesInitialized = false;
+
+export async function initializeCoreServices(): Promise<void> {
+  if (coreServicesInitialized) {
+    return; // Already initialized
+  }
+
+  // Initialize all services
+  await getLLMService();
+  await getVectorService();
+  await getFunctionsService();
+  await getEnvService();
+  await getShellService();
+
+  coreServicesInitialized = true;
+  console.log('✅ [Core] All services initialized');
 }
 ```
 
 **Benefits:**
-- Efficient resource usage
-- Shared state across tools
-- Consistent initialization
+- Services initialized once, reused everywhere
+- Lazy loading reduces startup time
+- Test mode automatically isolated
+- No circular dependency issues
 
-## Key Patterns
+## Memory System
 
-### Function Creation Workflow
+Vargos uses a hybrid memory architecture with two scopes:
 
-**3-Step Process:**
-
-1. **Check Existing**
-   - Prevents duplicates
-   - Returns existing function if found
-   - Fast filesystem check
-
-2. **Validate API Keys**
-   - Maps env vars to services (OpenAI, GitHub, etc.)
-   - Provides user-friendly instructions with URLs
-   - Blocks creation if critical keys missing
-   - Continues with warnings for optional keys
-
-3. **Generate & Index**
-   - Creates directory structure
-   - Writes metadata, types, implementation template
-   - Auto-indexes via core-lib
-   - Returns created function immediately
-
-**Why this order:**
-- Fail fast (existing check first)
-- User feedback before creating files (API key validation)
-- Auto-indexing ensures immediate availability
-
-### API Key Detection
-
-**Problem:** Functions fail at runtime due to missing API keys.
-
-**Solution:** Validate before creation, provide clear instructions.
+### PostgreSQL Memory (Thread Scope)
+**Implementation:** `apps/mastra/src/mastra/memory/pg-memory.ts`
 
 ```typescript
-const serviceMap = {
-  OPENAI_API_KEY: {
-    name: 'OpenAI',
-    url: 'https://platform.openai.com/api-keys',
-    docs: 'https://platform.openai.com/docs'
-  },
-  // ... more services
-};
+export const pgMemory = new Memory({
+  provider: new PostgresStore({
+    connectionString: process.env.DATABASE_URL,
+  }),
+});
 ```
 
-**Benefits:**
-- User knows what's needed upfront
-- Direct links to API key sources
-- Prevents runtime failures
+**Characteristics:**
+- Conversation-specific context
+- Thread-based isolation
+- Recent decisions and working memory
+- Mastra's built-in PostgresStore
 
-### Agent Orchestration
-
-**Problem:** Complex tasks require multiple specialized agents.
-
-**Solution:** Lazy loading via Mastra registry to avoid circular dependencies.
-
+**Usage:**
 ```typescript
-// Get agent dynamically at runtime
-const agent = mastra.getAgent(agentName);
-const response = await agent.generate(query);
+const agent = new Agent({
+  name: 'Router Agent',
+  memory: pgMemory,
+  // ...
+});
 ```
 
-**Why lazy loading:**
-- Prevents circular import issues
-- Agents loaded only when needed
-- Registry manages lifecycle
+### Qdrant Vector Memory (Global Scope)
+**Implementation:** Core Vector Service + Qdrant
 
-### Workflow as Tool
+**Characteristics:**
+- Global knowledge across all conversations
+- Semantic search for functions
+- Persistent embeddings
+- Cross-conversation patterns
 
-**Pattern:** Workflows exposed as tools for agents.
-
-**Example:**
+**Usage:**
 ```typescript
-export const createFunctionTool = createTool({
-  id: 'create-function',
-  execute: async ({ context }) => {
-    // Execute workflow
-    const result = await createFunctionWorkflow.execute({
-      inputData: context
-    });
-    return result;
-  }
+// Function search uses vector similarity
+const results = await vectorService.search(query, limit);
+```
+
+### Memory Scopes
+
+| Scope    | Storage      | Lifetime         | Use Cases                          |
+|----------|--------------|------------------|------------------------------------|
+| Thread   | PostgreSQL   | Per-conversation | Context, decisions, recent actions |
+| Global   | Qdrant       | Persistent       | Function search, learned patterns  |
+
+## RAG-First Philosophy
+
+Vargos implements a "RAG-First" approach: **always search before creating**.
+
+### Implementation Flow
+
+```
+User Request
+     ↓
+Router Agent (analyzes intent)
+     ↓
+Planner Agent (creates task plan)
+     ↓
+Curator Agent (searches existing functions) ← RAG CHECKPOINT
+     ↓
+   Found? ──YES→ Return existing function
+     │
+    NO
+     ↓
+Permission Agent (request user approval)
+     ↓
+Function Creator Agent (generate new function)
+     ↓
+Sandbox Agent (test and validate)
+```
+
+### Curator Agent Pattern
+
+**File:** `apps/mastra/src/mastra/agents/curator-agent.ts`
+
+```typescript
+// Structured output ensures consistent decision
+const CuratorDecisionSchema = z.object({
+  recommendation: z.enum(['use_existing', 'create_new', 'needs_clarification']),
+  existingFunctions: z.array(/* function matches */),
+  reasoning: z.string(),
+  confidence: z.enum(['high', 'medium', 'low']),
 });
 ```
 
 **Benefits:**
-- Workflows reusable across agents
-- Consistent tool interface
-- State management handled by Mastra
+- Reduces duplicate function creation
+- Promotes reusability
+- Faster responses (no generation needed)
+- Maintains function repository quality
 
-## Integration Points
+## Agent Interaction Model
 
-### core-lib Services
+### Sequential Delegation Pattern
 
-Mastra uses these core-lib services directly:
+Agents delegate to specialized agents using lazy imports to avoid circular dependencies:
 
-1. **FunctionsService**
-   - `listFunctions()` - Get all functions
-   - `searchFunctions(query)` - Semantic search
-   - `executeFunction(id, params)` - Run function
-   - `createFunction(input)` - Generate new function
-   - `getFunctionMetadata(id)` - Get details
+```typescript
+// In Router Agent
+export async function delegateToCurator(request: string) {
+  // Lazy import prevents circular dependency
+  const { curatorAgent } = await import('./curator-agent');
 
-2. **EnvService** (future)
-   - Environment variable management
-
-3. **VectorService** (via FunctionsService)
-   - Semantic search for functions
-   - Auto-indexing new functions
-
-4. **LLMService** (via FunctionsService)
-   - Generate embeddings for search
-
-### Mastra Framework
-
-Using Mastra's primitives:
-
-1. **Agent**
-   - LLM integration (GPT-4o-mini)
-   - Tool calling
-   - Conversation memory
-
-2. **Workflow**
-   - Multi-step processes
-   - State management
-   - Step composition
-
-3. **Tool**
-   - Input/output schemas (Zod)
-   - Async execution
-   - Error handling
-
-## Data Flow
-
-### Function Execution Flow
-
-```
-User Query
-    ↓
-Vargos Agent
-    ↓
-search-functions.tool (semantic search via core-lib)
-    ↓
-Found?
-├─ Yes → execute-function.tool
-│           ↓
-│       FunctionsService.executeFunction()
-│           ↓
-│       LocalDirectoryProvider (spawns pnpm process)
-│           ↓
-│       Result
-│
-└─ No → Offer to create function
-        ↓
-    create-function.tool
-        ↓
-    createFunctionWorkflow
-        ↓
-    FunctionsService.createFunction()
-        ↓
-    Auto-indexed & ready
+  return await curatorAgent.generate(request, {
+    // context
+  });
+}
 ```
 
-### Self-Curative Loop
+### Typical Request Flow
 
 ```
-1. User: "Get Bitcoin price"
-2. Agent searches functions
-3. No match found
-4. Agent offers to create crypto-get-price
-5. User confirms
-6. Workflow:
-   - Check existing (not found)
-   - Check API keys (missing COINGECKO_API_KEY)
-   - Explain where to get key
-   - Generate scaffold
-   - Index function
-7. Function ready (needs implementation + API key)
-8. Next time: Function found immediately
+1. User Request
+   ↓
+2. Router Agent (route to workflow or agent)
+   ↓
+3. Planner Agent (break down into tasks)
+   ↓
+4. Curator Agent (search existing solutions)
+   ↓
+5. Permission Agent (get user approval)
+   ↓
+6. Function Creator Agent (generate code)
+   ↓
+7. Sandbox Agent (test and diagnose)
+   ↓
+8. Response to User (with structured output)
 ```
 
-## Trade-offs & Decisions
+### Structured Output Pattern
 
-### Why GPT-4o-mini?
+All agents use OpenAI structured output with Zod schemas:
 
-- **Cost-effective** for high-volume agent interactions
-- **Fast** response times
-- **Sufficient** for tool calling and orchestration
-- Can upgrade to GPT-4o for complex reasoning
+```typescript
+const agent = new Agent({
+  name: 'Sandbox Agent',
+  model: 'openai/gpt-4o',
 
-### Why PostgreSQL for Memory?
+  // Define expected output structure
+  structuredOutput: {
+    schema: TestAnalysisSchema,
+  },
 
-- **Persistent** conversation history
-- **Scalable** for multiple users
-- **Queryable** for analytics
-- Mastra's built-in support
+  // Agent will ALWAYS return this shape
+  // No parsing needed - type-safe output
+});
+```
 
-### Why Qdrant for Search?
+**Benefits:**
+- Type safety end-to-end
+- No JSON parsing errors
+- Predictable agent responses
+- Easy composition of multi-agent workflows
 
-- **Fast** semantic search
-- **Accurate** vector similarity
-- **Scalable** for large function libraries
-- Shared with core app
+## Testing Strategy
 
-### Why Separate from apps/core?
+### Test Organization
 
-**apps/core** = REST/MCP API for external consumers
-**apps/mastra** = Agent runtime for internal orchestration
+```
+apps/mastra/
+├── src/
+│   └── mastra/
+│       ├── agents/
+│       │   └── *.agent.test.ts        # Agent unit tests
+│       ├── tools/
+│       │   ├── env/
+│       │   │   └── env-tools.integration.test.ts  # Unified env tests
+│       │   ├── functions/
+│       │   │   └── *.tool.test.ts     # Function tool tests
+│       │   └── shell/
+│       │       └── *.tool.test.ts     # Shell tool tests
+│       └── workflows/
+│           └── *.workflow.test.ts     # Workflow integration tests
+├── vitest.config.ts                   # Vitest configuration
+├── vitest.globalSetup.ts              # Global test setup
+└── vitest.setup.ts                    # Per-test-file setup
+```
 
-- **Separation of concerns** - Different purposes
-- **Independent scaling** - Can scale separately
-- **Flexibility** - Core can change without affecting agents
-- **Shared logic** - Both use core-lib
+### Test Isolation Architecture
 
-## Performance Considerations
+**Goal:** Tests must never pollute production `.env` file
 
-### Function Creation
-- ~2-5 seconds total
-- Filesystem operations are fast
-- API key checks add minimal overhead
-- Auto-indexing <1 second
+**Solution:** Multi-layered isolation using `.env.test`
 
-### Function Execution
-- Depends on function complexity
-- Spawned via pnpm subprocess
-- Core-lib handles execution
+#### Layer 1: Global Setup
+**File:** `vitest.globalSetup.ts`
 
-### Semantic Search
-- ~100-300ms via Qdrant
-- Faster than full-text search for conceptual queries
-- Cached embeddings for frequent searches
+```typescript
+export function setup() {
+  // Set NODE_ENV=test BEFORE any module imports
+  // This causes FilepathEnvProvider to use .env.test
+  process.env.NODE_ENV = 'test';
+}
+```
 
-## Security Considerations
+#### Layer 2: Provider Logic
+**File:** `packages/core-lib/src/env/providers/filepath.provider.ts`
 
-### API Key Handling
-- Never logged or exposed
-- Environment variables only
-- Clear instructions for users
-- Validation before function creation
+```typescript
+constructor(config: FilepathEnvProviderConfig = {}) {
+  const isTestMode = process.env.NODE_ENV === 'test';
+  const defaultEnvFile = isTestMode ? '.env.test' : '.env';
 
-### Function Generation
-- Template-based (not arbitrary code execution)
-- Validated schemas (Zod)
-- Isolated directories
-- User confirms before creation
+  this.envFilePath = config.envFilePath ||
+    path.resolve(process.cwd(), defaultEnvFile);
+}
+```
 
-### Background Execution
-- Timeout limits (future)
-- Resource monitoring (future)
-- Error recovery (future)
+#### Layer 3: Test Setup
+**File:** `vitest.setup.ts`
 
-## Future Enhancements
+```typescript
+import { config as dotenvConfig } from 'dotenv';
 
-### Planned
-1. **AI-Generated Implementation** - Use LLM to write actual function logic
-2. **Function Templates** - Pre-built patterns for common tasks
-3. **Workflow Persistence** - Database-backed state for long-running tasks
-4. **Multi-Agent Networks** - Dynamic agent creation and coordination
+beforeAll(() => {
+  // Load .env.test for test database URLs, etc.
+  dotenvConfig({ path: path.resolve(process.cwd(), '.env.test') });
 
-### Under Consideration
-1. **Function Versioning** - Track changes to generated functions
-2. **Auto-Testing** - Generate and run tests automatically
-3. **Performance Monitoring** - Track agent and function metrics
-4. **Distributed Execution** - Scale across multiple instances
+  // Set test-specific paths
+  process.env.DATA_DIR = path.join(os.tmpdir(), 'vargos-test-data');
+  process.env.FUNCTIONS_DIR = path.join(os.tmpdir(), 'vargos-test-functions');
+});
+```
+
+#### Layer 4: Sequential Execution
+**File:** `tools/env/env-tools.integration.test.ts`
+
+```typescript
+// All 25 env tests in ONE file to prevent parallel execution race conditions
+describe('Environment Tools - Integration Tests', () => {
+  beforeAll(async () => {
+    await initializeCoreServices();
+  });
+
+  describe('getEnvTool', () => { /* 6 tests */ });
+  describe('setEnvTool', () => { /* 9 tests */ });
+  describe('searchEnvTool', () => { /* 10 tests */ });
+});
+```
+
+**Result:**
+- Production `.env` stays clean (21 lines)
+- Test `.env.test` contains test data (Database URL: vargos_mastra_test)
+- All 25 env tests pass consistently
+- No race conditions or file conflicts
+
+### Test Coverage
+
+| Type          | Location                  | Purpose                          |
+|---------------|---------------------------|----------------------------------|
+| Unit          | `*.agent.test.ts`         | Individual agent behavior        |
+| Integration   | `*.tool.test.ts`          | Tool + core service interaction  |
+| Workflow      | `*.workflow.test.ts`      | Multi-agent orchestration        |
+| Environment   | `env-tools.integration.ts`| Isolated env operations          |
+
+## Configuration
+
+### Environment Variables
+
+#### Core App (apps/core)
+```bash
+CORE_PORT=4861                  # API port (dev uses 8180)
+DATA_DIR=~/.vargos/data         # Base directory for data
+FUNCTIONS_DIR=~/.vargos/functions/src  # Function repository
+OPENAI_API_KEY=sk-...           # Required for LLM operations
+QDRANT_URL=http://localhost:6333  # Vector database
+QDRANT_API_KEY=                 # Qdrant authentication
+```
+
+#### Mastra App (apps/mastra)
+```bash
+MASTRA_PORT=4862                           # Mastra API port
+OPENAI_API_KEY=sk-...                      # Required for agents
+CORE_MCP_CLIENT_URL=http://localhost:4861/mcp  # Core MCP endpoint
+DATABASE_URL=postgresql://...              # PostgreSQL for memory
+```
+
+#### Test Environment (.env.test)
+```bash
+NODE_ENV=test
+DATABASE_URL=postgresql://localhost:5432/vargos_mastra_test
+DATA_DIR=/tmp/vargos-test-data
+FUNCTIONS_DIR=/tmp/vargos-test-functions
+```
+
+### Development Workflow
+
+#### 1. Start Core Services
+```bash
+cd apps/core
+pnpm dev  # Starts on port 8180 with watch mode
+```
+
+#### 2. Start Mastra
+```bash
+cd apps/mastra
+mastra dev  # Starts on port 4862
+```
+
+#### 3. Run Tests
+```bash
+# All tests
+pnpm test
+
+# Specific test file
+pnpm test env-tools.integration
+
+# Watch mode
+pnpm test:watch
+```
+
+#### 4. Build Everything
+```bash
+# From root
+pnpm build
+
+# Individual packages
+pnpm --filter @workspace/core-lib build
+pnpm --filter @vargos/core build
+pnpm --filter vargos-mastra build
+```
+
+## MCP Integration
+
+### Core MCP Server
+**Location:** `apps/core` (NestJS)
+**Endpoint:** `http://localhost:4861/mcp`
+
+**Exposed via:** `@rekog/mcp-nest` package
+
+**Tools Available:**
+- All function operations (list, get, execute)
+- Environment management (get, set, search)
+- Shell operations (bash, history, interrupt)
+
+### Mastra MCP Client
+**Location:** `apps/mastra/src/mastra/mcp/vargos-mcp-client.ts`
+
+**Purpose:** Connect Mastra agents to Core services via MCP
+
+```typescript
+import { createMcpClient } from '@mastra/mcp';
+
+export const vargosMcpClient = createMcpClient({
+  name: 'vargos-core',
+  url: process.env.CORE_MCP_CLIENT_URL || 'http://localhost:4861/mcp',
+  transport: 'http',
+});
+```
+
+### Mastra MCP Server
+**Location:** `apps/mastra/src/mastra/mcp/vargos-mcp-server.ts`
+
+**Purpose:** Expose Mastra agents to external MCP clients
+
+**Agents Exposed:**
+- vargosAgent (legacy)
+- routerAgent
+- curatorAgent
+- functionCreatorAgent
+- sandboxAgent
+
+## Deployment Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                   External Clients                       │
+│              (Claude Code, AIChat, etc.)                 │
+└─────────────────────────────────────────────────────────┘
+                         ↓ MCP Protocol
+┌─────────────────────────────────────────────────────────┐
+│                  Mastra App (Port 4862)                  │
+│  ┌────────────────────────────────────────────────────┐ │
+│  │  MCP Server (exposes agents)                       │ │
+│  └────────────────────────────────────────────────────┘ │
+│  ┌────────────────────────────────────────────────────┐ │
+│  │  9 Specialized Agents                              │ │
+│  └────────────────────────────────────────────────────┘ │
+│  ┌────────────────────────────────────────────────────┐ │
+│  │  3 Workflows                                        │ │
+│  └────────────────────────────────────────────────────┘ │
+│  ┌────────────────────────────────────────────────────┐ │
+│  │  MCP Client (connects to Core)                     │ │
+│  └────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────┘
+                         ↓ MCP Protocol
+┌─────────────────────────────────────────────────────────┐
+│                  Core App (Port 4861)                    │
+│  ┌────────────────────────────────────────────────────┐ │
+│  │  MCP Server (exposes tools)                        │ │
+│  └────────────────────────────────────────────────────┘ │
+│  ┌────────────────────────────────────────────────────┐ │
+│  │  5 Core Services (LLM, Vector, Functions, etc.)   │ │
+│  └────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────┘
+                         ↓
+┌──────────────────┐  ┌──────────────────┐  ┌──────────────┐
+│   PostgreSQL     │  │     Qdrant       │  │   Functions  │
+│   (Memory)       │  │  (Vector Store)  │  │  Repository  │
+└──────────────────┘  └──────────────────┘  └──────────────┘
+```
+
+## Future Roadmap (Phase 4)
+
+### Planned Agents
+1. **Crawler Agent** - Web scraping and data extraction
+2. **Dev Assistant Agent** - Code review and suggestions
+3. **Evaluator Agent** - Function quality assessment
+4. **Infrastructure Agent** - Deployment and monitoring
+
+### Planned Features
+- Multi-language function support (Python, Rust)
+- Distributed function execution
+- Advanced permission scoping (allow_session)
+- Function marketplace and sharing
+- Real-time agent telemetry
+
+## Conclusion
+
+Vargos provides a robust, layered architecture for AI-driven system automation:
+
+- **Agent Layer** - Intelligent decision-making with structured outputs
+- **Workflow Layer** - Orchestrated multi-agent processes
+- **Tool Layer** - Standardized MCP interface to capabilities
+- **Service Layer** - Reliable system integration
+
+The RAG-first philosophy, comprehensive testing strategy, and clean separation of concerns make Vargos a production-ready platform for building AI agents that safely interact with real-world systems.
