@@ -1,17 +1,18 @@
 import { Provider } from "./provider.interface";
-import { FunctionListResponseDto, FunctionMetadataDto } from "../../functions/schemas/functions.schema";
+import { FunctionListResponse } from "../../functions/dto/functions-list.dto";
+import { FunctionMetadata } from "../../functions/dto/functions-metadata.dto";
 
 export interface FunctionsProvider extends Provider {
   /**
    * List all available functions
    */
-  listFunctions(): Promise<FunctionListResponseDto>;
+  listFunctions(): Promise<FunctionListResponse>;
 
   /**
    * Get metadata for a specific function
    * @param functionId The ID of the function to get metadata for
    */
-  getFunctionMetadata(functionId: string): Promise<FunctionMetadataDto>;
+  getFunctionMetadata(functionId: string): Promise<FunctionMetadata>;
 
   /**
    * Execute a function with the given parameters
