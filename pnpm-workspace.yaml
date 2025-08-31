@@ -3,5 +3,4 @@ packages:
   - "apps/core"
   - "apps/mastra"
   - "apps/cli"
-  - "apps/chat"
   - "packages/*"
