@@ -1,0 +1,28 @@
+---
+alwaysApply: true
+---
+
+# Coding Conventions
+
+## File Naming
+- **Kebab-case** for files: `app.module.ts`, `env.tool.ts`
+- **PascalCase** for classes: `AppModule`, `EnvTool`
+
+## Import Organization
+- External packages first, then internal modules
+- Alphabetical ordering within groups
+- Absolute imports for internal modules
+
+## Decorators
+- `@Injectable()` for services
+- `@Controller()` for controllers
+- `@Module()` for modules
+- `@Tool()` for MCP tools
+- `@ApiTags()`, `@ApiOperation()` for Swagger
+
+## Architecture
+- Follow the repository pattern
+- Keep business logic in service layers
+- Controller is focused only for Swagger
+- MCP tools need to go through controller
+
