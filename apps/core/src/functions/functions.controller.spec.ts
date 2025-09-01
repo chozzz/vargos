@@ -20,6 +20,8 @@ describe("FunctionsController", () => {
     category: ["test"],
     tags: ["test", "example"],
     requiredEnvVars: ["TEST_VAR"],
+    input: [],
+    output: [],
   };
 
   const mockFunctionListResponse: FunctionListResponse = {
@@ -148,7 +150,10 @@ describe("FunctionsController", () => {
       const query = "test query";
       const result = await controller.searchFunctions(query, 10);
 
-      expect(result).toEqual(mockSearchResults);
+      expect(result).toEqual({
+        functions: mockSearchResults.map(item => item.payload),
+        total: mockSearchResults.length,
+      });
       expect(mockVectorService.search).toHaveBeenCalledWith(query, {
         collectionName: "vargos-functions-meta",
         limit: 10,
@@ -160,7 +165,10 @@ describe("FunctionsController", () => {
       const limit = 5;
       const result = await controller.searchFunctions(query, limit);
 
-      expect(result).toEqual(mockSearchResults);
+      expect(result).toEqual({
+        functions: mockSearchResults.map(item => item.payload),
+        total: mockSearchResults.length,
+      });
       expect(mockVectorService.search).toHaveBeenCalledWith(query, {
         collectionName: "vargos-functions-meta",
         limit,
@@ -172,7 +180,10 @@ describe("FunctionsController", () => {
       const query = "nonexistent query";
       const result = await controller.searchFunctions(query, 10);
 
-      expect(result).toEqual([]);
+      expect(result).toEqual({
+        functions: [],
+        total: 0,
+      });
       expect(mockVectorService.search).toHaveBeenCalledWith(query, {
         collectionName: "vargos-functions-meta",
         limit: 10,

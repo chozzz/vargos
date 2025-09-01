@@ -1,32 +1,34 @@
-// env.tool.ts
+// shell.tool.ts
 import type { Request } from "express";
 import { Injectable } from "@nestjs/common";
-import { Tool, Context } from "@rekog/mcp-nest";
+import { Tool } from "@rekog/mcp-nest";
 import { z } from "zod";
 import { Progress } from "@modelcontextprotocol/sdk/types";
-import { EnvController } from "./env.controller";
+import { ShellController } from "./shell.controller";
 import {
-  EnvGetResponseSchema,
-  EnvSetResponseSchema,
-  EnvSearchResponseSchema,
-  EnvListResponseSchema,
-} from "../common/schemas/env.schemas";
+  ShellExecuteResponseSchema,
+  ShellHistoryResponseSchema,
+  ShellStatusResponseSchema,
+  ShellInterruptResponseSchema,
+} from "../common/schemas/shell.schemas";
 
 @Injectable()
-export class EnvTool {
-  constructor(private readonly envController: EnvController) {}
+export class ShellTool {
+  constructor(private readonly shellController: ShellController) {}
 
   @Tool({
-    name: "env-get",
-    description: "Get a specific environment variable by key",
+    name: "shell-execute",
+    description: "Execute a shell command in the persistent shell session",
     parameters: z.object({
-      key: z.string().describe("The environment variable key to retrieve"),
+      command: z
+        .string()
+        .describe("The shell command to execute (e.g. 'ls -la')"),
     }),
-    outputSchema: EnvGetResponseSchema,
+    outputSchema: ShellExecuteResponseSchema,
   })
-  async getEnvVar(
-    { key }: { key: string },
-    context: Context,
+  async execute(
+    { command }: { command: string },
+    context: any,
     request: Request,
   ) {
     try {
@@ -36,7 +38,7 @@ export class EnvTool {
         total: 100,
       } as Progress);
 
-      const result = this.envController.get(key);
+      const result = await this.shellController.execute({ command });
 
       await context.reportProgress({
         progress: 100,
@@ -45,11 +47,11 @@ export class EnvTool {
 
       // Generate structured content
       const structuredContent = {
-        data: result,
-        success: true,
+        command: result.command,
+        output: result.output,
       };
 
-      // Return the result in this specific structured format as per MCP specification.
+      // Return the result in MCP format
       return {
         content: [
           {
@@ -67,7 +69,7 @@ export class EnvTool {
         content: [
           {
             type: "text",
-            text: `Failed to get environment variable: ${errorMessage}`,
+            text: `Failed to execute shell command: ${errorMessage}`,
           },
         ],
         structuredContent: {},
@@ -77,21 +79,12 @@ export class EnvTool {
   }
 
   @Tool({
-    name: "env-set",
-    description: "Set or update an environment variable",
-    parameters: z.object({
-      key: z.string().describe("The environment variable key to set"),
-      value: z
-        .string()
-        .describe("The value to set for the environment variable"),
-    }),
-    outputSchema: EnvSetResponseSchema,
+    name: "shell-history",
+    description: "Get shell command history from the current session",
+    parameters: z.object({}),
+    outputSchema: ShellHistoryResponseSchema,
   })
-  async setEnvVar(
-    { key, value }: { key: string; value: string },
-    context: Context,
-    request: Request,
-  ) {
+  async getHistory(params: {}, context: any, request: Request) {
     try {
       // Simulate progress for the operation
       await context.reportProgress({
@@ -99,7 +92,58 @@ export class EnvTool {
         total: 100,
       } as Progress);
 
-      const result = this.envController.set({ key, value });
+      const result = this.shellController.getHistory();
+
+      await context.reportProgress({
+        progress: 100,
+        total: 100,
+      } as Progress);
+
+      // Generate structured content
+      const structuredContent = result;
+
+      // Return the result in MCP format
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(structuredContent),
+          },
+        ],
+        structuredContent,
+        isError: false,
+      };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Failed to get shell history: ${errorMessage}`,
+          },
+        ],
+        structuredContent: {},
+        isError: true,
+      };
+    }
+  }
+
+  @Tool({
+    name: "shell-interrupt",
+    description: "Interrupt the currently running shell command",
+    parameters: z.object({}),
+    outputSchema: ShellInterruptResponseSchema,
+  })
+  async interrupt(params: {}, context: any, request: Request) {
+    try {
+      // Simulate progress for the operation
+      await context.reportProgress({
+        progress: 50,
+        total: 100,
+      } as Progress);
+
+      const result = await this.shellController.interrupt();
 
       await context.reportProgress({
         progress: 100,
@@ -109,11 +153,10 @@ export class EnvTool {
       // Generate structured content
       const structuredContent = {
         success: result.success,
-        key: result.key,
-        value: result.value,
+        message: result.message,
       };
 
-      // Return the result in this specific structured format as per MCP specification.
+      // Return the result in MCP format
       return {
         content: [
           {
@@ -131,77 +174,7 @@ export class EnvTool {
         content: [
           {
             type: "text",
-            text: `Failed to set environment variable: ${errorMessage}`,
-          },
-        ],
-        structuredContent: {},
-        isError: true,
-      };
-    }
-  }
-
-  @Tool({
-    name: "env-search",
-    description:
-      "Search environment variables by keyword, censoring sensitive values",
-    parameters: z.object({
-      keyword: z
-        .string()
-        .optional()
-        .default("")
-        .describe(
-          "Search keyword for env variable key or value (optional, defaults to empty string to list all)",
-        ),
-    }),
-    outputSchema: EnvSearchResponseSchema,
-  })
-  async searchEnvVars(
-    { keyword }: { keyword?: string },
-    context: Context,
-    request: Request,
-  ) {
-    try {
-      // Use empty string if keyword is undefined, matching controller behavior
-      const searchKeyword = keyword || "";
-
-      // Simulate progress for the operation
-      await context.reportProgress({
-        progress: 50,
-        total: 100,
-      } as Progress);
-
-      const result = this.envController.search(searchKeyword);
-
-      await context.reportProgress({
-        progress: 100,
-        total: 100,
-      } as Progress);
-
-      // Generate structured content
-      const structuredContent = {
-        data: result,
-        count: result.length,
-      };
-
-      // Return the result in this specific structured format as per MCP specification.
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(structuredContent),
-          },
-        ],
-        structuredContent,
-        isError: false,
-      };
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Failed to search environment variables: ${errorMessage}`,
+            text: `Failed to interrupt shell command: ${errorMessage}`,
           },
         ],
         structuredContent: {},

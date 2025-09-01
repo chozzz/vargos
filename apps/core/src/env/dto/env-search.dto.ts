@@ -1,9 +1,4 @@
-import { ApiPropertyOptional } from "@nestjs/swagger";
+import { createZodDto } from "nestjs-zod";
+import { EnvSearchSchema } from "../../common/schemas/env.schemas";
 
-export class EnvSearchDto {
-  @ApiPropertyOptional({
-    description: "Search keyword for env variable key or value",
-    example: "API_KEY",
-  })
-  search?: string;
-}
+export class EnvSearchDto extends createZodDto(EnvSearchSchema) {}

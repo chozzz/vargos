@@ -1,20 +1,9 @@
-import { ApiProperty } from "@nestjs/swagger";
+import { createZodDto } from "nestjs-zod";
+import {
+  ShellExecuteSchema,
+  ShellHistoryItemSchema,
+} from "../../common/schemas/shell.schemas";
 
-export class ShellExecuteDto {
-  @ApiProperty({
-    description:
-      "The shell command to execute in the persistent shell session.",
-    example: "ls -la",
-  })
-  command!: string;
-}
+export class ShellExecuteDto extends createZodDto(ShellExecuteSchema) {}
 
-export class ShellHistoryItemDto {
-  @ApiProperty({ description: "The command that was executed." })
-  command!: string;
-
-  @ApiProperty({
-    description: "The output returned by the shell for this command.",
-  })
-  output!: string;
-}
+export class ShellHistoryItemDto extends createZodDto(ShellHistoryItemSchema) {}

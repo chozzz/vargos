@@ -23,6 +23,11 @@ import {
   ApiTags,
 } from "@nestjs/swagger";
 import { ParseJsonPipe } from "../common/pipes/parse-json.pipe";
+import { 
+  FunctionReindexResponseDto, 
+  FunctionSearchResponseDto, 
+  FunctionExecuteResponseDto 
+} from "./dto/functions-response.dto";
 
 @ApiTags("Functions")
 @Controller("functions")
@@ -38,6 +43,7 @@ export class FunctionsController {
   @ApiResponse({
     status: 200,
     description: "Functions reindexed successfully",
+    type: FunctionReindexResponseDto,
   })
   async reindexFunctions() {
     const functionMetas = await this.functionsService.listFunctions();
@@ -74,7 +80,7 @@ export class FunctionsController {
   @ApiResponse({
     status: 200,
     description: "Functions found successfully",
-    type: [FunctionListResponse],
+    type: FunctionSearchResponseDto,
   })
   async searchFunctions(
     @Query("query") query: string,
@@ -82,7 +88,12 @@ export class FunctionsController {
     @Query("limit", new DefaultValuePipe(10), ParseIntPipe)
     limit: number,
   ) {
-    return await this.functionsService.searchFunctions(query, limit);
+    const result = await this.functionsService.searchFunctions(query, limit);
+    // Transform service response to match tool expectation
+    return {
+      functions: result.map((item) => item.payload),
+      total: result.length,
+    };
   }
 
   @Post(":functionId/execute")
@@ -106,6 +117,7 @@ export class FunctionsController {
   @ApiResponse({
     status: 200,
     description: "Function executed successfully",
+    type: FunctionExecuteResponseDto,
   })
   @ApiResponse({
     status: 400,
@@ -114,9 +126,14 @@ export class FunctionsController {
   async executeFunction(
     @Param("functionId") functionId: string,
     @Body(new ParseJsonPipe()) params: Record<string, unknown>,
-  ): Promise<unknown> {
+  ): Promise<{ result: unknown; success: boolean }> {
     try {
-      return await this.functionsService.executeFunction(functionId, params);
+      const result = await this.functionsService.executeFunction(functionId, params);
+      // Wrap service response to match tool expectation
+      return {
+        result,
+        success: true,
+      };
     } catch (serviceError) {
       if (
         typeof serviceError === "object" &&
