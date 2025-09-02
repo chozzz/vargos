@@ -44,3 +44,6 @@ npm-debug.log*
 # Worktrees
 .worktrees/
 
+
+# LangGraph API
+.langgraph_api
