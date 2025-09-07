@@ -4,7 +4,8 @@
   "description": "Vargos CLI - Interactive terminal interface for Mastra agents",
   "private": true,
   "scripts": {
-    "build": "cargo build --release",
+    "build": "turbo build:internal --filter=vargos-cli",
+    "build:internal": "cargo build --release",
     "dev": "cargo run",
     "start": "cargo run --release --",
     "lint": "cargo clippy -- -D warnings",
