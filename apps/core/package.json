@@ -18,7 +18,8 @@
   "license": "SEE LICENSE IN LICENSE.md",
   "scripts": {
     "prebuild": "ts-node scripts/prebuild.ts",
-    "build": "nest build",
+    "build": "turbo build:internal --filter=vargos-core",
+    "build:internal": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "PORT=8180 nest start",
     "dev": "pnpm prebuild && PORT=8180 nest start --watch --preserve-logs",

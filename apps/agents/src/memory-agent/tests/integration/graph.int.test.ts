@@ -26,7 +26,9 @@ describe("Memory Graph", () => {
     ]),
   )(
     "should store memories for %s conversation",
-    async (_, conversation) => {
+    async (...args: any[]) => {
+      const conversation = args[1] as string[];
+
       const memStore = new InMemoryStore();
       const graph = builder.compile({
         store: memStore,

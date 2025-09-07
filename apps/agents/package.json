@@ -1,12 +1,12 @@
 {
-  "name": "agents",
-  "author": "Your Name",
-  "version": "0.0.1",
+  "name": "vargos-agents",
+  "author": "Vadi Taslim",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "npx @langchain/langgraph-cli dev --port 2024 --config ../../langgraph.json",
-    "build": "turbo build:internal --filter=agents",
+    "build": "turbo build:internal --filter=vargos-agents",
     "build:internal": "pnpm run clean && tsc",
     "clean": "rm -rf ./dist .turbo || true",
     "format": "prettier --config .prettierrc --write \"src\"",

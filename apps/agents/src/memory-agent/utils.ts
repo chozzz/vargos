@@ -20,10 +20,12 @@ export function splitModelAndProvider(fullySpecifiedName: string): {
   provider?: string;
 } {
   let provider: string | undefined;
-  let model: string;
+  let model: string = "";
 
   if (fullySpecifiedName.includes("/")) {
-    [provider, model] = fullySpecifiedName.split("/", 2);
+    const parts = fullySpecifiedName.split("/", 2);
+    provider = parts[0];
+    model = parts[1] || "";
   } else {
     model = fullySpecifiedName;
   }

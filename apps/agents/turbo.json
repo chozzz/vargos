@@ -5,10 +5,11 @@
       "outputs": ["**/dist/**"]
     },
     "build:internal": {
-      "dependsOn": ["^build:internal"]
+      "dependsOn": [],
+      "outputs": ["dist/**"]
     },
     "dev": {
-      "dependsOn": ["^dev"]
+      "dependsOn": []
     }
   }
 }

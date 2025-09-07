@@ -31,7 +31,7 @@ async function analyzeAndRouteQuery(
       type: z.enum(["more-info", "langchain", "general"]),
     })
     .describe("Classify user query.");
-  const response = await model.withStructuredOutput(Router).invoke(messages);
+  const response = await model.withStructuredOutput(Router).invoke(messages) as z.infer<typeof Router>;
   return { router: response };
 }
 

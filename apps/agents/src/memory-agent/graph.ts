@@ -64,6 +64,10 @@ async function storeMemory(
   const tools = initializeTools(config);
   const upsertMemoryTool = tools[0];
 
+  if (!upsertMemoryTool) {
+    throw new Error("upsertMemoryTool is not initialized");
+  }
+
   const savedMemories = await Promise.all(
     toolCalls.map(async (tc) => {
       return await upsertMemoryTool.invoke(tc);
