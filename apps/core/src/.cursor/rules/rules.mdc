@@ -20,7 +20,7 @@ alwaysApply: false
 
 ## Tool Rules
 - File named as `*.tool.ts`
-- Use `@Tool()` from `@rekog/mcp-nest`
+- Use `@Tool()` decorator from existing practice
 - Must have 1:1 mapping to controller methods
 - Return MCP format: `{ content, structuredContent, isError }`
 - For structured content output (such as array or object), provide outputSchema in @Tool. Follow `env.tool.ts` practice.
@@ -36,7 +36,7 @@ alwaysApply: false
 ## General Implementation Rules
 - Controller uses DTO, MCP Tool uses Schema. DTO always extends 1:1 to Schema.
 - Output of Tool is 1:1 to Controller. If output shape needs to change, do it from Controller.
-- Remove any unused or deprecated stuffs.
+- Remove any unused or deprecated stuffs. Less code is better.
 
 ## MCP Response Format
 ```typescript
