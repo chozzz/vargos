@@ -21,7 +21,11 @@ async function generateQuery(
   const messages = state.messages;
   if (messages.length === 1) {
     // It's the first user question. We will use the input directly to search.
-    const humanInput = getMessageText(messages[messages.length - 1]);
+    const lastMessage = messages[messages.length - 1];
+    if (!lastMessage) {
+      throw new Error("No messages found in state");
+    }
+    const humanInput = getMessageText(lastMessage);
     return { queries: [humanInput] };
   } else {
     const configuration = ensureConfiguration(config);
@@ -50,6 +54,9 @@ async function retrieve(
   config: RunnableConfig,
 ): Promise<typeof StateAnnotation.Update> {
   const query = state.queries[state.queries.length - 1];
+  if (!query) {
+    throw new Error("No query found in state");
+  }
   const retriever = await makeRetriever(config);
   const response = await retriever.invoke(query);
   return { retrievedDocs: response };

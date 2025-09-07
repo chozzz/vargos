@@ -90,7 +90,9 @@ async function makeMongoDBRetriever(
   }
   const client = new MongoClient(process.env.MONGODB_URI);
   const namespace = `langgraph_retrieval_agent.${configuration.userId}`;
-  const [dbName, collectionName] = namespace.split(".");
+  const parts = namespace.split(".");
+  const dbName = parts[0] || "langgraph_retrieval_agent";
+  const collectionName = parts[1] || configuration.userId;
   const collection = client.db(dbName).collection(collectionName);
   const vectorStore = new MongoDBAtlasVectorSearch(embeddingModel, {
     collection: collection,
