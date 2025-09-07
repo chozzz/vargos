@@ -3,9 +3,9 @@
   "version": "3.0.23",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbo -p 3001",
+    "dev": "next dev --turbo -p 8181",
     "build": "tsx lib/db/migrate && next build",
-    "start": "next start",
+    "start": "PORT=8181 next start",
     "lint": "next lint && biome lint --write --unsafe",
     "lint:fix": "next lint --fix && biome lint --write --unsafe",
     "format": "biome format --write",
