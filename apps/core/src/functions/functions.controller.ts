@@ -23,10 +23,10 @@ import {
   ApiTags,
 } from "@nestjs/swagger";
 import { ParseJsonPipe } from "../common/pipes/parse-json.pipe";
-import { 
-  FunctionReindexResponseDto, 
-  FunctionSearchResponseDto, 
-  FunctionExecuteResponseDto 
+import {
+  FunctionReindexResponseDto,
+  FunctionSearchResponseDto,
+  FunctionExecuteResponseDto,
 } from "./dto/functions-response.dto";
 
 @ApiTags("Functions")
@@ -128,7 +128,10 @@ export class FunctionsController {
     @Body(new ParseJsonPipe()) params: Record<string, unknown>,
   ): Promise<{ result: unknown; success: boolean }> {
     try {
-      const result = await this.functionsService.executeFunction(functionId, params);
+      const result = await this.functionsService.executeFunction(
+        functionId,
+        params,
+      );
       // Wrap service response to match tool expectation
       return {
         result,

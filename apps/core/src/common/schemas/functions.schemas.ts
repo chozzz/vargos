@@ -37,16 +37,16 @@ export const FunctionOutputSchema = z.object({
     .describe(
       "The data type that this output value will return (e.g. string, number, boolean, object)",
     ),
-  description: z
-    .string()
-    .optional(),
+  description: z.string().optional(),
 });
 
 // Function metadata schema
 export const FunctionMetadataSchema = z.object({
   id: z.string().describe("Unique identifier for the function"),
   name: z.string().describe("Display name of the function"),
-  category: z.union([z.string(), z.array(z.string())]).describe("Category of the function"),
+  category: z
+    .union([z.string(), z.array(z.string())])
+    .describe("Category of the function"),
   description: z
     .string()
     .describe("Detailed description of what the function does"),
