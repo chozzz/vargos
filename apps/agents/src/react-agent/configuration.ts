@@ -27,6 +27,6 @@ export function ensureConfiguration(
   return {
     systemPromptTemplate:
       configurable.systemPromptTemplate ?? SYSTEM_PROMPT_TEMPLATE,
-    model: configurable.model ?? "claude-3-7-sonnet-latest",
+    model: configurable.model ?? "claude-sonnet-4-5-20250929",
   };
 }

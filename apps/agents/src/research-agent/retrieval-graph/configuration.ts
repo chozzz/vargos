@@ -82,7 +82,7 @@ export function ensureAgentConfiguration(
     ...baseConfig,
     queryModel: configurable.queryModel || "anthropic/claude-3-5-haiku-latest",
     responseModel:
-      configurable.responseModel || "anthropic/claude-3-7-sonnet-latest",
+      configurable.responseModel || "claude-sonnet-4-5-20250929",
     routerSystemPrompt: configurable.routerSystemPrompt || ROUTER_SYSTEM_PROMPT,
     moreInfoSystemPrompt:
       configurable.moreInfoSystemPrompt || MORE_INFO_SYSTEM_PROMPT,

@@ -6,6 +6,11 @@ import { ToolNode } from "@langchain/langgraph/prebuilt";
 import { ConfigurationSchema, ensureConfiguration } from "./configuration.js";
 import { TOOLS } from "./tools.js";
 import { loadChatModel } from "./utils.js";
+import { initializeVargosCoreServices } from "../shared/services/vargos-core.js";
+
+// Initialize Vargos core services for tools to use
+// This ensures functions, shell, env, vector services are available
+await initializeVargosCoreServices();
 
 // Define the function that calls the model
 async function callModel(

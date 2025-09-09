@@ -15,7 +15,7 @@ export function ensureConfiguration(config?: LangGraphRunnableConfig) {
   const configurable = config?.configurable || {};
   return {
     userId: configurable?.userId || "default",
-    model: configurable?.model || "anthropic/claude-3-7-sonnet-latest",
+    model: configurable?.model || "claude-sonnet-4-5-20250929",
     systemPrompt: configurable?.systemPrompt || SYSTEM_PROMPT,
   };
 }
