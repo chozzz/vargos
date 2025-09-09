@@ -108,7 +108,7 @@ export function ensureConfiguration(
       configurable.responseSystemPromptTemplate ||
       RESPONSE_SYSTEM_PROMPT_TEMPLATE,
     responseModel:
-      configurable.responseModel || "anthropic/claude-3-7-sonnet-latest",
+      configurable.responseModel || "claude-sonnet-4-5-20250929",
     querySystemPromptTemplate:
       configurable.querySystemPromptTemplate || QUERY_SYSTEM_PROMPT_TEMPLATE,
     queryModel: configurable.queryModel || "anthropic/claude-3-5-haiku-latest",
