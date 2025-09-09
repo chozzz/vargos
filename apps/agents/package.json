@@ -29,7 +29,8 @@
     "@pinecone-database/pinecone": "^5.1.1",
     "@langchain/cohere": "^0.3.2",
     "@langchain/openai": "^0.4.4",
-    "@langchain/langgraph-checkpoint": "^0.0.16"
+    "@langchain/langgraph-checkpoint": "^0.0.16",
+    "@workspace/core-lib": "workspace:*"
   },
   "devDependencies": {
     "@workspace/eslint-config": "workspace:*",
