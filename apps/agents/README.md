@@ -73,6 +73,7 @@ OPENAI_API_KEY="sk-..."
 QDRANT_URL="https://..."
 QDRANT_API_KEY="..."
 FUNCTIONS_DIR="/path/to/functions"
+LANGCHAIN_DATABASE_URL="postgresql://user:password@host:port/vargos_langchain"  # For persistent chat history
 
 # Optional
 DATA_DIR="~/.vargos/data"
@@ -105,8 +106,9 @@ This runs on **port 2024** by default.
 
 The server will:
 1. Initialize Vargos core services (Functions, LLM, Vector, Env, Shell)
-2. Start LangGraph API server
-3. Make all agents available via HTTP API
+2. Initialize PostgreSQL checkpointer (creates tables if needed)
+3. Start LangGraph API server
+4. Make all agents available via HTTP API with persistent chat history
 
 ### Build
 
@@ -264,6 +266,15 @@ await initializeVargosCoreServices();
 
 **Solution:** Check root `.env` file has all required variables set.
 
+### PostgreSQL connection error
+
+**Error:** `LANGCHAIN_DATABASE_URL environment variable is required`
+
+**Solution:** Set `LANGCHAIN_DATABASE_URL` in root `.env` file (separate from Mastra's `DATABASE_URL`):
+```bash
+LANGCHAIN_DATABASE_URL="postgresql://user:password@host:port/vargos_langchain"
+```
+
 ### Build errors with core-lib
 
 **Error:** TypeScript compilation errors from `@workspace/core-lib`
@@ -279,6 +290,40 @@ cd ../../apps/agents
 pnpm build
 ```
 
+## Chat History Persistence
+
+All agents use **PostgreSQL** for persistent conversation history via LangGraph checkpointers.
+
+### Storage Details
+
+- **Database**: PostgreSQL (separate from Mastra)
+- **Connection**: `LANGCHAIN_DATABASE_URL` from `.env`
+- **Tables**: Auto-created on first run
+  - `checkpoints` - Conversation state snapshots
+  - `writes` - Individual state updates
+- **Thread Management**: Managed by LangGraph SDK
+- **Persistence**: ✅ Survives server restarts
+
+### How It Works
+
+1. **Thread Creation**: Frontend creates thread via LangGraph SDK
+2. **State Saving**: Each conversation turn saved to PostgreSQL
+3. **State Loading**: Previous messages loaded automatically by thread ID
+4. **Thread History**: View all threads at `/threads` endpoint
+
+### Accessing Thread History
+
+```typescript
+// List all threads
+const threads = await client.threads.list();
+
+// Get specific thread
+const thread = await client.threads.get(threadId);
+
+// Get thread state
+const state = await client.threads.getState(threadId);
+```
+
 ## Comparison: LangChain vs Mastra
 
 | Aspect | LangChain (This App) | Mastra (apps/mastra) |
@@ -289,6 +334,7 @@ pnpm build
 | **Maturity** | ✅ Stable, well-documented | ⚠️ Breaking changes frequent |
 | **Learning Curve** | ⚠️ Steeper (graph concepts) | ✅ Simpler (agent pattern) |
 | **Visualization** | ✅ LangGraph Studio | ❌ None |
+| **Chat Persistence** | ✅ PostgreSQL (separate DB) | ✅ PostgreSQL |
 
 **Recommendation:** Use LangChain for production workloads requiring observability and stability.
 

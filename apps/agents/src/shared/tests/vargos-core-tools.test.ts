@@ -6,14 +6,14 @@
  */
 
 import { describe, it, expect, beforeAll } from "@jest/globals";
-import { initializeVargosCoreServices } from "../services/vargos-core.js";
+import { initializeVargosCoreServices } from "../services/vargos-core";
 import {
   listVargosFunctionsTool,
   searchVargosFunctionsTool,
   getFunctionMetadataTool,
   semanticSearchTool,
   VARGOS_CORE_TOOLS,
-} from "../tools/vargos-core-tools.js";
+} from "../tools/vargos-core-tools";
 
 describe("Vargos Core-Lib Tools", () => {
   beforeAll(async () => {

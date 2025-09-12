@@ -10,10 +10,11 @@ import { RunnableConfig } from "@langchain/core/runnables";
 import {
   AgentConfigurationAnnotation,
   ensureAgentConfiguration,
-} from "./configuration.js";
-import { graph as researcherGraph } from "./researcher-graph/graph.js";
-import { AgentStateAnnotation, InputStateAnnotation } from "./state.js";
-import { formatDocs, loadChatModel } from "../shared/utils.js";
+} from "./configuration";
+import { graph as researcherGraph } from "./researcher-graph/graph";
+import { AgentStateAnnotation, InputStateAnnotation } from "./state";
+import { formatDocs, loadChatModel } from "../shared/utils";
+import { checkpointer } from "../../index";
 
 async function analyzeAndRouteQuery(
   state: typeof AgentStateAnnotation.State,
@@ -172,5 +173,7 @@ const builder = new StateGraph(
 
 // Compile into a graph object that you can invoke and deploy.
 export const graph = builder
-  .compile()
+  .compile({
+    checkpointer, // Persist chat history to PostgreSQL
+  })
   .withConfig({ runName: "RetrievalGraph" });

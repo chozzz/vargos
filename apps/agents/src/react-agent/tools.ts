@@ -3,7 +3,7 @@
  * Tools are functions that the agent can use to interact with external systems or perform specific tasks.
  */
 import { TavilySearchResults } from "@langchain/community/tools/tavily_search";
-import { VARGOS_CORE_TOOLS } from "../shared/tools/vargos-core-tools.js";
+import { VARGOS_CORE_TOOLS } from "../shared/tools/vargos-core-tools";
 
 /**
  * Tavily search tool configuration

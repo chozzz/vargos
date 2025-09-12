@@ -1,6 +1,6 @@
 import { Annotation } from "@langchain/langgraph";
 import { Document } from "@langchain/core/documents";
-import { reduceDocs } from "../../shared/state.js";
+import { reduceDocs } from "../../shared/state";
 
 /**
  * Private state for the retrieve_documents node in the researcher graph.

@@ -5,7 +5,7 @@ import { RunnableConfig } from "@langchain/core/runnables";
 import {
   RESPONSE_SYSTEM_PROMPT_TEMPLATE,
   QUERY_SYSTEM_PROMPT_TEMPLATE,
-} from "./prompts.js";
+} from "./prompts";
 import { Annotation } from "@langchain/langgraph";
 
 /**

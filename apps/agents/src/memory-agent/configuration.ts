@@ -1,7 +1,7 @@
 // Define the configurable parameters for the agent
 
 import { Annotation, LangGraphRunnableConfig } from "@langchain/langgraph";
-import { SYSTEM_PROMPT } from "./prompts.js";
+import { SYSTEM_PROMPT } from "./prompts";
 
 export const ConfigurationAnnotation = Annotation.Root({
   userId: Annotation<string>(),

@@ -6,12 +6,12 @@ import { Document } from "@langchain/core/documents";
 import { RunnableConfig } from "@langchain/core/runnables";
 import { StateGraph } from "@langchain/langgraph";
 
-import { IndexStateAnnotation } from "./state.js";
-import { makeRetriever } from "./retrieval.js";
+import { IndexStateAnnotation } from "./state";
+import { makeRetriever } from "./retrieval";
 import {
   ensureIndexConfiguration,
   IndexConfigurationAnnotation,
-} from "./configuration.js";
+} from "./configuration";
 
 function ensureDocsHaveUserId(
   docs: Document[],

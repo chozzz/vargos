@@ -3,11 +3,13 @@ import { StateGraph } from "@langchain/langgraph";
 import {
   ConfigurationAnnotation,
   ensureConfiguration,
-} from "./configuration.js";
-import { StateAnnotation, InputStateAnnotation } from "./state.js";
-import { formatDocs, getMessageText, loadChatModel } from "./utils.js";
+} from "./configuration";
+import { StateAnnotation, InputStateAnnotation } from "./state";
+import { formatDocs, getMessageText, loadChatModel } from "./utils";
 import { z } from "zod";
-import { makeRetriever } from "./retrieval.js";
+import { makeRetriever } from "./retrieval";
+import { checkpointer } from "../index";
+
 // Define the function that calls the model
 
 const SearchQuery = z.object({
@@ -106,6 +108,7 @@ const builder = new StateGraph(
 // Finally, we compile it!
 // This compiles it into a graph you can invoke and deploy.
 export const graph = builder.compile({
+  checkpointer, // Persist chat history to PostgreSQL
   interruptBefore: [], // if you want to update the state before calling the tools
   interruptAfter: [],
 });

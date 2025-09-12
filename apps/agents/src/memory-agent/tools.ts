@@ -1,9 +1,9 @@
 import { LangGraphRunnableConfig } from "@langchain/langgraph";
-import { ensureConfiguration } from "./configuration.js";
+import { ensureConfiguration } from "./configuration";
 import { v4 as uuidv4 } from "uuid";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
-import { getStoreFromConfigOrThrow } from "./utils.js";
+import { getStoreFromConfigOrThrow } from "./utils";
 
 /**
  * Initialize tools within a function so that they have access to the current

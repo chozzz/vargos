@@ -1,5 +1,5 @@
 import { describe, it, expect } from "@jest/globals";
-import { ensureConfiguration } from "../../configuration.js";
+import { ensureConfiguration } from "../../configuration";
 
 describe("Configuration", () => {
   it("should initialize configuration from an empty object", () => {

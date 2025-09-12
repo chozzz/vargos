@@ -6,13 +6,13 @@ import { RunnableConfig } from "@langchain/core/runnables";
 import { StateGraph, END, START } from "@langchain/langgraph";
 import fs from "fs/promises";
 
-import { IndexStateAnnotation } from "./state.js";
-import { makeRetriever } from "../shared/retrieval.js";
+import { IndexStateAnnotation } from "./state";
+import { makeRetriever } from "../shared/retrieval";
 import {
   ensureIndexConfiguration,
   IndexConfigurationAnnotation,
-} from "./configuration.js";
-import { reduceDocs } from "../shared/state.js";
+} from "./configuration";
+import { reduceDocs } from "../shared/state";
 
 async function indexDocs(
   state: typeof IndexStateAnnotation.State,

@@ -10,7 +10,7 @@ import {
   initializeVargosCoreServices,
   getVargosCoreServices,
   resetVargosCoreServices,
-} from "../services/vargos-core.js";
+} from "../services/vargos-core";
 
 describe("Vargos Core Services Integration", () => {
   beforeAll(async () => {
