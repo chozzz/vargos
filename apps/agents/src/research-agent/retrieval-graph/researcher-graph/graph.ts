@@ -8,10 +8,10 @@ import { StateGraph, END, START, Send } from "@langchain/langgraph";
 import { z } from "zod";
 
 import { RunnableConfig } from "@langchain/core/runnables";
-import { ensureAgentConfiguration } from "../configuration.js";
-import { QueryStateAnnotation, ResearcherStateAnnotation } from "./state.js";
-import { makeRetriever } from "../../shared/retrieval.js";
-import { loadChatModel } from "../../shared/utils.js";
+import { ensureAgentConfiguration } from "../configuration";
+import { QueryStateAnnotation, ResearcherStateAnnotation } from "./state";
+import { makeRetriever } from "../../shared/retrieval";
+import { loadChatModel } from "../../shared/utils";
 
 async function generateQueries(
   state: typeof ResearcherStateAnnotation.State,

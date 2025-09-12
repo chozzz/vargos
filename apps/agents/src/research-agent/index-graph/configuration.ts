@@ -1,7 +1,7 @@
 import { Annotation } from "@langchain/langgraph";
-import { BaseConfigurationAnnotation } from "../shared/configuration.js";
+import { BaseConfigurationAnnotation } from "../shared/configuration";
 import { RunnableConfig } from "@langchain/core/runnables";
-import { ensureBaseConfiguration } from "../shared/configuration.js";
+import { ensureBaseConfiguration } from "../shared/configuration";
 
 // This file contains sample documents to index, based on the following LangChain and LangGraph documentation pages:
 // - https://python.langchain.com/docs/concepts/

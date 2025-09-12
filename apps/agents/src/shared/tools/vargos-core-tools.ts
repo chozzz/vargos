@@ -11,7 +11,7 @@
 
 import { DynamicStructuredTool } from "@langchain/core/tools";
 import { z } from "zod";
-import { getVargosCoreServices } from "../services/vargos-core.js";
+import { getVargosCoreServices } from "../services/vargos-core";
 
 /**
  * List all available Vargos functions
@@ -91,12 +91,49 @@ export const executeVargosFunctionTool = new DynamicStructuredTool({
       .describe("Object containing function parameters as key-value pairs"),
   }),
   func: async ({ functionId, parameters }) => {
-    const { functionsService } = getVargosCoreServices();
-    const result = await functionsService.executeFunction(
-      functionId,
-      parameters,
-    );
-    return JSON.stringify(result, null, 2);
+    const timestamp = new Date().toISOString();
+    console.log(`[${timestamp}] [execute_vargos_function] Starting execution`);
+    console.log(`[${timestamp}] [execute_vargos_function] Function ID: ${functionId}`);
+    console.log(`[${timestamp}] [execute_vargos_function] Parameters:`, JSON.stringify(parameters, null, 2));
+    
+    try {
+      const { functionsService } = getVargosCoreServices();
+      console.log(`[${timestamp}] [execute_vargos_function] Functions service retrieved`);
+      
+      console.log(`[${timestamp}] [execute_vargos_function] Calling functionsService.executeFunction...`);
+      const result = await functionsService.executeFunction(
+        functionId,
+        parameters,
+      );
+      
+      console.log(`[${timestamp}] [execute_vargos_function] Execution completed successfully`);
+      console.log(`[${timestamp}] [execute_vargos_function] Result type: ${typeof result}`);
+      console.log(`[${timestamp}] [execute_vargos_function] Result preview:`, 
+        typeof result === 'string' 
+          ? result.substring(0, 200) + (result.length > 200 ? '...' : '')
+          : JSON.stringify(result).substring(0, 200) + '...'
+      );
+      
+      const stringifiedResult = JSON.stringify(result, null, 2);
+      console.log(`[${timestamp}] [execute_vargos_function] Returning stringified result (length: ${stringifiedResult.length} chars)`);
+      
+      return stringifiedResult;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      
+      console.error(`[${timestamp}] [execute_vargos_function] ❌ Execution failed`);
+      console.error(`[${timestamp}] [execute_vargos_function] Error message: ${errorMessage}`);
+      if (errorStack) {
+        console.error(`[${timestamp}] [execute_vargos_function] Error stack:`, errorStack);
+      }
+      console.error(`[${timestamp}] [execute_vargos_function] Error details:`, error);
+      
+      throw new Error(
+        `Failed to execute function '${functionId}': ${errorMessage}` +
+        (errorStack ? `\nStack: ${errorStack}` : '')
+      );
+    }
   },
 });
 

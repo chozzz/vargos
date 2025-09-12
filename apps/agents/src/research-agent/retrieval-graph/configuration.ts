@@ -8,11 +8,11 @@ import {
   RESEARCH_PLAN_SYSTEM_PROMPT,
   GENERATE_QUERIES_SYSTEM_PROMPT,
   RESPONSE_SYSTEM_PROMPT,
-} from "./prompts.js";
+} from "./prompts";
 import {
   BaseConfigurationAnnotation,
   ensureBaseConfiguration,
-} from "../shared/configuration.js";
+} from "../shared/configuration";
 
 /**
  * The configuration for the agent.

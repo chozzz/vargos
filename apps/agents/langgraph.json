@@ -1,0 +1,15 @@
+{
+  "node_version": "20",
+  "dependencies": [
+    "."
+  ],
+  "graphs": {
+    "vargos": "./src/vargos-agent/graph.ts:graph",
+    "agent": "./src/react-agent/graph.ts:graph",
+    "memory_agent": "./src/memory-agent/graph.ts:graph",
+    "research_agent": "./src/research-agent/retrieval-graph/graph.ts:graph",
+    "research_index_graph": "./src/research-agent/index-graph/graph.ts:graph",
+    "retrieval_agent": "./src/retrieval-agent/graph.ts:graph"
+  },
+  "env": ".env"
+}
