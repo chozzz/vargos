@@ -3,14 +3,10 @@ import { RunnableConfig } from "@langchain/core/runnables";
 import { MessagesAnnotation, StateGraph } from "@langchain/langgraph";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 
-import { ConfigurationSchema, ensureConfiguration } from "./configuration.js";
-import { TOOLS } from "./tools.js";
-import { loadChatModel } from "./utils.js";
-import { initializeVargosCoreServices } from "../shared/services/vargos-core.js";
-
-// Initialize Vargos core services for tools to use
-// This ensures functions, shell, env, vector services are available
-await initializeVargosCoreServices();
+import { ConfigurationSchema, ensureConfiguration } from "./configuration";
+import { TOOLS } from "./tools";
+import { loadChatModel } from "./utils";
+import { checkpointer } from "../index";
 
 // Define the function that calls the model
 async function callModel(
@@ -74,7 +70,9 @@ const workflow = new StateGraph(MessagesAnnotation, ConfigurationSchema)
 
 // Finally, we compile it!
 // This compiles it into a graph you can invoke and deploy.
+// With PostgreSQL checkpointer for persistent conversation history
 export const graph = workflow.compile({
+  checkpointer, // Persist chat history to PostgreSQL
   interruptBefore: [], // if you want to update the state before calling the tools
   interruptAfter: [],
 });

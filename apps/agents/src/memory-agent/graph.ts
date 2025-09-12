@@ -7,13 +7,14 @@ import {
 } from "@langchain/langgraph";
 import { BaseMessage, AIMessage } from "@langchain/core/messages";
 import { initChatModel } from "langchain/chat_models/universal";
-import { initializeTools } from "./tools.js";
+import { initializeTools } from "./tools";
 import {
   ConfigurationAnnotation,
   ensureConfiguration,
-} from "./configuration.js";
-import { GraphAnnotation } from "./state.js";
-import { getStoreFromConfigOrThrow, splitModelAndProvider } from "./utils.js";
+} from "./configuration";
+import { GraphAnnotation } from "./state";
+import { getStoreFromConfigOrThrow, splitModelAndProvider } from "./utils";
+import { checkpointer } from "../index";
 
 async function callModel(
   state: typeof GraphAnnotation.State,
@@ -103,5 +104,7 @@ export const builder = new StateGraph(
   })
   .addEdge("store_memory", "call_model");
 
-export const graph = builder.compile();
+export const graph = builder.compile({
+  checkpointer, // Persist chat history to PostgreSQL
+});
 graph.name = "MemoryAgent";

@@ -1,7 +1,7 @@
 import { it, expect } from "@jest/globals";
 import { BaseMessage } from "@langchain/core/messages";
 
-import { graph } from "../../graph.js";
+import { graph } from "../../graph";
 
 it("Simple runthrough", async () => {
   const res = await graph.invoke({

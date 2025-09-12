@@ -1,6 +1,6 @@
 import { describe, it, expect } from "@jest/globals";
 import { MemorySaver, InMemoryStore } from "@langchain/langgraph";
-import { builder } from "../../graph.js";
+import { builder } from "../../graph";
 
 describe("Memory Graph", () => {
   const conversations = [

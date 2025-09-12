@@ -1,6 +1,6 @@
 import { Annotation } from "@langchain/langgraph";
 import { Document } from "@langchain/core/documents";
-import { reduceDocs } from "../shared/state.js";
+import { reduceDocs } from "../shared/state";
 
 /**
  * Represents the state for document indexing and retrieval.

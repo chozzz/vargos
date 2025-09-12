@@ -1,32 +1,32 @@
-/**
- * Define the configurable parameters for the agent.
- */
 import { Annotation } from "@langchain/langgraph";
-import { SYSTEM_PROMPT_TEMPLATE } from "./prompts";
 import { RunnableConfig } from "@langchain/core/runnables";
+import { VARGOS_SYSTEM_PROMPT } from "./prompts";
 
+/**
+ * Configuration schema for Vargos Agent
+ */
 export const ConfigurationSchema = Annotation.Root({
   /**
-   * The system prompt to be used by the agent.
+   * System prompt template with {system_time} placeholder
    */
   systemPromptTemplate: Annotation<string>,
 
   /**
-   * The name of the language model to be used by the agent.
+   * The language model to use for the agent
+   * Should be in the format: provider/model-name
    */
   model: Annotation<string>,
 });
 
+/**
+ * Ensure configuration has all required fields with defaults
+ */
 export function ensureConfiguration(
   config: RunnableConfig,
 ): typeof ConfigurationSchema.State {
-  /**
-   * Ensure the defaults are populated.
-   */
   const configurable = config.configurable ?? {};
   return {
-    systemPromptTemplate:
-      configurable.systemPromptTemplate ?? SYSTEM_PROMPT_TEMPLATE,
+    systemPromptTemplate: configurable.systemPromptTemplate ?? VARGOS_SYSTEM_PROMPT,
     model: configurable.model ?? "claude-sonnet-4-5-20250929",
   };
 }

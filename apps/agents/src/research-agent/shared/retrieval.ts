@@ -5,7 +5,7 @@ import { VectorStoreRetriever } from "@langchain/core/vectorstores";
 import { MongoDBAtlasVectorSearch } from "@langchain/mongodb";
 import { PineconeStore } from "@langchain/pinecone";
 import { MongoClient } from "mongodb";
-import { ensureBaseConfiguration } from "./configuration.js";
+import { ensureBaseConfiguration } from "./configuration";
 import { Pinecone as PineconeClient } from "@pinecone-database/pinecone";
 import { Embeddings } from "@langchain/core/embeddings";
 import { CohereEmbeddings } from "@langchain/cohere";
