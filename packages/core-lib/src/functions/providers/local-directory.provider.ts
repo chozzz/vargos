@@ -108,6 +108,11 @@ export class LocalDirectoryProvider implements FunctionsProvider {
       });
 
       childProcess.on("close", (code) => {
+        const timestamp = new Date().toISOString();
+        console.log(`[${timestamp}] [LocalDirectoryProvider] Function "${functionId}" exited with code ${code}`);
+        console.log(`[${timestamp}] [LocalDirectoryProvider] stdout length: ${stdout.length} chars`);
+        console.log(`[${timestamp}] [LocalDirectoryProvider] stderr length: ${stderr.length} chars`);
+        
         if (code !== 0) {
           // Try to parse stdout as JSON error
           let errorObj: { error: string; message: string } = {
@@ -126,12 +131,12 @@ export class LocalDirectoryProvider implements FunctionsProvider {
                   "error" in parsed && typeof parsed.error === "string"
                     ? parsed.error
                     : "UnknownError",
-                  message:
-                    "message" in parsed && typeof parsed.message === "string"
-                      ? parsed.message
-                      : typeof parsed === "string"
-                        ? parsed
-                        : JSON.stringify(parsed),
+                message:
+                  "message" in parsed && typeof parsed.message === "string"
+                    ? parsed.message
+                    : typeof parsed === "string"
+                      ? parsed
+                      : JSON.stringify(parsed),
               };
             } else if (typeof parsed === "string") {
               errorObj = { error: "UnknownError", message: parsed };
@@ -170,15 +175,69 @@ export class LocalDirectoryProvider implements FunctionsProvider {
           if (!errorObj.message) {
             errorObj.message = errorObj.error;
           }
+          console.error(`[${timestamp}] [LocalDirectoryProvider] Function error:`, errorObj);
+          console.error(`[${timestamp}] [LocalDirectoryProvider] stdout content:`, stdout.substring(0, 500));
+          console.error(`[${timestamp}] [LocalDirectoryProvider] stderr content:`, stderr.substring(0, 500));
           reject(new Error(`${errorObj.error}: ${errorObj.message}`));
           return;
         }
+        
+        // Try to parse stdout as JSON
+        // First, try direct parse
         try {
-          const result = JSON.parse(stdout.trim()) as R;
+          const trimmed = stdout.trim();
+          console.log(`[${timestamp}] [LocalDirectoryProvider] Attempting to parse stdout (first 200 chars):`, trimmed.substring(0, 200));
+          
+          // Try to find JSON in the output (in case there's other text)
+          let jsonStr = trimmed;
+          
+          // Look for JSON object/array boundaries
+          const jsonStart = trimmed.search(/[{\[]/);
+          
+          if (jsonStart !== -1) {
+            // Try to extract JSON from the string
+            let braceCount = 0;
+            let bracketCount = 0;
+            let startIdx = jsonStart;
+            let endIdx = jsonStart;
+            
+            for (let i = jsonStart; i < trimmed.length; i++) {
+              if (trimmed[i] === '{') braceCount++;
+              if (trimmed[i] === '}') braceCount--;
+              if (trimmed[i] === '[') bracketCount++;
+              if (trimmed[i] === ']') bracketCount--;
+              
+              if (braceCount === 0 && bracketCount === 0 && (trimmed[i] === '}' || trimmed[i] === ']')) {
+                endIdx = i + 1;
+                break;
+              }
+            }
+            
+            if (endIdx > startIdx) {
+              jsonStr = trimmed.substring(startIdx, endIdx);
+              console.log(`[${timestamp}] [LocalDirectoryProvider] Extracted JSON substring (${startIdx}-${endIdx})`);
+            }
+          }
+          
+          const result = JSON.parse(jsonStr) as R;
+          console.log(`[${timestamp}] [LocalDirectoryProvider] Successfully parsed result`);
           resolve(result);
-        } catch {
+        } catch (parseError) {
+          const errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
+          console.error(`[${timestamp}] [LocalDirectoryProvider] ❌ JSON parse failed`);
+          console.error(`[${timestamp}] [LocalDirectoryProvider] Parse error: ${errorMessage}`);
+          console.error(`[${timestamp}] [LocalDirectoryProvider] stdout (full):`, stdout);
+          console.error(`[${timestamp}] [LocalDirectoryProvider] stdout (first 500 chars):`, stdout.substring(0, 500));
+          console.error(`[${timestamp}] [LocalDirectoryProvider] stdout (last 500 chars):`, stdout.substring(Math.max(0, stdout.length - 500)));
+          console.error(`[${timestamp}] [LocalDirectoryProvider] stderr:`, stderr);
+          
           reject(
-            new Error("ParseError: Failed to parse function output"),
+            new Error(
+              `ParseError: Failed to parse function output. ` +
+              `Error: ${errorMessage}. ` +
+              `Output length: ${stdout.length} chars. ` +
+              `First 200 chars: ${stdout.substring(0, 200)}`
+            ),
           );
         }
       });
