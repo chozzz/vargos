@@ -1,37 +1,32 @@
 {
   "name": "vargos",
   "version": "0.0.1",
-  "description": "Vargos is a scalable orchestration platform that bridges Large Language Models (LLMs) to real-world system actions through modular function execution, OpenAPI endpoints, and Model Context Protocol (MCP) compatibility.",
-  "keywords": [
-    "orchestration",
-    "ai-infrastructure",
-    "openapi",
-    "mcp",
-    "llm-agent",
-    "system-automation",
-    "nestjs",
-    "turborepo",
-    "self-hosted"
-  ],
-  "author": "Vadi Taslim",
-  "private": true,
-  "license": "SEE LICENSE IN LICENSE.md",
+  "description": "Vargos - Agentic MCP server with OpenClaw-style tools",
+  "type": "module",
   "scripts": {
-    "build": "turbo build",
-    "dev": "turbo dev",
-    "lint": "turbo lint",
-    "test": "turbo test",
-    "format": "prettier --write \"**/*.{ts,tsx,md}\""
+    "dev": "tsx src/index.ts",
+    "build": "tsc",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "lint": "eslint src/**/*.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "@qdrant/js-client-rest": "^1.12.0",
+    "playwright": "^1.40.0",
+    "postgres": "^3.4.5",
+    "sqlite3": "^5.1.6",
+    "tinyglobby": "^0.2.12",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
-    "@workspace/eslint-config": "workspace:*",
-    "@workspace/typescript-config": "workspace:*",
-    "concurrently": "^9.1.2",
-    "prettier": "^3.5.3",
-    "turbo": "latest",
-    "typescript": "5.8.3"
+    "@types/node": "^20.11.0",
+    "@types/sqlite3": "^3.1.11",
+    "sqlite": "^4.2.1",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3",
+    "vitest": "^1.2.0"
   },
-  "packageManager": "pnpm@10.11.0",
   "engines": {
     "node": ">=20"
   }
