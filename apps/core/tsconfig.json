@@ -1,9 +1,0 @@
-{
-  "extends": "@workspace/typescript-config/nest.json",
-  "compilerOptions": {
-    "module": "commonjs",
-    "declaration": true,
-    "removeComments": true,
-    "emitDecoratorMetadata": true
-  }
-}
