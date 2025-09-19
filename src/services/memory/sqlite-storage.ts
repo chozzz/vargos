@@ -6,6 +6,7 @@
 import sqlite3 from 'sqlite3';
 import { open, Database } from 'sqlite';
 import path from 'node:path';
+import { promises as fs } from 'node:fs';
 import { MemoryChunk } from './context.js';
 
 export interface SQLiteStorageConfig {
@@ -164,6 +165,3 @@ export class MemorySQLiteStorage {
     }
   }
 }
-
-// eslint-disable-next-line
-import { promises as fs } from 'node:fs';
