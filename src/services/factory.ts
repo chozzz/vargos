@@ -84,6 +84,8 @@ export class ServiceFactory {
     // fileMemoryDir is the base dir, memory lives in <base>/memory
     const baseDir = this.config.fileMemoryDir ?? path.join(os.homedir(), '.vargos');
     const memoryDir = path.join(baseDir, 'memory');
+    const sessionsDir = this.config.sessions === 'file' ? path.join(baseDir, 'sessions') : undefined;
+
     return initializeMemoryContext({
       memoryDir,
       cacheDir: path.join(baseDir, 'cache'),
@@ -92,6 +94,14 @@ export class ServiceFactory {
       chunkSize: 400,
       chunkOverlap: 80,
       hybridWeight: { vector: 0.7, text: 0.3 },
+      // Enable SQLite persistence for embeddings
+      sqlite: {
+        dbPath: path.join(baseDir, 'memory.db'),
+      },
+      // Index session transcripts if using file-based sessions
+      sessionsDir,
+      // Enable file watcher for auto-reindex in dev mode
+      enableFileWatcher: process.env.NODE_ENV === 'development',
     });
   }
 }
@@ -150,6 +160,7 @@ export async function closeServices(): Promise<void> {
     await globalServices.memory.close();
     await globalServices.sessions.close();
     await globalServices.vector?.close();
+    await globalServices.memoryContext.close();
     globalServices = null;
   }
 }

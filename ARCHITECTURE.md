@@ -22,7 +22,10 @@ Clean, maintainable MCP server architecture with swappable backends.
 │  Service Implementations (services/)                     │
 │  FileMemoryService, QdrantMemoryService, etc.           │
 ├─────────────────────────────────────────────────────────┤
-│  Infrastructure (file, postgres, qdrant clients)        │
+│  MemoryContext (services/memory/context.ts)             │
+│  Hybrid search, chunking, SQLite persistence            │
+├─────────────────────────────────────────────────────────┤
+│  Infrastructure (file, postgres, qdrant, sqlite)        │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -41,6 +44,8 @@ src/
 │   ├── factory.ts            # ServiceFactory + initialization
 │   │
 │   ├── memory/
+│   │   ├── context.ts        # MemoryContext (OpenClaw-style)
+│   │   ├── sqlite-storage.ts # SQLite persistence for embeddings
 │   │   ├── file.ts           # File-based memory (default)
 │   │   └── qdrant.ts         # Qdrant vector search
 │   │
@@ -115,6 +120,88 @@ interface ISessionService {
 - `FileSessionService` - JSONL files, one per session
 - `PostgresSessionService` - Relational DB with proper indexing
 
+## MemoryContext
+
+OpenClaw-style memory system with hybrid search, chunking, and SQLite persistence.
+
+### Features
+- **Hybrid Search** - Vector + text scoring with configurable weights
+- **Automatic Chunking** - Smart chunking with overlap for long documents
+- **SQLite Persistence** - Embeddings and chunk metadata survive restarts
+- **Session Indexing** - Optional indexing of session transcripts
+- **File Watcher** - Auto-reindex when memory files change
+- **Citations** - Results include source file + line range
+
+### Configuration
+```typescript
+interface MemoryContextConfig {
+  memoryDir: string;              // Markdown files to index
+  cacheDir: string;               // Cache directory
+  chunkSize?: number;             // Tokens per chunk (default: 400)
+  chunkOverlap?: number;          // Overlap tokens (default: 80)
+  embeddingProvider?: 'openai' | 'local' | 'none';
+  openaiApiKey?: string;
+  hybridWeight?: { vector: number; text: number };  // Default: {0.7, 0.3}
+  sqlite?: SQLiteStorageConfig;   // Enable SQLite persistence
+  sessionsDir?: string;           // Index session transcripts
+  enableFileWatcher?: boolean;    // Auto-reindex on changes
+}
+```
+
+### Usage
+```typescript
+import { initializeMemoryContext } from './services/memory/context.js';
+
+const memoryContext = await initializeMemoryContext({
+  memoryDir: './memory',
+  cacheDir: './cache',
+  embeddingProvider: 'openai',
+  openaiApiKey: process.env.OPENAI_API_KEY,
+  sqlite: { dbPath: './memory.db' },  // Persist embeddings
+  sessionsDir: './sessions',           // Index transcripts
+  enableFileWatcher: true,             // Auto-reindex
+});
+
+// Search
+const results = await memoryContext.search('option A', { maxResults: 5 });
+// [{ chunk, score, citation: 'memory/2026-02-06.md#L10-L25' }]
+
+// Read specific file
+const file = await memoryContext.readFile({ relPath: '2026-02-06.md', from: 10, lines: 20 });
+
+// Cleanup
+await memoryContext.close();
+```
+
+### SQLite Schema
+```sql
+-- Chunks table with JSON embeddings
+CREATE TABLE chunks (
+  id TEXT PRIMARY KEY,
+  path TEXT NOT NULL,
+  content TEXT NOT NULL,
+  start_line INTEGER NOT NULL,
+  end_line INTEGER NOT NULL,
+  embedding TEXT,           -- JSON array
+  metadata TEXT,            -- JSON object
+  created_at INTEGER DEFAULT (unixepoch())
+);
+
+-- File tracking for incremental sync
+CREATE TABLE files (
+  path TEXT PRIMARY KEY,
+  mtime INTEGER NOT NULL,
+  size INTEGER NOT NULL,
+  indexed_at INTEGER DEFAULT (unixepoch())
+);
+```
+
+### Session Transcript Indexing
+When `sessionsDir` is configured, session JSONL files are indexed as searchable memory:
+- Each message becomes a chunk with `[role] content` format
+- Metadata includes sessionKey, sessionLabel, role
+- Useful for cross-session context and "what did we talk about" queries
+
 ## Configuration
 
 Environment variables control backend selection:
@@ -149,11 +236,21 @@ export class ServiceFactory {
     }
   }
   
-  createSessionService(): ISessionService {
+  createSessionService(): ISemoryService {
     switch (config.sessions) {
       case 'file': return new FileSessionService(config);
       case 'postgres': return new PostgresSessionService(config);
     }
+  }
+  
+  async createMemoryContext(): Promise<MemoryContext> {
+    return initializeMemoryContext({
+      memoryDir,
+      cacheDir,
+      sqlite: { dbPath },        // Enable persistence
+      sessionsDir,                // Index transcripts
+      enableFileWatcher: true,    // Auto-reindex in dev
+    });
   }
 }
 
@@ -162,16 +259,22 @@ export async function initializeServices(config): Promise<void> {
   const factory = new ServiceFactory(config);
   const memory = factory.createMemoryService();
   const sessions = factory.createSessionService();
+  const memoryContext = await factory.createMemoryContext();
   
   await memory.initialize();
   await sessions.initialize();
+  // MemoryContext initialized in createMemoryContext
   
-  globalServices = { memory, sessions };
+  globalServices = { memory, sessions, memoryContext };
 }
 
 // Tool usage
 export function getMemoryService(): IMemoryService {
   return globalServices.memory;
+}
+
+export function getMemoryContext(): MemoryContext {
+  return globalServices.memoryContext;
 }
 ```
 
@@ -205,13 +308,13 @@ createSessionService() {
 
 ```typescript
 // mcp/tools/memory-search.ts
-import { getMemoryService } from '../../services/factory.js';
+import { getMemoryContext } from '../../services/factory.js';
 
 export const memorySearchTool: Tool = {
   execute: async (args) => {
-    const memory = getMemoryService();  // ← Interface, not implementation
+    const memory = getMemoryContext();  // ← MemoryContext, not service
     const results = await memory.search(args.query);
-    // Works regardless of file/qdrant/postgres backend
+    // Works with any backend, returns citations
   }
 };
 ```
@@ -229,11 +332,16 @@ test('file memory', async () => {
   expect(result).toBe('Hello');
 });
 
-// Test Qdrant memory (if available)
-test('qdrant memory', async () => {
-  if (!qdrantAvailable) return; // Skip
-  const memory = new QdrantMemoryService({ url: 'http://localhost:6333' });
-  // ... same test
+// Test MemoryContext with SQLite
+test('memory context with sqlite', async () => {
+  const ctx = new MemoryContext({
+    memoryDir: '/tmp/memory',
+    cacheDir: '/tmp/cache',
+    sqlite: { dbPath: '/tmp/test.db' },
+  });
+  await ctx.initialize();
+  // ... test search, persistence
+  await ctx.close();
 });
 ```
 
@@ -253,6 +361,7 @@ test('memory search with file backend', async () => {
 |---------|-------------|
 | File memory → Qdrant | Set `VARGOS_MEMORY_BACKEND=qdrant`, restart. Data stays in files until you migrate. |
 | File sessions → Postgres | Set `VARGOS_SESSIONS_BACKEND=postgres`, restart. Old sessions still readable. |
+| No SQLite → SQLite | Set `sqlite: { dbPath }` in config. Embeddings cached on next sync. |
 
 ### Migration Script (Future)
 ```typescript
@@ -275,11 +384,13 @@ async function migrateToQdrant() {
 | **File** | Zero deps, fast for small data, simple | Regex search O(n), no concurrency |
 | **Qdrant** | Semantic search, fast vector queries | Requires container, OpenAI key |
 | **Postgres** | ACID, complex queries, proven | Requires DB server |
+| **SQLite** | Zero deps, fast queries, durable | Single-writer, local only |
+| **MemoryContext** | Hybrid search, chunking, citations | In-memory index (can be large) |
 
-**Recommendation:**
-- **Development:** File for everything
-- **Production single-user:** Qdrant for memory, File for sessions
-- **Production multi-user:** Qdrant for memory, Postgres for sessions
+**Recommendations:**
+- **Development:** File for everything, SQLite for MemoryContext persistence
+- **Production single-user:** Qdrant for memory, File for sessions, SQLite for embeddings
+- **Production multi-user:** Qdrant for memory, Postgres for sessions, SQLite per-user
 
 ## 12 Tools Complete
 
@@ -293,3 +404,13 @@ async function migrateToQdrant() {
 | **Total** | **12** | **56** |
 
 All tests pass with any backend combination.
+
+## Feature Checklist
+
+- [x] 12 MCP tools with 56 passing tests
+- [x] Swappable backends (file/Qdrant/Postgres)
+- [x] OpenClaw-style MemoryContext (hybrid search, chunking, citations)
+- [x] SQLite persistence for embeddings
+- [x] Session transcript indexing
+- [x] File watcher with debounce
+- [x] ARCHITECTURE.md documentation
