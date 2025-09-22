@@ -14,6 +14,8 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { glob } from 'tinyglobby';
 import { fileURLToPath } from 'node:url';
+import { MemorySQLiteStorage, SQLiteStorageConfig } from './sqlite-storage.js';
+import { FSWatcher, watch } from 'node:fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -27,6 +29,7 @@ export interface MemoryChunk {
   metadata: {
     date: string;
     size: number;
+    [key: string]: unknown;
   };
 }
 
@@ -47,12 +50,18 @@ export interface MemoryContextConfig {
     vector: number;
     text: number;
   };
+  sqlite?: SQLiteStorageConfig;  // Enable SQLite persistence
+  sessionsDir?: string;          // Session transcripts for indexing
+  enableFileWatcher?: boolean;   // Auto-reindex on file changes
 }
 
 export class MemoryContext {
   private config: Required<MemoryContextConfig>;
   private chunks: Map<string, MemoryChunk> = new Map();
   private lastSync: number = 0;
+  private sqliteStorage: MemorySQLiteStorage | null = null;
+  private fileWatcher: FSWatcher | null = null;
+  private watcherDebounce: Map<string, NodeJS.Timeout> = new Map();
 
   constructor(config: MemoryContextConfig) {
     this.config = {
@@ -60,13 +69,82 @@ export class MemoryContext {
       chunkOverlap: 80,
       embeddingProvider: 'none',
       hybridWeight: { vector: 0.7, text: 0.3 },
+      sqlite: config.sqlite,
+      sessionsDir: config.sessionsDir,
+      enableFileWatcher: config.enableFileWatcher ?? false,
       ...config,
     };
   }
 
   async initialize(): Promise<void> {
     await fs.mkdir(this.config.cacheDir, { recursive: true });
+
+    // Initialize SQLite if configured
+    if (this.config.sqlite) {
+      this.sqliteStorage = new MemorySQLiteStorage(this.config.sqlite);
+      await this.sqliteStorage.initialize();
+
+      // Load cached chunks from SQLite
+      const cachedChunks = await this.sqliteStorage.getAllChunks();
+      for (const chunk of cachedChunks) {
+        this.chunks.set(chunk.id, chunk);
+      }
+    }
+
     await this.sync({ reason: 'initialization' });
+
+    // Start file watcher if enabled
+    if (this.config.enableFileWatcher) {
+      this.startFileWatcher();
+    }
+  }
+
+  async close(): Promise<void> {
+    this.stopFileWatcher();
+    await this.sqliteStorage?.close();
+    this.sqliteStorage = null;
+  }
+
+  // ========================================================================
+  // File Watcher
+  // ========================================================================
+
+  private startFileWatcher(): void {
+    if (this.fileWatcher) return;
+
+    try {
+      this.fileWatcher = watch(this.config.memoryDir, { recursive: true }, (eventType, filename) => {
+        if (!filename || !filename.endsWith('.md')) return;
+
+        const fullPath = path.join(this.config.memoryDir, filename);
+
+        // Debounce per file
+        const existing = this.watcherDebounce.get(fullPath);
+        if (existing) clearTimeout(existing);
+
+        const timeout = setTimeout(async () => {
+          this.watcherDebounce.delete(fullPath);
+          console.log(`[Memory] File changed: ${filename}`);
+          await this.indexFile(filename, { force: true });
+        }, 500); // 500ms debounce
+
+        this.watcherDebounce.set(fullPath, timeout);
+      });
+    } catch (err) {
+      console.error('[Memory] Failed to start file watcher:', err);
+    }
+  }
+
+  private stopFileWatcher(): void {
+    // Clear pending debounces
+    for (const timeout of this.watcherDebounce.values()) {
+      clearTimeout(timeout);
+    }
+    this.watcherDebounce.clear();
+
+    // Close watcher
+    this.fileWatcher?.close();
+    this.fileWatcher = null;
   }
 
   // ========================================================================
@@ -97,40 +175,161 @@ export class MemoryContext {
     let indexed = 0;
     for (const file of files) {
       const relativePath = path.relative(this.config.memoryDir, file);
-      await this.indexFile(relativePath);
-      indexed++;
+      const needsReindex = await this.checkNeedsReindex(relativePath, file);
+      if (options?.force || needsReindex) {
+        await this.indexFile(relativePath, options);
+        indexed++;
+      }
+    }
+
+    // Index session transcripts if configured
+    if (this.config.sessionsDir) {
+      const sessionChunks = await this.indexSessions();
+      options?.progress?.(`Indexed ${sessionChunks} session chunks`);
     }
 
     this.lastSync = now;
     options?.progress?.(`Indexed ${indexed} files, ${this.chunks.size} chunks`);
   }
 
-  private async indexFile(relPath: string): Promise<void> {
+  private async checkNeedsReindex(relPath: string, fullPath: string): Promise<boolean> {
+    if (!this.sqliteStorage) return true;
+
+    const stat = await fs.stat(fullPath).catch(() => null);
+    if (!stat) return true;
+
+    const status = await this.sqliteStorage.getFileStatus(relPath);
+    if (!status) return true;
+
+    return status.mtime !== stat.mtime.getTime() || status.size !== stat.size;
+  }
+
+  private async indexFile(relPath: string, options?: { force?: boolean; progress?: (msg: string) => void }): Promise<void> {
     const fullPath = path.join(this.config.memoryDir, relPath);
-    
+
     try {
       const content = await fs.readFile(fullPath, 'utf-8');
       const stat = await fs.stat(fullPath);
-      
+
       // Remove old chunks for this file
       this.removeFileChunks(relPath);
-      
+      await this.sqliteStorage?.deleteChunksByPath(relPath);
+
       // Create new chunks
       const chunks = this.createChunks(relPath, content, stat.mtime);
-      
+
       // Generate embeddings if provider configured
       if (this.config.embeddingProvider !== 'none') {
         for (const chunk of chunks) {
           chunk.embedding = await this.generateEmbedding(chunk.content);
         }
       }
-      
+
+      // Store chunks in memory and SQLite
+      for (const chunk of chunks) {
+        this.chunks.set(chunk.id, chunk);
+        await this.sqliteStorage?.saveChunk(chunk);
+      }
+
+      // Update file status in SQLite
+      await this.sqliteStorage?.updateFileStatus(relPath, stat.mtime.getTime(), stat.size);
+
+      options?.progress?.(`Indexed ${relPath}: ${chunks.length} chunks`);
+    } catch (err) {
+      console.error(`Failed to index ${relPath}:`, err);
+    }
+  }
+
+  // ========================================================================
+  // Session Indexing
+  // ========================================================================
+
+  private async indexSessions(): Promise<number> {
+    if (!this.config.sessionsDir) return 0;
+
+    let totalChunks = 0;
+
+    try {
+      const sessionFiles = await glob('*.jsonl', {
+        cwd: this.config.sessionsDir,
+        absolute: true,
+      });
+
+      for (const file of sessionFiles) {
+        const chunks = await this.indexSessionFile(file);
+        totalChunks += chunks;
+      }
+    } catch (err) {
+      console.error('[Memory] Failed to index sessions:', err);
+    }
+
+    return totalChunks;
+  }
+
+  private async indexSessionFile(filePath: string): Promise<number> {
+    try {
+      const content = await fs.readFile(filePath, 'utf-8');
+      const stat = await fs.stat(filePath);
+      const fileName = path.basename(filePath, '.jsonl');
+
+      // Parse JSONL to extract messages
+      const lines = content.trim().split('\n').filter(Boolean);
+      if (lines.length === 0) return 0;
+
+      // Parse session header
+      const session = JSON.parse(lines[0]) as { sessionKey?: string; label?: string; agentId?: string };
+
+      // Remove old session chunks
+      const sessionPath = `sessions/${fileName}.jsonl`;
+      this.removeFileChunks(sessionPath);
+      await this.sqliteStorage?.deleteChunksByPath(sessionPath);
+
+      // Index messages (skip header line)
+      let chunks: MemoryChunk[] = [];
+      for (let i = 1; i < lines.length; i++) {
+        try {
+          const msg = JSON.parse(lines[i]) as { role?: string; content?: string; timestamp?: string };
+          if (!msg.content) continue;
+
+          const chunk: MemoryChunk = {
+            id: `${sessionPath}:${i}`,
+            path: sessionPath,
+            content: `[${msg.role}] ${msg.content}`,
+            startLine: i,
+            endLine: i,
+            metadata: {
+              date: stat.mtime.toISOString(),
+              size: msg.content.length,
+              sessionKey: session.sessionKey,
+              sessionLabel: session.label,
+              role: msg.role,
+            },
+          };
+
+          // Generate embedding if provider configured
+          if (this.config.embeddingProvider !== 'none') {
+            chunk.embedding = await this.generateEmbedding(chunk.content);
+          }
+
+          chunks.push(chunk);
+        } catch {
+          // Skip malformed lines
+        }
+      }
+
       // Store chunks
       for (const chunk of chunks) {
         this.chunks.set(chunk.id, chunk);
+        await this.sqliteStorage?.saveChunk(chunk);
       }
+
+      // Update file status
+      await this.sqliteStorage?.updateFileStatus(sessionPath, stat.mtime.getTime(), stat.size);
+
+      return chunks.length;
     } catch (err) {
-      console.error(`Failed to index ${relPath}:`, err);
+      console.error(`Failed to index session ${filePath}:`, err);
+      return 0;
     }
   }
 
