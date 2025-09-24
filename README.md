@@ -1,283 +1,214 @@
 # Vargos
 
-**Vargos** is a next-generation orchestration platform that bridges Large Language Models (LLMs) with real-world system execution.
+**Vargos** is an MCP (Model Context Protocol) server that gives AI agents practical tools to interact with real-world systems.
 
 > Built for extensibility, modularity, and self-hosting from the ground up.
 
-> **Core Philosophy:** Providing Agents to your Machine - focusing on giving AI agents practical capabilities to execute system actions.
-
 ## Overview
 
-Vargos enables AI agents to interact with real-world systems through standardized interfaces (OpenAPI and Model Context Protocol), combining the power of LLMs with practical system execution capabilities.
+Vargos exposes 12 MCP tools that enable AI agents to:
+- Read, write, and edit files
+- Execute shell commands and manage processes
+- Search memory with hybrid semantic + text search
+- Manage browser automation
+- List and interact with sessions
 
 **Key Features:**
-- 🤖 **Multi-Agent Architecture** - 9 specialized agents working together
-- 🔍 **RAG-First Approach** - Always search before creating
-- 🔧 **Function Repository** - Versioned, searchable function library
-- 🧪 **Safe Execution** - Isolated subprocess execution with testing
-- 📊 **Semantic Search** - Vector-based function discovery
-- 💾 **Hybrid Memory** - PostgreSQL + Qdrant for context management
+- 🔧 **12 MCP Tools** - File, shell, web, memory, and session tools
+- 🔄 **Swappable Backends** - File, Qdrant, or PostgreSQL for memory/sessions
+- 🧠 **OpenClaw-style Memory** - Hybrid search with chunking and citations
+- 💾 **SQLite Persistence** - Embeddings cached for fast restarts
+- 📁 **Session Indexing** - Search across conversation history
+- 👁️ **File Watcher** - Auto-reindex when memory files change
+- ✅ **56 Tests** - Full test coverage with Vitest
 
 ## Quick Start
 
 ### Prerequisites
 
 - Node.js 20+
-- pnpm 8+
-- PostgreSQL (for Mastra memory)
-- Qdrant (optional, for vector search)
+- pnpm (or npm)
 
 ### Installation
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/chozzz/vargos.git
-   cd vargos
-   ```
+```bash
+git clone https://github.com/chozzz/vargos.git
+cd vargos
+pnpm install
+```
 
-2. **Install dependencies:**
-   ```bash
-   pnpm install
-   ```
+### Development
 
-3. **Set up environment variables:**
-   ```bash
-   # Core app
-   cp apps/core/.env.example apps/core/.env
+```bash
+# Run tests
+pnpm test
 
-   # Mastra app
-   cp apps/mastra/.env.example apps/mastra/.env
+# Run with file backend (default)
+pnpm dev
 
-   # Edit with your API keys and database URLs
-   ```
-
-4. **Start development servers:**
-   ```bash
-   # Terminal 1: Core API (port 8180 in dev)
-   cd apps/core
-   pnpm dev
-
-   # Terminal 2: Mastra (port 4862)
-   cd apps/mastra
-   mastra dev
-   ```
+# Run with Qdrant + Postgres backends
+QDRANT_URL=http://localhost:6333 \
+POSTGRES_URL=postgresql://localhost:5432/vargos \
+  pnpm dev
+```
 
 ## Project Structure
 
-This repository is organized as a **Turborepo monorepo**:
-
 ```
 vargos/
-├── apps/
-│   ├── core/           # NestJS API server (Port 8180 dev, 4861 prod)
-│   ├── mastra/         # Mastra AI framework - agents & workflows (Port 4862)
-│   ├── cli/            # CLI agent (similar to Claude CLI)
-│   └── chat/           # AIChat - All-in-one LLM CLI (Rust, git submodule)
+├── src/
+│   ├── core/
+│   │   ├── services/
+│   │   │   └── types.ts          # Service interfaces (IMemoryService, etc.)
+│   │   ├── tools/
+│   │   │   ├── types.ts          # Tool interfaces
+│   │   │   └── base.ts           # BaseTool class
+│   │   └── index.ts              # Core exports
+│   │
+│   ├── services/
+│   │   ├── factory.ts            # ServiceFactory + initialization
+│   │   ├── memory/
+│   │   │   ├── context.ts        # MemoryContext (hybrid search)
+│   │   │   ├── sqlite-storage.ts # SQLite persistence
+│   │   │   ├── file.ts           # File-based memory
+│   │   │   └── qdrant.ts         # Qdrant vector search
+│   │   ├── sessions/
+│   │   │   ├── file.ts           # JSONL session storage
+│   │   │   └── postgres.ts       # PostgreSQL sessions
+│   │   ├── browser.ts            # Browser automation
+│   │   └── process.ts            # Process management
+│   │
+│   ├── mcp/
+│   │   ├── tools/                # MCP tool implementations
+│   │   │   ├── read.ts           # Read files
+│   │   │   ├── write.ts          # Write files
+│   │   │   ├── edit.ts           # Edit files
+│   │   │   ├── exec.ts           # Execute shell commands
+│   │   │   ├── process.ts        # Process management
+│   │   │   ├── web-fetch.ts      # Web fetching
+│   │   │   ├── browser.ts        # Browser automation
+│   │   │   ├── memory-search.ts  # Search memory
+│   │   │   ├── memory-get.ts     # Read memory files
+│   │   │   ├── sessions-list.ts  # List sessions
+│   │   │   ├── sessions-send.ts  # Send messages
+│   │   │   └── sessions-spawn.ts # Spawn sub-agents
+│   │   └── registry.ts           # Tool registration
+│   │
+│   └── index.ts                  # Entry point
 │
-├── packages/
-│   ├── core-lib/       # Shared core services (LLM, Vector, Functions, Env, Shell)
-│   ├── eslint-config/  # Shared ESLint configuration
-│   ├── typescript-config/ # Shared TypeScript configuration
-│   └── ui/             # Shared UI components (shadcn)
-│
-└── docs/               # Documentation (moved to apps/mastra/docs)
+├── ARCHITECTURE.md               # Architecture documentation
+├── CLAUDE.md                     # Claude Code guidance
+└── package.json
 ```
 
-### Applications
+## MCP Tools (12 Total)
 
-- **`core`** - NestJS API server exposing functions via OpenAPI and MCP
-- **`mastra`** - Multi-agent system with 9 specialized agents and workflows
-- **`cli`** - Command-line interface for natural language agent interaction
-- **`chat`** - Rust-based LLM CLI (git submodule from [aichat](https://github.com/sigoden/aichat))
-
-### Shared Packages
-
-- **`core-lib`** - Core services (LLM, Vector, Functions, Env, Shell)
-- **`eslint-config`** - Shared ESLint rules
-- **`typescript-config`** - Shared TypeScript configuration
-- **`ui`** - Shared UI components
+| Category | Tools |
+|----------|-------|
+| **File** | `read`, `write`, `edit` |
+| **Shell** | `exec`, `process` |
+| **Web** | `web_fetch`, `browser` |
+| **Memory** | `memory_search`, `memory_get` |
+| **Sessions** | `sessions_list`, `sessions_send`, `sessions_spawn` |
 
 ## Architecture
 
-Vargos implements a 4-layer architecture:
-
 ```
 ┌─────────────────────────────────────────────┐
-│          Agent Layer (9 Agents)              │
-│  Router, Planner, Curator, Permission,      │
-│  Creator, Sandbox, Research, Memory          │
-└─────────────────────────────────────────────┘
-                    ↓
-┌─────────────────────────────────────────────┐
-│       Workflow Layer (Orchestration)         │
-│  Function Search, Creation, Testing          │
-└─────────────────────────────────────────────┘
-                    ↓
-┌─────────────────────────────────────────────┐
-│          Tool Layer (MCP Tools)              │
-│  Functions, Env, Shell, Memory Tools         │
-└─────────────────────────────────────────────┘
-                    ↓
-┌─────────────────────────────────────────────┐
-│         Core Services Layer                  │
-│  LLM, Vector, Functions, Env, Shell          │
+│  MCP Tools (12 tools)                       │
+│  read, write, edit, exec, process, etc.     │
+├─────────────────────────────────────────────┤
+│  Service Interface (core/services/types.ts) │
+│  IMemoryService, ISessionService            │
+├─────────────────────────────────────────────┤
+│  Service Implementations (services/)        │
+│  FileMemoryService, QdrantMemoryService     │
+├─────────────────────────────────────────────┤
+│  MemoryContext (services/memory/context.ts) │
+│  Hybrid search, SQLite persistence          │
 └─────────────────────────────────────────────┘
 ```
 
-### Phase 1-3 Agents
+## Configuration
 
-**Phase 1: Foundation**
-- **Router Agent** - Entry point, analyzes intent and routes requests
-- **Planner Agent** - Breaks complex tasks into actionable steps
-- **Curator Agent** - Searches function repository (RAG-first)
-- **Permission Agent** - Handles user approval and authorization
+Environment variables control backend selection:
 
-**Phase 2: Creation Pipeline**
-- **Function Creator Agent** - Generates TypeScript functions with tests
-- **Sandbox Agent** - Executes tests safely and diagnoses failures
+```bash
+# Memory backend: file | qdrant | postgres (default: file)
+VARGOS_MEMORY_BACKEND=file
 
-**Phase 3: Research & Memory**
-- **Research Agent** - Gathers information from external sources
-- **Memory Agent** - Manages hybrid global + thread memory
+# Sessions backend: file | postgres (default: file)
+VARGOS_SESSIONS_BACKEND=file
+
+# File backend config
+VARGOS_MEMORY_DIR=~/.vargos/memory
+
+# Qdrant config (for vector memory)
+QDRANT_URL=http://localhost:6333
+QDRANT_API_KEY=your-api-key
+
+# PostgreSQL config
+POSTGRES_URL=postgresql://user:pass@host:port/db
+
+# OpenAI (for embeddings)
+OPENAI_API_KEY=sk-xxx
+```
+
+## MemoryContext
+
+OpenClaw-style memory system with hybrid search:
+
+```typescript
+import { initializeMemoryContext } from './services/memory/context.js';
+
+const memory = await initializeMemoryContext({
+  memoryDir: './memory',
+  cacheDir: './cache',
+  embeddingProvider: 'openai',
+  openaiApiKey: process.env.OPENAI_API_KEY,
+  sqlite: { dbPath: './memory.db' },  // Persist embeddings
+  sessionsDir: './sessions',           // Index transcripts
+  enableFileWatcher: true,             // Auto-reindex
+});
+
+// Search
+const results = await memory.search('option A', { maxResults: 5 });
+// [{ chunk, score, citation: 'memory/2026-02-06.md#L10-L25' }]
+
+await memory.close();
+```
+
+## Testing
+
+```bash
+# Run all tests
+pnpm test
+
+# Run once (CI)
+pnpm run test:run
+
+# Watch mode
+pnpm test -- --watch
+```
+
+## Backend Comparison
+
+| Backend | Pros | Cons |
+|---------|------|------|
+| **File** | Zero deps, fast for small data | Regex search O(n) |
+| **Qdrant** | Semantic search, fast vectors | Requires container |
+| **Postgres** | ACID, complex queries | Requires DB server |
+| **SQLite** | Zero deps, durable, fast | Single-writer |
+
+**Recommendations:**
+- **Development:** File + SQLite persistence
+- **Production:** Qdrant for memory, Postgres for sessions
 
 ## Documentation
 
-Comprehensive documentation is available in `apps/mastra/docs/`:
-
-- **[Architecture](apps/mastra/docs/architecture.md)** - Complete system architecture and design
-- **[Contributing](apps/mastra/docs/contributing.md)** - Developer guide for contributors
-- **[Agents](apps/mastra/docs/agents.md)** - Reference for all 9 agents with schemas
-- **[Tools](apps/mastra/docs/tools.md)** - Tools and core services reference
-- **[Functions](apps/mastra/docs/functions.md)** - Function repository design
-
-## Development
-
-### Available Scripts
-
-| Script       | Purpose                                    |
-|--------------|--------------------------------------------|
-| `pnpm dev`   | Start all applications in development mode |
-| `pnpm build` | Build all applications                     |
-| `pnpm lint`  | Run linting across all packages            |
-| `pnpm test`  | Run tests across all packages              |
-| `pnpm format`| Format code with Prettier                  |
-
-### Working with Agents
-
-See [apps/mastra/docs/agents.md](apps/mastra/docs/agents.md) for detailed agent documentation.
-
-Example - using Curator Agent to search functions:
-
-```typescript
-import { curatorAgent } from './agents/curator-agent';
-
-const result = await curatorAgent.generate(
-  'Find functions that send emails',
-  {
-    structuredOutput: { schema: CuratorOutputSchema }
-  }
-);
-
-if (result.object.decision === 'use_existing') {
-  console.log('Found:', result.object.topMatch.functionId);
-}
-```
-
-### Creating New Functions
-
-Functions are stored in `~/.vargos/functions/src/` with structure:
-
-```
-category/
-└── function-name/
-    └── v1/
-        ├── index.ts                    # Implementation
-        ├── function-name.meta.json     # Metadata
-        └── function-name.test.ts       # Tests
-```
-
-See [apps/mastra/docs/functions.md](apps/mastra/docs/functions.md) for complete function repository design.
-
-## Tech Stack
-
-- **Monorepo**: [Turborepo](https://turbo.build/repo)
-- **Backend**: [NestJS](https://nestjs.com/) (TypeScript)
-- **AI Framework**: [Mastra](https://mastra.ai)
-- **LLM**: OpenAI GPT-4o / GPT-4o-mini
-- **Vector DB**: [Qdrant](https://qdrant.tech)
-- **Memory**: PostgreSQL
-- **Testing**: [Vitest](https://vitest.dev)
-- **API Standards**:
-  - [OpenAPI 3.1](https://spec.openapis.org/oas/latest.html)
-  - [Model Context Protocol (MCP)](https://modelcontextprotocol.io)
-- **Package Manager**: [pnpm](https://pnpm.io/)
-
-## Deployment
-
-### Docker Deployment
-
-```bash
-# Build
-pnpm build
-
-# Deploy with Docker Compose
-docker-compose up -d
-```
-
-### Environment Variables
-
-**Core App:**
-```bash
-CORE_PORT=4861
-OPENAI_API_KEY=sk-...
-QDRANT_URL=http://localhost:6333
-FUNCTIONS_DIR=~/.vargos/functions/src
-```
-
-**Mastra App:**
-```bash
-MASTRA_PORT=4862
-OPENAI_API_KEY=sk-...
-DATABASE_URL=postgresql://localhost:5432/vargos_mastra
-CORE_MCP_CLIENT_URL=http://localhost:4861/mcp
-```
-
-## Contributing
-
-We welcome contributions! Please see:
-- [Contributing Guide](apps/mastra/docs/contributing.md) - Technical guide for contributors
-- [Architecture](apps/mastra/docs/architecture.md) - System architecture overview
-
-### Development Process
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests
-5. Ensure all tests pass (`pnpm test`)
-6. Submit a pull request
-
-## Roadmap
-
-### Phase 4 (Planned)
-- **Crawler Agent** - Web scraping and data extraction
-- **Dev Assistant Agent** - Code review and suggestions
-- **Evaluator Agent** - Function quality assessment
-- **Infrastructure Agent** - Deployment and monitoring
-
-### Future Features
-- Multi-language function support (Python, Rust)
-- Distributed function execution
-- Function marketplace and sharing
-- Real-time agent telemetry
-- Advanced permission scoping
-
-## Related Projects
-
-- [Vargos Functions Template](https://github.com/chozzz/vargos-functions-template) - Function repository template
-- [Model Context Protocol](https://modelcontextprotocol.io) - Protocol specification
-- [Mastra Framework](https://mastra.ai) - AI agent framework
-- [AIChat](https://github.com/sigoden/aichat) - LLM CLI tool
+- **[ARCHITECTURE.md](./ARCHITECTURE.md)** - System architecture and design
+- **[CLAUDE.md](./CLAUDE.md)** - Claude Code guidance
+- **[CONTRIBUTING.md](./CONTRIBUTING.md)** - Contribution guidelines
 
 ## License
 
@@ -289,8 +220,3 @@ Copyright (c) 2024 Vadi Taslim. All rights reserved.
 
 - **GitHub Issues**: Bug reports and feature requests
 - **Discussions**: Questions and community chat
-- **Discord**: Coming soon
-
----
-
-**Star this repo** if you find it useful! ⭐
