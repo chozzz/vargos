@@ -269,6 +269,7 @@ export class QdrantMemoryService implements IMemoryService {
 
   private buildFilter(options: SearchOptions): Record<string, unknown> | undefined {
     const must: Array<Record<string, unknown>> = [];
+    const should: Array<Record<string, unknown>> = [];
 
     if (options.filters?.dateFrom) {
       must.push({
@@ -298,7 +299,7 @@ export class QdrantMemoryService implements IMemoryService {
     }
 
     if (must.length === 0) return undefined;
-    
-    return { must };
+
+    return should.length > 0 ? { must, should } : { must };
   }
 }

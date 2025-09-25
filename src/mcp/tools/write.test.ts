@@ -7,7 +7,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { writeTool } from './write.js';
-import { ToolContext } from './types.js';
+import { ToolContext, getFirstTextContent } from './types.js';
 
 describe('write tool', () => {
   let tempDir: string;
@@ -66,6 +66,6 @@ describe('write tool', () => {
     }, context);
 
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain('Access denied');
+    expect(getFirstTextContent(result.content)).toContain('Access denied');
   });
 });

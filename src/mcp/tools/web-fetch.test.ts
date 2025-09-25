@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { webFetchTool } from './web-fetch.js';
-import { ToolContext } from './types.js';
+import { ToolContext, getFirstTextContent } from './types.js';
 
 describe('web_fetch tool', () => {
   const context: ToolContext = {
@@ -16,14 +16,14 @@ describe('web_fetch tool', () => {
     const result = await webFetchTool.execute({ url: 'not-a-url' }, context);
 
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain('Invalid URL');
+    expect(getFirstTextContent(result.content)).toContain('Invalid URL');
   });
 
   it('should reject non-http protocols', async () => {
     const result = await webFetchTool.execute({ url: 'file:///etc/passwd' }, context);
 
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain('Invalid URL');
+    expect(getFirstTextContent(result.content)).toContain('Invalid URL');
   });
 
   it('should fetch a real URL (markdown mode)', async () => {
@@ -35,7 +35,7 @@ describe('web_fetch tool', () => {
 
     // httpbin returns HTML, so we should get markdown output
     expect(result.isError).toBeUndefined();
-    expect(result.content[0].text.length).toBeGreaterThan(0);
+    expect(getFirstTextContent(result.content).length).toBeGreaterThan(0);
   }, 10000);
 
   it('should fetch a real URL (text mode)', async () => {
@@ -46,7 +46,7 @@ describe('web_fetch tool', () => {
     }, context);
 
     expect(result.isError).toBeUndefined();
-    expect(result.content[0].text.length).toBeGreaterThan(0);
+    expect(getFirstTextContent(result.content).length).toBeGreaterThan(0);
   }, 10000);
 
   it('should respect maxChars limit', async () => {
@@ -56,7 +56,7 @@ describe('web_fetch tool', () => {
     }, context);
 
     expect(result.isError).toBeUndefined();
-    expect(result.content[0].text.length).toBeLessThanOrEqual(200); // Buffer for truncation marker and title
-    expect(result.content[0].text).toContain('truncated');
+    expect(getFirstTextContent(result.content).length).toBeLessThanOrEqual(200); // Buffer for truncation marker and title
+    expect(getFirstTextContent(result.content)).toContain('truncated');
   }, 10000);
 });

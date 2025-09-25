@@ -6,7 +6,7 @@
 
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import { BrowserTool } from './browser.js';
-import { ToolContext } from '../../core/tools/types.js';
+import { ToolContext, getFirstTextContent } from '../../core/tools/types.js';
 import { getBrowserService } from '../../services/browser.js';
 
 // Check if browser is available
@@ -52,7 +52,7 @@ describe('browser tool', () => {
       const result = await tool.executeImpl({ action: 'start' }, context);
       
       expect(result.isError).toBeUndefined();
-      expect(result.content[0].text).toContain('Browser session started');
+      expect(getFirstTextContent(result.content)).toContain('Browser session started');
       expect(result.metadata?.sessionId).toBeDefined();
     });
 
@@ -67,7 +67,7 @@ describe('browser tool', () => {
       const result = await tool.executeImpl({ action: 'list' }, context);
       
       expect(result.isError).toBeUndefined();
-      expect(result.content[0].text).toContain('browser-');
+      expect(getFirstTextContent(result.content)).toContain('browser-');
     });
 
     it('should show empty list when no sessions', async () => {
@@ -77,7 +77,7 @@ describe('browser tool', () => {
       const result = await tool.executeImpl({ action: 'list' }, context);
       
       expect(result.isError).toBeUndefined();
-      expect(result.content[0].text).toContain('No active');
+      expect(getFirstTextContent(result.content)).toContain('No active');
     });
 
     it('should close browser session', async () => {
@@ -91,7 +91,7 @@ describe('browser tool', () => {
       const result = await tool.executeImpl({ action: 'close', sessionId }, context);
       
       expect(result.isError).toBeUndefined();
-      expect(result.content[0].text).toContain('Closed');
+      expect(getFirstTextContent(result.content)).toContain('Closed');
     });
 
     it('should close all sessions', async () => {
@@ -104,7 +104,7 @@ describe('browser tool', () => {
       const result = await tool.executeImpl({ action: 'stop' }, context);
       
       expect(result.isError).toBeUndefined();
-      expect(result.content[0].text).toContain('All browser sessions closed');
+      expect(getFirstTextContent(result.content)).toContain('All browser sessions closed');
     });
   });
 
@@ -113,21 +113,21 @@ describe('browser tool', () => {
       const result = await tool.executeImpl({ action: 'click' }, context);
       
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('sessionId required');
+      expect(getFirstTextContent(result.content)).toContain('sessionId required');
     });
 
     it('should require url for open action', async () => {
       const result = await tool.executeImpl({ action: 'open' }, context);
       
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('url required');
+      expect(getFirstTextContent(result.content)).toContain('url required');
     });
 
     it('should require ref for click action', async () => {
       const result = await tool.executeImpl({ action: 'click' }, context);
       
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('sessionId required');
+      expect(getFirstTextContent(result.content)).toContain('sessionId required');
     });
   });
 
@@ -143,7 +143,7 @@ describe('browser tool', () => {
       }, context);
       
       expect(result.isError).toBeUndefined();
-      expect(result.content[0].text).toContain('example.com');
+      expect(getFirstTextContent(result.content)).toContain('example.com');
       expect(result.metadata?.sessionId).toBeDefined();
     }, 30000);
 
@@ -164,7 +164,7 @@ describe('browser tool', () => {
       }, context);
       
       expect(result.isError).toBeUndefined();
-      expect(result.content[0].text).toContain('Example Domain');
+      expect(getFirstTextContent(result.content)).toContain('Example Domain');
     }, 30000);
   });
 });

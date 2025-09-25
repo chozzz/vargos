@@ -12,11 +12,13 @@ import {
   type IVectorService,
   type ServiceConfig,
 } from '../core/services/types.js';
+
+export type { ServiceConfig };
 import { FileMemoryService } from './memory/file.js';
 import { QdrantMemoryService } from './memory/qdrant.js';
 import { FileSessionService } from './sessions/file.js';
 import { PostgresSessionService } from './sessions/postgres.js';
-import { MemoryContext, initializeMemoryContext, getMemoryContext } from './memory/context.js';
+import { MemoryContext, initializeMemoryContext } from './memory/context.js';
 
 export class ServiceFactory {
   private config: ServiceConfig;

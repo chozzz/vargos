@@ -24,7 +24,7 @@ export interface Tool {
   execute: (args: unknown, context: ToolContext) => Promise<ToolResult>;
 }
 
-export function textResult(text: string): ToolResult {
+export function textResult(text: string, _metadata?: Record<string, unknown>): ToolResult {
   return { content: [{ type: 'text', text }] };
 }
 
@@ -34,4 +34,10 @@ export function errorResult(error: string): ToolResult {
 
 export function imageResult(data: string, mimeType: string): ToolResult {
   return { content: [{ type: 'image', data, mimeType }] };
+}
+
+/** Get first content block's text; use in tests when you expect a single text block. */
+export function getFirstTextContent(content: ToolResult['content']): string {
+  const c = content[0];
+  return c?.type === 'text' ? c.text : '';
 }
