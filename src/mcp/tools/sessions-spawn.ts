@@ -30,6 +30,7 @@ export const sessionsSpawnTool: Tool = {
         parentSession = await sessions.create({
           sessionKey: context.sessionKey,
           kind: 'main',
+          metadata: {},
         });
       }
 
@@ -40,6 +41,7 @@ export const sessionsSpawnTool: Tool = {
         kind: 'subagent',
         agentId: params.agentId,
         label: params.label ?? `Task: ${params.task.slice(0, 30)}...`,
+        metadata: {},
       });
 
       // Add task as first message

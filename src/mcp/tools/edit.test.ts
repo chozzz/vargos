@@ -7,7 +7,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { editTool } from './edit.js';
-import { ToolContext } from './types.js';
+import { ToolContext, getFirstTextContent } from './types.js';
 
 describe('edit tool', () => {
   let tempDir: string;
@@ -50,7 +50,7 @@ describe('edit tool', () => {
     }, context);
 
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain('Could not find');
+    expect(getFirstTextContent(result.content)).toContain('Could not find');
   });
 
   it('should return error if multiple occurrences', async () => {
@@ -63,7 +63,7 @@ describe('edit tool', () => {
     }, context);
 
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain('2 occurrences');
+    expect(getFirstTextContent(result.content)).toContain('2 occurrences');
   });
 
   it('should return error for path outside workspace', async () => {
@@ -74,7 +74,7 @@ describe('edit tool', () => {
     }, context);
 
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain('Access denied');
+    expect(getFirstTextContent(result.content)).toContain('Access denied');
   });
 
   it('should handle multi-line replacements', async () => {
