@@ -1,9 +1,19 @@
-import { config as baseConfig } from "@workspace/eslint-config/base"
+import eslint from "@eslint/js";
+import tseslint from "typescript-eslint";
 
-/** @type {import("eslint").Linter.Config[]} */
-export default [
-  ...baseConfig,
+export default tseslint.config(
+  eslint.configs.recommended,
+  ...tseslint.configs.recommended,
   {
-    ignores: ["apps/**", "packages/**"],
+    ignores: ["node_modules/**", "dist/**", "out/**", "apps/**", "packages/**"],
   },
-]
+  {
+    rules: {
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
+      "@typescript-eslint/no-explicit-any": "warn",
+    },
+  }
+);

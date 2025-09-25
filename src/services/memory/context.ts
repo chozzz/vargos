@@ -55,8 +55,17 @@ export interface MemoryContextConfig {
   enableFileWatcher?: boolean;   // Auto-reindex on file changes
 }
 
+type ResolvedMemoryContextConfig = MemoryContextConfig & {
+  chunkSize: number;
+  chunkOverlap: number;
+  cacheDir: string;
+  embeddingProvider: 'openai' | 'local' | 'none';
+  hybridWeight: { vector: number; text: number };
+  enableFileWatcher: boolean;
+};
+
 export class MemoryContext {
-  private config: Required<MemoryContextConfig>;
+  private config: ResolvedMemoryContextConfig;
   private chunks: Map<string, MemoryChunk> = new Map();
   private lastSync: number = 0;
   private sqliteStorage: MemorySQLiteStorage | null = null;
@@ -69,11 +78,9 @@ export class MemoryContext {
       chunkOverlap: 80,
       embeddingProvider: 'none',
       hybridWeight: { vector: 0.7, text: 0.3 },
-      sqlite: config.sqlite,
-      sessionsDir: config.sessionsDir,
       enableFileWatcher: config.enableFileWatcher ?? false,
       ...config,
-    };
+    } as ResolvedMemoryContextConfig;
   }
 
   async initialize(): Promise<void> {

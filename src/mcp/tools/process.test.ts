@@ -4,7 +4,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { ProcessTool } from './process.js';
-import { ToolContext } from '../../core/tools/types.js';
+import { ToolContext, getFirstTextContent } from '../../core/tools/types.js';
 import { getProcessService } from '../../services/process.js';
 
 describe('process tool', () => {
@@ -32,7 +32,7 @@ describe('process tool', () => {
       const result = await tool.executeImpl({ action: 'list' }, context);
       
       expect(result.isError).toBeUndefined();
-      expect(result.content[0].text).toContain('No running');
+      expect(getFirstTextContent(result.content)).toContain('No running');
     });
   });
 
@@ -45,8 +45,8 @@ describe('process tool', () => {
       
       // List should show it
       const listResult = await tool.executeImpl({ action: 'list' }, context);
-      expect(listResult.content[0].text).toContain(session.id);
-      expect(listResult.content[0].text).toContain('running');
+      expect(getFirstTextContent(listResult.content)).toContain(session.id);
+      expect(getFirstTextContent(listResult.content)).toContain('running');
       
       // Poll should show output
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -54,7 +54,7 @@ describe('process tool', () => {
         action: 'poll', 
         sessionId: session.id 
       }, context);
-      expect(pollResult.content[0].text).toContain('hello');
+      expect(getFirstTextContent(pollResult.content)).toContain('hello');
       
       // Kill it
       const killResult = await tool.executeImpl({ 
@@ -79,7 +79,7 @@ describe('process tool', () => {
       }, context);
       
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('sessionId required');
+      expect(getFirstTextContent(result.content)).toContain('sessionId required');
     });
   });
 
@@ -129,7 +129,7 @@ describe('process tool', () => {
       }, context);
       
       expect(result.isError).toBeUndefined();
-      expect(result.content[0].text).toContain('Wrote');
+      expect(getFirstTextContent(result.content)).toContain('Wrote');
     });
   });
 

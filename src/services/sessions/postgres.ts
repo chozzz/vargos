@@ -119,7 +119,7 @@ export class PostgresSessionService extends EventEmitter implements ISessionServ
       INSERT INTO ${this.sqlClient(schema)}.sessions 
         (session_key, label, agent_id, kind, metadata)
       VALUES 
-        (${session.sessionKey}, ${session.label ?? null}, ${session.agentId ?? null}, ${session.kind}, ${this.sqlClient.json(session.metadata)})
+        (${session.sessionKey}, ${session.label ?? null}, ${session.agentId ?? null}, ${session.kind}, ${this.sqlClient.json(session.metadata as postgres.JSONValue)})
       RETURNING session_key, label, agent_id, kind, created_at, updated_at, metadata
     `;
 
@@ -170,7 +170,7 @@ export class PostgresSessionService extends EventEmitter implements ISessionServ
         label = COALESCE(${updates.label ?? null}, label),
         agent_id = COALESCE(${updates.agentId ?? null}, agent_id),
         kind = COALESCE(${updates.kind ?? null}, kind),
-        metadata = COALESCE(${updates.metadata ? this.sqlClient.json(updates.metadata) : null}, metadata)
+        metadata = COALESCE(${updates.metadata ? this.sqlClient.json(updates.metadata as postgres.JSONValue) : null}, metadata)
       WHERE session_key = ${sessionKey}
       RETURNING session_key, label, agent_id, kind, created_at, updated_at, metadata
     `;
@@ -238,7 +238,7 @@ export class PostgresSessionService extends EventEmitter implements ISessionServ
       INSERT INTO ${this.sqlClient(schema)}.messages 
         (id, session_key, content, role, metadata)
       VALUES 
-        (${id}, ${message.sessionKey}, ${message.content}, ${message.role}, ${this.sqlClient.json(message.metadata ?? {})})
+        (${id}, ${message.sessionKey}, ${message.content}, ${message.role}, ${this.sqlClient.json((message.metadata ?? {}) as postgres.JSONValue)})
       RETURNING id, session_key, content, role, timestamp, metadata
     `;
 

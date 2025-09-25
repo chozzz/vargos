@@ -7,7 +7,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { readTool } from './read.js';
-import { ToolContext } from './types.js';
+import { ToolContext, getFirstTextContent } from './types.js';
 
 describe('read tool', () => {
   let tempDir: string;
@@ -41,21 +41,21 @@ describe('read tool', () => {
 
     const result = await readTool.execute({ path: 'lines.txt', offset: 2, limit: 2 }, context);
 
-    expect(result.content[0].text).toBe('line 2\nline 3');
+    expect(getFirstTextContent(result.content)).toBe('line 2\nline 3');
   });
 
   it('should return error for non-existent file', async () => {
     const result = await readTool.execute({ path: 'nonexistent.txt' }, context);
 
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain('File not found');
+    expect(getFirstTextContent(result.content)).toContain('File not found');
   });
 
   it('should return error for path outside workspace', async () => {
     const result = await readTool.execute({ path: '/etc/passwd' }, context);
 
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain('Access denied');
+    expect(getFirstTextContent(result.content)).toContain('Access denied');
   });
 
   it('should read image file', async () => {

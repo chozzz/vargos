@@ -6,6 +6,7 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
+  type CallToolResult,
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
@@ -64,8 +65,8 @@ async function main() {
     };
   });
 
-  // Execute tool
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  // Execute tool — map our ToolResult to MCP CallToolResult (sync result, no task)
+  server.setRequestHandler(CallToolRequestSchema, async (request): Promise<CallToolResult> => {
     const { name, arguments: args } = request.params;
     const tool = toolRegistry.get(name);
 
@@ -83,7 +84,7 @@ async function main() {
 
     try {
       const result = await tool.execute(args, context);
-      return result;
+      return { content: result.content, isError: result.isError };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return {

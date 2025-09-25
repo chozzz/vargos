@@ -9,7 +9,7 @@ import * as os from 'node:os';
 import { sessionsListTool } from './sessions-list.js';
 import { sessionsSendTool } from './sessions-send.js';
 import { sessionsSpawnTool } from './sessions-spawn.js';
-import { ToolContext } from './types.js';
+import { ToolContext, getFirstTextContent } from './types.js';
 import { initializeServices, closeServices } from '../../services/factory.js';
 
 describe('session tools', () => {
@@ -46,7 +46,7 @@ describe('session tools', () => {
       const result = await sessionsListTool.execute({}, context);
 
       expect(result.isError).toBeUndefined();
-      expect(result.content[0].text).toContain('No sessions');
+      expect(getFirstTextContent(result.content)).toContain('No sessions');
     });
 
     it('should list created sessions', async () => {
@@ -59,7 +59,7 @@ describe('session tools', () => {
       const result = await sessionsListTool.execute({}, context);
 
       expect(result.isError).toBeUndefined();
-      expect(result.content[0].text).toContain('session-1');
+      expect(getFirstTextContent(result.content)).toContain('session-1');
     });
 
     it('should respect limit', async () => {
@@ -70,7 +70,7 @@ describe('session tools', () => {
       const result = await sessionsListTool.execute({ limit: 2 }, context);
 
       expect(result.isError).toBeUndefined();
-      expect(result.content[0].text).toContain('Found 2 sessions');
+      expect(getFirstTextContent(result.content)).toContain('Found 2 sessions');
     });
   });
 
@@ -82,7 +82,7 @@ describe('session tools', () => {
       }, context);
 
       expect(result.isError).toBeUndefined();
-      expect(result.content[0].text).toContain('Message sent');
+      expect(getFirstTextContent(result.content)).toContain('Message sent');
     });
 
     it('should create session if not exists', async () => {
@@ -92,7 +92,7 @@ describe('session tools', () => {
       }, context);
 
       const listResult = await sessionsListTool.execute({}, context);
-      expect(listResult.content[0].text).toContain('new-session');
+      expect(getFirstTextContent(listResult.content)).toContain('new-session');
     });
   });
 
@@ -104,8 +104,8 @@ describe('session tools', () => {
       }, context);
 
       expect(result.isError).toBeUndefined();
-      expect(result.content[0].text).toContain('Spawned');
-      expect(result.content[0].text).toContain('Analyze codebase for bugs');
+      expect(getFirstTextContent(result.content)).toContain('Spawned');
+      expect(getFirstTextContent(result.content)).toContain('Analyze codebase for bugs');
     });
   });
 });

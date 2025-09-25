@@ -57,6 +57,12 @@ export function imageResult(data: string, mimeType: string): ToolResult {
   return { content: [{ type: 'image', data, mimeType }] };
 }
 
+/** Get first content block's text; use in tests when you expect a single text block. */
+export function getFirstTextContent(content: ToolContent[]): string {
+  const c = content[0];
+  return c?.type === 'text' ? c.text : '';
+}
+
 // Base error class for tool errors
 export class ToolError extends Error {
   constructor(

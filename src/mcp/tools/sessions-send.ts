@@ -30,6 +30,7 @@ export const sessionsSendTool: Tool = {
         session = await sessions.create({
           sessionKey: params.sessionKey,
           kind: 'subagent',
+          metadata: {},
         });
       }
 

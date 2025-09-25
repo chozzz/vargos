@@ -7,7 +7,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { execTool } from './exec.js';
-import { ToolContext } from './types.js';
+import { ToolContext, getFirstTextContent } from './types.js';
 
 describe('exec tool', () => {
   let tempDir: string;
@@ -29,35 +29,35 @@ describe('exec tool', () => {
     const result = await execTool.execute({ command: 'echo "Hello, World!"' }, context);
 
     expect(result.isError).toBeUndefined();
-    expect(result.content[0].text).toContain('Hello, World!');
+    expect(getFirstTextContent(result.content)).toContain('Hello, World!');
   });
 
   it('should capture exit code 0', async () => {
     const result = await execTool.execute({ command: 'exit 0' }, context);
 
     expect(result.isError).toBeUndefined();
-    expect(result.content[0].text).toContain('Exit code: 0');
+    expect(getFirstTextContent(result.content)).toContain('Exit code: 0');
   });
 
   it('should capture non-zero exit code as error', async () => {
     const result = await execTool.execute({ command: 'exit 42' }, context);
 
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain('Exit code: 42');
+    expect(getFirstTextContent(result.content)).toContain('Exit code: 42');
   });
 
   it('should capture stderr', async () => {
     const result = await execTool.execute({ command: 'echo "error" >&2' }, context);
 
-    expect(result.content[0].text).toContain('STDERR:');
-    expect(result.content[0].text).toContain('error');
+    expect(getFirstTextContent(result.content)).toContain('STDERR:');
+    expect(getFirstTextContent(result.content)).toContain('error');
   });
 
   it('should block dangerous commands', async () => {
     const result = await execTool.execute({ command: 'rm -rf /' }, context);
 
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain('blocked');
+    expect(getFirstTextContent(result.content)).toContain('blocked');
   });
 
   it('should respect timeout', async () => {
@@ -67,7 +67,7 @@ describe('exec tool', () => {
     }, context);
 
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain('Exit code: -1');
+    expect(getFirstTextContent(result.content)).toContain('Exit code: -1');
   });
 
   it('should execute in correct working directory', async () => {
@@ -76,6 +76,6 @@ describe('exec tool', () => {
     const result = await execTool.execute({ command: 'cat test.txt' }, context);
 
     expect(result.isError).toBeUndefined();
-    expect(result.content[0].text).toContain('content');
+    expect(getFirstTextContent(result.content)).toContain('content');
   });
 });

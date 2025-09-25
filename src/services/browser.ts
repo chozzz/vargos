@@ -99,7 +99,7 @@ export class BrowserService {
     // Get interactive elements
     const elements = await page.$$eval(
       'a, button, input, textarea, select, [role="button"], [role="link"]',
-      (els, maxC) => {
+      (els, _maxC) => {
         return els.slice(0, 50).map((el, i) => {
           const ref = `e${i + 1}`;
           const role = el.getAttribute('role') || el.tagName.toLowerCase();
@@ -172,7 +172,6 @@ export class BrowserService {
   async evaluate(sessionId: string, script: string): Promise<unknown> {
     const session = this.getSessionOrThrow(sessionId);
     return await session.page.evaluate((code) => {
-      // eslint-disable-next-line no-eval
       return eval(code);
     }, script);
   }
