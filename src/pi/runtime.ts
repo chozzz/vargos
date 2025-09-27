@@ -1,0 +1,194 @@
+/**
+ * Pi SDK integration for Vargos
+ * Embeds pi-coding-agent for actual agent execution
+ */
+
+import {
+  createAgentSession,
+  SessionManager,
+  SettingsManager,
+} from '@mariozechner/pi-coding-agent';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+import { buildSystemPrompt, resolvePromptMode } from '../agent/prompt.js';
+import { getSessionService } from '../services/factory.js';
+
+export interface PiAgentConfig {
+  sessionKey: string;
+  sessionFile: string;
+  workspaceDir: string;
+  model?: string;
+  provider?: string;
+  apiKey?: string;
+  contextFiles?: Array<{ name: string; content: string }>;
+  extraSystemPrompt?: string;
+  userTimezone?: string;
+}
+
+export interface PiAgentRunResult {
+  success: boolean;
+  response?: string;
+  error?: string;
+}
+
+/**
+ * Pi Agent Runtime
+ * Manages Pi SDK agent sessions with Vargos integration
+ */
+export class PiAgentRuntime {
+  /**
+   * Run an agent session
+   */
+  async run(config: PiAgentConfig): Promise<PiAgentRunResult> {
+    try {
+      // Ensure workspace exists
+      await fs.mkdir(config.workspaceDir, { recursive: true });
+      await fs.mkdir(path.join(config.workspaceDir, '.vargos', 'agent'), { recursive: true });
+
+      // Build context for the agent
+      const promptMode = resolvePromptMode(config.sessionKey);
+      const systemContext = buildSystemPrompt({
+        mode: promptMode,
+        workspaceDir: config.workspaceDir,
+        toolNames: [], // Pi has its own tools
+        contextFiles: config.contextFiles,
+        extraSystemPrompt: config.extraSystemPrompt,
+        userTimezone: config.userTimezone,
+      });
+
+      // Create Pi session manager
+      const sessionManager = SessionManager.open(config.sessionFile);
+
+      // Create settings manager
+      const settings = SettingsManager.create(
+        config.workspaceDir,
+        path.join(config.workspaceDir, '.vargos', 'agent')
+      );
+
+      // Create agent session
+      const { session } = await createAgentSession({
+        cwd: config.workspaceDir,
+        agentDir: path.join(config.workspaceDir, '.vargos', 'agent'),
+        sessionManager,
+        settingsManager: settings,
+      });
+
+      // Get task from session messages
+      const messages = await this.loadSessionMessages(config.sessionKey);
+      const taskMessage = messages.find((m) => m.metadata?.type === 'task');
+      const task = taskMessage?.content ?? 'Complete your assigned task.';
+
+      // Prepend system context to the task
+      const prompt = `${systemContext}\n\n## Task\n\n${task}`;
+
+      // Prompt the agent
+      await session.prompt(prompt);
+
+      // Store completion in Vargos session
+      await this.storeResponse(
+        config.sessionKey,
+        `Agent session completed. Check Pi session file: ${config.sessionFile}`
+      );
+
+      return {
+        success: true,
+        response: `Task completed. Session saved to: ${config.sessionFile}`,
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return {
+        success: false,
+        error: message,
+      };
+    }
+  }
+
+  /**
+   * Run a subagent and announce result back to parent
+   */
+  async runSubagent(
+    config: PiAgentConfig,
+    parentSessionKey: string
+  ): Promise<PiAgentRunResult> {
+    const result = await this.run(config);
+    await this.announceResult(parentSessionKey, config.sessionKey, result);
+    return result;
+  }
+
+  /**
+   * Announce subagent result to parent session
+   */
+  private async announceResult(
+    parentSessionKey: string,
+    childSessionKey: string,
+    result: PiAgentRunResult
+  ): Promise<void> {
+    const sessions = getSessionService();
+
+    const status = result.success ? 'success' : 'error';
+    const summary = result.success
+      ? result.response ?? '(no response)'
+      : result.error ?? '(unknown error)';
+
+    const message = [
+      `## Sub-agent Complete`,
+      ``,
+      `**Session:** ${childSessionKey}`,
+      `**Status:** ${status}`,
+      ``,
+      `**Result:**`,
+      summary.slice(0, 500),
+      ``,
+      `---`,
+      `Use sessions_history to see full transcript.`,
+    ].join('\n');
+
+    await sessions.addMessage({
+      sessionKey: parentSessionKey,
+      content: message,
+      role: 'system',
+      metadata: { type: 'subagent_announce', childSessionKey },
+    });
+  }
+
+  /**
+   * Load messages from session service
+   */
+  private async loadSessionMessages(
+    sessionKey: string
+  ): Promise<Array<{ content: string; role: string; metadata?: Record<string, unknown> }>> {
+    const sessions = getSessionService();
+    return sessions.getMessages(sessionKey);
+  }
+
+  /**
+   * Store agent response
+   */
+  private async storeResponse(
+    sessionKey: string,
+    response: string
+  ): Promise<void> {
+    const sessions = getSessionService();
+    await sessions.addMessage({
+      sessionKey,
+      content: response,
+      role: 'assistant',
+      metadata: {},
+    });
+  }
+}
+
+// Global runtime instance
+let globalRuntime: PiAgentRuntime | null = null;
+
+export function getPiAgentRuntime(): PiAgentRuntime {
+  if (!globalRuntime) {
+    globalRuntime = new PiAgentRuntime();
+  }
+  return globalRuntime;
+}
+
+export function initializePiAgentRuntime(): PiAgentRuntime {
+  globalRuntime = new PiAgentRuntime();
+  return globalRuntime;
+}

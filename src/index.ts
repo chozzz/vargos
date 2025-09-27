@@ -1,6 +1,6 @@
 /**
  * Vargos MCP Server
- * Entry point with configurable service backends
+ * Entry point with configurable service backends and Pi agent runtime
  */
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -11,9 +11,43 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { zodToJsonSchema } from 'zod-to-json-schema';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
 import { toolRegistry } from './mcp/tools/index.js';
 import { ToolContext } from './mcp/tools/types.js';
 import { initializeServices, ServiceConfig } from './services/factory.js';
+import { initializePiAgentRuntime } from './pi/runtime.js';
+import { isSubagentSessionKey } from './agent/prompt.js';
+
+/**
+ * Load context files (AGENTS.md, TOOLS.md, etc.)
+ * Like OpenClaw's bootstrap context files
+ */
+async function loadContextFiles(workspaceDir: string): Promise<Array<{ name: string; content: string }>> {
+  const files: Array<{ name: string; content: string }> = [];
+  
+  const contextFiles = [
+    'AGENTS.md',
+    'SOUL.md',
+    'USER.md',
+    'TOOLS.md',
+    'HEARTBEAT.md',
+    'BOOTSTRAP.md',
+    'MEMORY.md',
+  ];
+
+  for (const filename of contextFiles) {
+    try {
+      const filePath = path.join(workspaceDir, filename);
+      const content = await fs.readFile(filePath, 'utf-8');
+      files.push({ name: filename, content });
+    } catch {
+      // File doesn't exist, skip
+    }
+  }
+
+  return files;
+}
 
 async function main() {
   // Load service configuration from environment
@@ -27,18 +61,26 @@ async function main() {
     openaiApiKey: process.env.OPENAI_API_KEY,
   };
 
+  const workspaceDir = process.env.VARGOS_WORKSPACE ?? process.cwd();
+
   // Initialize services
   console.error('Initializing services...');
   console.error(`  Memory: ${serviceConfig.memory}`);
   console.error(`  Sessions: ${serviceConfig.sessions}`);
+  console.error(`  Workspace: ${workspaceDir}`);
   
   try {
     await initializeServices(serviceConfig);
+    initializePiAgentRuntime();
     console.error('Services initialized successfully');
   } catch (err) {
     console.error('Failed to initialize services:', err);
     process.exit(1);
   }
+
+  // Load context files
+  const contextFiles = await loadContextFiles(workspaceDir);
+  console.error(`  Context files: ${contextFiles.map(f => f.name).join(', ') || 'none'}`);
 
   // Create MCP server
   const server = new Server(
@@ -65,7 +107,7 @@ async function main() {
     };
   });
 
-  // Execute tool — map our ToolResult to MCP CallToolResult (sync result, no task)
+  // Execute tool
   server.setRequestHandler(CallToolRequestSchema, async (request): Promise<CallToolResult> => {
     const { name, arguments: args } = request.params;
     const tool = toolRegistry.get(name);
@@ -77,10 +119,24 @@ async function main() {
       };
     }
 
+    // Determine session key (could be passed in args or use default)
+    const sessionKey = (args as Record<string, unknown>)?.sessionKey as string || 'default';
+
     const context: ToolContext = {
-      sessionKey: 'default',
-      workingDir: process.cwd(),
+      sessionKey,
+      workingDir: workspaceDir,
     };
+
+    // Filter tools for subagents
+    if (isSubagentSessionKey(sessionKey)) {
+      const deniedTools = ['sessions_list', 'sessions_history', 'sessions_send', 'sessions_spawn'];
+      if (deniedTools.includes(name)) {
+        return {
+          content: [{ type: 'text', text: `Tool '${name}' is not available to subagents.` }],
+          isError: true,
+        };
+      }
+    }
 
     try {
       const result = await tool.execute(args, context);
