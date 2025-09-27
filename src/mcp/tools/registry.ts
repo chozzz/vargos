@@ -1,5 +1,5 @@
 /**
- * Tool registry - Dynamic tool loading
+ * Tool registry - Dynamic tool loading with policy support
  * Ported from OpenClaw patterns
  */
 
@@ -16,6 +16,30 @@ import { sessionsSendTool } from './sessions-send.js';
 import { sessionsSpawnTool } from './sessions-spawn.js';
 import { createProcessTool } from './process.js';
 import { createBrowserTool } from './browser.js';
+
+// Tool groups (like OpenClaw)
+export const TOOL_GROUPS = {
+  runtime: ['exec', 'process', 'bash'],
+  fs: ['read', 'write', 'edit', 'apply_patch'],
+  sessions: ['sessions_list', 'sessions_history', 'sessions_send', 'sessions_spawn', 'session_status'],
+  memory: ['memory_search', 'memory_get'],
+  ui: ['browser', 'canvas'],
+  automation: ['cron', 'gateway'],
+  messaging: ['message'],
+};
+
+// Default subagent tool deny list (like OpenClaw)
+export const DEFAULT_SUBAGENT_DENY_LIST = [
+  'sessions_list',
+  'sessions_history',
+  'sessions_send',
+  'sessions_spawn',
+];
+
+export interface ToolPolicy {
+  allow?: string[];
+  deny?: string[];
+}
 
 export class ToolRegistry {
   private tools = new Map<string, Tool>();
@@ -50,6 +74,59 @@ export class ToolRegistry {
 
   has(name: string): boolean {
     return this.tools.has(name);
+  }
+
+  /**
+   * Filter tools by policy
+   * Like OpenClaw's tool policy filtering
+   */
+  filterByPolicy(policy?: ToolPolicy): Tool[] {
+    const allTools = this.list();
+
+    if (!policy) {
+      return allTools;
+    }
+
+    // Expand groups
+    const expandGroups = (tools: string[]): string[] => {
+      const expanded: string[] = [];
+      for (const tool of tools) {
+        if (tool.startsWith('group:')) {
+          const groupName = tool.slice(6);
+          const groupTools = TOOL_GROUPS[groupName as keyof typeof TOOL_GROUPS];
+          if (groupTools) {
+            expanded.push(...groupTools);
+          }
+        } else {
+          expanded.push(tool);
+        }
+      }
+      return expanded;
+    };
+
+    const allowed = policy.allow ? new Set(expandGroups(policy.allow)) : null;
+    const denied = policy.deny ? new Set(expandGroups(policy.deny)) : null;
+
+    return allTools.filter((tool) => {
+      // Deny wins
+      if (denied?.has(tool.name)) {
+        return false;
+      }
+      // If allow list exists, only allow those
+      if (allowed && !allowed.has(tool.name)) {
+        return false;
+      }
+      return true;
+    });
+  }
+
+  /**
+   * Get tools for subagent (with default restrictions)
+   */
+  getSubagentTools(): Tool[] {
+    return this.filterByPolicy({
+      deny: DEFAULT_SUBAGENT_DENY_LIST,
+    });
   }
 }
 
