@@ -12,6 +12,7 @@ import { webFetchTool } from './web-fetch.js';
 import { memorySearchTool } from './memory-search.js';
 import { memoryGetTool } from './memory-get.js';
 import { sessionsListTool } from './sessions-list.js';
+import { sessionsHistoryTool } from './sessions-history.js';
 import { sessionsSendTool } from './sessions-send.js';
 import { sessionsSpawnTool } from './sessions-spawn.js';
 import { createProcessTool } from './process.js';
@@ -54,6 +55,7 @@ export class ToolRegistry {
     this.register(memorySearchTool);
     this.register(memoryGetTool);
     this.register(sessionsListTool);
+    this.register(sessionsHistoryTool);
     this.register(sessionsSendTool);
     this.register(sessionsSpawnTool);
     this.register(createProcessTool());
