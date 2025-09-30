@@ -1,12 +1,16 @@
 /**
  * Pi SDK integration for Vargos
  * Embeds pi-coding-agent for actual agent execution
+ * Hooks Pi's compaction events into Vargos sessions
  */
 
 import {
   createAgentSession,
   SessionManager,
   SettingsManager,
+  type AgentSession,
+  type AgentSessionEvent,
+  type CompactionResult,
 } from '@mariozechner/pi-coding-agent';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -29,11 +33,16 @@ export interface PiAgentRunResult {
   success: boolean;
   response?: string;
   error?: string;
+  tokensUsed?: {
+    input: number;
+    output: number;
+  };
 }
 
 /**
  * Pi Agent Runtime
  * Manages Pi SDK agent sessions with Vargos integration
+ * Hooks Pi's compaction events into Vargos sessions
  */
 export class PiAgentRuntime {
   /**
@@ -73,6 +82,9 @@ export class PiAgentRuntime {
         settingsManager: settings,
       });
 
+      // Subscribe to Pi session events (compaction, etc.)
+      this.subscribeToSessionEvents(session, config.sessionKey);
+
       // Get task from session messages
       const messages = await this.loadSessionMessages(config.sessionKey);
       const taskMessage = messages.find((m) => m.metadata?.type === 'task');
@@ -84,15 +96,27 @@ export class PiAgentRuntime {
       // Prompt the agent
       await session.prompt(prompt);
 
+      // Get the response from session history
+      const sessionEntries = sessionManager.getEntries();
+      let response = 'Task completed';
+      
+      for (let i = sessionEntries.length - 1; i >= 0; i--) {
+        const entry = sessionEntries[i];
+        if (entry.type === 'message') {
+          const msg = (entry as { message?: { role?: string; content?: string } }).message;
+          if (msg?.role === 'assistant' && msg?.content) {
+            response = msg.content;
+            break;
+          }
+        }
+      }
+
       // Store completion in Vargos session
-      await this.storeResponse(
-        config.sessionKey,
-        `Agent session completed. Check Pi session file: ${config.sessionFile}`
-      );
+      await this.storeResponse(config.sessionKey, response);
 
       return {
         success: true,
-        response: `Task completed. Session saved to: ${config.sessionFile}`,
+        response,
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -101,6 +125,55 @@ export class PiAgentRuntime {
         error: message,
       };
     }
+  }
+
+  /**
+   * Subscribe to Pi session events and sync to Vargos
+   */
+  private subscribeToSessionEvents(session: AgentSession, vargosSessionKey: string): void {
+    session.subscribe((event: AgentSessionEvent) => {
+      // Handle auto-compaction events
+      if (event.type === 'auto_compaction_end') {
+        this.handleCompactionEvent(event.result, vargosSessionKey, event.aborted);
+      }
+    });
+  }
+
+  /**
+   * Handle Pi compaction event - sync to Vargos session
+   */
+  private async handleCompactionEvent(
+    result: CompactionResult | undefined,
+    vargosSessionKey: string,
+    aborted: boolean
+  ): Promise<void> {
+    if (!result || aborted) return;
+
+    const sessions = getSessionService();
+
+    const message = [
+      `## Context Compacted`,
+      ``,
+      `**Tokens before:** ${result.tokensBefore}`,
+      `**First kept entry:** ${result.firstKeptEntryId.slice(0, 8)}...`,
+      ``,
+      `**Summary:**`,
+      result.summary.slice(0, 1000),
+      ``,
+      `---`,
+      `Prior conversation history was compacted to maintain context window.`,
+    ].join('\n');
+
+    await sessions.addMessage({
+      sessionKey: vargosSessionKey,
+      content: message,
+      role: 'system',
+      metadata: {
+        type: 'compaction',
+        tokensBefore: result.tokensBefore,
+        firstKeptEntryId: result.firstKeptEntryId,
+      },
+    });
   }
 
   /**
