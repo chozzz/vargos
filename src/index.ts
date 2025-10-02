@@ -1,6 +1,6 @@
 /**
  * Vargos MCP Server
- * Entry point with configurable service backends and Pi agent runtime
+ * Entry point with configurable service backends, Pi agent runtime, and interactive config
  */
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -18,6 +18,9 @@ import { ToolContext } from './mcp/tools/types.js';
 import { initializeServices, ServiceConfig } from './services/factory.js';
 import { initializePiAgentRuntime } from './pi/runtime.js';
 import { isSubagentSessionKey } from './agent/prompt.js';
+import { interactiveConfig, printStartupBanner, checkConfig } from './config/interactive.js';
+
+const VERSION = '0.0.1';
 
 /**
  * Load context files (AGENTS.md, TOOLS.md, etc.)
@@ -49,8 +52,39 @@ async function loadContextFiles(workspaceDir: string): Promise<Array<{ name: str
   return files;
 }
 
+/**
+ * Check if running in a TTY (interactive terminal)
+ */
+function isInteractive(): boolean {
+  return process.stdin.isTTY && process.stdout.isTTY;
+}
+
 async function main() {
+  // Check configuration
+  const { valid: configValid, missing } = checkConfig();
+  
+  // If config invalid and interactive, prompt for missing values
+  if (!configValid && isInteractive()) {
+    await interactiveConfig();
+  } else if (!configValid) {
+    // Non-interactive mode with missing config - fail fast
+    console.error('');
+    console.error('❌ Configuration Error');
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.error('');
+    console.error('Missing required configuration:');
+    for (const config of missing) {
+      console.error(`  • ${config.key}: ${config.why}`);
+    }
+    console.error('');
+    console.error('Set these environment variables or run interactively.');
+    console.error('');
+    process.exit(1);
+  }
+
   // Load service configuration from environment
+  const workspaceDir = process.env.VARGOS_WORKSPACE ?? process.cwd();
+  
   const serviceConfig: ServiceConfig = {
     memory: (process.env.VARGOS_MEMORY_BACKEND as 'file' | 'qdrant' | 'postgres') ?? 'file',
     sessions: (process.env.VARGOS_SESSIONS_BACKEND as 'file' | 'postgres') ?? 'file',
@@ -61,32 +95,54 @@ async function main() {
     openaiApiKey: process.env.OPENAI_API_KEY,
   };
 
-  const workspaceDir = process.env.VARGOS_WORKSPACE ?? process.cwd();
+  // Load context files
+  const contextFiles = await loadContextFiles(workspaceDir);
+  const contextFileNames = contextFiles.map(f => f.name);
+
+  // Print startup banner
+  printStartupBanner({
+    mode: 'mcp',
+    version: VERSION,
+    workspace: workspaceDir,
+    memoryBackend: (serviceConfig.memory as string) || 'file',
+    sessionsBackend: (serviceConfig.sessions as string) || 'file',
+    contextFiles: contextFileNames.length > 0 ? contextFileNames : ['(none)'],
+    toolsCount: toolRegistry.list().length,
+    transport: 'stdio',
+  });
 
   // Initialize services
-  console.error('Initializing services...');
-  console.error(`  Memory: ${serviceConfig.memory}`);
-  console.error(`  Sessions: ${serviceConfig.sessions}`);
-  console.error(`  Workspace: ${workspaceDir}`);
+  console.error('🔌 Initializing services...');
   
   try {
     await initializeServices(serviceConfig);
+    console.error('  ✓ MemoryContext initialized');
+    
     initializePiAgentRuntime();
-    console.error('Services initialized successfully');
+    console.error('  ✓ PiAgentRuntime initialized');
   } catch (err) {
-    console.error('Failed to initialize services:', err);
+    console.error('');
+    console.error('❌ Service initialization failed:');
+    console.error(`   ${err instanceof Error ? err.message : String(err)}`);
+    console.error('');
+    
+    if (serviceConfig.memory === 'qdrant') {
+      console.error('💡 Is Qdrant running? Start with:');
+      console.error('   docker run -p 6333:6333 qdrant/qdrant');
+    }
+    if (serviceConfig.sessions === 'postgres') {
+      console.error('💡 Is PostgreSQL running? Check your POSTGRES_URL.');
+    }
+    
+    console.error('');
     process.exit(1);
   }
-
-  // Load context files
-  const contextFiles = await loadContextFiles(workspaceDir);
-  console.error(`  Context files: ${contextFiles.map(f => f.name).join(', ') || 'none'}`);
 
   // Create MCP server
   const server = new Server(
     {
       name: 'vargos',
-      version: '0.0.1',
+      version: VERSION,
     },
     {
       capabilities: {
@@ -150,13 +206,29 @@ async function main() {
     }
   });
 
+  // Handle graceful shutdown
+  process.on('SIGINT', () => {
+    console.error('\n👋 Shutting down...');
+    process.exit(0);
+  });
+
+  process.on('SIGTERM', () => {
+    console.error('\n👋 Shutting down...');
+    process.exit(0);
+  });
+
+  // Start server
   const transport = new StdioServerTransport();
   await server.connect(transport);
   
-  console.error('Vargos MCP Server running on stdio');
+  console.error('📡 MCP server connected (stdio)');
+  console.error('');
 }
 
 main().catch((err) => {
-  console.error('Fatal error:', err);
+  console.error('');
+  console.error('❌ Fatal error:');
+  console.error(`   ${err instanceof Error ? err.message : String(err)}`);
+  console.error('');
   process.exit(1);
 });

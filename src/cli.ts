@@ -15,13 +15,16 @@ import { PiAgentRuntime } from './pi/runtime.js';
 import { initializeServices, ServiceConfig } from './services/factory.js';
 import { toolRegistry } from './mcp/tools/index.js';
 import { buildSystemPrompt, resolvePromptMode } from './agent/prompt.js';
+import { interactiveConfig, printStartupBanner, checkConfig } from './config/interactive.js';
+
+const VERSION = '0.0.1';
 
 const program = new Command();
 
 program
   .name('vargos')
   .description('Vargos - Agentic MCP server with OpenClaw-style tools')
-  .version('0.0.1');
+  .version(VERSION);
 
 program
   .command('chat')
@@ -32,10 +35,39 @@ program
   .option('--memory <backend>', 'Memory backend (file|qdrant|postgres)', 'file')
   .option('--sessions <backend>', 'Sessions backend (file|postgres)', 'file')
   .action(async (options) => {
-    console.log(chalk.blue.bold('🤖 Vargos CLI'));
-    console.log(chalk.gray(`Workspace: ${options.workspace}`));
-    console.log(chalk.gray(`Model: ${options.provider}/${options.model}`));
-    console.log();
+    // Check and prompt for configuration
+    const { valid: configValid } = checkConfig();
+    if (!configValid) {
+      await interactiveConfig();
+    }
+
+    // Set CLI options as env vars for service initialization
+    process.env.VARGOS_MEMORY_BACKEND = options.memory;
+    process.env.VARGOS_SESSIONS_BACKEND = options.sessions;
+    process.env.VARGOS_WORKSPACE = options.workspace;
+
+    // Load context files
+    const contextFiles: Array<{ name: string; content: string }> = [];
+    const contextFileNames = ['AGENTS.md', 'SOUL.md', 'USER.md', 'TOOLS.md'];
+    for (const name of contextFileNames) {
+      try {
+        const content = await fs.readFile(path.join(options.workspace, name), 'utf-8');
+        contextFiles.push({ name, content });
+      } catch {
+        // File doesn't exist
+      }
+    }
+
+    // Print startup banner
+    printStartupBanner({
+      mode: 'cli',
+      version: VERSION,
+      workspace: options.workspace,
+      memoryBackend: options.memory,
+      sessionsBackend: options.sessions,
+      contextFiles: contextFiles.map(f => f.name),
+      toolsCount: toolRegistry.list().length,
+    });
 
     // Initialize services
     const serviceConfig: ServiceConfig = {
@@ -44,7 +76,14 @@ program
       fileMemoryDir: options.workspace,
     };
 
-    await initializeServices(serviceConfig);
+    try {
+      await initializeServices(serviceConfig);
+      console.error(chalk.green('  ✓ Services initialized'));
+    } catch (err) {
+      console.error(chalk.red('  ✗ Service initialization failed'));
+      console.error(chalk.red(`   ${err instanceof Error ? err.message : String(err)}`));
+      process.exit(1);
+    }
 
     // Create session
     const sessionKey = `cli:${Date.now()}`;
@@ -59,7 +98,7 @@ program
       prompt: chalk.green('You: '),
     });
 
-    console.log(chalk.yellow('Type your message, or "exit" to quit.\n'));
+    console.log(chalk.yellow('\nType your message, or "exit" to quit.\n'));
 
     const runtime = new PiAgentRuntime();
     let messageCount = 0;
@@ -72,7 +111,7 @@ program
       const input = line.trim();
 
       if (input.toLowerCase() === 'exit' || input.toLowerCase() === 'quit') {
-        console.log(chalk.blue('Goodbye! 👋'));
+        console.log(chalk.blue('\nGoodbye! 👋'));
         rl.close();
         return;
       }
@@ -83,7 +122,7 @@ program
       }
 
       messageCount++;
-      console.log(chalk.gray('Thinking...'));
+      console.log(chalk.gray('\nThinking...'));
 
       try {
         const result = await runtime.run({
@@ -92,6 +131,7 @@ program
           workspaceDir: options.workspace,
           model: options.model,
           provider: options.provider,
+          contextFiles,
         });
 
         if (result.success) {
@@ -118,8 +158,17 @@ program
   .option('-m, --model <model>', 'Model to use', 'gpt-4o-mini')
   .option('-p, --provider <provider>', 'Provider to use', 'openai')
   .action(async (task, options) => {
-    console.log(chalk.blue.bold('🤖 Vargos CLI'));
+    // Check and prompt for configuration
+    const { valid: configValid } = checkConfig();
+    if (!configValid) {
+      await interactiveConfig();
+    }
+
+    process.env.VARGOS_WORKSPACE = options.workspace;
+
+    console.log(chalk.blue.bold('\n🤖 Vargos CLI'));
     console.log(chalk.gray(`Task: ${task}`));
+    console.log(chalk.gray(`Workspace: ${options.workspace}`));
     console.log();
 
     // Initialize services
@@ -129,7 +178,14 @@ program
       fileMemoryDir: options.workspace,
     };
 
-    await initializeServices(serviceConfig);
+    try {
+      await initializeServices(serviceConfig);
+      console.log(chalk.green('✓ Services initialized'));
+    } catch (err) {
+      console.error(chalk.red('✗ Service initialization failed'));
+      console.error(chalk.red(`  ${err instanceof Error ? err.message : String(err)}`));
+      process.exit(1);
+    }
 
     const sessionKey = `cli-run:${Date.now()}`;
     const sessionFile = path.join(options.workspace, '.vargos', 'sessions', `${sessionKey}.jsonl`);
@@ -137,6 +193,8 @@ program
     await fs.mkdir(path.dirname(sessionFile), { recursive: true });
 
     const runtime = new PiAgentRuntime();
+
+    console.log(chalk.gray('Running task...\n'));
 
     try {
       const result = await runtime.run({
@@ -158,6 +216,13 @@ program
       console.error(chalk.red(`Error: ${err instanceof Error ? err.message : String(err)}`));
       process.exit(1);
     }
+  });
+
+program
+  .command('config')
+  .description('Interactive configuration setup')
+  .action(async () => {
+    await interactiveConfig();
   });
 
 program
