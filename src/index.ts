@@ -13,12 +13,14 @@ import {
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { toolRegistry } from './mcp/tools/index.js';
 import { ToolContext } from './mcp/tools/types.js';
 import { initializeServices, ServiceConfig } from './services/factory.js';
 import { initializePiAgentRuntime } from './pi/runtime.js';
 import { isSubagentSessionKey } from './agent/prompt.js';
 import { interactiveConfig, printStartupBanner, checkConfig } from './config/interactive.js';
+import { initializeWorkspace, isWorkspaceInitialized } from './config/workspace.js';
 
 const VERSION = '0.0.1';
 
@@ -83,7 +85,15 @@ async function main() {
   }
 
   // Load service configuration from environment
-  const workspaceDir = process.env.VARGOS_WORKSPACE ?? process.cwd();
+  const workspaceDir = process.env.VARGOS_WORKSPACE ?? path.join(os.homedir(), '.vargos', 'workspace');
+  
+  // Initialize workspace if needed
+  const workspaceExists = await isWorkspaceInitialized(workspaceDir);
+  if (!workspaceExists) {
+    console.error('📁 Initializing workspace...');
+    await initializeWorkspace({ workspaceDir });
+    console.error('  ✓ Created default workspace files');
+  }
   
   const serviceConfig: ServiceConfig = {
     memory: (process.env.VARGOS_MEMORY_BACKEND as 'file' | 'qdrant' | 'postgres') ?? 'file',
