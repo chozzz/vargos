@@ -16,6 +16,7 @@ import { initializeServices, ServiceConfig } from './services/factory.js';
 import { toolRegistry } from './mcp/tools/index.js';
 import { buildSystemPrompt, resolvePromptMode } from './agent/prompt.js';
 import { interactiveConfig, printStartupBanner, checkConfig } from './config/interactive.js';
+import { initializeWorkspace, isWorkspaceInitialized } from './config/workspace.js';
 
 const VERSION = '0.0.1';
 
@@ -45,6 +46,14 @@ program
     process.env.VARGOS_MEMORY_BACKEND = options.memory;
     process.env.VARGOS_SESSIONS_BACKEND = options.sessions;
     process.env.VARGOS_WORKSPACE = options.workspace;
+
+    // Initialize workspace if needed
+    const workspaceExists = await isWorkspaceInitialized(options.workspace);
+    if (!workspaceExists) {
+      console.log(chalk.yellow('📁 Initializing workspace...'));
+      await initializeWorkspace({ workspaceDir: options.workspace });
+      console.log(chalk.green('  ✓ Created default workspace files'));
+    }
 
     // Load context files
     const contextFiles: Array<{ name: string; content: string }> = [];
@@ -91,6 +100,20 @@ program
     
     await fs.mkdir(path.dirname(sessionFile), { recursive: true });
 
+    // Create the session in Vargos session service
+    const { getSessionService } = await import('./services/factory.js');
+    const sessions = getSessionService();
+    await sessions.create({
+      sessionKey,
+      kind: 'main',
+      label: 'CLI Chat Session',
+      metadata: {
+        model: options.model,
+        provider: options.provider,
+        startedAt: new Date().toISOString(),
+      },
+    });
+
     // Create readline interface
     const rl = readline.createInterface({
       input: process.stdin,
@@ -123,6 +146,14 @@ program
 
       messageCount++;
       console.log(chalk.gray('\nThinking...'));
+
+      // Add user message to session before running agent
+      await sessions.addMessage({
+        sessionKey,
+        content: input,
+        role: 'user',
+        metadata: { type: 'task' },
+      });
 
       try {
         const result = await runtime.run({
@@ -166,6 +197,14 @@ program
 
     process.env.VARGOS_WORKSPACE = options.workspace;
 
+    // Initialize workspace if needed
+    const workspaceExists = await isWorkspaceInitialized(options.workspace);
+    if (!workspaceExists) {
+      console.log(chalk.yellow('📁 Initializing workspace...'));
+      await initializeWorkspace({ workspaceDir: options.workspace });
+      console.log(chalk.green('  ✓ Created default workspace files'));
+    }
+
     console.log(chalk.blue.bold('\n🤖 Vargos CLI'));
     console.log(chalk.gray(`Task: ${task}`));
     console.log(chalk.gray(`Workspace: ${options.workspace}`));
@@ -191,6 +230,26 @@ program
     const sessionFile = path.join(options.workspace, '.vargos', 'sessions', `${sessionKey}.jsonl`);
     
     await fs.mkdir(path.dirname(sessionFile), { recursive: true });
+
+    // Create session and add task
+    const { getSessionService } = await import('./services/factory.js');
+    const sessions = getSessionService();
+    await sessions.create({
+      sessionKey,
+      kind: 'main',
+      label: `Task: ${task.slice(0, 30)}...`,
+      metadata: {
+        model: options.model,
+        provider: options.provider,
+      },
+    });
+
+    await sessions.addMessage({
+      sessionKey,
+      content: task,
+      role: 'user',
+      metadata: { type: 'task' },
+    });
 
     const runtime = new PiAgentRuntime();
 
