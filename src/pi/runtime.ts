@@ -151,6 +151,13 @@ export class PiAgentRuntime {
 
     const sessions = getSessionService();
 
+    // Check if session still exists (may have been deleted)
+    const session = await sessions.get(vargosSessionKey);
+    if (!session) {
+      console.error(`[PiRuntime] Session ${vargosSessionKey} not found, skipping compaction event`);
+      return;
+    }
+
     const message = [
       `## Context Compacted`,
       ``,
@@ -197,6 +204,13 @@ export class PiAgentRuntime {
     result: PiAgentRunResult
   ): Promise<void> {
     const sessions = getSessionService();
+
+    // Check if parent session still exists (may have been deleted)
+    const parentSession = await sessions.get(parentSessionKey);
+    if (!parentSession) {
+      console.error(`[PiRuntime] Parent session ${parentSessionKey} not found, skipping announcement`);
+      return;
+    }
 
     const status = result.success ? 'success' : 'error';
     const summary = result.success

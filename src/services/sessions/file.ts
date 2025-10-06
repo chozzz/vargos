@@ -52,13 +52,17 @@ export class FileSessionService extends EventEmitter implements ISessionService 
   private async loadSession(sessionKey: string): Promise<SessionFile | null> {
     const filePath = this.getSessionPath(sessionKey);
     
+    let content: string;
     try {
-      await fs.access(filePath);
-    } catch {
-      return null;
+      content = await fs.readFile(filePath, 'utf-8');
+    } catch (err) {
+      // File doesn't exist or other read error
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        return null;
+      }
+      throw err;
     }
 
-    const content = await fs.readFile(filePath, 'utf-8');
     const lines = content.trim().split('\n').filter(Boolean);
     
     if (lines.length === 0) return null;
