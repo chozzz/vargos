@@ -122,10 +122,14 @@ describe('CLI session flow', () => {
     });
     expect(response.role).toBe('assistant');
 
-    // Verify final state
+    // Verify final state (order may vary if timestamps are equal)
     const allMessages = await sessions.getMessages(sessionKey);
     expect(allMessages.length).toBe(2);
-    expect(allMessages[0].role).toBe('user');
-    expect(allMessages[1].role).toBe('assistant');
+    const userMessage = allMessages.find(m => m.role === 'user');
+    const assistantMessage = allMessages.find(m => m.role === 'assistant');
+    expect(userMessage).toBeDefined();
+    expect(assistantMessage).toBeDefined();
+    expect(userMessage?.content).toBe(task);
+    expect(assistantMessage?.content).toBe('Analysis complete');
   });
 });

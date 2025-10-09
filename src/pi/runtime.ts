@@ -8,6 +8,8 @@ import {
   createAgentSession,
   SessionManager,
   SettingsManager,
+  AuthStorage,
+  ModelRegistry,
   type AgentSession,
   type AgentSessionEvent,
   type CompactionResult,
@@ -21,9 +23,9 @@ export interface PiAgentConfig {
   sessionKey: string;
   sessionFile: string;
   workspaceDir: string;
-  model?: string;
-  provider?: string;
-  apiKey?: string;
+  model?: string;        // e.g., 'gpt-4o', 'gpt-4o-mini'
+  provider?: string;     // e.g., 'openai', 'anthropic'
+  apiKey?: string;       // API key for the provider
   contextFiles?: Array<{ name: string; content: string }>;
   extraSystemPrompt?: string;
   userTimezone?: string;
@@ -43,6 +45,12 @@ export interface PiAgentRunResult {
  * Pi Agent Runtime
  * Manages Pi SDK agent sessions with Vargos integration
  * Hooks Pi's compaction events into Vargos sessions
+ * 
+ * Model Configuration:
+ * - Uses Pi SDK's model registry and settings
+ * - Supports OpenAI, Anthropic, and other providers
+ * - API keys from environment or explicit config
+ * - Falls back to settings.json or prompts user
  */
 export class PiAgentRuntime {
   /**
@@ -68,11 +76,38 @@ export class PiAgentRuntime {
       // Create Pi session manager
       const sessionManager = SessionManager.open(config.sessionFile);
 
+      // Create auth storage for API keys
+      const authStorage = new AuthStorage(
+        path.join(config.workspaceDir, '.vargos', 'agent', 'auth.json')
+      );
+
+      // Set API key if provided in config
+      if (config.apiKey && config.provider) {
+        authStorage.setRuntimeApiKey(config.provider, config.apiKey);
+      } else if (config.apiKey) {
+        // Default to openai if provider not specified but apiKey is
+        authStorage.setRuntimeApiKey('openai', config.apiKey);
+      }
+
+      // Create model registry
+      const modelRegistry = new ModelRegistry(
+        authStorage,
+        path.join(config.workspaceDir, '.vargos', 'agent', 'models.json')
+      );
+
       // Create settings manager
       const settings = SettingsManager.create(
         config.workspaceDir,
         path.join(config.workspaceDir, '.vargos', 'agent')
       );
+
+      // Build model configuration if specified
+      let model = undefined;
+      if (config.model) {
+        const provider = config.provider ?? 'openai';
+        // Find model in registry by provider + modelId
+        model = modelRegistry.find(provider, config.model) ?? undefined;
+      }
 
       // Create agent session
       const { session } = await createAgentSession({
@@ -80,6 +115,9 @@ export class PiAgentRuntime {
         agentDir: path.join(config.workspaceDir, '.vargos', 'agent'),
         sessionManager,
         settingsManager: settings,
+        authStorage,
+        modelRegistry,
+        model,
       });
 
       // Subscribe to Pi session events (compaction, etc.)

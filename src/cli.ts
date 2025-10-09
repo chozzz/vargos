@@ -162,6 +162,7 @@ program
           workspaceDir: options.workspace,
           model: options.model,
           provider: options.provider,
+          apiKey: process.env.OPENAI_API_KEY,
           contextFiles,
         });
 
@@ -262,6 +263,7 @@ program
         workspaceDir: options.workspace,
         model: options.model,
         provider: options.provider,
+        apiKey: process.env.OPENAI_API_KEY,
       });
 
       if (result.success) {
