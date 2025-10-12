@@ -1,10 +1,21 @@
 /**
  * Interactive configuration prompt utility
+ * Bridges Vargos config with Pi SDK's auth.json and settings.json
  */
 
 import readline from 'node:readline';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import {
+  loadPiAuth,
+  savePiAuth,
+  loadPiSettings,
+  savePiSettings,
+  listPiProviders,
+  isPiConfigured,
+  formatPiConfigDisplay,
+  type PiAuthConfig,
+} from './pi-config.js';
 
 export interface ConfigPrompt {
   key: string;
@@ -68,24 +79,24 @@ export function checkConfig(): {
 } {
   const memoryBackend = process.env.VARGOS_MEMORY_BACKEND ?? 'file';
   const sessionsBackend = process.env.VARGOS_SESSIONS_BACKEND ?? 'file';
-  
+
   const missing: ConfigPrompt[] = [];
   const warnings: string[] = [];
 
   // Check OpenAI key if using Qdrant
   if (memoryBackend === 'qdrant' && !process.env.OPENAI_API_KEY) {
-    missing.push(CONFIG_PROMPTS.find(p => p.key === 'OPENAI_API_KEY')!);
+    missing.push(CONFIG_PROMPTS.find((p) => p.key === 'OPENAI_API_KEY')!);
   }
 
   // Check Qdrant URL if using Qdrant
   if (memoryBackend === 'qdrant' && !process.env.QDRANT_URL) {
-    const prompt = CONFIG_PROMPTS.find(p => p.key === 'QDRANT_URL')!;
+    const prompt = CONFIG_PROMPTS.find((p) => p.key === 'QDRANT_URL')!;
     missing.push(prompt);
   }
 
   // Check Postgres URL if using Postgres
   if (sessionsBackend === 'postgres' && !process.env.POSTGRES_URL) {
-    missing.push(CONFIG_PROMPTS.find(p => p.key === 'POSTGRES_URL')!);
+    missing.push(CONFIG_PROMPTS.find((p) => p.key === 'POSTGRES_URL')!);
   }
 
   // Warnings for optional improvements
@@ -101,22 +112,137 @@ export function checkConfig(): {
 }
 
 /**
+ * Interactive Pi agent configuration
+ */
+async function interactivePiConfig(workspaceDir: string): Promise<void> {
+  console.log('');
+  console.log('🤖 Agent Configuration');
+  console.log('─────────────────────────────────');
+  console.log('');
+
+  const piStatus = await isPiConfigured(workspaceDir);
+  const providers = await listPiProviders(workspaceDir);
+  const settings = await loadPiSettings(workspaceDir);
+
+  // Show current config
+  console.log(
+    formatPiConfigDisplay({
+      provider: settings.defaultProvider,
+      model: settings.defaultModel,
+      apiKeys: providers,
+    })
+  );
+  console.log('');
+
+  // Ask to configure provider if not set
+  if (!settings.defaultProvider) {
+    console.log('Select a provider for the agent:');
+    console.log('  1. openai (GPT-4o, GPT-4o-mini)');
+    console.log('  2. anthropic (Claude)');
+    console.log('  3. google (Gemini)');
+    console.log('  4. openrouter (Multi-provider)');
+    console.log('');
+
+    const choice = await prompt('   Choice (1-4): ');
+    const providerMap: Record<string, string> = {
+      '1': 'openai',
+      '2': 'anthropic',
+      '3': 'google',
+      '4': 'openrouter',
+    };
+
+    const provider = providerMap[choice];
+    if (!provider) {
+      console.log('   ⚠️  Invalid choice, skipping agent config\n');
+      return;
+    }
+
+    // Ask for API key
+    const existingKey = providers.find((p) => p.provider === provider);
+    if (!existingKey?.hasKey) {
+      console.log(`\n   Enter ${provider} API key:`);
+      const link =
+        provider === 'openai'
+          ? 'https://platform.openai.com/api-keys'
+          : provider === 'anthropic'
+            ? 'https://console.anthropic.com/'
+            : provider === 'google'
+              ? 'https://ai.google.dev/'
+              : 'https://openrouter.ai/keys';
+      console.log(`   Get one at: ${link}`);
+      console.log('');
+
+      const apiKey = await prompt(`   ${provider.toUpperCase()}_API_KEY: `);
+      if (apiKey) {
+        const auth = await loadPiAuth(workspaceDir);
+        auth[provider] = { apiKey };
+        await savePiAuth(workspaceDir, auth);
+        console.log(`   ✅ API key saved to ~/.vargos/agent/auth.json\n`);
+      }
+    }
+
+    // Ask for model
+    const defaultModels: Record<string, string> = {
+      openai: 'gpt-4o',
+      anthropic: 'claude-3-5-sonnet-20241022',
+      google: 'gemini-1.5-pro',
+      openrouter: 'openai/gpt-4o',
+    };
+
+    console.log(`\n   Enter model ID (default: ${defaultModels[provider]}):`);
+    const modelInput = await prompt('   Model: ');
+    const model = modelInput || defaultModels[provider];
+
+    // Save settings
+    await savePiSettings(workspaceDir, {
+      ...settings,
+      defaultProvider: provider,
+      defaultModel: model,
+    });
+
+    console.log(`   ✅ Default model set: ${provider}/${model}\n`);
+  } else if (!piStatus.hasApiKey) {
+    // Provider set but no API key
+    const provider = settings.defaultProvider;
+    console.log(`\n   ${provider} API key is missing.`);
+    console.log(`   Get one at: ${getProviderLink(provider)}`);
+    console.log('');
+
+    const apiKey = await prompt(`   ${provider.toUpperCase()}_API_KEY: `);
+    if (apiKey) {
+      const auth = await loadPiAuth(workspaceDir);
+      auth[provider] = { apiKey };
+      await savePiAuth(workspaceDir, auth);
+      console.log(`   ✅ API key saved to ~/.vargos/agent/auth.json\n`);
+    }
+  } else {
+    console.log('✅ Agent configuration complete\n');
+  }
+}
+
+function getProviderLink(provider: string): string {
+  const links: Record<string, string> = {
+    openai: 'https://platform.openai.com/api-keys',
+    anthropic: 'https://console.anthropic.com/',
+    google: 'https://ai.google.dev/',
+    openrouter: 'https://openrouter.ai/keys',
+  };
+  return links[provider] ?? '#';
+}
+
+/**
  * Interactive configuration prompt
  */
-export async function interactiveConfig(): Promise<Record<string, string>> {
+export async function interactiveConfig(workspaceDir?: string): Promise<Record<string, string>> {
   const updates: Record<string, string> = {};
-  
+  const cwd = workspaceDir ?? process.cwd();
+
   console.log('');
   console.log('🔧 Vargos Configuration');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('');
 
   const { valid, missing, warnings } = checkConfig();
-
-  if (valid && warnings.length === 0) {
-    console.log('✅ All required configuration present');
-    return updates;
-  }
 
   if (warnings.length > 0) {
     console.log('ℹ️  Using defaults:');
@@ -139,7 +265,7 @@ export async function interactiveConfig(): Promise<Record<string, string>> {
 
       const defaultPart = config.defaultValue ? ` (default: ${config.defaultValue})` : '';
       const question = `   Enter ${config.key}${defaultPart}: `;
-      
+
       let value = await prompt(question);
 
       // Use default if empty
@@ -166,11 +292,16 @@ export async function interactiveConfig(): Promise<Record<string, string>> {
     }
   }
 
-  // Ask to save to .env
-  const saveToEnv = await prompt('💾 Save to .env file? (Y/n): ');
-  if (saveToEnv.toLowerCase() !== 'n') {
-    await saveEnvFile(updates);
-    console.log('✅ Configuration saved to .env\n');
+  // Configure Pi agent
+  await interactivePiConfig(cwd);
+
+  // Ask to save Vargos config to .env
+  if (Object.keys(updates).length > 0) {
+    const saveToEnv = await prompt('💾 Save Vargos config to .env file? (Y/n): ');
+    if (saveToEnv.toLowerCase() !== 'n') {
+      await saveEnvFile(updates);
+      console.log('✅ Configuration saved to .env\n');
+    }
   }
 
   return updates;
@@ -181,7 +312,7 @@ export async function interactiveConfig(): Promise<Record<string, string>> {
  */
 async function saveEnvFile(updates: Record<string, string>): Promise<void> {
   const envPath = path.join(process.cwd(), '.env');
-  
+
   let content = '';
   try {
     content = await fs.readFile(envPath, 'utf-8');
@@ -228,6 +359,8 @@ export function printStartupBanner(options: {
   contextFiles: string[];
   toolsCount: number;
   transport?: string;
+  port?: number;
+  host?: string;
 }): void {
   const lines = [
     '',
@@ -246,10 +379,14 @@ export function printStartupBanner(options: {
     lines.push(`  Transport: ${options.transport}`);
   }
 
+  if (options.host && options.port) {
+    lines.push(`  Listening: ${options.host}:${options.port}`);
+  }
+
   lines.push(
     '',
     '📝 Context Files:',
-    ...options.contextFiles.map(f => `  ✓ ${f}`),
+    ...options.contextFiles.map((f) => `  ✓ ${f}`),
     '',
     `📡 ${options.mode === 'mcp' ? 'Server' : 'Agent'}:`,
     `  Tools: ${options.toolsCount} registered`,
