@@ -21,6 +21,7 @@ import { initializePiAgentRuntime } from './pi/runtime.js';
 import { isSubagentSessionKey } from './agent/prompt.js';
 import { interactiveConfig, printStartupBanner, checkConfig } from './config/interactive.js';
 import { initializeWorkspace, isWorkspaceInitialized } from './config/workspace.js';
+import { isPiConfigured, formatPiConfigDisplay, listPiProviders, loadPiSettings } from './config/pi-config.js';
 
 const VERSION = '0.0.1';
 
@@ -109,6 +110,11 @@ async function main() {
   const contextFiles = await loadContextFiles(workspaceDir);
   const contextFileNames = contextFiles.map(f => f.name);
 
+  // Load Pi agent configuration
+  const piStatus = await isPiConfigured(workspaceDir);
+  const piProviders = await listPiProviders(workspaceDir);
+  const piSettings = await loadPiSettings(workspaceDir);
+
   // Print startup banner
   printStartupBanner({
     mode: 'mcp',
@@ -120,6 +126,14 @@ async function main() {
     toolsCount: toolRegistry.list().length,
     transport: 'stdio',
   });
+
+  // Print Pi agent configuration
+  console.error(formatPiConfigDisplay({
+    provider: piSettings.defaultProvider,
+    model: piSettings.defaultModel,
+    apiKeys: piProviders,
+  }));
+  console.error('');
 
   // Initialize services
   console.error('🔌 Initializing services...');
