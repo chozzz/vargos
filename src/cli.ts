@@ -17,6 +17,7 @@ import { toolRegistry } from './mcp/tools/index.js';
 import { buildSystemPrompt, resolvePromptMode } from './agent/prompt.js';
 import { interactiveConfig, printStartupBanner, checkConfig } from './config/interactive.js';
 import { initializeWorkspace, isWorkspaceInitialized } from './config/workspace.js';
+import { loadPiSettings, getPiApiKey, listPiProviders, isPiConfigured, formatPiConfigDisplay } from './config/pi-config.js';
 
 const VERSION = '0.0.1';
 
@@ -31,15 +32,16 @@ program
   .command('chat')
   .description('Start an interactive chat session with the Vargos agent')
   .option('-w, --workspace <dir>', 'Workspace directory', path.join(os.homedir(), '.vargos', 'workspace'))
-  .option('-m, --model <model>', 'Model to use', 'gpt-4o-mini')
-  .option('-p, --provider <provider>', 'Provider to use', 'openai')
+  .option('-m, --model <model>', 'Model to use (overrides saved config)')
+  .option('-p, --provider <provider>', 'Provider to use (overrides saved config)')
   .option('--memory <backend>', 'Memory backend (file|qdrant|postgres)', 'file')
   .option('--sessions <backend>', 'Sessions backend (file|postgres)', 'file')
+  .option('--no-interactive', 'Skip interactive configuration prompts')
   .action(async (options) => {
-    // Check and prompt for configuration
+    // Check and prompt for configuration (interactive by default)
     const { valid: configValid } = checkConfig();
-    if (!configValid) {
-      await interactiveConfig();
+    if (!configValid && options.interactive !== false) {
+      await interactiveConfig(options.workspace);
     }
 
     // Set CLI options as env vars for service initialization
@@ -67,6 +69,15 @@ program
       }
     }
 
+    // Load Pi agent configuration
+    const piSettings = await loadPiSettings(options.workspace);
+    const piProviders = await listPiProviders(options.workspace);
+    const piStatus = await isPiConfigured(options.workspace);
+
+    // Use CLI options or fall back to Pi config
+    const provider = options.provider || piSettings.defaultProvider || 'openai';
+    const model = options.model || piSettings.defaultModel || 'gpt-4o-mini';
+
     // Print startup banner
     printStartupBanner({
       mode: 'cli',
@@ -77,6 +88,22 @@ program
       contextFiles: contextFiles.map(f => f.name),
       toolsCount: toolRegistry.list().length,
     });
+
+    // Print Pi agent configuration
+    console.error('');
+    console.error(formatPiConfigDisplay({
+      provider: piSettings.defaultProvider,
+      model: piSettings.defaultModel,
+      apiKeys: piProviders,
+    }));
+    console.error('');
+
+    // Check if we have API key for the selected provider
+    const apiKey = await getPiApiKey(options.workspace, provider);
+    if (!apiKey) {
+      console.error(chalk.yellow(`⚠️  No API key found for ${provider}`));
+      console.error(chalk.gray(`   Set ${provider.toUpperCase()}_API_KEY or run 'vargos config'\n`));
+    }
 
     // Initialize services
     const serviceConfig: ServiceConfig = {
@@ -108,8 +135,8 @@ program
       kind: 'main',
       label: 'CLI Chat Session',
       metadata: {
-        model: options.model,
-        provider: options.provider,
+        model,
+        provider,
         startedAt: new Date().toISOString(),
       },
     });
@@ -160,9 +187,9 @@ program
           sessionKey,
           sessionFile,
           workspaceDir: options.workspace,
-          model: options.model,
-          provider: options.provider,
-          apiKey: process.env.OPENAI_API_KEY,
+          model,
+          provider,
+          apiKey: await getPiApiKey(options.workspace, provider) || process.env.OPENAI_API_KEY,
           contextFiles,
         });
 
@@ -187,13 +214,14 @@ program
   .command('run <task>')
   .description('Run a single task and exit')
   .option('-w, --workspace <dir>', 'Workspace directory', path.join(os.homedir(), '.vargos', 'workspace'))
-  .option('-m, --model <model>', 'Model to use', 'gpt-4o-mini')
-  .option('-p, --provider <provider>', 'Provider to use', 'openai')
+  .option('-m, --model <model>', 'Model to use (overrides saved config)')
+  .option('-p, --provider <provider>', 'Provider to use (overrides saved config)')
+  .option('--no-interactive', 'Skip interactive configuration prompts')
   .action(async (task, options) => {
     // Check and prompt for configuration
     const { valid: configValid } = checkConfig();
-    if (!configValid) {
-      await interactiveConfig();
+    if (!configValid && options.interactive !== false) {
+      await interactiveConfig(options.workspace);
     }
 
     process.env.VARGOS_WORKSPACE = options.workspace;
@@ -206,9 +234,18 @@ program
       console.log(chalk.green('  ✓ Created default workspace files'));
     }
 
+    // Load Pi agent configuration
+    const piSettings = await loadPiSettings(options.workspace);
+    const piProviders = await listPiProviders(options.workspace);
+
+    // Use CLI options or fall back to Pi config
+    const provider = options.provider || piSettings.defaultProvider || 'openai';
+    const model = options.model || piSettings.defaultModel || 'gpt-4o-mini';
+
     console.log(chalk.blue.bold('\n🤖 Vargos CLI'));
     console.log(chalk.gray(`Task: ${task}`));
     console.log(chalk.gray(`Workspace: ${options.workspace}`));
+    console.log(chalk.gray(`Model: ${provider}/${model}`));
     console.log();
 
     // Initialize services
@@ -240,8 +277,8 @@ program
       kind: 'main',
       label: `Task: ${task.slice(0, 30)}...`,
       metadata: {
-        model: options.model,
-        provider: options.provider,
+        model,
+        provider,
       },
     });
 
@@ -261,9 +298,9 @@ program
         sessionKey,
         sessionFile,
         workspaceDir: options.workspace,
-        model: options.model,
-        provider: options.provider,
-        apiKey: process.env.OPENAI_API_KEY,
+        model,
+        provider,
+        apiKey: await getPiApiKey(options.workspace, provider) || process.env.OPENAI_API_KEY,
       });
 
       if (result.success) {
@@ -282,8 +319,9 @@ program
 program
   .command('config')
   .description('Interactive configuration setup')
-  .action(async () => {
-    await interactiveConfig();
+  .option('-w, --workspace <dir>', 'Workspace directory', path.join(os.homedir(), '.vargos', 'workspace'))
+  .action(async (options) => {
+    await interactiveConfig(options.workspace);
   });
 
 program
