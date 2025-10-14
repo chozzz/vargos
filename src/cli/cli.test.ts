@@ -8,7 +8,6 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { initializeServices, closeServices, getSessionService } from '../services/factory.js';
-import { PiAgentRuntime } from '../pi/runtime.js';
 
 describe('CLI session flow', () => {
   let tempDir: string;
@@ -35,7 +34,6 @@ describe('CLI session flow', () => {
   it('should create session before adding messages', async () => {
     const sessions = getSessionService();
     const sessionKey = `cli:${Date.now()}`;
-    const sessionFile = path.join(tempDir, 'session.jsonl');
 
     // Session should not exist initially
     let session = await sessions.get(sessionKey);
