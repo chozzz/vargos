@@ -3,9 +3,6 @@
  * Like OpenClaw's compaction system
  */
 
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
-
 // Context window thresholds (like OpenClaw)
 export const CONTEXT_WINDOW_HARD_MIN = 16_000;
 export const CONTEXT_WINDOW_WARN_BELOW = 32_000;
