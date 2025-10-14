@@ -14,7 +14,6 @@ import {
   listPiProviders,
   isPiConfigured,
   formatPiConfigDisplay,
-  type PiAuthConfig,
 } from './pi-config.js';
 
 export interface ConfigPrompt {
@@ -242,7 +241,7 @@ export async function interactiveConfig(workspaceDir?: string): Promise<Record<s
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('');
 
-  const { valid, missing, warnings } = checkConfig();
+  const { missing, warnings } = checkConfig();
 
   if (warnings.length > 0) {
     console.log('ℹ️  Using defaults:');
