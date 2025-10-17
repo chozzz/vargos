@@ -31,7 +31,7 @@ program
 program
   .command('chat')
   .description('Start an interactive chat session with the Vargos agent')
-  .option('-w, --workspace <dir>', 'Workspace directory', path.join(os.homedir(), '.vargos', 'workspace'))
+  .option('-w, --workspace <dir>', 'Workspace directory (default: current directory)', process.cwd)
   .option('-m, --model <model>', 'Model to use (overrides saved config)')
   .option('-p, --provider <provider>', 'Provider to use (overrides saved config)')
   .option('--memory <backend>', 'Memory backend (file|qdrant|postgres)', 'file')
@@ -213,7 +213,7 @@ program
 program
   .command('run <task>')
   .description('Run a single task and exit')
-  .option('-w, --workspace <dir>', 'Workspace directory', path.join(os.homedir(), '.vargos', 'workspace'))
+  .option('-w, --workspace <dir>', 'Workspace directory (default: current directory)', process.cwd)
   .option('-m, --model <model>', 'Model to use (overrides saved config)')
   .option('-p, --provider <provider>', 'Provider to use (overrides saved config)')
   .option('--no-interactive', 'Skip interactive configuration prompts')
