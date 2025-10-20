@@ -21,6 +21,45 @@ import { loadPiSettings, getPiApiKey, listPiProviders, isPiConfigured, formatPiC
 
 const VERSION = '0.0.1';
 
+/**
+ * Detect if a directory is a project (has project markers)
+ * Like OpenClaw's workspace detection
+ */
+async function isProjectDir(dir: string): Promise<boolean> {
+  const markers = [
+    'package.json',
+    '.git',
+    'AGENTS.md',
+    'pyproject.toml',
+    'Cargo.toml',
+    'go.mod',
+    'Makefile',
+    'README.md',
+  ];
+
+  for (const marker of markers) {
+    try {
+      await fs.access(path.join(dir, marker));
+      return true;
+    } catch {
+      // Marker not found, continue
+    }
+  }
+  return false;
+}
+
+/**
+ * Get default workspace directory
+ * Uses current dir if it's a project, otherwise ~/.vargos/workspace
+ */
+async function getDefaultWorkspace(): Promise<string> {
+  const cwd = process.cwd();
+  if (await isProjectDir(cwd)) {
+    return cwd;
+  }
+  return path.join(os.homedir(), '.vargos', 'workspace');
+}
+
 const program = new Command();
 
 program
@@ -31,29 +70,32 @@ program
 program
   .command('chat')
   .description('Start an interactive chat session with the Vargos agent')
-  .option('-w, --workspace <dir>', 'Workspace directory (default: current directory)', process.cwd)
+  .option('-w, --workspace <dir>', 'Workspace directory (default: auto-detect project or ~/.vargos/workspace)')
   .option('-m, --model <model>', 'Model to use (overrides saved config)')
   .option('-p, --provider <provider>', 'Provider to use (overrides saved config)')
   .option('--memory <backend>', 'Memory backend (file|qdrant|postgres)', 'file')
   .option('--sessions <backend>', 'Sessions backend (file|postgres)', 'file')
   .option('--no-interactive', 'Skip interactive configuration prompts')
   .action(async (options) => {
+    // Determine workspace (auto-detect project or use default)
+    const workspaceDir = options.workspace || await getDefaultWorkspace();
+
     // Check and prompt for configuration (interactive by default)
     const { valid: configValid } = checkConfig();
     if (!configValid && options.interactive !== false) {
-      await interactiveConfig(options.workspace);
+      await interactiveConfig(workspaceDir);
     }
 
     // Set CLI options as env vars for service initialization
     process.env.VARGOS_MEMORY_BACKEND = options.memory;
     process.env.VARGOS_SESSIONS_BACKEND = options.sessions;
-    process.env.VARGOS_WORKSPACE = options.workspace;
+    process.env.VARGOS_WORKSPACE = workspaceDir;
 
     // Initialize workspace if needed
-    const workspaceExists = await isWorkspaceInitialized(options.workspace);
+    const workspaceExists = await isWorkspaceInitialized(workspaceDir);
     if (!workspaceExists) {
       console.log(chalk.yellow('📁 Initializing workspace...'));
-      await initializeWorkspace({ workspaceDir: options.workspace });
+      await initializeWorkspace({ workspaceDir });
       console.log(chalk.green('  ✓ Created default workspace files'));
     }
 
@@ -62,7 +104,7 @@ program
     const contextFileNames = ['AGENTS.md', 'SOUL.md', 'USER.md', 'TOOLS.md'];
     for (const name of contextFileNames) {
       try {
-        const content = await fs.readFile(path.join(options.workspace, name), 'utf-8');
+        const content = await fs.readFile(path.join(workspaceDir, name), 'utf-8');
         contextFiles.push({ name, content });
       } catch {
         // File doesn't exist
@@ -70,9 +112,9 @@ program
     }
 
     // Load Pi agent configuration
-    const piSettings = await loadPiSettings(options.workspace);
-    const piProviders = await listPiProviders(options.workspace);
-    const piStatus = await isPiConfigured(options.workspace);
+    const piSettings = await loadPiSettings(workspaceDir);
+    const piProviders = await listPiProviders(workspaceDir);
+    const piStatus = await isPiConfigured(workspaceDir);
 
     // Use CLI options or fall back to Pi config
     const provider = options.provider || piSettings.defaultProvider || 'openai';
@@ -82,7 +124,7 @@ program
     printStartupBanner({
       mode: 'cli',
       version: VERSION,
-      workspace: options.workspace,
+      workspace: workspaceDir,
       memoryBackend: options.memory,
       sessionsBackend: options.sessions,
       contextFiles: contextFiles.map(f => f.name),
@@ -99,7 +141,7 @@ program
     console.error('');
 
     // Check if we have API key for the selected provider
-    const apiKey = await getPiApiKey(options.workspace, provider);
+    const apiKey = await getPiApiKey(workspaceDir, provider);
     if (!apiKey) {
       console.error(chalk.yellow(`⚠️  No API key found for ${provider}`));
       console.error(chalk.gray(`   Set ${provider.toUpperCase()}_API_KEY or run 'vargos config'\n`));
@@ -109,7 +151,7 @@ program
     const serviceConfig: ServiceConfig = {
       memory: options.memory as 'file' | 'qdrant' | 'postgres',
       sessions: options.sessions as 'file' | 'postgres',
-      fileMemoryDir: options.workspace,
+      fileMemoryDir: workspaceDir,
     };
 
     try {
@@ -123,7 +165,7 @@ program
 
     // Create session
     const sessionKey = `cli:${Date.now()}`;
-    const sessionFile = path.join(options.workspace, '.vargos', 'sessions', `${sessionKey}.jsonl`);
+    const sessionFile = path.join(workspaceDir, '.vargos', 'sessions', `${sessionKey}.jsonl`);
     
     await fs.mkdir(path.dirname(sessionFile), { recursive: true });
 
@@ -186,10 +228,10 @@ program
         const result = await runtime.run({
           sessionKey,
           sessionFile,
-          workspaceDir: options.workspace,
+          workspaceDir,
           model,
           provider,
-          apiKey: await getPiApiKey(options.workspace, provider) || process.env.OPENAI_API_KEY,
+          apiKey: await getPiApiKey(workspaceDir, provider) || process.env.OPENAI_API_KEY,
           contextFiles,
         });
 
@@ -213,30 +255,33 @@ program
 program
   .command('run <task>')
   .description('Run a single task and exit')
-  .option('-w, --workspace <dir>', 'Workspace directory (default: current directory)', process.cwd)
+  .option('-w, --workspace <dir>', 'Workspace directory (default: auto-detect project or ~/.vargos/workspace)')
   .option('-m, --model <model>', 'Model to use (overrides saved config)')
   .option('-p, --provider <provider>', 'Provider to use (overrides saved config)')
   .option('--no-interactive', 'Skip interactive configuration prompts')
   .action(async (task, options) => {
+    // Determine workspace (auto-detect project or use default)
+    const workspaceDir = options.workspace || await getDefaultWorkspace();
+
     // Check and prompt for configuration
     const { valid: configValid } = checkConfig();
     if (!configValid && options.interactive !== false) {
-      await interactiveConfig(options.workspace);
+      await interactiveConfig(workspaceDir);
     }
 
-    process.env.VARGOS_WORKSPACE = options.workspace;
+    process.env.VARGOS_WORKSPACE = workspaceDir;
 
     // Initialize workspace if needed
-    const workspaceExists = await isWorkspaceInitialized(options.workspace);
+    const workspaceExists = await isWorkspaceInitialized(workspaceDir);
     if (!workspaceExists) {
       console.log(chalk.yellow('📁 Initializing workspace...'));
-      await initializeWorkspace({ workspaceDir: options.workspace });
+      await initializeWorkspace({ workspaceDir });
       console.log(chalk.green('  ✓ Created default workspace files'));
     }
 
     // Load Pi agent configuration
-    const piSettings = await loadPiSettings(options.workspace);
-    const piProviders = await listPiProviders(options.workspace);
+    const piSettings = await loadPiSettings(workspaceDir);
+    const piProviders = await listPiProviders(workspaceDir);
 
     // Use CLI options or fall back to Pi config
     const provider = options.provider || piSettings.defaultProvider || 'openai';
@@ -244,7 +289,7 @@ program
 
     console.log(chalk.blue.bold('\n🤖 Vargos CLI'));
     console.log(chalk.gray(`Task: ${task}`));
-    console.log(chalk.gray(`Workspace: ${options.workspace}`));
+    console.log(chalk.gray(`Workspace: ${workspaceDir}`));
     console.log(chalk.gray(`Model: ${provider}/${model}`));
     console.log();
 
@@ -252,7 +297,7 @@ program
     const serviceConfig: ServiceConfig = {
       memory: 'file',
       sessions: 'file',
-      fileMemoryDir: options.workspace,
+      fileMemoryDir: workspaceDir,
     };
 
     try {
@@ -265,7 +310,7 @@ program
     }
 
     const sessionKey = `cli-run:${Date.now()}`;
-    const sessionFile = path.join(options.workspace, '.vargos', 'sessions', `${sessionKey}.jsonl`);
+    const sessionFile = path.join(workspaceDir, '.vargos', 'sessions', `${sessionKey}.jsonl`);
     
     await fs.mkdir(path.dirname(sessionFile), { recursive: true });
 
@@ -297,10 +342,10 @@ program
       const result = await runtime.run({
         sessionKey,
         sessionFile,
-        workspaceDir: options.workspace,
+        workspaceDir,
         model,
         provider,
-        apiKey: await getPiApiKey(options.workspace, provider) || process.env.OPENAI_API_KEY,
+        apiKey: await getPiApiKey(workspaceDir, provider) || process.env.OPENAI_API_KEY,
       });
 
       if (result.success) {
@@ -319,9 +364,10 @@ program
 program
   .command('config')
   .description('Interactive configuration setup')
-  .option('-w, --workspace <dir>', 'Workspace directory', path.join(os.homedir(), '.vargos', 'workspace'))
+  .option('-w, --workspace <dir>', 'Workspace directory (default: auto-detect project or ~/.vargos/workspace)')
   .action(async (options) => {
-    await interactiveConfig(options.workspace);
+    const workspaceDir = options.workspace || await getDefaultWorkspace();
+    await interactiveConfig(workspaceDir);
   });
 
 program
