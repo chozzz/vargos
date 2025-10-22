@@ -355,42 +355,99 @@ export function printStartupBanner(options: {
   workspace: string;
   memoryBackend: string;
   sessionsBackend: string;
-  contextFiles: string[];
-  toolsCount: number;
+  contextFiles: { name: string; path: string }[];
+  tools: { name: string; description: string }[];
   transport?: string;
   port?: number;
   host?: string;
 }): void {
-  const lines = [
-    '',
-    options.mode === 'mcp' ? '🔧 Vargos MCP Server' : '🤖 Vargos CLI',
-    '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
-    `Version: ${options.version}`,
-    `Mode: ${options.mode}`,
-    '',
-    '📁 Configuration:',
-    `  Workspace: ${options.workspace}`,
-    `  Memory: ${options.memoryBackend}`,
-    `  Sessions: ${options.sessionsBackend}`,
-  ];
-
-  if (options.transport) {
-    lines.push(`  Transport: ${options.transport}`);
-  }
-
-  if (options.host && options.port) {
-    lines.push(`  Listening: ${options.host}:${options.port}`);
-  }
-
+  const lines: string[] = [];
+  
+  // Header
   lines.push(
     '',
-    '📝 Context Files:',
-    ...options.contextFiles.map((f) => `  ✓ ${f}`),
+    '╔══════════════════════════════════════════════════════════════╗',
+    options.mode === 'mcp' 
+      ? '║           🔧  VARGOS MCP SERVER                              ║'
+      : '║           🤖  VARGOS CLI                                     ║',
+    '╚══════════════════════════════════════════════════════════════╝',
     '',
-    `📡 ${options.mode === 'mcp' ? 'Server' : 'Agent'}:`,
-    `  Tools: ${options.toolsCount} registered`,
-    '',
-    '✅ Ready',
+    `  Version: ${options.version}`,
+    `  Mode:    ${options.mode === 'mcp' ? 'MCP Server (stdio)' : 'Interactive CLI'}`,
+    ''
+  );
+
+  // Configuration section
+  lines.push(
+    '┌─ 📁  CONFIGURATION ──────────────────────────────────────────┐',
+    `│  Workspace: ${options.workspace.padEnd(49)}│`,
+    `│  Memory:    ${options.memoryBackend.padEnd(49)}│`,
+    `│  Sessions:  ${options.sessionsBackend.padEnd(49)}│`,
+  );
+
+  if (options.transport) {
+    const transportInfo = options.transport === 'stdio' 
+      ? 'stdio (stdin/stdout)' 
+      : options.transport;
+    lines.push(`│  Transport: ${transportInfo.padEnd(49)}│`);
+    
+    if (options.transport === 'stdio') {
+      lines.push(`│  ${' '.repeat(62)}│`);
+      lines.push(`│  ℹ️  MCP server communicates via stdin/stdout                │`);
+      lines.push(`│     No HTTP host/port. Use with Claude Desktop, Cursor, etc. │`);
+    } else if (options.host && options.port) {
+      lines.push(`│  Listening: ${`${options.host}:${options.port}`.padEnd(49)}│`);
+    }
+  }
+  
+  lines.push('└──────────────────────────────────────────────────────────────┘', '');
+
+  // Context Files section
+  if (options.contextFiles.length > 0) {
+    lines.push('┌─ 📝  CONTEXT FILES ───────────────────────────────────────────┐');
+    for (const file of options.contextFiles) {
+      const displayPath = file.path.length > 45 ? '...' + file.path.slice(-42) : file.path;
+      lines.push(`│  ✓ ${file.name.padEnd(14)} ${displayPath.padEnd(35)}│`);
+    }
+    lines.push('└──────────────────────────────────────────────────────────────┘', '');
+  }
+
+  // Tools section
+  if (options.tools.length > 0) {
+    lines.push('┌─ 🛠️   AVAILABLE TOOLS ───────────────────────────────────────┐');
+    
+    // Group tools by category
+    const categories: Record<string, string[]> = {
+      'File': [],
+      'Shell': [],
+      'Web': [],
+      'Memory': [],
+      'Session': [],
+      'Other': [],
+    };
+    
+    for (const tool of options.tools) {
+      if (tool.name.match(/read|write|edit/)) categories['File'].push(tool.name);
+      else if (tool.name.match(/exec|process|bash/)) categories['Shell'].push(tool.name);
+      else if (tool.name.match(/web|browser/)) categories['Web'].push(tool.name);
+      else if (tool.name.match(/memory/)) categories['Memory'].push(tool.name);
+      else if (tool.name.match(/session/)) categories['Session'].push(tool.name);
+      else categories['Other'].push(tool.name);
+    }
+    
+    for (const [category, tools] of Object.entries(categories)) {
+      if (tools.length > 0) {
+        lines.push(`│  ${category.padEnd(10)} ${tools.join(', ').slice(0, 50).padEnd(50)}│`);
+      }
+    }
+    
+    lines.push(`│  ${`Total: ${options.tools.length} tools`.padEnd(62)}│`);
+    lines.push('└──────────────────────────────────────────────────────────────┘', '');
+  }
+
+  // Ready status
+  lines.push(
+    '  ✅  Ready and waiting for connections...',
     ''
   );
 
