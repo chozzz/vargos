@@ -120,6 +120,12 @@ program
     const provider = options.provider || piSettings.defaultProvider || 'openai';
     const model = options.model || piSettings.defaultModel || 'gpt-4o-mini';
 
+    // Get tools with descriptions
+    const tools = toolRegistry.list().map(t => ({
+      name: t.name,
+      description: t.description
+    }));
+
     // Print startup banner
     printStartupBanner({
       mode: 'cli',
@@ -127,8 +133,8 @@ program
       workspace: workspaceDir,
       memoryBackend: options.memory,
       sessionsBackend: options.sessions,
-      contextFiles: contextFiles.map(f => f.name),
-      toolsCount: toolRegistry.list().length,
+      contextFiles: contextFiles.map(f => ({ name: f.name, path: path.join(workspaceDir, f.name) })),
+      tools,
     });
 
     // Print Pi agent configuration

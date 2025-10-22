@@ -108,12 +108,21 @@ async function main() {
 
   // Load context files
   const contextFiles = await loadContextFiles(workspaceDir);
-  const contextFileNames = contextFiles.map(f => f.name);
+  const contextFilesWithPaths = contextFiles.map(f => ({
+    name: f.name,
+    path: path.join(workspaceDir, f.name)
+  }));
 
   // Load Pi agent configuration
   const piStatus = await isPiConfigured(workspaceDir);
   const piProviders = await listPiProviders(workspaceDir);
   const piSettings = await loadPiSettings(workspaceDir);
+
+  // Get tools with descriptions
+  const tools = toolRegistry.list().map(t => ({
+    name: t.name,
+    description: t.description
+  }));
 
   // Print startup banner
   printStartupBanner({
@@ -122,8 +131,8 @@ async function main() {
     workspace: workspaceDir,
     memoryBackend: (serviceConfig.memory as string) || 'file',
     sessionsBackend: (serviceConfig.sessions as string) || 'file',
-    contextFiles: contextFileNames.length > 0 ? contextFileNames : ['(none)'],
-    toolsCount: toolRegistry.list().length,
+    contextFiles: contextFilesWithPaths.length > 0 ? contextFilesWithPaths : [{ name: '(none)', path: '' }],
+    tools,
     transport: 'stdio',
   });
 
