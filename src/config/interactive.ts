@@ -360,20 +360,21 @@ export function printStartupBanner(options: {
   transport?: string;
   port?: number;
   host?: string;
+  endpoint?: string;
 }): void {
   const lines: string[] = [];
-  
+
   // Header
   lines.push(
     '',
     '╔══════════════════════════════════════════════════════════════╗',
-    options.mode === 'mcp' 
+    options.mode === 'mcp'
       ? '║           🔧  VARGOS MCP SERVER                              ║'
       : '║           🤖  VARGOS CLI                                     ║',
     '╚══════════════════════════════════════════════════════════════╝',
     '',
     `  Version: ${options.version}`,
-    `  Mode:    ${options.mode === 'mcp' ? 'MCP Server (stdio)' : 'Interactive CLI'}`,
+    `  Mode:    ${options.mode === 'mcp' ? 'MCP Server' : 'Interactive CLI'}`,
     ''
   );
 
@@ -386,20 +387,25 @@ export function printStartupBanner(options: {
   );
 
   if (options.transport) {
-    const transportInfo = options.transport === 'stdio' 
-      ? 'stdio (stdin/stdout)' 
-      : options.transport;
+    const transportInfo = options.transport === 'stdio'
+      ? 'stdio (stdin/stdout)'
+      : 'HTTP';
     lines.push(`│  Transport: ${transportInfo.padEnd(49)}│`);
-    
+
     if (options.transport === 'stdio') {
       lines.push(`│  ${' '.repeat(62)}│`);
       lines.push(`│  ℹ️  MCP server communicates via stdin/stdout                │`);
       lines.push(`│     No HTTP host/port. Use with Claude Desktop, Cursor, etc. │`);
-    } else if (options.host && options.port) {
-      lines.push(`│  Listening: ${`${options.host}:${options.port}`.padEnd(49)}│`);
+    } else if (options.transport === 'http' && options.host && options.port) {
+      const endpoint = options.endpoint ?? '/mcp';
+      lines.push(`│  ${' '.repeat(62)}│`);
+      lines.push(`│  🌐  Listening: http://${`${options.host}:${options.port}${endpoint}`.padEnd(34)}│`);
+      lines.push(`│  ${' '.repeat(62)}│`);
+      lines.push(`│  ℹ️  HTTP transport enabled. Connect clients to the URL above │`);
+      lines.push(`│     CORS enabled for all origins.                            │`);
     }
   }
-  
+
   lines.push('└──────────────────────────────────────────────────────────────┘', '');
 
   // Context Files section
