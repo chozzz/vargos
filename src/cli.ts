@@ -5,6 +5,8 @@
  * Like OpenClaw's CLI mode
  */
 
+import 'dotenv/config';
+
 import { Command } from 'commander';
 import chalk from 'chalk';
 import readline from 'node:readline';
