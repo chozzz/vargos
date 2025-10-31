@@ -15,6 +15,8 @@ import { sessionsListTool } from './sessions-list.js';
 import { sessionsHistoryTool } from './sessions-history.js';
 import { sessionsSendTool } from './sessions-send.js';
 import { sessionsSpawnTool } from './sessions-spawn.js';
+import { cronAddTool } from './cron-add.js';
+import { cronListTool } from './cron-list.js';
 import { createProcessTool } from './process.js';
 import { createBrowserTool } from './browser.js';
 
@@ -58,6 +60,8 @@ export class ToolRegistry {
     this.register(sessionsHistoryTool);
     this.register(sessionsSendTool);
     this.register(sessionsSpawnTool);
+    this.register(cronAddTool);
+    this.register(cronListTool);
     this.register(createProcessTool());
     this.register(createBrowserTool());
   }
