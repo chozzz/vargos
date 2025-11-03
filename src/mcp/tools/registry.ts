@@ -27,7 +27,7 @@ export const TOOL_GROUPS = {
   sessions: ['sessions_list', 'sessions_history', 'sessions_send', 'sessions_spawn', 'session_status'],
   memory: ['memory_search', 'memory_get'],
   ui: ['browser', 'canvas'],
-  automation: ['cron', 'gateway'],
+  automation: ['cron_add', 'cron_list', 'cron_remove', 'cron_enable', 'cron_disable', 'gateway'],
   messaging: ['message'],
 };
 

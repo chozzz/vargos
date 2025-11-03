@@ -75,12 +75,22 @@ export const ANALYSIS_AREAS: AnalysisArea[] = [
   },
 ];
 
-export function createHourlyVargosAnalysis(scheduler: CronScheduler): void {
+export function createTwiceDailyVargosAnalysis(scheduler: CronScheduler): void {
+  // 09:00 AEST = 23:00 UTC (AEST is UTC+10)
+  // 21:00 AEST = 11:00 UTC next day
   scheduler.addTask({
-    name: 'Vargos Hourly Analysis',
-    schedule: '0 * * * *', // Every hour
-    description: 'Comprehensive analysis of Vargos project for improvements across scaling, architecture, and features',
-    task: generateMasterTask(),
+    name: 'Vargos Morning Analysis (AEST)',
+    schedule: '0 23 * * *', // 09:00 AEST
+    description: 'Morning analysis of Vargos project - scalability, architecture, and feature gaps',
+    task: generateSuggestionTask(),
+    enabled: true,
+  });
+
+  scheduler.addTask({
+    name: 'Vargos Evening Analysis (AEST)',
+    schedule: '0 11 * * *', // 21:00 AEST
+    description: 'Evening analysis of Vargos project - review and recommendations',
+    task: generateSuggestionTask(),
     enabled: true,
   });
 }
@@ -95,7 +105,7 @@ export function createDailyVargosAnalysis(scheduler: CronScheduler): void {
   });
 }
 
-function generateMasterTask(): string {
+function generateSuggestionTask(): string {
   const areas = ANALYSIS_AREAS.map(area => `
 ## ${area.name}
 ${area.focus}
@@ -106,32 +116,54 @@ ${area.questions.map(q => `- ${q}`).join('\n')}
 `).join('\n');
 
   return `
-You are the Vargos Master Analysis Orchestrator.
+You are analyzing the Vargos codebase to suggest improvements to the user.
 
-Your job: Analyze the Vargos codebase across 5 critical areas and SUGGEST IMPROVEMENTS.
+CONTEXT:
+- Vargos is an open-source alternative to OpenClaw, focused on MCP (Model Context Protocol)
+- Goal: Enable self-hosted agents that other LLMs can consume from anywhere
+- User wants Vargos to eventually replace them as a programmer
+- Will share repo with others - needs to be production-ready
+- Runs on local machine (sandboxed) or cloud
 
-Vargos is an open-source alternatiive to OpenClaw, focused on MCP (Model Context Protocol) 
-self-hosting. It allows LLMs to connect to a personal agent server via stdio or HTTP.
-
+ANALYSIS AREAS:
 ${areas}
 
-## Your Output Format
+## Your Job
 
-For each area, provide:
-1. **Current State**: Brief assessment
-2. **Issues Found**: Specific problems or risks
-3. **Recommendations**: Concrete, actionable improvements
-4. **Priority**: High/Medium/Low
-5. **Effort**: Small/Medium/Large
+1. **Analyze the codebase** using read, exec, memory_search tools
+2. **Identify opportunities** for improvement across all 5 areas
+3. **Present SUGGESTIONS** to the user in a conversational format
+4. **Wait for user approval** before implementing anything
 
-## Final Output
+## Output Format
 
-Store your analysis in the memory system:
-- File: memory/vargos-analysis/YYYY-MM-DD-HH.md
-- Include timestamp and summary
-- Tag with #vargos-improvement
+Create a summary report in this style:
 
-Then SPAWN 5 specialized subagents (one per area) for deeper analysis.
+---
+## 📊 Vargos Analysis - {{TIMESTAMP}}
+
+### 🎯 Quick Wins (Do These First)
+1. **[Title]** - One sentence what it is
+   - **Why**: Business/technical reason
+   - **Effort**: Small/Medium/Large
+   - **Impact**: High/Medium/Low
+
+### 🚀 Strategic Improvements
+[Same format for bigger items]
+
+### ⚠️ Technical Debt
+[Same format for fixes needed]
+
+### 🤔 Questions for You
+1. [Specific question about priority/direction]
+
+---
+
+**Store this in**: memory/vargos-suggestions/{{DATE}}.md
+
+**Then**: Present the key suggestions conversationally and WAIT for user input.
+
+Do NOT implement anything without explicit user approval.
 `;
 }
 
