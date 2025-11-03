@@ -580,6 +580,47 @@ program
   });
 
 program
+  .command('scheduler')
+  .description('Start the cron scheduler for automated tasks')
+  .option('-w, --workspace <dir>', 'Workspace directory (default: auto-detect project or ~/.vargos/workspace)')
+  .action(async (options) => {
+    const workspaceDir = options.workspace || await getDefaultWorkspace();
+    
+    console.log(chalk.blue('\n📅  Starting Cron Scheduler'));
+    console.log(chalk.gray('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'));
+    console.log();
+
+    const { initializeCronScheduler, createTwiceDailyVargosAnalysis } = await import('./cron/index.js');
+    
+    const scheduler = initializeCronScheduler(workspaceDir);
+    createTwiceDailyVargosAnalysis(scheduler);
+    
+    console.log(chalk.green('✅  Scheduler started'));
+    console.log();
+    
+    const tasks = scheduler.listTasks();
+    console.log(chalk.yellow(`Scheduled Tasks (${tasks.length}):`));
+    for (const task of tasks) {
+      console.log(`  • ${task.name}`);
+      console.log(`    Schedule: ${task.schedule}`);
+      console.log(`    Status: ${task.enabled ? '✅ Enabled' : '⏸️  Disabled'}`);
+      console.log();
+    }
+    
+    console.log(chalk.gray('Times are in UTC:'));
+    console.log(chalk.gray('  23:00 UTC = 09:00 AEST (morning)'));
+    console.log(chalk.gray('  11:00 UTC = 21:00 AEST (evening)'));
+    console.log();
+    console.log(chalk.yellow('Press Ctrl+C to stop'));
+    console.log();
+    
+    scheduler.startAll();
+    
+    // Keep process alive
+    process.stdin.resume();
+  });
+
+program
   .command('server')
   .description('Start the MCP server (stdio mode)')
   .action(async () => {

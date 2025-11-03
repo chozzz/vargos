@@ -4,7 +4,7 @@
 
 export { CronScheduler, getCronScheduler, initializeCronScheduler } from './scheduler.js';
 export { 
-  createHourlyVargosAnalysis, 
+  createTwiceDailyVargosAnalysis, 
   createDailyVargosAnalysis,
   spawnAreaAnalysis,
   ANALYSIS_AREAS,
