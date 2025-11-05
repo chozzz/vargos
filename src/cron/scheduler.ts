@@ -5,7 +5,7 @@
 
 import { CronJob } from 'cron';
 import { getSessionService } from '../services/factory.js';
-import { getPiAgentRuntime } from '../pi/runtime.js';
+import { getVargosAgentRuntime } from '../agent/runtime.js';
 import path from 'node:path';
 import os from 'node:os';
 
@@ -119,12 +119,12 @@ export class CronScheduler {
     });
 
     // Spawn subagent to handle the task
-    const runtime = getPiAgentRuntime();
+    const runtime = getVargosAgentRuntime();
 
     runtime.run({
       sessionKey,
-      sessionFile: path.join(this.workspaceDir, '.vargos', 'sessions', `${sessionKey}.jsonl`),
       workspaceDir: this.workspaceDir,
+      contextFiles: [],
     }).then(result => {
       if (result.success) {
         console.log(`[Cron] Task ${task.name} completed successfully`);
