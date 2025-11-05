@@ -13,7 +13,7 @@ import readline from 'node:readline';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { PiAgentRuntime } from './pi/runtime.js';
+import { VargosAgentRuntime } from './agent/runtime.js';
 import { initializeServices, ServiceConfig } from './services/factory.js';
 import { toolRegistry } from './mcp/tools/index.js';
 import { buildSystemPrompt, resolvePromptMode } from './agent/prompt.js';
@@ -200,7 +200,7 @@ program
 
     console.log(chalk.yellow('\nType your message, or "exit" to quit.\n'));
 
-    const runtime = new PiAgentRuntime();
+    const runtime = new VargosAgentRuntime();
     let messageCount = 0;
 
     const askQuestion = () => {
@@ -235,12 +235,20 @@ program
       try {
         const result = await runtime.run({
           sessionKey,
-          sessionFile,
           workspaceDir,
           model,
           provider,
           apiKey: await getPiApiKey(workspaceDir, provider) || process.env.OPENAI_API_KEY,
           contextFiles,
+          onToolCall: (toolName, args) => {
+            console.log(chalk.gray(`  🔧 Using ${toolName}...`));
+          },
+          onToolResult: (toolName, result) => {
+            const resultObj = result as { isError?: boolean };
+            if (resultObj.isError) {
+              console.log(chalk.red(`  ❌ ${toolName} failed`));
+            }
+          },
         });
 
         if (result.success) {
@@ -342,18 +350,18 @@ program
       metadata: { type: 'task' },
     });
 
-    const runtime = new PiAgentRuntime();
+    const runtime = new VargosAgentRuntime();
 
     console.log(chalk.gray('Running task...\n'));
 
     try {
       const result = await runtime.run({
         sessionKey,
-        sessionFile,
         workspaceDir,
         model,
         provider,
         apiKey: await getPiApiKey(workspaceDir, provider) || process.env.OPENAI_API_KEY,
+        contextFiles: [],
       });
 
       if (result.success) {
