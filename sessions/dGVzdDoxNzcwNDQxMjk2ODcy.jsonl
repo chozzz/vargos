@@ -1,0 +1,3 @@
+{"sessionKey":"test:1770441296872","kind":"main","label":"Test Session","metadata":{},"createdAt":"2026-02-07T05:14:56.872Z","updatedAt":"2026-02-07T05:14:57.561Z"}
+{"sessionKey":"test:1770441296872","content":"What is 2+2?","role":"user","metadata":{},"id":"1770441296872-litasv3zf","timestamp":"2026-02-07T05:14:56.872Z"}
+{"sessionKey":"test:1770441296872","content":"2 + 2 equals 4.","role":"assistant","metadata":{},"id":"1770441297557-cm4rar57k","timestamp":"2026-02-07T05:14:57.557Z"}
