@@ -7,13 +7,15 @@
 import { ChatOpenAI } from '@langchain/openai';
 import { ChatAnthropic } from '@langchain/anthropic';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
-import { HumanMessage, SystemMessage, AIMessage } from '@langchain/core/messages';
+import { HumanMessage, SystemMessage, AIMessage, ToolMessage } from '@langchain/core/messages';
+import { zodToJsonSchema } from 'zod-to-json-schema';
 import { toolRegistry } from '../mcp/tools/index.js';
 import { ToolContext } from '../mcp/tools/types.js';
 import { getSessionService } from '../services/factory.js';
 import { isSubagentSessionKey } from '../agent/prompt.js';
 import { buildSystemPrompt } from '../agent/prompt.js';
 import { loadPiSettings, getPiApiKey } from '../config/pi-config.js';
+import type { ToolCall } from '@langchain/core/messages';
 
 export interface VargosAgentConfig {
   sessionKey: string;
@@ -42,9 +44,12 @@ function formatToolsForLangChain() {
   const tools = toolRegistry.list();
   
   return tools.map((tool) => ({
-    name: tool.name,
-    description: tool.description,
-    parameters: tool.parameters,
+    type: 'function' as const,
+    function: {
+      name: tool.name,
+      description: tool.description,
+      parameters: zodToJsonSchema(tool.parameters),
+    },
   }));
 }
 
@@ -115,7 +120,7 @@ export class VargosAgentRuntime {
       const tools = formatToolsForLangChain();
       
       // Build message history
-      const langchainMessages = [
+      const langchainMessages: (HumanMessage | SystemMessage | AIMessage | ToolMessage)[] = [
         new SystemMessage(systemPrompt),
         ...messages.map(m => {
           if (m.role === 'user') return new HumanMessage(m.content);
@@ -141,15 +146,14 @@ export class VargosAgentRuntime {
       while (iterations < maxIterations) {
         iterations++;
         
-        // Call LLM
-        const response = await llm.invoke(langchainMessages, {
-          tools,
-        });
+        // Call LLM with tools
+        const response = await llm.invoke(langchainMessages, { tools });
 
         // Check if response contains tool calls
-        const toolCalls_ = (response as { tool_calls?: Array<{ name: string; args: unknown }> }).tool_calls;
+        const aiMessage = response as AIMessage;
+        const responseToolCalls = aiMessage.tool_calls;
         
-        if (!toolCalls_ || toolCalls_.length === 0) {
+        if (!responseToolCalls || responseToolCalls.length === 0) {
           // No tool calls - this is the final response
           const responseText = typeof response.content === 'string' 
             ? response.content 
@@ -170,20 +174,30 @@ export class VargosAgentRuntime {
           };
         }
 
+        // Add AI message with tool calls to history
+        langchainMessages.push(aiMessage);
+
         // Execute tool calls
-        for (const toolCall of toolCalls_) {
+        for (const toolCall of responseToolCalls) {
           const toolName = toolCall.name;
           const args = toolCall.args;
+          const toolCallId = toolCall.id || toolName;
           
           config.onToolCall?.(toolName, args);
           
           const tool = toolRegistry.get(toolName);
           if (!tool) {
             const errorResult = {
-              content: [{ type: 'text', text: `Unknown tool: ${toolName}` }],
+              content: [{ type: 'text' as const, text: `Unknown tool: ${toolName}` }],
               isError: true,
             };
             toolCalls.push({ tool: toolName, args, result: errorResult });
+            
+            // Add tool error message
+            langchainMessages.push(new ToolMessage({
+              content: `Error: Unknown tool ${toolName}`,
+              tool_call_id: toolCallId,
+            }));
             continue;
           }
 
@@ -192,10 +206,15 @@ export class VargosAgentRuntime {
             const deniedTools = ['sessions_list', 'sessions_history', 'sessions_send', 'sessions_spawn'];
             if (deniedTools.includes(toolName)) {
               const errorResult = {
-                content: [{ type: 'text', text: `Tool '${toolName}' is not available to subagents.` }],
+                content: [{ type: 'text' as const, text: `Tool '${toolName}' is not available to subagents.` }],
                 isError: true,
               };
               toolCalls.push({ tool: toolName, args, result: errorResult });
+              
+              langchainMessages.push(new ToolMessage({
+                content: `Error: Tool '${toolName}' not available to subagents`,
+                tool_call_id: toolCallId,
+              }));
               continue;
             }
           }
@@ -211,20 +230,27 @@ export class VargosAgentRuntime {
             toolCalls.push({ tool: toolName, args, result });
             config.onToolResult?.(toolName, result);
             
-            // Add tool result to message history
-            langchainMessages.push(new AIMessage({
-              content: '',
-              tool_calls: [{ id: toolName, name: toolName, args: args as Record<string, any> }],
+            // Add tool result message
+            const resultText = result.content
+              .map(c => c.type === 'text' ? c.text : `[${c.type}]`)
+              .join('\n');
+            
+            langchainMessages.push(new ToolMessage({
+              content: resultText,
+              tool_call_id: toolCallId,
             }));
-            langchainMessages.push(new SystemMessage(
-              `Tool ${toolName} result: ${JSON.stringify(result)}`
-            ));
           } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : String(err);
             const errorResult = {
-              content: [{ type: 'text', text: `Error: ${err instanceof Error ? err.message : String(err)}` }],
+              content: [{ type: 'text' as const, text: `Error: ${errorMessage}` }],
               isError: true,
             };
             toolCalls.push({ tool: toolName, args, result: errorResult });
+            
+            langchainMessages.push(new ToolMessage({
+              content: `Error: ${errorMessage}`,
+              tool_call_id: toolCallId,
+            }));
           }
         }
       }
