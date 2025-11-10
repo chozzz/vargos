@@ -17,13 +17,17 @@ This repository is organized as a **Turborepo** containing multiple applications
 ```
 vargos/
 ├── apps/
-│   └── core/           # Main API server (NestJS)
+│   ├── core/           # Main API server (NestJS)
+│   ├── mastra/         # Mastra AI framework integration
+│   └── cli/            # CLI agent (similar to Claude CLI or Copilot CLI)
 ├── packages/           # Shared packages
 ```
 
 ### Applications
 
 - **`core`** — Main API server built with NestJS, exposing functions via OpenAPI and Model Context Protocol (MCP)
+- **`mastra`** — Mastra AI framework integration for agent orchestration
+- **`cli`** — Command-line interface agent for natural language interaction with AI agents
 
 ## Tech Stack
 
@@ -80,6 +84,8 @@ The API server will be available at `http://localhost:3000`
 vargos/
 ├── apps/                        # Application entrypoints
 │   ├── core/                    # Main API server (NestJS)
+│   ├── mastra/                  # Mastra AI framework integration
+│   ├── cli/                     # CLI agent
 │   ├── ...                      # (Future plan) Docs, UI (Chat, Portal Hub)
 ├── packages/                    # Shared packages and libraries
 │   ├── eslint-config/           # Shared ESLint configuration

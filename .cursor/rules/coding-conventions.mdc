@@ -1,7 +1,7 @@
 ---
-alwaysApply: true
+description: Generic rules for Vargos 
+alwaysApply: false
 ---
-
 # Coding Conventions
 
 ## File Naming
@@ -12,13 +12,6 @@ alwaysApply: true
 - External packages first, then internal modules
 - Alphabetical ordering within groups
 - Absolute imports for internal modules
-
-## Decorators
-- `@Injectable()` for services
-- `@Controller()` for controllers
-- `@Module()` for modules
-- `@Tool()` for MCP tools
-- `@ApiTags()`, `@ApiOperation()` for Swagger
 
 ## Architecture
 - Follow the repository pattern

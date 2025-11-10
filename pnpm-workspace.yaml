@@ -1,4 +1,6 @@
 packages:
-  - "apps/chatbot"
+  # - "apps/chatbot"
   - "apps/core"
+  - "apps/mastra"
+  - "apps/cli"
   - "packages/*"
