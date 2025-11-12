@@ -1,0 +1,3 @@
+{"sessionKey":"test:1770441891663","kind":"main","label":"Test","metadata":{},"createdAt":"2026-02-07T05:24:51.663Z","updatedAt":"2026-02-07T05:24:52.867Z"}
+{"sessionKey":"test:1770441891663","content":"Read package.json and tell me the project name","role":"user","metadata":{},"id":"1770441891663-llyrwtzui","timestamp":"2026-02-07T05:24:51.663Z"}
+{"sessionKey":"test:1770441891663","content":"The project name in the `package.json` file is **\"vargos.\"**","role":"assistant","metadata":{},"id":"1770441892866-ks0re3j2d","timestamp":"2026-02-07T05:24:52.866Z"}
