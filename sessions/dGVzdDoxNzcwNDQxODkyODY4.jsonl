@@ -1,0 +1,3 @@
+{"sessionKey":"test:1770441892868","kind":"main","label":"Test","metadata":{},"createdAt":"2026-02-07T05:24:52.868Z","updatedAt":"2026-02-07T05:24:54.736Z"}
+{"sessionKey":"test:1770441892868","content":"Use exec to run \"echo hello\"","role":"user","metadata":{},"id":"1770441892868-zp0762x7s","timestamp":"2026-02-07T05:24:52.868Z"}
+{"sessionKey":"test:1770441892868","content":"The command executed successfully, and the output is: `hello`.","role":"assistant","metadata":{},"id":"1770441894735-osklcvnt6","timestamp":"2026-02-07T05:24:54.735Z"}
