@@ -6,9 +6,11 @@
 
 import { ToolRegistry, toolRegistry } from '../mcp/tools/index.js';
 import { ToolContext } from '../mcp/tools/types.js';
-import { getSessionService } from '../services/factory.js';
-import { isSubagentSessionKey } from '../agent/prompt.js';
-import path from 'node:path';
+import { 
+  isSubagentSessionKey, 
+  isToolAllowedForSubagent, 
+  formatErrorResult 
+} from '../utils/errors.js';
 
 export interface BridgeConfig {
   sessionKey: string;
@@ -26,32 +28,7 @@ export function createVargosToolsForPi(config: BridgeConfig) {
     description: tool.description,
     parameters: tool.parameters,
     execute: async (args: unknown) => {
-      const context: ToolContext = {
-        sessionKey: config.sessionKey,
-        workingDir: config.workspaceDir,
-      };
-
-      // Filter tools for subagents
-      if (isSubagentSessionKey(config.sessionKey)) {
-        const deniedTools = ['sessions_list', 'sessions_history', 'sessions_send', 'sessions_spawn'];
-        if (deniedTools.includes(tool.name)) {
-          return {
-            content: [{ type: 'text', text: `Tool '${tool.name}' is not available to subagents.` }],
-            isError: true,
-          };
-        }
-      }
-
-      try {
-        const result = await tool.execute(args, context);
-        return result;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        return {
-          content: [{ type: 'text', text: `Tool execution failed: ${message}` }],
-          isError: true,
-        };
-      }
+      return await executeVargosToolInternal(tool.name, args, config);
     },
   }));
 }
@@ -65,9 +42,9 @@ export interface PiToolResult {
 }
 
 /**
- * Bridge Pi tool call to Vargos tool
+ * Internal tool execution with shared logic
  */
-export async function executeVargosTool(
+async function executeVargosToolInternal(
   toolName: string,
   args: unknown,
   config: BridgeConfig
@@ -75,10 +52,12 @@ export async function executeVargosTool(
   const tool = toolRegistry.get(toolName);
   
   if (!tool) {
-    return {
-      content: [{ type: 'text', text: `Unknown tool: ${toolName}` }],
-      isError: true,
-    };
+    return formatErrorResult(`Unknown tool: ${toolName}`);
+  }
+
+  // Filter tools for subagents
+  if (isSubagentSessionKey(config.sessionKey) && !isToolAllowedForSubagent(toolName)) {
+    return formatErrorResult(`Tool '${toolName}' is not available to subagents.`);
   }
 
   const context: ToolContext = {
@@ -86,25 +65,20 @@ export async function executeVargosTool(
     workingDir: config.workspaceDir,
   };
 
-  // Filter tools for subagents
-  if (isSubagentSessionKey(config.sessionKey)) {
-    const deniedTools = ['sessions_list', 'sessions_history', 'sessions_send', 'sessions_spawn'];
-    if (deniedTools.includes(toolName)) {
-      return {
-        content: [{ type: 'text', text: `Tool '${toolName}' is not available to subagents.` }],
-        isError: true,
-      };
-    }
-  }
-
   try {
-    const result = await tool.execute(args, context);
-    return result;
+    return await tool.execute(args, context);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return {
-      content: [{ type: 'text', text: `Tool execution failed: ${message}` }],
-      isError: true,
-    };
+    return formatErrorResult(err);
   }
+}
+
+/**
+ * Bridge Pi tool call to Vargos tool
+ */
+export async function executeVargosTool(
+  toolName: string,
+  args: unknown,
+  config: BridgeConfig
+): Promise<PiToolResult> {
+  return executeVargosToolInternal(toolName, args, config);
 }

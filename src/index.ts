@@ -23,7 +23,7 @@ import { toolRegistry } from './mcp/tools/index.js';
 import { ToolContext } from './mcp/tools/types.js';
 import { initializeServices, ServiceConfig } from './services/factory.js';
 import { initializePiAgentRuntime } from './pi/runtime.js';
-import { isSubagentSessionKey } from './agent/prompt.js';
+import { isSubagentSessionKey, isToolAllowedForSubagent, formatErrorResult } from './utils/errors.js';
 import { interactiveConfig, printStartupBanner, checkConfig } from './config/interactive.js';
 import { initializeWorkspace, isWorkspaceInitialized } from './config/workspace.js';
 import { isPiConfigured, formatPiConfigDisplay, listPiProviders, loadPiSettings } from './config/pi-config.js';
@@ -319,25 +319,17 @@ async function main() {
     };
 
     // Filter tools for subagents
-    if (isSubagentSessionKey(sessionKey)) {
-      const deniedTools = ['sessions_list', 'sessions_history', 'sessions_send', 'sessions_spawn'];
-      if (deniedTools.includes(name)) {
-        return {
-          content: [{ type: 'text', text: `Tool '${name}' is not available to subagents.` }],
-          isError: true,
-        };
-      }
+    if (isSubagentSessionKey(sessionKey) && !isToolAllowedForSubagent(name)) {
+      const error = formatErrorResult(`Tool '${name}' is not available to subagents.`);
+      return { content: error.content, isError: true };
     }
 
     try {
       const result = await tool.execute(args, context);
       return { content: result.content, isError: result.isError };
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return {
-        content: [{ type: 'text', text: `Tool execution failed: ${message}` }],
-        isError: true,
-      };
+      const error = formatErrorResult(err);
+      return { content: error.content, isError: true };
     }
   });
 
