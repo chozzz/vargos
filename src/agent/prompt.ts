@@ -139,12 +139,10 @@ export function filterContextFilesForSubagent(
   return files.filter((f) => SUBAGENT_CONTEXT_ALLOWLIST.has(f.name));
 }
 
-/**
- * Check if session key is a subagent session
- */
-export function isSubagentSessionKey(sessionKey: string): boolean {
-  return sessionKey.includes(':subagent:') || sessionKey.startsWith('subagent-');
-}
+import { isSubagentSessionKey as _isSubagentSessionKey } from '../utils/errors.js';
+
+// Re-export from utils for backward compatibility
+export const isSubagentSessionKey = _isSubagentSessionKey;
 
 /**
  * Resolve prompt mode based on session key
