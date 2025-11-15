@@ -12,7 +12,7 @@ import { zodToJsonSchema } from 'zod-to-json-schema';
 import { toolRegistry } from '../mcp/tools/index.js';
 import { ToolContext } from '../mcp/tools/types.js';
 import { getSessionService } from '../services/factory.js';
-import { isSubagentSessionKey } from '../agent/prompt.js';
+import { isSubagentSessionKey, isToolAllowedForSubagent, formatErrorResult } from '../utils/errors.js';
 import { buildSystemPrompt } from '../agent/prompt.js';
 import { loadPiSettings, getPiApiKey } from '../config/pi-config.js';
 import type { ToolCall } from '@langchain/core/messages';
@@ -187,36 +187,26 @@ export class VargosAgentRuntime {
           
           const tool = toolRegistry.get(toolName);
           if (!tool) {
-            const errorResult = {
-              content: [{ type: 'text' as const, text: `Unknown tool: ${toolName}` }],
-              isError: true,
-            };
+            const errorResult = formatErrorResult(`Unknown tool: ${toolName}`);
             toolCalls.push({ tool: toolName, args, result: errorResult });
             
-            // Add tool error message
             langchainMessages.push(new ToolMessage({
-              content: `Error: Unknown tool ${toolName}`,
+              content: errorResult.content.map(c => c.type === 'text' ? c.text : `[${c.type}]`).join('\n'),
               tool_call_id: toolCallId,
             }));
             continue;
           }
 
           // Check subagent restrictions
-          if (isSubagentSessionKey(config.sessionKey)) {
-            const deniedTools = ['sessions_list', 'sessions_history', 'sessions_send', 'sessions_spawn'];
-            if (deniedTools.includes(toolName)) {
-              const errorResult = {
-                content: [{ type: 'text' as const, text: `Tool '${toolName}' is not available to subagents.` }],
-                isError: true,
-              };
-              toolCalls.push({ tool: toolName, args, result: errorResult });
-              
-              langchainMessages.push(new ToolMessage({
-                content: `Error: Tool '${toolName}' not available to subagents`,
-                tool_call_id: toolCallId,
-              }));
-              continue;
-            }
+          if (isSubagentSessionKey(config.sessionKey) && !isToolAllowedForSubagent(toolName)) {
+            const errorResult = formatErrorResult(`Tool '${toolName}' is not available to subagents.`);
+            toolCalls.push({ tool: toolName, args, result: errorResult });
+            
+            langchainMessages.push(new ToolMessage({
+              content: `Error: Tool '${toolName}' not available to subagents`,
+              tool_call_id: toolCallId,
+            }));
+            continue;
           }
 
           // Execute tool
@@ -240,15 +230,11 @@ export class VargosAgentRuntime {
               tool_call_id: toolCallId,
             }));
           } catch (err) {
-            const errorMessage = err instanceof Error ? err.message : String(err);
-            const errorResult = {
-              content: [{ type: 'text' as const, text: `Error: ${errorMessage}` }],
-              isError: true,
-            };
+            const errorResult = formatErrorResult(err);
             toolCalls.push({ tool: toolName, args, result: errorResult });
             
             langchainMessages.push(new ToolMessage({
-              content: `Error: ${errorMessage}`,
+              content: errorResult.content.map(c => c.type === 'text' ? c.text : `[${c.type}]`).join('\n'),
               tool_call_id: toolCallId,
             }));
           }
