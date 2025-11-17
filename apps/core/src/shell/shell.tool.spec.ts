@@ -121,11 +121,11 @@ describe("ShellTool", () => {
       
       // Verify MCP response structure
       expect(result.isError).toBe(false);
-      expect(result.structuredContent).toEqual(mockResult);
+      expect(result.structuredContent).toEqual({ history: mockResult });
       
       // Verify text content is JSON stringified
       const textContent = JSON.parse(result.content[0]!.text);
-      expect(textContent).toEqual(mockResult);
+      expect(textContent).toEqual({ history: mockResult });
     });
 
     it("should handle empty history", async () => {
@@ -136,7 +136,7 @@ describe("ShellTool", () => {
       const result = await shellTool.getHistory({}, mockContext, {} as any);
 
       expect(result.isError).toBe(false);
-      expect(result.structuredContent).toEqual([]);
+      expect(result.structuredContent).toEqual({ history: [] });
     });
 
     it("should handle history retrieval errors", async () => {

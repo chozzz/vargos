@@ -22,7 +22,9 @@ export const ShellExecuteResponseSchema = z.object({
   output: z.string(),
 });
 
-export const ShellHistoryResponseSchema = z.array(ShellHistoryItemSchema);
+export const ShellHistoryResponseSchema = z.object({
+  history: z.array(ShellHistoryItemSchema),
+});
 
 export const ShellStatusResponseSchema = z.object({
   isActive: z.boolean(),
