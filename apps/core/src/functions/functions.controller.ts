@@ -5,14 +5,10 @@ import {
   ParseIntPipe,
   DefaultValuePipe,
   Optional,
-  Logger,
   Post,
   Body,
-  HttpException,
-  HttpStatus,
 } from "@nestjs/common";
 import { FunctionsService } from "./functions.service";
-import { FunctionListResponse } from "./dto/functions-list.dto";
 import {
   ApiOperation,
   ApiQuery,
@@ -30,7 +26,6 @@ import { FunctionExecuteDto } from "./dto/functions-execute.dto";
 @ApiTags("Functions")
 @Controller("functions")
 export class FunctionsController {
-  private readonly logger = new Logger(FunctionsController.name);
   constructor(private readonly functionsService: FunctionsService) {}
 
   @Get("reindex")
@@ -45,13 +40,11 @@ export class FunctionsController {
   })
   async reindexFunctions() {
     const functionMetas = await this.functionsService.listFunctions();
-    this.logger.log(`Indexing ${functionMetas.functions.length} functions`);
     await Promise.all(
       functionMetas.functions.map((functionMeta) =>
         this.functionsService.indexFunction(functionMeta),
       ),
     );
-    this.logger.log(`Indexed ${functionMetas.functions.length} functions`);
     return {
       success: true,
       totalFunctions: functionMetas.functions.length,
@@ -112,51 +105,13 @@ export class FunctionsController {
   async executeFunction(
     @Body() body: FunctionExecuteDto,
   ): Promise<{ result: unknown; success: boolean }> {
-    if (!body.functionId) {
-      throw new HttpException(
-        {
-          status: HttpStatus.BAD_REQUEST,
-          error: "ValidationError",
-          message: "functionId is required in request body",
-        },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-    try {
-      const result = await this.functionsService.executeFunction(
-        body.functionId,
-        body.params || {},
-      );
-      // Wrap service response to match tool expectation
-      return {
-        result,
-        success: true,
-      };
-    } catch (serviceError) {
-      if (
-        typeof serviceError === "object" &&
-        serviceError !== null &&
-        "error" in serviceError &&
-        "message" in serviceError
-      ) {
-        throw new HttpException(
-          {
-            status: HttpStatus.BAD_REQUEST,
-            error: (serviceError as any).error,
-            message: (serviceError as any).message,
-          },
-          HttpStatus.BAD_REQUEST,
-        );
-      }
-      throw new HttpException(
-        {
-          status: HttpStatus.BAD_REQUEST,
-          error: "UnknownError",
-          message:
-            typeof serviceError === "string" ? serviceError : "Unknown error",
-        },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
+    const result = await this.functionsService.executeFunction(
+      body.functionId,
+      body.params || {},
+    );
+    return {
+      result,
+      success: true,
+    };
   }
 }
