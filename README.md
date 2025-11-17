@@ -1,6 +1,6 @@
 # Vargos
 
-**Vargos** is an MCP (Model Context Protocol) server with an embedded Pi coding agent runtime. It gives AI agents practical tools to interact with real-world systems, with OpenClaw-style memory, sessions, and subagent support.
+**Vargos** is an MCP (Model Context Protocol) server with an embedded agent runtime. It gives AI agents practical tools to interact with real-world systems, with OpenClaw-style memory, sessions, and subagent support.
 
 > Built for extensibility, modularity, and self-hosting from the ground up.
 
@@ -15,8 +15,8 @@ Vargos exposes **13 MCP tools** and an embedded **Pi Agent Runtime** that enable
 - **Spawn Pi-powered subagents** with automatic result announcement
 
 **Key Features:**
-- 🤖 **Embedded Pi Runtime** - Full Pi coding agent with compaction, branching, and native tools
-- 🔧 **13 MCP Tools** - File, shell, web, memory, and session tools
+- 🤖 **Unified Agent Runtime** - Custom agent runtime for both CLI and MCP (like OpenClaw)
+- 🔧 **15 MCP Tools** - File, shell, web, memory, session, and cron tools
 - 🔄 **Swappable Backends** - File, Qdrant, or PostgreSQL for memory/sessions
 - 🧠 **OpenClaw-style Memory** - Hybrid search with chunking and citations
 - 💬 **Session Management** - Main/subagent sessions with transcript history
@@ -273,11 +273,11 @@ Subagents:
 
 ```
 ┌─────────────────────────────────────────────┐
-│  MCP Tools (13 tools)                       │
+│  MCP Tools (15 tools)                       │
 │  read, write, exec, memory_search, etc.     │
 ├─────────────────────────────────────────────┤
-│  Pi Agent Runtime (src/pi/runtime.ts)       │
-│  Embedded Pi SDK with event hooks           │
+│  Vargos Agent Runtime (src/agent/runtime.ts)│
+│  Unified agent for CLI + MCP server         │
 ├─────────────────────────────────────────────┤
 │  Service Interface (core/services/types.ts) │
 │  IMemoryService, ISessionService            │
@@ -299,10 +299,11 @@ Subagents:
 vargos/
 ├── src/
 │   ├── agent/
-│   │   ├── prompt.ts          # System prompt builder (full/minimal modes)
+│   │   ├── runtime.ts         # Unified agent runtime (CLI + MCP)
+│   │   ├── prompt.ts          # System prompt builder
 │   │   └── compaction.ts      # Context window management
-│   ├── pi/
-│   │   └── runtime.ts         # Pi SDK integration
+│   ├── mcp/tools/             # MCP tool implementations
+│   ├── services/              # Memory, sessions, process services
 │   ├── cli.ts                 # Interactive CLI entry point
 │   ├── index.ts               # MCP server entry point
 │   └── ...

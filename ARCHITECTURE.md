@@ -13,7 +13,7 @@ Clean, maintainable MCP server architecture with swappable backends.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  MCP Tools (12 tools)                                    │
+│  MCP Tools (15 tools)                                    │
 │  read, write, edit, exec, process, browser, etc.        │
 ├─────────────────────────────────────────────────────────┤
 │  Service Interface (core/services/types.ts)             │

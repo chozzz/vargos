@@ -22,7 +22,7 @@ import http from 'node:http';
 import { toolRegistry } from './mcp/tools/index.js';
 import { ToolContext } from './mcp/tools/types.js';
 import { initializeServices, ServiceConfig } from './services/factory.js';
-import { initializePiAgentRuntime } from './pi/runtime.js';
+import { initializeVargosAgentRuntime } from './agent/runtime.js';
 import { isSubagentSessionKey, isToolAllowedForSubagent, formatErrorResult } from './utils/errors.js';
 import { interactiveConfig, printStartupBanner, checkConfig } from './config/interactive.js';
 import { initializeWorkspace, isWorkspaceInitialized } from './config/workspace.js';
@@ -253,8 +253,8 @@ async function main() {
     await initializeServices(serviceConfig);
     console.error('  ✓ MemoryContext initialized');
 
-    initializePiAgentRuntime();
-    console.error('  ✓ PiAgentRuntime initialized');
+    initializeVargosAgentRuntime();
+    console.error('  ✓ VargosAgentRuntime initialized');
   } catch (err) {
     console.error('');
     console.error('❌ Service initialization failed:');

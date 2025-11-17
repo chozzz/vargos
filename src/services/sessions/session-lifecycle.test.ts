@@ -8,7 +8,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { initializeServices, closeServices, getSessionService } from '../../services/factory.js';
-import { PiAgentRuntime } from '../../pi/runtime.js';
+import { VargosAgentRuntime } from '../../agent/runtime.js';
 
 describe('session lifecycle edge cases', () => {
   let tempDir: string;
@@ -32,10 +32,10 @@ describe('session lifecycle edge cases', () => {
     await fs.rm(tempDir, { recursive: true, force: true });
   });
 
-  describe('Pi Runtime', () => {
+  describe('Vargos Runtime', () => {
     it('should skip compaction event if session was deleted', async () => {
       const sessions = getSessionService();
-      const runtime = new PiAgentRuntime();
+      const runtime = new VargosAgentRuntime();
 
       // Create a session
       const sessionKey = 'test-session';
@@ -59,7 +59,7 @@ describe('session lifecycle edge cases', () => {
 
     it('should handle announcement to deleted parent session gracefully', async () => {
       const sessions = getSessionService();
-      const runtime = new PiAgentRuntime();
+      const runtime = new VargosAgentRuntime();
 
       // Create parent and child sessions
       const parentKey = 'parent-session';

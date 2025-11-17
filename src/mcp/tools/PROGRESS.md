@@ -75,10 +75,14 @@ pnpm test:run        # All tests
 pnpm test            # Watch mode
 ```
 
-## Skipped (Intentionally)
+## Completed Since Initial Documentation
+
+| Tool | Description | Status |
+|------|-------------|--------|
+| `cron_add` | Schedule recurring tasks | ✅ Implemented |
+| `cron_list` | List scheduled tasks | ✅ Implemented |
+
+## Still To Implement
 
 - Gateway tools (requires OpenClaw infrastructure)
 - Message tools (WhatsApp, Telegram, etc.)
-- Cron scheduling
-
-These can be added later if needed.
