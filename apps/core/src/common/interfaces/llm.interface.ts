@@ -1,21 +1,7 @@
-import { Provider } from "./provider.interface";
-
-export interface Message {
-  role: "system" | "user" | "assistant";
-  content: string;
-}
-
-export interface ChatResponse {
-  content: string;
-  role: string;
-}
-
-export interface EmbeddingResponse {
-  embedding: number[];
-}
-
-export interface LLMProvider extends Provider {
-  generateEmbeddings(text: string): Promise<number[]>;
-  generateEmbeddings(texts: string[]): Promise<number[][]>;
-  chat(messages: Message[]): Promise<ChatResponse>;
-}
+// Re-export from core-lib for backward compatibility
+export type {
+  Message,
+  ChatResponse,
+  EmbeddingResponse,
+  LLMProvider,
+} from "@vargos/core-lib";

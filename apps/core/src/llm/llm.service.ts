@@ -1,22 +1,18 @@
 import { Injectable } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
 import {
   Message,
   ChatResponse,
-  LLMProvider,
-} from "../common/interfaces/llm.interface";
+  LLMService as CoreLLMService,
+} from "@vargos/core-lib";
 import { OpenAIProvider } from "./providers/openai.provider";
 
 @Injectable()
 export class LLMService {
-  private provider: LLMProvider;
+  public readonly coreService: CoreLLMService;
 
-  constructor(
-    private configService: ConfigService,
-    private openAIProvider: OpenAIProvider,
-  ) {
+  constructor(private openAIProvider: OpenAIProvider) {
     // Default to OpenAI for now, but this could be configurable
-    this.provider = this.openAIProvider;
+    this.coreService = new CoreLLMService(this.openAIProvider);
   }
 
   async generateEmbeddings(text: string): Promise<number[]>;
@@ -24,13 +20,10 @@ export class LLMService {
   async generateEmbeddings(
     input: string | string[],
   ): Promise<number[] | number[][]> {
-    if (Array.isArray(input)) {
-      return this.provider.generateEmbeddings(input);
-    }
-    return this.provider.generateEmbeddings(input);
+    return this.coreService.generateEmbeddings(input);
   }
 
   async chat(messages: Message[]): Promise<ChatResponse> {
-    return this.provider.chat(messages);
+    return this.coreService.chat(messages);
   }
 }
