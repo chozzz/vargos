@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Vargos is an MCP (Model Context Protocol) server that exposes 12 tools for AI agents to interact with real-world systems:
+Vargos is an MCP (Model Context Protocol) server that exposes 15 tools for AI agents to interact with real-world systems:
 - **File tools**: read, write, edit
 - **Shell tools**: exec, process
 - **Web tools**: web_fetch, browser
@@ -41,7 +41,7 @@ vargos/
 │   │   ├── browser.ts      # Browser automation service
 │   │   └── process.ts      # Process management service
 │   │
-│   ├── mcp/tools/          # MCP tool implementations (12 tools)
+│   ├── mcp/tools/          # MCP tool implementations (15 tools)
 │   │   ├── read.ts
 │   │   ├── write.ts
 │   │   ├── edit.ts
@@ -88,7 +88,7 @@ pnpm lint
 ### 4-Layer Architecture
 
 1. **MCP Tools** (`mcp/tools/*.ts`)
-   - 12 tool implementations
+   - 15 tool implementations
    - Validate input with Zod schemas
    - Call services via `getServices()` or `getMemoryContext()`
 

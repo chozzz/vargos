@@ -67,6 +67,10 @@ export class ToolRegistry {
   }
 
   register(tool: Tool): void {
+    if (!tool || !tool.name) {
+      console.error('Attempted to register invalid tool:', tool);
+      throw new Error(`Invalid tool: ${JSON.stringify(tool)}`);
+    }
     this.tools.set(tool.name, tool);
   }
 

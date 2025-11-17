@@ -9,12 +9,10 @@ import { ChatAnthropic } from '@langchain/anthropic';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { HumanMessage, SystemMessage, AIMessage, ToolMessage } from '@langchain/core/messages';
 import { zodToJsonSchema } from 'zod-to-json-schema';
-import { toolRegistry } from '../mcp/tools/index.js';
-import { ToolContext } from '../mcp/tools/types.js';
+import type { ToolContext } from '../mcp/tools/types.js';
 import { getSessionService } from '../services/factory.js';
 import { isSubagentSessionKey, isToolAllowedForSubagent, formatErrorResult } from '../utils/errors.js';
 import { buildSystemPrompt } from '../agent/prompt.js';
-import { loadPiSettings, getPiApiKey } from '../config/pi-config.js';
 import type { ToolCall } from '@langchain/core/messages';
 
 export interface VargosAgentConfig {
@@ -40,7 +38,9 @@ export interface VargosAgentRunResult {
 /**
  * Format tools for LangChain
  */
-function formatToolsForLangChain() {
+async function formatToolsForLangChain() {
+  // Lazy import to avoid circular dependency
+  const { toolRegistry } = await import('../mcp/tools/registry.js');
   const tools = toolRegistry.list();
   
   return tools.map((tool) => ({
@@ -104,10 +104,11 @@ export class VargosAgentRuntime {
       const messages = await sessions.getMessages(config.sessionKey);
       
       // Build system prompt
+      const { toolRegistry } = await import('../mcp/tools/registry.js');
       const systemPrompt = buildSystemPrompt({
         mode: isSubagentSessionKey(config.sessionKey) ? 'minimal' : 'full',
         workspaceDir: config.workspaceDir,
-        toolNames: toolRegistry.list().map(t => t.name),
+        toolNames: toolRegistry.list().map((t: { name: string }) => t.name),
         contextFiles: config.contextFiles,
         extraSystemPrompt: config.extraSystemPrompt,
         userTimezone: config.userTimezone,
@@ -117,7 +118,7 @@ export class VargosAgentRuntime {
       const llm = await createLLM(config);
       
       // Format tools
-      const tools = formatToolsForLangChain();
+      const tools = await formatToolsForLangChain();
       
       // Build message history
       const langchainMessages: (HumanMessage | SystemMessage | AIMessage | ToolMessage)[] = [
@@ -185,6 +186,8 @@ export class VargosAgentRuntime {
           
           config.onToolCall?.(toolName, args);
           
+          // Lazy import to avoid circular dependency
+          const { toolRegistry } = await import('../mcp/tools/registry.js');
           const tool = toolRegistry.get(toolName);
           if (!tool) {
             const errorResult = formatErrorResult(`Unknown tool: ${toolName}`);
