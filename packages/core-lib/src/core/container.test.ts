@@ -1,3 +1,4 @@
+import { describe, it, expect, beforeEach } from "vitest";
 import { ServiceContainer } from "./container";
 
 describe("ServiceContainer", () => {
@@ -9,16 +10,16 @@ describe("ServiceContainer", () => {
 
   it("should register and resolve services", async () => {
     const service = { value: "test" };
-    container.register("test", () => service);
-    const resolved = await container.resolve("test");
+    container.register<{ value: string }>("test", () => service);
+    const resolved = await container.resolve<{ value: string }>("test");
     expect(resolved).toBe(service);
   });
 
   it("should return singleton instances", async () => {
     let count = 0;
-    container.register("counter", () => ({ count: ++count }));
-    const first = await container.resolve("counter");
-    const second = await container.resolve("counter");
+    container.register<{ count: number }>("counter", () => ({ count: ++count }));
+    const first = await container.resolve<{ count: number }>("counter");
+    const second = await container.resolve<{ count: number }>("counter");
     expect(first).toBe(second);
     expect(first.count).toBe(1);
   });

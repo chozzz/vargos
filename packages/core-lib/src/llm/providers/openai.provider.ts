@@ -17,7 +17,7 @@ export class OpenAIProvider implements LLMProvider {
     this.config = config;
   }
 
-  async initialize(): Promise<void> {
+  initialize(): Promise<void> {
     if (!this.config.apiKey) {
       throw new Error(
         "OPENAI_API_KEY is required for OpenAI provider",
@@ -25,6 +25,7 @@ export class OpenAIProvider implements LLMProvider {
     }
 
     this.client = new OpenAI({ apiKey: this.config.apiKey });
+    return Promise.resolve();
   }
 
   private getClient(): OpenAI {

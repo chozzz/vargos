@@ -21,7 +21,7 @@ export class QdrantProvider implements VectorDBProvider {
     this.config = config;
   }
 
-  async initialize(): Promise<void> {
+  initialize(): Promise<void> {
     if (!this.config.url || !this.config.apiKey) {
       throw new Error(
         "QDRANT_URL and QDRANT_API_KEY are required for Qdrant provider",
@@ -33,6 +33,7 @@ export class QdrantProvider implements VectorDBProvider {
       port: this.config.port,
       apiKey: this.config.apiKey,
     });
+    return Promise.resolve();
   }
 
   private getClient(): QdrantClient {
@@ -77,7 +78,7 @@ export class QdrantProvider implements VectorDBProvider {
     return response.map((point) => ({
       id: String(point.id),
       score: point.score,
-      payload: point.payload as Record<string, any>,
+      payload: point.payload as Record<string, unknown>,
     }));
   }
 

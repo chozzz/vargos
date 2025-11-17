@@ -17,7 +17,7 @@ export class LocalDirectoryProvider implements FunctionsProvider {
     this.functionsSourceDir = path.join(this.functionsDir, "src");
   }
 
-  async initialize(): Promise<void> {
+  initialize(): Promise<void> {
     if (!this.functionsDir) {
       throw new Error("FUNCTIONS_DIR is required for LocalDirectoryProvider");
     }
@@ -27,9 +27,10 @@ export class LocalDirectoryProvider implements FunctionsProvider {
         `Functions source directory does not exist: ${this.functionsSourceDir}`,
       );
     }
+    return Promise.resolve();
   }
 
-  async getFunctionMetadata(functionId: string): Promise<FunctionMetadata> {
+  getFunctionMetadata(functionId: string): Promise<FunctionMetadata> {
     try {
       const metaFilePath = path.join(
         this.functionsSourceDir,
@@ -37,7 +38,15 @@ export class LocalDirectoryProvider implements FunctionsProvider {
         `${functionId}.meta.json`,
       );
       const metaFile = readFileSync(metaFilePath, "utf8");
-      const meta: Omit<FunctionMetadata, "id"> = JSON.parse(metaFile);
+      const parsedMeta = JSON.parse(metaFile) as unknown;
+      if (
+        typeof parsedMeta !== "object" ||
+        parsedMeta === null ||
+        !("name" in parsedMeta)
+      ) {
+        throw new Error(`Invalid metadata format for function ${functionId}`);
+      }
+      const meta = parsedMeta as Omit<FunctionMetadata, "id">;
 
       return {
         id: functionId,
@@ -90,23 +99,66 @@ export class LocalDirectoryProvider implements FunctionsProvider {
       let stdout = "";
       let stderr = "";
 
-      childProcess.stdout.on("data", (data) => {
-        stdout += data.toString();
+      childProcess.stdout.on("data", (data: Buffer) => {
+        stdout += data.toString("utf-8");
       });
 
-      childProcess.stderr.on("data", (data) => {
-        stderr += data.toString();
+      childProcess.stderr.on("data", (data: Buffer) => {
+        stderr += data.toString("utf-8");
       });
 
       childProcess.on("close", (code) => {
         if (code !== 0) {
           // Try to parse stdout as JSON error
-          let errorObj: any = {};
+          let errorObj: { error: string; message: string } = {
+            error: "UnknownError",
+            message: "",
+          };
           try {
-            errorObj = JSON.parse(stdout.trim());
+            const parsed = JSON.parse(stdout.trim()) as unknown;
+            if (
+              typeof parsed === "object" &&
+              parsed !== null &&
+              ("error" in parsed || "message" in parsed)
+            ) {
+              errorObj = {
+                error:
+                  "error" in parsed && typeof parsed.error === "string"
+                    ? parsed.error
+                    : "UnknownError",
+                  message:
+                    "message" in parsed && typeof parsed.message === "string"
+                      ? parsed.message
+                      : typeof parsed === "string"
+                        ? parsed
+                        : JSON.stringify(parsed),
+              };
+            } else if (typeof parsed === "string") {
+              errorObj = { error: "UnknownError", message: parsed };
+            }
           } catch {
             try {
-              errorObj = JSON.parse(stderr.trim());
+              const parsed = JSON.parse(stderr.trim()) as unknown;
+              if (
+                typeof parsed === "object" &&
+                parsed !== null &&
+                ("error" in parsed || "message" in parsed)
+              ) {
+                errorObj = {
+                  error:
+                    "error" in parsed && typeof parsed.error === "string"
+                      ? parsed.error
+                      : "UnknownError",
+                  message:
+                    "message" in parsed && typeof parsed.message === "string"
+                      ? parsed.message
+                      : typeof parsed === "string"
+                        ? parsed
+                        : JSON.stringify(parsed),
+                };
+              } else if (typeof parsed === "string") {
+                errorObj = { error: "UnknownError", message: parsed };
+              }
             } catch {
               errorObj = {
                 error: "UnknownError",
@@ -115,22 +167,19 @@ export class LocalDirectoryProvider implements FunctionsProvider {
             }
           }
           // Always shape to { error, message }
-          if (typeof errorObj === "string") {
-            errorObj = { error: "UnknownError", message: errorObj };
+          if (!errorObj.message) {
+            errorObj.message = errorObj.error;
           }
-          if (!errorObj.error) errorObj.error = "UnknownError";
-          if (!errorObj.message) errorObj.message = errorObj.error;
-          reject(errorObj);
+          reject(new Error(`${errorObj.error}: ${errorObj.message}`));
           return;
         }
         try {
-          const result = JSON.parse(stdout.trim());
+          const result = JSON.parse(stdout.trim()) as R;
           resolve(result);
-        } catch (e) {
-          reject({
-            error: "ParseError",
-            message: "Failed to parse function output",
-          });
+        } catch {
+          reject(
+            new Error("ParseError: Failed to parse function output"),
+          );
         }
       });
     });

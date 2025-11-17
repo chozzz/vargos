@@ -8,13 +8,13 @@ export interface VectorSearchOptions {
   filter?: Schemas["SearchRequest"]["filter"];
 }
 
-export interface VectorSearchResult<T = Record<string, any>> {
+export interface VectorSearchResult<T = Record<string, unknown>> {
   id: string;
   score: number;
   payload: T;
 }
 
-export interface VectorIndexData<T = Record<string, any>> {
+export interface VectorIndexData<T = Record<string, unknown>> {
   collectionName: string;
   id: string;
   vector: number[];
