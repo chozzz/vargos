@@ -11,6 +11,7 @@ export { webFetchTool } from './web-fetch.js';
 export { memorySearchTool } from './memory-search.js';
 export { memoryGetTool } from './memory-get.js';
 export { sessionsListTool } from './sessions-list.js';
+export { sessionsHistoryTool } from './sessions-history.js';
 export { sessionsSendTool } from './sessions-send.js';
 export { sessionsSpawnTool } from './sessions-spawn.js';
 export { cronAddTool } from './cron-add.js';
