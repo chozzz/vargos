@@ -8,7 +8,6 @@ import {
   Logger,
   Post,
   Body,
-  Param,
   HttpException,
   HttpStatus,
 } from "@nestjs/common";
@@ -18,16 +17,15 @@ import {
   ApiOperation,
   ApiQuery,
   ApiResponse,
-  ApiParam,
   ApiBody,
   ApiTags,
 } from "@nestjs/swagger";
-import { ParseJsonPipe } from "../common/pipes/parse-json.pipe";
 import {
   FunctionReindexResponseDto,
   FunctionSearchResponseDto,
   FunctionExecuteResponseDto,
 } from "./dto/functions-response.dto";
+import { FunctionExecuteDto } from "./dto/functions-execute.dto";
 
 @ApiTags("Functions")
 @Controller("functions")
@@ -101,19 +99,7 @@ export class FunctionsController {
     summary: "Execute a function",
     description: "Executes a function with the given parameters",
   })
-  @ApiParam({
-    name: "functionId",
-    description: "The ID of the function to execute",
-    required: true,
-  })
-  @ApiBody({
-    schema: {
-      type: "object",
-      properties: {
-        params: { type: "object" },
-      },
-    },
-  })
+  @ApiBody({ type: FunctionExecuteDto })
   @ApiResponse({
     status: 200,
     description: "Function executed successfully",
@@ -124,13 +110,22 @@ export class FunctionsController {
     description: "Invalid parameters or function execution failed",
   })
   async executeFunction(
-    @Param("functionId") functionId: string,
-    @Body(new ParseJsonPipe()) params: Record<string, unknown>,
+    @Body() body: FunctionExecuteDto,
   ): Promise<{ result: unknown; success: boolean }> {
+    if (!body.functionId) {
+      throw new HttpException(
+        {
+          status: HttpStatus.BAD_REQUEST,
+          error: "ValidationError",
+          message: "functionId is required in request body",
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
     try {
       const result = await this.functionsService.executeFunction(
-        functionId,
-        params,
+        body.functionId,
+        body.params || {},
       );
       // Wrap service response to match tool expectation
       return {

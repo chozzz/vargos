@@ -167,10 +167,10 @@ export class FunctionsTool {
         total: 100,
       } as Progress);
 
-      const result = await this.functionsController.executeFunction(
+      const result = await this.functionsController.executeFunction({
         functionId,
         params,
-      );
+      });
 
       await context.reportProgress({
         progress: 100,

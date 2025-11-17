@@ -1,4 +1,5 @@
 import { Test, TestingModule } from "@nestjs/testing";
+import { HttpException } from "@nestjs/common";
 import { FunctionsController } from "./functions.controller";
 import { FunctionsService } from "./functions.service";
 import { ConfigModule, ConfigService } from "@nestjs/config";
@@ -145,7 +146,7 @@ describe("FunctionsController", () => {
   });
 
   describe("searchFunctions", () => {
-    const mockSearchResults: VectorSearchResult[] = [
+    const mockSearchResults: VectorSearchResult<FunctionMetadata>[] = [
       {
         id: "test-function",
         score: 0.95,
@@ -201,6 +202,106 @@ describe("FunctionsController", () => {
         collectionName: "vargos-functions-meta",
         limit: 10,
       });
+    });
+  });
+
+  describe("executeFunction", () => {
+    it("should execute function with functionId and params in body", async () => {
+      const functionId = "test-function";
+      const params = { url: "https://example.com" };
+      const mockResult = { success: true, data: "result" };
+
+      jest
+        .spyOn(service, "executeFunction")
+        .mockResolvedValue(mockResult);
+
+      const result = await controller.executeFunction({
+        functionId,
+        params,
+      });
+
+      expect(result).toEqual({
+        result: mockResult,
+        success: true,
+      });
+      expect(service.executeFunction).toHaveBeenCalledWith(functionId, params);
+    });
+
+    it("should throw error when functionId is missing", async () => {
+      const params = { url: "https://example.com" };
+
+      // This test verifies that missing functionId is caught early with a clear error
+      // ZodValidationPipe will validate before reaching the controller
+      await expect(
+        controller.executeFunction({
+          functionId: undefined as any,
+          params,
+        }),
+      ).rejects.toThrow();
+
+      // Verify the error message
+      try {
+        await controller.executeFunction({
+          functionId: undefined as any,
+          params,
+        });
+      } catch (error) {
+        expect(error).toBeInstanceOf(HttpException);
+        const response = (error as HttpException).getResponse();
+        // ZodValidationPipe or our explicit check will throw
+        expect(response).toHaveProperty("error");
+      }
+    });
+
+    it("should accept valid request body with functionId and params", async () => {
+      const functionId = "browse-url";
+      const params = { url: "https://example.com" };
+      const mockResult = { success: true, data: "result" };
+
+      jest
+        .spyOn(service, "executeFunction")
+        .mockResolvedValue(mockResult);
+
+      // This matches the exact curl request format
+      const result = await controller.executeFunction({
+        functionId,
+        params,
+      });
+
+      expect(result).toEqual({
+        result: mockResult,
+        success: true,
+      });
+      expect(service.executeFunction).toHaveBeenCalledWith(functionId, params);
+    });
+
+    it("should handle request with only params (missing functionId)", async () => {
+      const params = { url: "https://example.com" };
+
+      // This simulates the original bug where functionId was missing
+      await expect(
+        controller.executeFunction({
+          functionId: undefined as any,
+          params,
+        }),
+      ).rejects.toThrow();
+    });
+
+    it("should handle function execution errors", async () => {
+      const functionId = "test-function";
+      const params = { url: "https://example.com" };
+
+      jest.spyOn(service, "executeFunction").mockRejectedValue({
+        error: "FunctionNotFound",
+        message: "Function not found",
+      });
+
+      await expect(
+        controller.executeFunction({
+          functionId,
+          params,
+        }),
+      ).rejects.toThrow();
     });
   });
 });

@@ -34,6 +34,9 @@ export class OpenAIProvider implements LLMProvider, OnModuleInit {
   async generateEmbeddings(
     input: string | string[],
   ): Promise<number[] | number[][]> {
+    if (Array.isArray(input)) {
+      return this.coreProvider.generateEmbeddings(input);
+    }
     return this.coreProvider.generateEmbeddings(input);
   }
 

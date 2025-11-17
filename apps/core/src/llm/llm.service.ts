@@ -20,6 +20,9 @@ export class LLMService {
   async generateEmbeddings(
     input: string | string[],
   ): Promise<number[] | number[][]> {
+    if (Array.isArray(input)) {
+      return this.coreService.generateEmbeddings(input);
+    }
     return this.coreService.generateEmbeddings(input);
   }
 
