@@ -75,6 +75,7 @@ program
   .option('-w, --workspace <dir>', 'Workspace directory (default: auto-detect project or ~/.vargos/workspace)')
   .option('-m, --model <model>', 'Model to use (overrides saved config)')
   .option('-p, --provider <provider>', 'Provider to use (overrides saved config)')
+  .option('-s, --session <id>', 'Session ID for continuity (default: main)')
   .option('--memory <backend>', 'Memory backend (file|qdrant|postgres)', 'file')
   .option('--sessions <backend>', 'Sessions backend (file|postgres)', 'file')
   .option('--no-interactive', 'Skip interactive configuration prompts')
@@ -92,6 +93,9 @@ program
     process.env.VARGOS_MEMORY_BACKEND = options.memory;
     process.env.VARGOS_SESSIONS_BACKEND = options.sessions;
     process.env.VARGOS_WORKSPACE = workspaceDir;
+    
+    // Data storage always goes to ~/.vargos (like OpenClaw)
+    const dataDir = path.join(os.homedir(), '.vargos');
 
     // Initialize workspace if needed
     const workspaceExists = await isWorkspaceInitialized(workspaceDir);
@@ -156,10 +160,12 @@ program
     }
 
     // Initialize services
+    // Data (sessions, memory.db) stored in ~/.vargos (like OpenClaw)
+    // Workspace files (AGENTS.md, etc.) in project directory
     const serviceConfig: ServiceConfig = {
       memory: options.memory as 'file' | 'qdrant' | 'postgres',
       sessions: options.sessions as 'file' | 'postgres',
-      fileMemoryDir: workspaceDir,
+      fileMemoryDir: dataDir,
     };
 
     try {
@@ -171,25 +177,31 @@ program
       process.exit(1);
     }
 
-    // Create session
-    const sessionKey = `cli:${Date.now()}`;
-    const sessionFile = path.join(workspaceDir, '.vargos', 'sessions', `${sessionKey}.jsonl`);
+    // Create session (persistent key like OpenClaw)
+    const sessionKey = options.session ? `cli:${options.session}` : 'cli:main';
     
-    await fs.mkdir(path.dirname(sessionFile), { recursive: true });
-
     // Create the session in Vargos session service
     const { getSessionService } = await import('./services/factory.js');
     const sessions = getSessionService();
-    await sessions.create({
-      sessionKey,
-      kind: 'main',
-      label: 'CLI Chat Session',
-      metadata: {
-        model,
-        provider,
-        startedAt: new Date().toISOString(),
-      },
-    });
+    
+    // Check if session exists, create if not
+    let session = await sessions.get(sessionKey);
+    if (!session) {
+      session = await sessions.create({
+        sessionKey,
+        kind: 'main',
+        label: `CLI Chat (${options.session || 'main'})`,
+        metadata: {
+          model,
+          provider,
+          workspaceDir,
+          createdAt: new Date().toISOString(),
+        },
+      });
+      console.error(chalk.dim(`  → New session: ${sessionKey}`));
+    } else {
+      console.error(chalk.dim(`  → Resuming session: ${sessionKey}`));
+    }
 
     // Create readline interface
     const rl = readline.createInterface({
