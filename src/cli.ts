@@ -13,7 +13,7 @@ import readline from 'node:readline';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { VargosAgentRuntime } from './agent/runtime.js';
+import { PiAgentRuntime, initializePiAgentRuntime } from './pi/runtime.js';
 import { initializeServices, ServiceConfig } from './services/factory.js';
 import { toolRegistry } from './mcp/tools/index.js';
 import { buildSystemPrompt, resolvePromptMode } from './agent/prompt.js';
@@ -212,8 +212,12 @@ program
 
     console.log(chalk.yellow('\nType your message, or "exit" to quit.\n'));
 
-    const runtime = new VargosAgentRuntime();
+    const runtime = new PiAgentRuntime();
     let messageCount = 0;
+
+    // Get session file path for Pi SDK
+    const sessionFile = path.join(dataDir, 'sessions', `${sessionKey.replace(/:/g, '-')}.jsonl`);
+    await fs.mkdir(path.dirname(sessionFile), { recursive: true });
 
     const askQuestion = () => {
       rl.prompt();
@@ -247,20 +251,12 @@ program
       try {
         const result = await runtime.run({
           sessionKey,
+          sessionFile,
           workspaceDir,
           model,
           provider,
           apiKey: await getPiApiKey(workspaceDir, provider) || process.env.OPENAI_API_KEY,
           contextFiles,
-          onToolCall: (toolName, args) => {
-            console.log(chalk.gray(`  🔧 Using ${toolName}...`));
-          },
-          onToolResult: (toolName, result) => {
-            const resultObj = result as { isError?: boolean };
-            if (resultObj.isError) {
-              console.log(chalk.red(`  ❌ ${toolName} failed`));
-            }
-          },
         });
 
         if (result.success) {
@@ -321,11 +317,14 @@ program
     console.log(chalk.gray(`Model: ${provider}/${model}`));
     console.log();
 
+    // Data storage always goes to ~/.vargos (like OpenClaw)
+    const runDataDir = path.join(os.homedir(), '.vargos');
+    
     // Initialize services
     const serviceConfig: ServiceConfig = {
       memory: 'file',
       sessions: 'file',
-      fileMemoryDir: workspaceDir,
+      fileMemoryDir: runDataDir,
     };
 
     try {
@@ -362,13 +361,18 @@ program
       metadata: { type: 'task' },
     });
 
-    const runtime = new VargosAgentRuntime();
+    const runtime = new PiAgentRuntime();
+    
+    // Get session file path for Pi SDK
+    const runSessionFile = path.join(runDataDir, 'sessions', `${sessionKey.replace(/:/g, '-')}.jsonl`);
+    await fs.mkdir(path.dirname(runSessionFile), { recursive: true });
 
     console.log(chalk.gray('Running task...\n'));
 
     try {
       const result = await runtime.run({
         sessionKey,
+        sessionFile: runSessionFile,
         workspaceDir,
         model,
         provider,
