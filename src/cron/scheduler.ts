@@ -5,7 +5,7 @@
 
 import { CronJob } from 'cron';
 import { getSessionService } from '../services/factory.js';
-import { getVargosAgentRuntime } from '../agent/runtime.js';
+import { getPiAgentRuntime } from '../pi/runtime.js';
 import path from 'node:path';
 import os from 'node:os';
 
@@ -119,10 +119,15 @@ export class CronScheduler {
     });
 
     // Spawn subagent to handle the task
-    const runtime = getVargosAgentRuntime();
+    const runtime = getPiAgentRuntime();
+    
+    // Get session file path for Pi SDK
+    const dataDir = path.join(os.homedir(), '.vargos');
+    const sessionFile = path.join(dataDir, 'sessions', `${sessionKey.replace(/:/g, '-')}.jsonl`);
 
     runtime.run({
       sessionKey,
+      sessionFile,
       workspaceDir: this.workspaceDir,
       contextFiles: [],
     }).then(result => {

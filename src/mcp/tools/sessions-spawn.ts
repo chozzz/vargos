@@ -1,12 +1,13 @@
 /**
- * Sessions spawn tool - Spawns a Vargos agent subagent
+ * Sessions spawn tool - Spawns a Pi agent subagent
  * Works with file-based or postgres backends
  */
 
 import { z } from 'zod';
+import path from 'node:path';
 import { Tool, ToolContext, textResult, errorResult } from './types.js';
 import { getSessionService } from '../../services/factory.js';
-import { getVargosAgentRuntime } from '../../agent/runtime.js';
+import { getPiAgentRuntime } from '../../pi/runtime.js';
 import { isSubagentSessionKey } from '../../agent/prompt.js';
 
 const SessionsSpawnParameters = z.object({
@@ -69,14 +70,18 @@ export const sessionsSpawnTool: Tool = {
         metadata: { type: 'task' },
       });
 
-      // Start Vargos agent runtime for the subagent
-      const runtime = getVargosAgentRuntime();
+      // Start Pi agent runtime for the subagent
+      const runtime = getPiAgentRuntime();
+
+      // Get session file path for Pi SDK
+      const childSessionFile = path.join(context.workingDir, '.vargos', 'sessions', `${childKey.replace(/:/g, '-')}.jsonl`);
 
       // Run in background (don't await)
       runtime
         .runSubagent(
           {
             sessionKey: childKey,
+            sessionFile: childSessionFile,
             workspaceDir: context.workingDir,
             model: params.model,
             extraSystemPrompt: `You are a sub-agent spawned to complete a specific task. Focus on the task and return results concisely.`,
