@@ -29,6 +29,11 @@ export const FunctionListResponseSchema = z.object({
   total: z.number(),
 });
 
+export const FunctionExecuteRequestSchema = z.object({
+  functionId: z.string().describe("The ID of the function to execute"),
+  params: z.record(z.any()).describe("The parameters to pass to the function"),
+});
+
 export const FunctionExecuteResponseSchema = z.object({
   result: z.any(),
   success: z.boolean(),
