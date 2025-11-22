@@ -3,7 +3,11 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "type-check": "tsc --noEmit",
     "dev": "mastra dev",
     "build": "mastra build",
     "start": "mastra start"
@@ -17,18 +21,25 @@
     "node": ">=20.9.0"
   },
   "dependencies": {
-    "@mastra/core": "^0.21.1",
-    "@mastra/fastembed": "^0.10.5",
-    "@mastra/libsql": "^0.15.2",
-    "@mastra/loggers": "^0.10.16",
-    "@mastra/mcp": "^0.13.5",
-    "@mastra/memory": "^0.15.7",
-    "@mastra/pg": "^0.17.4",
+    "@mastra/core": "^0.24.5",
+    "@mastra/fastembed": "^0.10.7",
+    "@mastra/libsql": "^0.16.2",
+    "@mastra/loggers": "^0.10.19",
+    "@mastra/mcp": "^0.14.3",
+    "@mastra/memory": "^0.15.11",
+    "@mastra/pg": "^0.17.8",
     "zod": "^4.1.12"
   },
   "devDependencies": {
-    "@types/node": "^24.8.1",
-    "mastra": "^0.17.0",
-    "typescript": "^5.9.3"
+    "@types/node": "^24.10.1",
+    "@vargos/core-lib": "workspace:*",
+    "@workspace/eslint-config": "workspace:*",
+    "@workspace/typescript-config": "workspace:*",
+    "eslint": "^9.39.1",
+    "globals": "^16.5.0",
+    "mastra": "^0.18.5",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.47.0",
+    "vitest": "^4.0.13"
   }
 }
