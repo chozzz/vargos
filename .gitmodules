@@ -1,0 +1,3 @@
+[submodule "apps/chat"]
+	path = apps/chat
+	url = https://github.com/chozzz/aichat

@@ -1,0 +1,16 @@
+{
+  "name": "@vargos/mastra-client",
+  "version": "0.1.0",
+  "description": "Shared types and schemas for Mastra API",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "generate-schemas": "typescript-json-schema tsconfig.json '*' --out schemas/schemas.json"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3",
+    "typescript-json-schema": "^0.65.0"
+  }
+}
+

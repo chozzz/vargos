@@ -1,8 +1,8 @@
-import { existsSync, readdirSync, readFileSync } from "fs";
+import { existsSync, readdirSync, readFileSync, mkdirSync, writeFileSync } from "fs";
 import path, { resolve } from "path";
 import { spawn } from "child_process";
 import { FunctionListResponse, FunctionMetadata } from "../types/functions.types";
-import { FunctionsProvider } from "../interfaces/functions.interface";
+import { FunctionsProvider, CreateFunctionInput } from "../interfaces/functions.interface";
 
 export interface LocalDirectoryProviderConfig {
   functionsDir: string;
@@ -183,6 +183,79 @@ export class LocalDirectoryProvider implements FunctionsProvider {
         }
       });
     });
+  }
+
+  async createFunction(input: CreateFunctionInput): Promise<FunctionMetadata> {
+    const { metadata, code } = input;
+
+    // Generate kebab-case functionId from name
+    const functionId = metadata.name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "");
+
+    // Create function directory
+    const functionDir = path.join(this.functionsSourceDir, functionId);
+    if (existsSync(functionDir)) {
+      throw new Error(`Function "${functionId}" already exists`);
+    }
+
+    try {
+      mkdirSync(functionDir, { recursive: true });
+
+      // Write metadata file
+      const metaFilePath = path.join(functionDir, `${functionId}.meta.json`);
+      const metaContent = {
+        name: metadata.name,
+        category: metadata.category,
+        description: metadata.description,
+        tags: metadata.tags,
+        requiredEnvVars: metadata.requiredEnvVars,
+        input: metadata.input,
+        output: metadata.output,
+      };
+      writeFileSync(metaFilePath, JSON.stringify(metaContent, null, 2));
+
+      // Write index.ts with provided code or default template
+      const indexFilePath = path.join(functionDir, "index.ts");
+      const indexContent = code || this.generateDefaultFunctionCode(metadata);
+      writeFileSync(indexFilePath, indexContent);
+
+      return {
+        id: functionId,
+        ...metadata,
+      };
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      throw new Error(
+        `Failed to create function ${functionId}: ${errorMessage}`,
+      );
+    }
+  }
+
+  private generateDefaultFunctionCode(
+    metadata: Omit<FunctionMetadata, "id">,
+  ): string {
+    const inputParams = metadata.input
+      .map((input) => `  ${input.name}: ${input.type};`)
+      .join("\n");
+
+    const outputType =
+      metadata.output.length > 0 && metadata.output[0]
+        ? metadata.output[0].type
+        : "unknown";
+
+    return `/**
+ * ${metadata.description}
+ */
+export default async function ${metadata.name.replace(/[^a-zA-Z0-9]/g, "")}(params: {
+${inputParams}
+}): Promise<${outputType}> {
+  // TODO: Implement function logic
+  throw new Error("Function not yet implemented");
+}
+`;
   }
 }
 

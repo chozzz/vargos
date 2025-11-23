@@ -1,6 +1,11 @@
 import { Provider } from "../../core/provider.interface";
 import { FunctionListResponse, FunctionMetadata } from "../types/functions.types";
 
+export interface CreateFunctionInput {
+  metadata: Omit<FunctionMetadata, "id">;
+  code?: string;
+}
+
 export interface FunctionsProvider extends Provider {
   listFunctions(): Promise<FunctionListResponse>;
   getFunctionMetadata(functionId: string): Promise<FunctionMetadata>;
@@ -8,5 +13,6 @@ export interface FunctionsProvider extends Provider {
     functionId: string,
     params: T,
   ): Promise<R>;
+  createFunction(input: CreateFunctionInput): Promise<FunctionMetadata>;
 }
 

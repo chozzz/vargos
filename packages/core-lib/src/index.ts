@@ -20,7 +20,7 @@ export type { VectorSearchOptions, VectorSearchResult, VectorIndexData, VectorDB
 export { FunctionsService } from "./functions/functions.service";
 export { LocalDirectoryProvider } from "./functions/providers/local-directory.provider";
 export type { LocalDirectoryProviderConfig } from "./functions/providers/local-directory.provider";
-export type { FunctionsProvider } from "./functions/interfaces/functions.interface";
+export type { FunctionsProvider, CreateFunctionInput } from "./functions/interfaces/functions.interface";
 export * from "./functions/types/functions.types";
 
 // Env
