@@ -1,7 +1,9 @@
 /**
  * Pi SDK integration for Vargos
- * Embeds pi-coding-agent for actual agent execution
- * Hooks Pi's compaction events into Vargos sessions
+ * Embeds pi-coding-agent with OpenClaw-style features:
+ * - Message queue for per-session serialization
+ * - Lifecycle events for streaming
+ * - Bootstrap file injection
  */
 
 import {
@@ -16,8 +18,11 @@ import {
 } from '@mariozechner/pi-coding-agent';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { buildSystemPrompt, resolvePromptMode } from '../agent/prompt.js';
 import { getSessionService } from '../services/factory.js';
+import { getAgentLifecycle, type AgentStreamEvent } from '../agent/lifecycle.js';
+import { getSessionMessageQueue } from '../agent/queue.js';
 
 export interface PiAgentConfig {
   sessionKey: string;
@@ -29,6 +34,7 @@ export interface PiAgentConfig {
   contextFiles?: Array<{ name: string; content: string }>;
   extraSystemPrompt?: string;
   userTimezone?: string;
+  runId?: string;
 }
 
 export interface PiAgentRunResult {
@@ -38,33 +44,84 @@ export interface PiAgentRunResult {
   tokensUsed?: {
     input: number;
     output: number;
+    total: number;
   };
+  duration?: number;
 }
 
 /**
  * Pi Agent Runtime
- * Manages Pi SDK agent sessions with Vargos integration
- * Hooks Pi's compaction events into Vargos sessions
+ * Manages Pi SDK agent sessions with OpenClaw-style features
  */
 export class PiAgentRuntime {
+  private lifecycle = getAgentLifecycle();
+  private messageQueue = getSessionMessageQueue();
+
+  constructor() {
+    // Set up message queue handler
+    this.messageQueue.on('execute', this.handleQueuedMessage.bind(this));
+  }
+
   /**
    * Run an agent session
+   * Queued per-session to prevent race conditions
    */
   async run(config: PiAgentConfig): Promise<PiAgentRunResult> {
+    const runId = config.runId || `run-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+    // Queue this run for the session
+    return this.messageQueue.enqueue<PiAgentRunResult>(
+      config.sessionKey,
+      '', // Content handled separately
+      'user',
+      { config, runId }
+    );
+  }
+
+  /**
+   * Handle a queued message
+   * This runs serialized per-session
+   */
+  private async handleQueuedMessage(
+    message: { sessionKey: string; metadata?: { config: PiAgentConfig; runId: string } },
+    resolve: (value: PiAgentRunResult) => void,
+    reject: (error: Error) => void
+  ): Promise<void> {
+    const { config, runId } = message.metadata!;
+
     try {
-      // Ensure workspace exists
-      await fs.mkdir(config.workspaceDir, { recursive: true });
+      const result = await this.executeRun(config, runId);
+      resolve(result);
+    } catch (error) {
+      reject(error instanceof Error ? error : new Error(String(error)));
+    }
+  }
+
+  /**
+   * Execute the actual run
+   */
+  private async executeRun(config: PiAgentConfig, runId: string): Promise<PiAgentRunResult> {
+    const startedAt = Date.now();
+
+    try {
+      // Start lifecycle
+      this.lifecycle.startRun(runId, config.sessionKey);
+
+      // Ensure directories exist
+      await fs.mkdir(path.dirname(config.sessionFile), { recursive: true });
       await fs.mkdir(path.join(config.workspaceDir, '.vargos', 'agent'), { recursive: true });
 
-      // Build context for the agent
+      // Build system prompt with bootstrap injection
       const promptMode = resolvePromptMode(config.sessionKey);
-      const systemContext = buildSystemPrompt({
+      const systemContext = await buildSystemPrompt({
         mode: promptMode,
         workspaceDir: config.workspaceDir,
-        toolNames: [],
+        toolNames: [], // Pi SDK has its own tools
         contextFiles: config.contextFiles,
         extraSystemPrompt: config.extraSystemPrompt,
         userTimezone: config.userTimezone,
+        repoRoot: config.workspaceDir,
+        model: config.model,
       });
 
       // Create Pi session manager
@@ -75,7 +132,7 @@ export class PiAgentRuntime {
         path.join(config.workspaceDir, '.vargos', 'agent', 'auth.json')
       );
 
-      // Set API key if provided in config
+      // Set API key if provided
       if (config.apiKey && config.provider) {
         authStorage.setRuntimeApiKey(config.provider, config.apiKey);
       } else if (config.apiKey) {
@@ -94,7 +151,7 @@ export class PiAgentRuntime {
         path.join(config.workspaceDir, '.vargos', 'agent')
       );
 
-      // Build model configuration if specified
+      // Build model configuration
       let model = undefined;
       if (config.model) {
         const provider = config.provider ?? 'openai';
@@ -112,23 +169,25 @@ export class PiAgentRuntime {
         model,
       });
 
-      // Subscribe to Pi session events (compaction, etc.)
-      this.subscribeToSessionEvents(session, config.sessionKey);
+      // Subscribe to Pi session events
+      this.subscribeToSessionEvents(session, config.sessionKey, runId);
 
       // Get task from session messages
       const messages = await this.loadSessionMessages(config.sessionKey);
       const taskMessage = messages.find((m) => m.metadata?.type === 'task');
       const task = taskMessage?.content ?? 'Complete your assigned task.';
 
-      // Prepend system context to the task
+      // Prepend system context
       const prompt = `${systemContext}\n\n## Task\n\n${task}`;
 
       // Prompt the agent
       await session.prompt(prompt);
 
-      // Get the response from session history
+      // Get response from session history
       const sessionEntries = sessionManager.getEntries();
       let response = 'Task completed';
+      let inputTokens = 0;
+      let outputTokens = 0;
 
       for (let i = sessionEntries.length - 1; i >= 0; i--) {
         const entry = sessionEntries[i];
@@ -144,46 +203,87 @@ export class PiAgentRuntime {
       // Store completion in Vargos session
       await this.storeResponse(config.sessionKey, response);
 
+      // Calculate duration
+      const duration = Date.now() - startedAt;
+
+      // End lifecycle
+      this.lifecycle.endRun(runId, {
+        input: inputTokens,
+        output: outputTokens,
+        total: inputTokens + outputTokens,
+      });
+
       return {
         success: true,
         response,
+        tokensUsed: {
+          input: inputTokens,
+          output: outputTokens,
+          total: inputTokens + outputTokens,
+        },
+        duration,
       };
     } catch (err) {
+      const duration = Date.now() - startedAt;
       const message = err instanceof Error ? err.message : String(err);
+
+      // Error lifecycle
+      this.lifecycle.errorRun(runId, message);
+
       return {
         success: false,
         error: message,
+        duration,
       };
     }
   }
 
   /**
-   * Subscribe to Pi session events and sync to Vargos
+   * Subscribe to Pi session events
    */
-  private subscribeToSessionEvents(session: AgentSession, vargosSessionKey: string): void {
+  private subscribeToSessionEvents(
+    session: AgentSession,
+    vargosSessionKey: string,
+    runId: string
+  ): void {
     session.subscribe((event: AgentSessionEvent) => {
+      // Handle auto-compaction
       if (event.type === 'auto_compaction_end') {
-        this.handleCompactionEvent(event.result, vargosSessionKey, event.aborted);
+        this.handleCompactionEvent(event.result, vargosSessionKey, runId, event.aborted);
+      }
+
+      // Handle tool execution events
+      if (event.type === 'tool_execution_start') {
+        // Tool started - Pi doesn't expose tool name directly in event
+        this.lifecycle.streamTool(runId, 'tool', 'start', {});
+      }
+      if (event.type === 'tool_execution_end') {
+        // Tool completed
+        this.lifecycle.streamTool(runId, 'tool', 'end', {}, {});
       }
     });
   }
 
   /**
-   * Handle Pi compaction event - sync to Vargos session
+   * Handle Pi compaction event
    */
   private async handleCompactionEvent(
     result: CompactionResult | undefined,
     vargosSessionKey: string,
+    runId: string,
     aborted: boolean
   ): Promise<void> {
     if (!result || aborted) return;
 
+    // Stream compaction event
+    this.lifecycle.streamCompaction(runId, result.tokensBefore, result.summary);
+
     const sessions = getSessionService();
 
-    // Check if session still exists (may have been deleted)
+    // Check if session still exists
     const session = await sessions.get(vargosSessionKey);
     if (!session) {
-      console.error(`[PiRuntime] Session ${vargosSessionKey} not found, skipping compaction event`);
+      console.error(`[PiRuntime] Session ${vargosSessionKey} not found, skipping compaction`);
       return;
     }
 
@@ -191,13 +291,8 @@ export class PiAgentRuntime {
       `## Context Compacted`,
       ``,
       `**Tokens before:** ${result.tokensBefore}`,
-      `**First kept entry:** ${result.firstKeptEntryId.slice(0, 8)}...`,
-      ``,
       `**Summary:**`,
       result.summary.slice(0, 1000),
-      ``,
-      `---`,
-      `Prior conversation history was compacted to maintain context window.`,
     ].join('\n');
 
     await sessions.addMessage({
@@ -213,7 +308,7 @@ export class PiAgentRuntime {
   }
 
   /**
-   * Run a subagent and announce result back to parent
+   * Run a subagent and announce result back
    */
   async runSubagent(
     config: PiAgentConfig,
@@ -225,7 +320,7 @@ export class PiAgentRuntime {
   }
 
   /**
-   * Announce subagent result to parent session
+   * Announce subagent result to parent
    */
   private async announceResult(
     parentSessionKey: string,
@@ -234,16 +329,16 @@ export class PiAgentRuntime {
   ): Promise<void> {
     const sessions = getSessionService();
 
-    // Check if parent session still exists
+    // Check parent exists
     const parentSession = await sessions.get(parentSessionKey);
     if (!parentSession) {
-      console.error(`[PiRuntime] Parent session ${parentSessionKey} not found, skipping announcement`);
+      console.error(`[PiRuntime] Parent ${parentSessionKey} not found, skipping announcement`);
       return;
     }
 
-    const status = result.success ? 'success' : 'error';
+    const status = result.success ? '✅ success' : '❌ error';
     const summary = result.success
-      ? result.response ?? '(no response)'
+      ? result.response?.slice(0, 500) ?? '(no response)'
       : result.error ?? '(unknown error)';
 
     const message = [
@@ -251,24 +346,27 @@ export class PiAgentRuntime {
       ``,
       `**Session:** ${childSessionKey}`,
       `**Status:** ${status}`,
+      `**Duration:** ${result.duration ? `${(result.duration / 1000).toFixed(1)}s` : 'unknown'}`,
       ``,
       `**Result:**`,
-      summary.slice(0, 500),
-      ``,
-      `---`,
-      `Use sessions_history to see full transcript.`,
+      summary,
     ].join('\n');
 
     await sessions.addMessage({
       sessionKey: parentSessionKey,
       content: message,
       role: 'system',
-      metadata: { type: 'subagent_announce', childSessionKey },
+      metadata: {
+        type: 'subagent_announce',
+        childSessionKey,
+        success: result.success,
+        duration: result.duration,
+      },
     });
   }
 
   /**
-   * Load messages from session service
+   * Load messages from Vargos session
    */
   private async loadSessionMessages(
     sessionKey: string
@@ -280,10 +378,7 @@ export class PiAgentRuntime {
   /**
    * Store agent response
    */
-  private async storeResponse(
-    sessionKey: string,
-    response: string
-  ): Promise<void> {
+  private async storeResponse(sessionKey: string, response: string): Promise<void> {
     const sessions = getSessionService();
     await sessions.addMessage({
       sessionKey,
@@ -291,6 +386,37 @@ export class PiAgentRuntime {
       role: 'assistant',
       metadata: {},
     });
+  }
+
+  /**
+   * Abort a running session
+   */
+  abortRun(runId: string, reason?: string): boolean {
+    return this.lifecycle.abortRun(runId, reason);
+  }
+
+  /**
+   * List active runs
+   */
+  listActiveRuns(): Array<{ runId: string; sessionKey: string; duration: number }> {
+    return this.lifecycle.listActiveRuns();
+  }
+
+  /**
+   * Subscribe to stream events
+   */
+  onStream(callback: (event: AgentStreamEvent) => void): void {
+    this.lifecycle.on('stream', callback);
+  }
+
+  /**
+   * Subscribe to specific events
+   */
+  onLifecycle(callback: (phase: string, runId: string, data?: unknown) => void): void {
+    this.lifecycle.on('start', (runId: string, sessionKey: string) => callback('start', runId, { sessionKey }));
+    this.lifecycle.on('end', (runId: string, data: unknown) => callback('end', runId, data));
+    this.lifecycle.on('error', (runId: string, error: Error) => callback('error', runId, { error }));
+    this.lifecycle.on('abort', (runId: string, reason: string) => callback('abort', runId, { reason }));
   }
 }
 
