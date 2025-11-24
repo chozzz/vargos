@@ -1,152 +1,278 @@
 /**
- * System prompt builder for Pi agents
- * Supports minimal mode for subagents (like OpenClaw)
+ * System prompt builder for Vargos
+ * OpenClaw-style prompt assembly with bootstrap file injection
  */
 
-export type PromptMode = 'full' | 'minimal' | 'none';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
 
-export interface SystemPromptParams {
-  mode: PromptMode;
+export interface SystemPromptOptions {
+  mode: 'full' | 'minimal' | 'none';
   workspaceDir: string;
   toolNames: string[];
-  toolSummaries?: Record<string, string>;
-  docsPath?: string;
-  userTimezone?: string;
-  extraSystemPrompt?: string;
   contextFiles?: Array<{ name: string; content: string }>;
+  extraSystemPrompt?: string;
+  userTimezone?: string;
+  repoRoot?: string;
+  model?: string;
+  thinking?: 'off' | 'low' | 'medium' | 'high';
 }
 
-// Subagents only get these context files (like OpenClaw)
-const SUBAGENT_CONTEXT_ALLOWLIST = new Set(['AGENTS.md', 'TOOLS.md']);
+// Bootstrap files to inject (in priority order)
+const BOOTSTRAP_FILES = [
+  'AGENTS.md',
+  'SOUL.md',
+  'TOOLS.md',
+  'IDENTITY.md',
+  'USER.md',
+  'HEARTBEAT.md',
+  'BOOTSTRAP.md', // Only on first run
+];
 
-export function buildSystemPrompt(params: SystemPromptParams): string {
-  if (params.mode === 'none') {
-    return 'You are a personal assistant.';
+const DEFAULT_BOOTSTRAP_MAX_CHARS = 20000;
+
+/**
+ * Build system prompt like OpenClaw
+ */
+export async function buildSystemPrompt(options: SystemPromptOptions): Promise<string> {
+  const { mode, workspaceDir, toolNames, userTimezone, repoRoot, model, thinking } = options;
+
+  if (mode === 'none') {
+    return 'You are a helpful assistant.';
   }
 
-  const isMinimal = params.mode === 'minimal';
-  const lines: string[] = [
-    'You are a personal assistant running inside Vargos.',
-    '',
+  const sections: string[] = [];
+
+  // 1. Tooling section
+  sections.push(await buildToolingSection(toolNames));
+
+  // 2. Workspace section
+  sections.push(buildWorkspaceSection(workspaceDir));
+
+  // 3. Documentation section (for full mode)
+  if (mode === 'full') {
+    sections.push(buildDocumentationSection());
+  }
+
+  // 4. Project Context - Injected bootstrap files
+  const bootstrapContent = await loadBootstrapFiles(workspaceDir, mode);
+  if (bootstrapContent) {
+    sections.push(bootstrapContent);
+  }
+
+  // 5. Current Date & Time
+  if (userTimezone) {
+    sections.push(buildTimeSection(userTimezone));
+  }
+
+  // 6. Runtime info
+  sections.push(buildRuntimeSection(repoRoot, model, thinking));
+
+  // 7. Extra prompt if provided
+  if (options.extraSystemPrompt) {
+    sections.push(`## Additional Context\n\n${options.extraSystemPrompt}`);
+  }
+
+  // Join all sections
+  return sections.filter(Boolean).join('\n\n');
+}
+
+/**
+ * Build tooling section
+ */
+async function buildToolingSection(toolNames: string[]): Promise<string> {
+  const lines = [
     '## Tooling',
-    'Tool availability (filtered by policy):',
-    'Tool names are case-sensitive. Call tools exactly as listed.',
-    ...params.toolNames.map((name) => `- ${name}`),
     '',
-    '## Tool Call Style',
-    'Default: do not narrate routine, low-risk tool calls (just call the tool).',
-    'Narrate only when it helps: multi-step work, complex/challenging problems, sensitive actions.',
-    'Keep narration brief and value-dense; avoid repeating obvious steps.',
+    'Available tools:',
+    ...toolNames.map(name => `- ${name}`),
     '',
+    'Use tools naturally to complete tasks. When using tools, wait for results before proceeding.',
   ];
-
-  // Skills section (full mode only)
-  if (!isMinimal) {
-    lines.push(
-      '## Skills (mandatory)',
-      'Before replying: scan <available_skills> <description> entries.',
-      '- If exactly one skill clearly applies: read its SKILL.md, then follow it.',
-      '- If multiple could apply: choose the most specific one, then read/follow it.',
-      '- If none clearly apply: do not read any skill up front.',
-      ''
-    );
-  }
-
-  // Memory section (full mode only)
-  if (!isMinimal && params.toolNames.some(t => t.includes('memory'))) {
-    lines.push(
-      '## Memory Recall',
-      'Before answering anything about prior work, decisions, dates, people, preferences, or todos: run memory_search on MEMORY.md + memory/*.md.',
-      ''
-    );
-  }
-
-  // Workspace
-  lines.push(
-    '## Workspace',
-    `Your working directory is: ${params.workspaceDir}`,
-    'Treat this directory as the single global workspace for file operations.',
-    ''
-  );
-
-  // Documentation (full mode only)
-  if (!isMinimal && params.docsPath) {
-    lines.push(
-      '## Documentation',
-      `Vargos docs: ${params.docsPath}`,
-      ''
-    );
-  }
-
-  // Time (always included)
-  if (params.userTimezone) {
-    lines.push(
-      '## Current Date & Time',
-      `Time zone: ${params.userTimezone}`,
-      ''
-    );
-  }
-
-  // Context files injection
-  if (params.contextFiles && params.contextFiles.length > 0) {
-    const filteredFiles = isMinimal
-      ? params.contextFiles.filter((f) => SUBAGENT_CONTEXT_ALLOWLIST.has(f.name))
-      : params.contextFiles;
-
-    if (filteredFiles.length > 0) {
-      lines.push(
-        '## Workspace Files (injected)',
-        'These user-editable files are loaded by Vargos and included below in Project Context.',
-        ''
-      );
-
-      for (const file of filteredFiles) {
-        lines.push(
-          `## ${file.name}`,
-          file.content,
-          ''
-        );
-      }
-    }
-  }
-
-  // Silent replies
-  lines.push(
-    '## Silent Replies',
-    'When you have nothing to say, respond with ONLY: NO_REPLY',
-    '⚠️ Rules:',
-    '- It must be your ENTIRE message — nothing else',
-    '- Never append it to an actual response',
-    ''
-  );
-
-  // Extra context (for subagents this becomes "Subagent Context")
-  if (params.extraSystemPrompt) {
-    const header = isMinimal ? '## Subagent Context' : '## Group Chat Context';
-    lines.push(header, params.extraSystemPrompt, '');
-  }
 
   return lines.join('\n');
 }
 
 /**
- * Filter context files for subagent sessions
- * Like OpenClaw's SUBAGENT_BOOTSTRAP_ALLOWLIST
+ * Build workspace section
  */
-export function filterContextFilesForSubagent(
-  files: Array<{ name: string; content: string }>
-): Array<{ name: string; content: string }> {
-  return files.filter((f) => SUBAGENT_CONTEXT_ALLOWLIST.has(f.name));
+function buildWorkspaceSection(workspaceDir: string): string {
+  return [
+    '## Workspace',
+    '',
+    `Working directory: ${workspaceDir}`,
+    '',
+    'Read AGENTS.md for workspace rules and TOOLS.md for local tool notes before starting work.',
+  ].join('\n');
 }
 
-import { isSubagentSessionKey as _isSubagentSessionKey } from '../utils/errors.js';
+/**
+ * Build documentation section
+ */
+function buildDocumentationSection(): string {
+  return [
+    '## Documentation',
+    '',
+    'Vargos docs: /usr/lib/node_modules/openclaw/docs (or https://docs.openclaw.ai)',
+    'Source: https://github.com/openclaw/openclaw',
+    'Skills: https://clawhub.com',
+    '',
+    'Consult local docs first for OpenClaw behavior, commands, configuration, or architecture.',
+  ].join('\n');
+}
 
-// Re-export from utils for backward compatibility
-export const isSubagentSessionKey = _isSubagentSessionKey;
+/**
+ * Load and inject bootstrap files
+ */
+async function loadBootstrapFiles(workspaceDir: string, mode: 'full' | 'minimal'): Promise<string | null> {
+  const lines: string[] = [];
+  const isFirstRun = await checkFirstRun(workspaceDir);
+
+  for (const filename of BOOTSTRAP_FILES) {
+    // Skip BOOTSTRAP.md unless first run
+    if (filename === 'BOOTSTRAP.md' && !isFirstRun) {
+      continue;
+    }
+
+    const filepath = path.join(workspaceDir, filename);
+    let content: string;
+
+    try {
+      content = await fs.readFile(filepath, 'utf-8');
+    } catch {
+      // File doesn't exist - inject missing marker
+      if (mode === 'full') {
+        lines.push(`<!-- ${filename} - missing -->`);
+      }
+      continue;
+    }
+
+    // Skip empty files
+    if (!content.trim()) {
+      continue;
+    }
+
+    // Truncate large files
+    const maxChars = DEFAULT_BOOTSTRAP_MAX_CHARS;
+    let displayContent = content;
+    let truncated = false;
+
+    if (content.length > maxChars) {
+      displayContent = content.slice(0, maxChars);
+      truncated = true;
+    }
+
+    // Add file content with header
+    lines.push(`<!-- ${filename} -->`);
+    lines.push(displayContent);
+    if (truncated) {
+      lines.push(`\n<!-- ... truncated (${content.length - maxChars} more chars) -->`);
+    }
+    lines.push('');
+  }
+
+  if (lines.length === 0) {
+    return null;
+  }
+
+  const label = mode === 'minimal' ? 'Subagent Context' : 'Project Context';
+
+  return [
+    `## ${label}`,
+    '',
+    ...lines,
+  ].join('\n');
+}
+
+/**
+ * Build time section
+ */
+function buildTimeSection(timezone: string): string {
+  const now = new Date();
+  return [
+    '## Current Date & Time',
+    '',
+    `Timezone: ${timezone}`,
+    '',
+    `Use session_status when you need the current time; the status card includes a timestamp line.`,
+  ].join('\n');
+}
+
+/**
+ * Build runtime section
+ */
+function buildRuntimeSection(
+  repoRoot?: string,
+  model?: string,
+  thinking?: 'off' | 'low' | 'medium' | 'high'
+): string {
+  const info: string[] = [];
+
+  if (repoRoot) {
+    info.push(`repo=${repoRoot}`);
+  }
+  if (model) {
+    info.push(`model=${model}`);
+  }
+  if (thinking && thinking !== 'off') {
+    info.push(`thinking=${thinking}`);
+  }
+
+  const infoStr = info.length > 0 ? ` (${info.join(', ')})` : '';
+
+  return [
+    '## Runtime',
+    '',
+    `host=vargos${infoStr}`,
+  ].join('\n');
+}
+
+/**
+ * Check if this is first run (BOOTSTRAP.md exists but no other files)
+ */
+async function checkFirstRun(workspaceDir: string): Promise<boolean> {
+  try {
+    // Check if BOOTSTRAP.md exists
+    await fs.access(path.join(workspaceDir, 'BOOTSTRAP.md'));
+
+    // Check if any other bootstrap files exist
+    for (const file of BOOTSTRAP_FILES) {
+      if (file === 'BOOTSTRAP.md') continue;
+      try {
+        await fs.access(path.join(workspaceDir, file));
+        return false; // Other files exist, not first run
+      } catch {
+        // Continue checking
+      }
+    }
+
+    return true; // Only BOOTSTRAP.md exists
+  } catch {
+    return false; // BOOTSTRAP.md doesn't exist
+  }
+}
 
 /**
  * Resolve prompt mode based on session key
  */
-export function resolvePromptMode(sessionKey: string): PromptMode {
-  return isSubagentSessionKey(sessionKey) ? 'minimal' : 'full';
+export function resolvePromptMode(sessionKey: string): 'full' | 'minimal' | 'none' {
+  // Subagents get minimal prompt
+  if (isSubagentSessionKey(sessionKey)) {
+    return 'minimal';
+  }
+  // Cron jobs get minimal
+  if (sessionKey.startsWith('cron:')) {
+    return 'minimal';
+  }
+  // Main sessions get full prompt
+  return 'full';
+}
+
+/**
+ * Check if session key is a subagent
+ */
+export function isSubagentSessionKey(sessionKey: string): boolean {
+  return sessionKey.includes(':subagent:') || 
+         sessionKey.startsWith('agent:') ||
+         sessionKey.includes('subagent');
 }
