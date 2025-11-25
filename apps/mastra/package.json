@@ -28,11 +28,11 @@
     "@mastra/mcp": "^0.14.3",
     "@mastra/memory": "^0.15.11",
     "@mastra/pg": "^0.17.8",
+    "@vargos/core-lib": "workspace:*",
     "zod": "^4.1.12"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",
-    "@vargos/core-lib": "workspace:*",
     "@workspace/eslint-config": "workspace:*",
     "@workspace/typescript-config": "workspace:*",
     "eslint": "^9.39.1",

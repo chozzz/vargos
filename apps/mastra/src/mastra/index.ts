@@ -2,11 +2,30 @@
 import { Mastra } from '@mastra/core/mastra';
 import { PinoLogger } from '@mastra/loggers';
 import { weatherWorkflow } from './workflows/weather-workflow';
-import { createFunctionWorkflow } from './workflows/create-function-workflow';
+import { curateFunctionWorkflow } from './workflows/curate-function-workflow';
 import { weatherAgent } from './agents/weather-agent';
 import { PostgresStore } from "@mastra/pg";
 import { vargosAgent } from './agents/vargos-agent';
-import { myMcpServer } from './mcp/vargos-mcp-server';
+import { functionCuratorAgent } from './agents/function-curator-agent';
+import { initializeCoreServices } from './services/core.service';
+
+// Initialize all core services before creating Mastra instance
+// If this fails, Mastra will not start
+console.info('\n🔧 [Core] Initializing core services...');
+console.info('   └─ All agents, tools, and workflows in Mastra require this');
+await initializeCoreServices();
+console.info('✅ [Core] Core services initialized successfully\n');
+
+// Proxy pino logger;
+const logger = new PinoLogger({
+  name: 'Mastra',
+  level: 'info',
+  formatters: {
+    level: (label) => {
+      return { level: label };
+    },
+  },
+});
 
 export const mastra = new Mastra({
   server: {
@@ -14,19 +33,13 @@ export const mastra = new Mastra({
   },
   workflows: {
     weatherWorkflow,
-    createFunctionWorkflow,
+    curateFunctionWorkflow,
   },
-  mcpServers: {
-    vargos: myMcpServer,
-  },
-  agents: { weatherAgent, vargosAgent },
+  agents: { weatherAgent, vargosAgent, functionCuratorAgent },
   storage: new PostgresStore({
     connectionString: process.env.DATABASE_URL,
   }),
-  logger: new PinoLogger({
-    name: 'Mastra',
-    level: 'info',
-  }),
+  logger,
   telemetry: {
     // Telemetry is deprecated and will be removed in the Nov 4th release
     enabled: false,
