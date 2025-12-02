@@ -20,13 +20,15 @@ export interface SystemPromptOptions {
 
 // Bootstrap files to inject (in priority order)
 const BOOTSTRAP_FILES = [
+  'ARCHITECTURE.md', // Project structure and overview
   'AGENTS.md',
   'SOUL.md',
   'TOOLS.md',
   'IDENTITY.md',
   'USER.md',
   'HEARTBEAT.md',
-  'BOOTSTRAP.md', // Only on first run
+  'MEMORY.md',     // Project context and curated memories
+  'BOOTSTRAP.md',  // Only on first run
 ];
 
 const DEFAULT_BOOTSTRAP_MAX_CHARS = 20000;
@@ -43,11 +45,19 @@ export async function buildSystemPrompt(options: SystemPromptOptions): Promise<s
 
   const sections: string[] = [];
 
+  // 0. Identity - Who this assistant is
+  sections.push(buildIdentitySection());
+
   // 1. Tooling section
   sections.push(await buildToolingSection(toolNames));
 
   // 2. Workspace section
   sections.push(buildWorkspaceSection(workspaceDir));
+
+  // 2.5 Codebase context - what this project is (prevents hallucination)
+  if (mode === 'full') {
+    sections.push(await buildCodebaseContextSection(workspaceDir));
+  }
 
   // 3. Documentation section (for full mode)
   if (mode === 'full') {
@@ -78,17 +88,46 @@ export async function buildSystemPrompt(options: SystemPromptOptions): Promise<s
 }
 
 /**
- * Build tooling section
+ * Build tooling section with detailed descriptions
  */
 async function buildToolingSection(toolNames: string[]): Promise<string> {
+  // Core tool descriptions (OpenClaw-style)
+  const coreToolDescriptions: Record<string, string> = {
+    read: 'Read file contents',
+    write: 'Create or overwrite files',
+    edit: 'Make precise edits to files by replacing exact text',
+    exec: 'Execute shell commands with safety controls',
+    process: 'Manage background exec sessions',
+    browser: 'Control web browser for automation (navigate, click, screenshot)',
+    'web_fetch': 'Fetch and extract readable content from URLs',
+    'memory_search': 'Search indexed memory files with hybrid vector+text',
+    'memory_get': 'Get specific lines from memory files',
+    'sessions_list': 'List sessions with filters',
+    'sessions_history': 'Fetch message history for a session',
+    'sessions_send': 'Send message to another session',
+    'sessions_spawn': 'Spawn a sub-agent in isolated session',
+    'cron_add': 'Schedule recurring tasks',
+    'cron_list': 'List scheduled cron jobs',
+  };
+
   const lines = [
     '## Tooling',
     '',
-    'Available tools:',
-    ...toolNames.map(name => `- ${name}`),
+    'Available tools (use exactly as listed):',
+  ];
+
+  // Add tools with descriptions
+  for (const name of toolNames) {
+    const desc = coreToolDescriptions[name] || 'Available tool';
+    lines.push(`- ${name}: ${desc}`);
+  }
+
+  lines.push(
     '',
     'Use tools naturally to complete tasks. When using tools, wait for results before proceeding.',
-  ];
+    'Tool names are case-sensitive. Call tools exactly as listed.',
+    'If a task is more complex or takes longer, spawn a sub-agent with sessions_spawn.'
+  );
 
   return lines.join('\n');
 }
@@ -224,6 +263,71 @@ function buildRuntimeSection(
     '## Runtime',
     '',
     `host=vargos${infoStr}`,
+  ].join('\n');
+}
+
+/**
+ * Build identity section - who this assistant is
+ */
+function buildIdentitySection(): string {
+  return [
+    '## Identity',
+    '',
+    'You are Vargos, an agentic MCP (Model Context Protocol) server with OpenClaw-style tools.',
+    'You help users by providing powerful tools for file manipulation, shell execution, browser automation, and agent management.',
+    '',
+    'Before making assumptions about the codebase:',
+    '1. Read ARCHITECTURE.md to understand the project structure',
+    '2. List the src/ directory to see actual file structure',
+    '3. Read relevant source files before describing them',
+  ].join('\n');
+}
+
+/**
+ * Build codebase context section - prevents hallucination
+ */
+async function buildCodebaseContextSection(workspaceDir: string): Promise<string> {
+  // Check if we're in the Vargos repo itself
+  try {
+    const packageJsonPath = path.join(workspaceDir, 'package.json');
+    const packageContent = await fs.readFile(packageJsonPath, 'utf-8');
+    const pkg = JSON.parse(packageContent);
+
+    if (pkg.name === 'vargos') {
+      return [
+        '## Project Context',
+        '',
+        'This is the Vargos MCP server codebase.',
+        '',
+        'Key Components:',
+        '- src/agent/ - Agent runtime, lifecycle, queue, prompts',
+        '- src/cli/ - Command-line interface',
+        '- src/core/ - Service interfaces and tool base classes',
+        '- src/cron/ - Task scheduling',
+        '- src/gateway/ - HTTP/WebSocket transports and plugins',
+        '- src/mcp/tools/ - MCP tool implementations (read, write, exec, browser, etc.)',
+        '- src/pi/ - Pi SDK integration',
+        '- src/services/ - Service implementations:',
+        '  - memory/ - MemoryContext, file-based, Qdrant, SQLite storage',
+        '  - sessions/ - File and PostgreSQL session backends',
+        '  - browser.ts - Browser automation service',
+        '  - process.ts - Process management service',
+        '',
+        'When describing services, check src/services/ for actual implementations,',
+        'not generic examples.',
+      ].join('\n');
+    }
+  } catch {
+    // Not the Vargos repo, return generic section
+  }
+
+  return [
+    '## Project Context',
+    '',
+    `Working in: ${workspaceDir}`,
+    '',
+    'Explore the codebase structure before making assumptions.',
+    'Use ls, read, and grep to understand the actual code.',
   ].join('\n');
 }
 
