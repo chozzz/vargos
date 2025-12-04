@@ -12,6 +12,7 @@ import {
   SettingsManager,
   AuthStorage,
   ModelRegistry,
+  createCodingTools,
   type AgentSession,
   type AgentSessionEvent,
   type CompactionResult,
@@ -112,11 +113,20 @@ export class PiAgentRuntime {
       await fs.mkdir(path.join(config.workspaceDir, '.vargos', 'agent'), { recursive: true });
 
       // Build system prompt with bootstrap injection
+      // Include all Vargos MCP tool names so agent knows what's available
+      const vargosToolNames = [
+        'read', 'write', 'edit', 'exec', 'process',
+        'browser', 'web_fetch',
+        'memory_search', 'memory_get',
+        'sessions_list', 'sessions_history', 'sessions_send', 'sessions_spawn',
+        'cron_add', 'cron_list',
+      ];
+      
       const promptMode = resolvePromptMode(config.sessionKey);
       const systemContext = await buildSystemPrompt({
         mode: promptMode,
         workspaceDir: config.workspaceDir,
-        toolNames: [], // Pi SDK has its own tools
+        toolNames: vargosToolNames,
         contextFiles: config.contextFiles,
         extraSystemPrompt: config.extraSystemPrompt,
         userTimezone: config.userTimezone,
@@ -158,7 +168,10 @@ export class PiAgentRuntime {
         model = modelRegistry.find(provider, config.model) ?? undefined;
       }
 
-      // Create agent session
+      // Create Pi SDK tools configured for the workspace
+      const piTools = createCodingTools(config.workspaceDir);
+
+      // Create agent session with tools
       const { session } = await createAgentSession({
         cwd: config.workspaceDir,
         agentDir: path.join(config.workspaceDir, '.vargos', 'agent'),
@@ -167,6 +180,7 @@ export class PiAgentRuntime {
         authStorage,
         modelRegistry,
         model,
+        tools: piTools,
       });
 
       // Subscribe to Pi session events

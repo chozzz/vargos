@@ -198,6 +198,32 @@ const DEFAULT_HEARTBEAT_MD = `# HEARTBEAT.md
 # Add tasks below when you want the agent to check something periodically.
 `;
 
+const DEFAULT_MEMORY_MD = `# MEMORY.md - Long-Term Memory
+
+## People
+
+## Assistant Identity
+
+## Notes
+
+*(Add your long-term memories here)*
+`;
+
+const DEFAULT_BOOTSTRAP_MD = `# BOOTSTRAP.md - First Run Instructions
+
+This file is your birth certificate. Follow it, figure out who you are, then delete it. You won't need it again.
+
+## First Run Checklist
+
+1. Read \`SOUL.md\` — understand your personality
+2. Read \`USER.md\` — understand who you're helping
+3. Read \`AGENTS.md\` — understand how to work
+
+## Then Delete This File
+
+Once you've processed the above, delete this file. It's a one-time bootstrap.
+`;
+
 interface WorkspaceInitOptions {
   workspaceDir: string;
   skipIfExists?: boolean;
@@ -210,11 +236,11 @@ export async function initializeWorkspace(options: WorkspaceInitOptions): Promis
   const { workspaceDir, skipIfExists = true } = options;
 
   // Create directory structure
+  // Note: .vargos/ data directory is created separately at ~/.vargos/
+  // Workspace only contains user-editable files (.md) and memory/
   const dirs = [
     workspaceDir,
     path.join(workspaceDir, 'memory'),
-    path.join(workspaceDir, '.vargos', 'sessions'),
-    path.join(workspaceDir, '.vargos', 'agent'),
   ];
 
   for (const dir of dirs) {
@@ -228,6 +254,8 @@ export async function initializeWorkspace(options: WorkspaceInitOptions): Promis
     { name: 'SOUL.md', content: DEFAULT_SOUL_MD },
     { name: 'USER.md', content: DEFAULT_USER_MD },
     { name: 'HEARTBEAT.md', content: DEFAULT_HEARTBEAT_MD },
+    { name: 'MEMORY.md', content: DEFAULT_MEMORY_MD },
+    { name: 'BOOTSTRAP.md', content: DEFAULT_BOOTSTRAP_MD },
   ];
 
   for (const { name, content } of files) {

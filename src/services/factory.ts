@@ -83,22 +83,25 @@ export class ServiceFactory {
   }
 
   async createMemoryContext(): Promise<MemoryContext> {
-    // fileMemoryDir is the base dir, memory lives in <base>/memory
-    const baseDir = this.config.fileMemoryDir ?? path.join(os.homedir(), '.vargos');
-    const memoryDir = path.join(baseDir, 'memory');
-    const sessionsDir = this.config.sessions === 'file' ? path.join(baseDir, 'sessions') : undefined;
+    // Data storage (sessions, cache, sqlite) goes in ~/.vargos/
+    const dataDir = this.config.fileMemoryDir ?? path.join(os.homedir(), '.vargos');
+
+    // Memory indexing happens on the workspace directory (where AGENTS.md, MEMORY.md, etc. live)
+    // This ensures the agent can search and recall from these context files
+    const memoryDir = this.config.workspaceDir ?? path.join(dataDir, 'workspace');
+    const sessionsDir = this.config.sessions === 'file' ? path.join(dataDir, 'sessions') : undefined;
 
     return initializeMemoryContext({
       memoryDir,
-      cacheDir: path.join(baseDir, 'cache'),
+      cacheDir: path.join(dataDir, 'cache'),
       embeddingProvider: this.config.openaiApiKey ? 'openai' : 'none',
       openaiApiKey: this.config.openaiApiKey,
       chunkSize: 400,
       chunkOverlap: 80,
       hybridWeight: { vector: 0.7, text: 0.3 },
-      // Enable SQLite persistence for embeddings
+      // Enable SQLite persistence for embeddings (stored in data dir, not workspace)
       sqlite: {
-        dbPath: path.join(baseDir, 'memory.db'),
+        dbPath: path.join(dataDir, 'memory.db'),
       },
       // Index session transcripts if using file-based sessions
       sessionsDir,

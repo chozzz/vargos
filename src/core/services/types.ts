@@ -139,13 +139,16 @@ export interface ServiceConfig {
   memory?: 'file' | 'qdrant' | 'postgres';
   sessions?: 'file' | 'postgres';
   vector?: 'none' | 'qdrant' | 'openai';
-  
+
   // Service-specific configs
   fileMemoryDir?: string;
   qdrantUrl?: string;
   qdrantApiKey?: string;
   postgresUrl?: string;
   openaiApiKey?: string;
+
+  // Workspace directory for memory indexing (AGENTS.md, MEMORY.md, etc.)
+  workspaceDir?: string;
 }
 
 export interface IServiceFactory {

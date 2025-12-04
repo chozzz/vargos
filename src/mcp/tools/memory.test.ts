@@ -13,39 +13,42 @@ import { initializeServices, closeServices } from '../../services/factory.js';
 
 describe('memory tools', () => {
   let tempDir: string;
-  let memoryDir: string;
+  let workspaceDir: string;
   let context: ToolContext;
   let originalHome: string | undefined;
 
   beforeEach(async () => {
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vargos-memory-test-'));
-    memoryDir = path.join(tempDir, 'memory');
+    workspaceDir = path.join(tempDir, 'workspace');
     originalHome = process.env.HOME;
     process.env.HOME = tempDir;
-    
-    // Create memory directory and files
-    // Note: fileMemoryDir should point to the memory directory itself
-    await fs.mkdir(memoryDir, { recursive: true });
+
+    // Create workspace directory and .md files (like AGENTS.md, MEMORY.md, etc.)
+    await fs.mkdir(workspaceDir, { recursive: true });
     await fs.writeFile(
-      path.join(memoryDir, 'MEMORY.md'),
+      path.join(workspaceDir, 'MEMORY.md'),
       '# Test Memory\n\nThis is a test about machine learning and AI.'
     );
-    await fs.mkdir(path.join(memoryDir, 'daily'), { recursive: true });
+    // Daily notes go in workspace/memory/ subdirectory
+    await fs.mkdir(path.join(workspaceDir, 'memory'), { recursive: true });
     await fs.writeFile(
-      path.join(memoryDir, 'daily', '2026-02-05.md'),
+      path.join(workspaceDir, 'memory', '2026-02-05.md'),
       'Today I worked on the MCP server implementation.'
     );
-    
-    // Initialize services - fileMemoryDir is the base dir, memory/ is subdirectory
+
+    // Initialize services
+    // - workspaceDir: where .md files are indexed
+    // - fileMemoryDir: where data (sessions, cache, sqlite) is stored
     await initializeServices({
       memory: 'file',
       sessions: 'file',
-      fileMemoryDir: tempDir,  // <-- base dir, memory/ and sessions/ subdirs
+      fileMemoryDir: tempDir,
+      workspaceDir,  // MemoryContext indexes this directory
     });
-    
+
     context = {
       sessionKey: 'test-session',
-      workingDir: tempDir,
+      workingDir: workspaceDir,
     };
   });
 
@@ -54,6 +57,9 @@ describe('memory tools', () => {
     process.env.HOME = originalHome;
     await fs.rm(tempDir, { recursive: true, force: true });
   });
+
+  // Helper to get memory directory (workspace/memory/ for daily notes)
+  const getMemoryDir = () => path.join(workspaceDir, 'memory');
 
   describe('memory_search', () => {
     it('should find relevant memories', async () => {
@@ -79,9 +85,9 @@ describe('memory tools', () => {
     });
 
     it('should respect maxResults', async () => {
-      // Add more content
+      // Add more content to workspace
       await fs.writeFile(
-        path.join(memoryDir, 'extra.md'),
+        path.join(workspaceDir, 'extra.md'),
         'Another note about AI and neural networks.\nMore on machine learning algorithms.'
       );
       
