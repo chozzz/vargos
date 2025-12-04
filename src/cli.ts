@@ -166,6 +166,7 @@ program
       memory: options.memory as 'file' | 'qdrant' | 'postgres',
       sessions: options.sessions as 'file' | 'postgres',
       fileMemoryDir: dataDir,
+      workspaceDir, // For memory indexing of .md files
     };
 
     try {
@@ -325,6 +326,7 @@ program
       memory: 'file',
       sessions: 'file',
       fileMemoryDir: runDataDir,
+      workspaceDir, // For memory indexing of .md files
     };
 
     try {

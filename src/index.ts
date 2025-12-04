@@ -203,6 +203,7 @@ async function main() {
     qdrantApiKey: process.env.QDRANT_API_KEY,
     postgresUrl: process.env.POSTGRES_URL,
     openaiApiKey: process.env.OPENAI_API_KEY,
+    workspaceDir, // For memory indexing of .md files
   };
 
   // Load context files
