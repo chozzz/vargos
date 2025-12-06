@@ -1,2 +1,0 @@
-{"sessionKey":"agent:default:subagent:1770441895303-doi3d","kind":"subagent","label":"Task: Say hello...","metadata":{"parentSessionKey":"test:1770441894736"},"createdAt":"2026-02-07T05:24:55.304Z","updatedAt":"2026-02-07T05:24:55.304Z"}
-{"sessionKey":"agent:default:subagent:1770441895303-doi3d","content":"Say hello","role":"user","metadata":{"type":"task"},"id":"1770441895304-94ouqv42u","timestamp":"2026-02-07T05:24:55.304Z"}
