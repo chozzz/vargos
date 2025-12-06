@@ -1,2 +1,0 @@
-{"sessionKey":"cli-run:1770440956246","kind":"main","label":"Task: List all TypeScript files in s...","metadata":{"model":"gpt-4o-mini","provider":"openai"},"createdAt":"2026-02-07T05:09:16.246Z","updatedAt":"2026-02-07T05:09:16.247Z"}
-{"sessionKey":"cli-run:1770440956246","content":"List all TypeScript files in src directory","role":"user","metadata":{"type":"task"},"id":"1770440956247-69s5hh36b","timestamp":"2026-02-07T05:09:16.247Z"}

@@ -1,3 +1,0 @@
-{"sessionKey":"cli-run:1770441788888","kind":"main","label":"Task: List all the tools you have av...","metadata":{"model":"gpt-4o-mini","provider":"openai"},"createdAt":"2026-02-07T05:23:08.889Z","updatedAt":"2026-02-07T05:23:09.470Z"}
-{"sessionKey":"cli-run:1770441788888","content":"List all the tools you have available and what they do","role":"user","metadata":{"type":"task"},"id":"1770441788890-ueztvqrxy","timestamp":"2026-02-07T05:23:08.890Z"}
-{"sessionKey":"cli-run:1770441788888","content":"NO_REPLY","role":"assistant","metadata":{},"id":"1770441789469-800espm2u","timestamp":"2026-02-07T05:23:09.470Z"}

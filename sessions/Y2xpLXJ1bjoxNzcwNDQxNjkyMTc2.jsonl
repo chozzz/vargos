@@ -1,3 +1,0 @@
-{"sessionKey":"cli-run:1770441692176","kind":"main","label":"Task: What is 2+2?...","metadata":{"model":"gpt-4o-mini","provider":"openai"},"createdAt":"2026-02-07T05:21:32.176Z","updatedAt":"2026-02-07T05:21:32.969Z"}
-{"sessionKey":"cli-run:1770441692176","content":"What is 2+2?","role":"user","metadata":{"type":"task"},"id":"1770441692177-u1g8nkqts","timestamp":"2026-02-07T05:21:32.177Z"}
-{"sessionKey":"cli-run:1770441692176","content":"2 + 2 equals 4.","role":"assistant","metadata":{},"id":"1770441692968-7bn6dz0tw","timestamp":"2026-02-07T05:21:32.968Z"}
