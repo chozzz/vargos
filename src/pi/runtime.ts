@@ -113,20 +113,15 @@ export class PiAgentRuntime {
       await fs.mkdir(path.join(config.workspaceDir, '.vargos', 'agent'), { recursive: true });
 
       // Build system prompt with bootstrap injection
-      // Include all Vargos MCP tool names so agent knows what's available
-      const vargosToolNames = [
-        'read', 'write', 'edit', 'exec', 'process',
-        'browser', 'web_fetch',
-        'memory_search', 'memory_get',
-        'sessions_list', 'sessions_history', 'sessions_send', 'sessions_spawn',
-        'cron_add', 'cron_list',
-      ];
+      // Use Pi SDK tool names (not Vargos MCP tool names) since we're using Pi SDK's createCodingTools
+      // Pi SDK tools: read, bash, edit, write, grep, find, ls
+      const piToolNames = ['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls'];
       
       const promptMode = resolvePromptMode(config.sessionKey);
       const systemContext = await buildSystemPrompt({
         mode: promptMode,
         workspaceDir: config.workspaceDir,
-        toolNames: vargosToolNames,
+        toolNames: piToolNames,
         contextFiles: config.contextFiles,
         extraSystemPrompt: config.extraSystemPrompt,
         userTimezone: config.userTimezone,
