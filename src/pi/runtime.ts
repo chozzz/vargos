@@ -12,11 +12,11 @@ import {
   SettingsManager,
   AuthStorage,
   ModelRegistry,
-  createCodingTools,
   type AgentSession,
   type AgentSessionEvent,
   type CompactionResult,
 } from '@mariozechner/pi-coding-agent';
+import { createVargosTools, getVargosToolNames } from './tools.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -113,15 +113,14 @@ export class PiAgentRuntime {
       await fs.mkdir(path.join(config.workspaceDir, '.vargos', 'agent'), { recursive: true });
 
       // Build system prompt with bootstrap injection
-      // Use Pi SDK tool names (not Vargos MCP tool names) since we're using Pi SDK's createCodingTools
-      // Pi SDK tools: read, bash, edit, write, grep, find, ls
-      const piToolNames = ['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls'];
-      
+      // Use all Vargos tools (Pi SDK + Vargos-specific)
+      const vargosToolNames = getVargosToolNames();
+
       const promptMode = resolvePromptMode(config.sessionKey);
       const systemContext = await buildSystemPrompt({
         mode: promptMode,
         workspaceDir: config.workspaceDir,
-        toolNames: piToolNames,
+        toolNames: vargosToolNames,
         contextFiles: config.contextFiles,
         extraSystemPrompt: config.extraSystemPrompt,
         userTimezone: config.userTimezone,
@@ -163,10 +162,10 @@ export class PiAgentRuntime {
         model = modelRegistry.find(provider, config.model) ?? undefined;
       }
 
-      // Create Pi SDK tools configured for the workspace
-      const piTools = createCodingTools(config.workspaceDir);
+      // Create Vargos tools (Pi SDK + Vargos-specific) configured for the workspace
+      const vargosTools = createVargosTools(config.workspaceDir);
 
-      // Create agent session with tools
+      // Create agent session with Vargos tools
       const { session } = await createAgentSession({
         cwd: config.workspaceDir,
         agentDir: path.join(config.workspaceDir, '.vargos', 'agent'),
@@ -175,7 +174,7 @@ export class PiAgentRuntime {
         authStorage,
         modelRegistry,
         model,
-        tools: piTools,
+        tools: vargosTools,
       });
 
       // Subscribe to Pi session events
