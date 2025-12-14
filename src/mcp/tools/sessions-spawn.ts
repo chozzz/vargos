@@ -7,8 +7,13 @@ import { z } from 'zod';
 import path from 'node:path';
 import { Tool, ToolContext, textResult, errorResult } from './types.js';
 import { getSessionService } from '../../services/factory.js';
-import { getPiAgentRuntime } from '../../pi/runtime.js';
 import { isSubagentSessionKey } from '../../agent/prompt.js';
+
+// Lazy import to avoid circular dependency with pi/runtime -> registry -> sessions-spawn
+async function getPiAgentRuntime() {
+  const { getPiAgentRuntime } = await import('../../pi/runtime.js');
+  return getPiAgentRuntime();
+}
 
 const SessionsSpawnParameters = z.object({
   task: z.string().describe('Task description for the sub-agent'),
@@ -70,8 +75,8 @@ export const sessionsSpawnTool: Tool = {
         metadata: { type: 'task' },
       });
 
-      // Start Pi agent runtime for the subagent
-      const runtime = getPiAgentRuntime();
+      // Start Pi agent runtime for the subagent (lazy load to break circular dependency)
+      const runtime = await getPiAgentRuntime();
 
       // Get session file path for Pi SDK
       const childSessionFile = path.join(context.workingDir, '.vargos', 'sessions', `${childKey.replace(/:/g, '-')}.jsonl`);
