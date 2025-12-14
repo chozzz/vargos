@@ -1,6 +1,6 @@
 # Vargos MCP Tools - Progress
 
-## Completed Tools (12 tools, 56 tests ✅)
+## Completed Tools (15 tools, 78 tests ✅)
 
 ### File Operations
 | Tool | Description | Tests |
@@ -33,6 +33,33 @@
 | `sessions_list` | List active sessions | 3 |
 | `sessions_send` | Send message to session | 2 |
 | `sessions_spawn` | Spawn sub-agent | 1 |
+
+### Cron (Scheduling)
+| Tool | Description | Tests |
+|------|-------------|-------|
+| `cron_add` | Schedule recurring tasks | - |
+| `cron_list` | List scheduled tasks | - |
+
+## Pi SDK Integration
+
+Vargos MCP tools are now fully integrated with Pi SDK for CLI mode:
+
+```
+Vargos (MCP Core) → Pi SDK Extension → Pi Agent Runtime
+       ↓                    ↓                    ↓
+   15 MCP Tools     Wrapped as Pi Tools    Agent Session
+```
+
+### Tool Alignment
+System prompt and registered tools are synchronized:
+- System prompt lists: `read, write, edit, exec, web_fetch, memory_search, memory_get, sessions_list, sessions_history, sessions_send, sessions_spawn, cron_add, cron_list, process, browser`
+- Pi SDK receives same 15 tools via extension
+- ✅ No mismatch between what's advertised and what's available
+
+### Session History
+- Sessions persisted to `~/.vargos/sessions/`
+- Pi SDK JSONL format (OpenClaw-compatible)
+- Full bootstrap context injected each run (AGENTS.md, SOUL.md, ARCHITECTURE.md, etc.)
 
 ## Architecture
 
@@ -82,7 +109,15 @@ pnpm test            # Watch mode
 | `cron_add` | Schedule recurring tasks | ✅ Implemented |
 | `cron_list` | List scheduled tasks | ✅ Implemented |
 
-## Still To Implement
+## CLI Usage
 
-- Gateway tools (requires OpenClaw infrastructure)
-- Message tools (WhatsApp, Telegram, etc.)
+```bash
+# Interactive chat mode
+vargos chat --session mysession
+
+# Single task mode
+vargos run "List files in src directory"
+
+# With options
+vargos run "Analyze codebase" --model gpt-4o --provider openai
+```

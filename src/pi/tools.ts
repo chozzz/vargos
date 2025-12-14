@@ -1,23 +1,18 @@
 /**
  * Vargos Tools for Pi SDK
  * 
- * Note: CLI chat mode uses Pi SDK's createCodingTools() which provides:
- * - read, bash, edit, write, grep, find, ls
- * 
- * Full Vargos tools (browser, memory, sessions, cron, process) are available
- * via the MCP server interface (stdio or HTTP).
- * 
- * This architecture separates:
- * - CLI chat: Basic coding tools via Pi SDK
- * - MCP server: Full Vargos tool set for IDE integration
+ * Bridges Vargos MCP tools with Pi SDK
+ * - Vargos MCP tools are registered in toolRegistry
+ * - Pi SDK uses these via extension.ts
  */
 
 import { createCodingTools } from '@mariozechner/pi-coding-agent';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
+import { toolRegistry } from '../mcp/tools/registry.js';
 
 /**
  * Create Vargos tools for Pi SDK CLI mode
- * Currently returns Pi's coding tools. Full Vargos tools available via MCP server.
+ * Returns Pi's coding tools for low-level file operations
  */
 export function createVargosTools(cwd: string): AgentTool[] {
   return createCodingTools(cwd);
@@ -25,20 +20,21 @@ export function createVargosTools(cwd: string): AgentTool[] {
 
 /**
  * Get tool names for system prompt
- * Lists Pi SDK tools available in CLI chat mode
+ * Lists actual registered Vargos MCP tools (what the agent can actually use)
  */
 export function getVargosToolNames(): string[] {
-  // Pi SDK coding tools available in CLI mode
-  return ['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls'];
+  // Return actual registered MCP tool names from registry
+  return toolRegistry.list().map(t => t.name);
 }
 
 /**
  * Get full Vargos tool names (for documentation/MCP mode)
+ * @deprecated Use getVargosToolNames() instead - it returns actual registered tools
  */
 export function getFullVargosToolNames(): string[] {
   return [
-    // Core file/shell tools (Pi SDK)
-    'read', 'bash', 'edit', 'write', 'grep', 'find', 'ls',
+    // Core file/shell tools
+    'read', 'write', 'edit', 'exec',
     // Web tools
     'web_fetch',
     // Memory tools  

@@ -16,7 +16,8 @@ import {
   type AgentSessionEvent,
   type CompactionResult,
 } from '@mariozechner/pi-coding-agent';
-import { createVargosTools, getVargosToolNames } from './tools.js';
+import { getVargosToolNames } from './tools.js';
+import { createVargosCustomTools } from './extension.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -162,10 +163,12 @@ export class PiAgentRuntime {
         model = modelRegistry.find(provider, config.model) ?? undefined;
       }
 
-      // Create Vargos tools (Pi SDK + Vargos-specific) configured for the workspace
-      const vargosTools = createVargosTools(config.workspaceDir);
+      // Create Vargos custom tools for Pi SDK
+      // These wrap Vargos MCP tools into Pi SDK's ToolDefinition format
+      const vargosCustomTools = createVargosCustomTools(config.workspaceDir);
 
-      // Create agent session with Vargos tools
+      // Create agent session with Vargos custom tools
+      // We pass empty built-in tools and all Vargos tools as customTools
       const { session } = await createAgentSession({
         cwd: config.workspaceDir,
         agentDir: path.join(config.workspaceDir, '.vargos', 'agent'),
@@ -174,7 +177,8 @@ export class PiAgentRuntime {
         authStorage,
         modelRegistry,
         model,
-        tools: vargosTools,
+        tools: [], // No built-in Pi SDK tools - we use Vargos tools instead
+        customTools: vargosCustomTools, // All Vargos MCP tools
       });
 
       // Subscribe to Pi session events
