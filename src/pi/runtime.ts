@@ -262,10 +262,19 @@ export class PiAgentRuntime {
       if (event.type === 'tool_execution_start') {
         // Tool started - Pi doesn't expose tool name directly in event
         this.lifecycle.streamTool(runId, 'tool', 'start', {});
+        console.error(`\n🔧 Tool: ${event.toolName || 'unknown'}`);
       }
       if (event.type === 'tool_execution_end') {
-        // Tool completed
+        // Tool completed - show result
         this.lifecycle.streamTool(runId, 'tool', 'end', {}, {});
+        const result = event.result;
+        if (result) {
+          const content = Array.isArray(result.content) 
+            ? result.content.map((c: any) => c.text || c.data || '').join('\n')
+            : String(result);
+          const preview = content.slice(0, 500);
+          console.error(`Result: ${preview}${content.length > 500 ? '...' : ''}\n`);
+        }
       }
     });
   }
