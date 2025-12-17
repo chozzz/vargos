@@ -7,7 +7,8 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
-const PI_AGENT_DIR = '.vargos/agent';
+/** Agent config dir under workspace (no extra .vargos to avoid double .vargos when workspace is ~/.vargos/workspace) */
+const PI_AGENT_DIR = 'agent';
 const AUTH_FILE = 'auth.json';
 const SETTINGS_FILE = 'settings.json';
 const MODELS_FILE = 'models.json';

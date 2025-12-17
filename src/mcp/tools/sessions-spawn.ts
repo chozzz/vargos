@@ -79,7 +79,7 @@ export const sessionsSpawnTool: Tool = {
       const runtime = await getPiAgentRuntime();
 
       // Get session file path for Pi SDK
-      const childSessionFile = path.join(context.workingDir, '.vargos', 'sessions', `${childKey.replace(/:/g, '-')}.jsonl`);
+      const childSessionFile = path.join(context.workingDir, 'sessions', `${childKey.replace(/:/g, '-')}.jsonl`);
 
       // Run in background (don't await)
       runtime
