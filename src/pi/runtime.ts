@@ -25,6 +25,7 @@ import { buildSystemPrompt, resolvePromptMode } from '../agent/prompt.js';
 import { getSessionService } from '../services/factory.js';
 import { getAgentLifecycle, type AgentStreamEvent } from '../agent/lifecycle.js';
 import { getSessionMessageQueue } from '../agent/queue.js';
+import { getPiConfigPaths } from '../config/pi-config.js';
 
 export interface PiAgentConfig {
   sessionKey: string;
@@ -110,8 +111,9 @@ export class PiAgentRuntime {
       this.lifecycle.startRun(runId, config.sessionKey);
 
       // Ensure directories exist
+      const piPaths = getPiConfigPaths(config.workspaceDir);
       await fs.mkdir(path.dirname(config.sessionFile), { recursive: true });
-      await fs.mkdir(path.join(config.workspaceDir, '.vargos', 'agent'), { recursive: true });
+      await fs.mkdir(piPaths.agentDir, { recursive: true });
 
       // Build system prompt with bootstrap injection
       // Use all Vargos tools (Pi SDK + Vargos-specific)
@@ -133,9 +135,7 @@ export class PiAgentRuntime {
       const sessionManager = SessionManager.open(config.sessionFile);
 
       // Create auth storage for API keys
-      const authStorage = new AuthStorage(
-        path.join(config.workspaceDir, '.vargos', 'agent', 'auth.json')
-      );
+      const authStorage = new AuthStorage(piPaths.authPath);
 
       // Set API key if provided
       if (config.apiKey && config.provider) {
@@ -145,16 +145,10 @@ export class PiAgentRuntime {
       }
 
       // Create model registry
-      const modelRegistry = new ModelRegistry(
-        authStorage,
-        path.join(config.workspaceDir, '.vargos', 'agent', 'models.json')
-      );
+      const modelRegistry = new ModelRegistry(authStorage, piPaths.modelsPath);
 
       // Create settings manager
-      const settings = SettingsManager.create(
-        config.workspaceDir,
-        path.join(config.workspaceDir, '.vargos', 'agent')
-      );
+      const settings = SettingsManager.create(config.workspaceDir, piPaths.agentDir);
 
       // Build model configuration
       let model = undefined;
@@ -171,7 +165,7 @@ export class PiAgentRuntime {
       // We pass empty built-in tools and all Vargos tools as customTools
       const { session } = await createAgentSession({
         cwd: config.workspaceDir,
-        agentDir: path.join(config.workspaceDir, '.vargos', 'agent'),
+        agentDir: piPaths.agentDir,
         sessionManager,
         settingsManager: settings,
         authStorage,

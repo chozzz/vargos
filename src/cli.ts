@@ -24,41 +24,10 @@ import { loadPiSettings, getPiApiKey, listPiProviders, isPiConfigured, formatPiC
 const VERSION = '0.0.1';
 
 /**
- * Detect if a directory is a project (has project markers)
- * Like OpenClaw's workspace detection
- */
-async function isProjectDir(dir: string): Promise<boolean> {
-  const markers = [
-    'package.json',
-    '.git',
-    'AGENTS.md',
-    'pyproject.toml',
-    'Cargo.toml',
-    'go.mod',
-    'Makefile',
-    'README.md',
-  ];
-
-  for (const marker of markers) {
-    try {
-      await fs.access(path.join(dir, marker));
-      return true;
-    } catch {
-      // Marker not found, continue
-    }
-  }
-  return false;
-}
-
-/**
  * Get default workspace directory
  * Uses current dir if it's a project, otherwise ~/.vargos/workspace
  */
 async function getDefaultWorkspace(): Promise<string> {
-  const cwd = process.cwd();
-  if (await isProjectDir(cwd)) {
-    return cwd;
-  }
   return path.join(os.homedir(), '.vargos', 'workspace');
 }
 
@@ -339,7 +308,7 @@ program
     }
 
     const sessionKey = `cli-run:${Date.now()}`;
-    const sessionFile = path.join(workspaceDir, '.vargos', 'sessions', `${sessionKey}.jsonl`);
+    const sessionFile = path.join(workspaceDir, 'sessions', `${sessionKey}.jsonl`);
     
     await fs.mkdir(path.dirname(sessionFile), { recursive: true });
 
