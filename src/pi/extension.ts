@@ -50,18 +50,28 @@ function wrapVargosTool(tool: Tool, workingDir: string): ToolDefinition {
         workingDir,
       };
 
+      // Log tool call to console
+      const paramsStr = Object.entries(params).map(([k, v]) => `${k}=${JSON.stringify(v).slice(0, 100)}`).join(', ');
+      console.error(`🔧 ${tool.name}: ${paramsStr}`);
+
       try {
         const result = await tool.execute(params, toolContext);
-        
+
+        // Log result preview
+        const resultText = result.content.map(c => c.type === 'text' ? c.text : `[${c.type}]`).join(' ');
+        const preview = resultText.slice(0, 200).replace(/\n/g, ' ');
+        const status = result.isError ? '❌' : '✅';
+        console.error(`${status} ${tool.name} → ${preview}${resultText.length > 200 ? '...' : ''}`);
+
         // Convert Vargos ToolResult to Pi SDK AgentToolResult
         const content = result.content.map(block => {
           if (block.type === 'text') {
             return { type: 'text' as const, text: block.text };
           } else if (block.type === 'image') {
-            return { 
-              type: 'image' as const, 
-              data: block.data, 
-              mimeType: block.mimeType 
+            return {
+              type: 'image' as const,
+              data: block.data,
+              mimeType: block.mimeType
             };
           }
           return { type: 'text' as const, text: '' };
@@ -73,6 +83,7 @@ function wrapVargosTool(tool: Tool, workingDir: string): ToolDefinition {
         };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
+        console.error(`❌ ${tool.name} → Error: ${message}`);
         return {
           content: [{ type: 'text', text: `Error: ${message}` }],
           details: { error: message },
