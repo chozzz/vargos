@@ -21,11 +21,6 @@ export const writeTool: Tool = {
     const params = WriteParameters.parse(args);
     const filePath = path.resolve(context.workingDir, params.path);
     
-    // Security: Ensure path is within working directory
-    if (!filePath.startsWith(context.workingDir)) {
-      return errorResult(`Access denied: ${params.path} is outside the workspace`);
-    }
-
     try {
       // Ensure parent directory exists
       const parentDir = path.dirname(filePath);
