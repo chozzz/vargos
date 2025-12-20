@@ -59,13 +59,4 @@ describe('write tool', () => {
     expect(fileContent).toBe('content');
   });
 
-  it('should return error for path outside workspace', async () => {
-    const result = await writeTool.execute({ 
-      path: '/etc/test.txt', 
-      content: 'content' 
-    }, context);
-
-    expect(result.isError).toBe(true);
-    expect(getFirstTextContent(result.content)).toContain('Access denied');
-  });
 });

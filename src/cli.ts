@@ -76,7 +76,7 @@ program
 
     // Load context files
     const contextFiles: Array<{ name: string; content: string }> = [];
-    const contextFileNames = ['AGENTS.md', 'SOUL.md', 'USER.md', 'TOOLS.md'];
+    const contextFileNames = ['AGENTS.md', 'SOUL.md', 'USER.md', 'TOOLS.md', 'MEMORY.md', 'HEARTBEAT.md', 'BOOTSTRAP.md'];
     for (const name of contextFileNames) {
       try {
         const content = await fs.readFile(path.join(workspaceDir, name), 'utf-8');

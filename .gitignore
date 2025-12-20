@@ -47,3 +47,6 @@ npm-debug.log*
 
 # LangGraph API
 .langgraph_api
+
+# Vargos workspace data (should live in ~/.vargos; ignore if created under project)
+.vargos/
