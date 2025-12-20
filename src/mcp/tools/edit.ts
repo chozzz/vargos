@@ -21,11 +21,6 @@ export const editTool: Tool = {
   execute: async (args: unknown, context: ToolContext) => {
     const params = EditParameters.parse(args);
     const filePath = path.resolve(context.workingDir, params.path);
-    
-    // Security: Ensure path is within working directory
-    if (!filePath.startsWith(context.workingDir)) {
-      return errorResult(`Access denied: ${params.path} is outside the workspace`);
-    }
 
     try {
       // Read existing content

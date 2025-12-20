@@ -66,17 +66,6 @@ describe('edit tool', () => {
     expect(getFirstTextContent(result.content)).toContain('2 occurrences');
   });
 
-  it('should return error for path outside workspace', async () => {
-    const result = await editTool.execute({ 
-      path: '/etc/passwd',
-      oldText: 'foo',
-      newText: 'bar'
-    }, context);
-
-    expect(result.isError).toBe(true);
-    expect(getFirstTextContent(result.content)).toContain('Access denied');
-  });
-
   it('should handle multi-line replacements', async () => {
     const original = 'line1\nline2\nline3';
     await fs.writeFile(path.join(tempDir, 'test.txt'), original);

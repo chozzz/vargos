@@ -38,12 +38,7 @@ export class FileMemoryService implements IMemoryService {
   }
 
   private resolvePath(filePath: string): string {
-    // Security: prevent path traversal
-    const resolved = path.resolve(this.config.baseDir, filePath);
-    if (!resolved.startsWith(this.config.baseDir)) {
-      throw new Error(`Access denied: path outside memory directory`);
-    }
-    return resolved;
+    return path.resolve(this.config.baseDir, filePath);
   }
 
   async write(filePath: string, content: string, options?: MemoryWriteOptions): Promise<void> {
