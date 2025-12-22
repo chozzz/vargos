@@ -7,6 +7,7 @@ import { z } from 'zod';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { Tool, ToolContext, textResult, errorResult } from './types.js';
+import { expandTilde } from '../../lib/path.js';
 
 const WriteParameters = z.object({
   path: z.string().describe('Path to the file to write'),
@@ -19,7 +20,8 @@ export const writeTool: Tool = {
   parameters: WriteParameters,
   execute: async (args: unknown, context: ToolContext) => {
     const params = WriteParameters.parse(args);
-    const filePath = path.resolve(context.workingDir, params.path);
+    const resolvedPath = expandTilde(params.path);
+    const filePath = path.resolve(context.workingDir, resolvedPath);
     
     try {
       // Ensure parent directory exists

@@ -61,4 +61,19 @@ describe('read tool', () => {
 
     expect(result.content[0].type).toBe('image');
   });
+
+  it('should resolve ~ to home directory', async () => {
+    const home = os.homedir();
+    const testFile = path.join(home, 'vargos-read-tilde-test.txt');
+    const content = 'tilde expanded';
+    await fs.writeFile(testFile, content);
+    try {
+      const ctx: ToolContext = { sessionKey: 'test', workingDir: home };
+      const result = await readTool.execute({ path: '~/vargos-read-tilde-test.txt' }, ctx);
+      expect(result.isError).toBeUndefined();
+      expect(getFirstTextContent(result.content)).toBe(content);
+    } finally {
+      await fs.rm(testFile, { force: true });
+    }
+  });
 });

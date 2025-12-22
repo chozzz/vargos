@@ -7,6 +7,7 @@ import readline from 'node:readline';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import {
+  getPiConfigPaths,
   loadPiAuth,
   savePiAuth,
   loadPiSettings,
@@ -100,7 +101,7 @@ export function checkConfig(): {
 
   // Warnings for optional improvements
   if (!process.env.VARGOS_WORKSPACE) {
-    warnings.push('VARGOS_WORKSPACE not set, using current directory');
+    warnings.push('VARGOS_WORKSPACE not set (default depends on entry: CLI = project or ~/.vargos/workspace, MCP = ~/.vargos/workspace)');
   }
 
   return {
@@ -176,7 +177,8 @@ async function interactivePiConfig(workspaceDir: string): Promise<void> {
         const auth = await loadPiAuth(workspaceDir);
         auth[provider] = { apiKey };
         await savePiAuth(workspaceDir, auth);
-        console.log(`   ✅ API key saved to ~/.vargos/agent/auth.json\n`);
+        const { authPath } = getPiConfigPaths(workspaceDir);
+        console.log(`   ✅ API key saved to ${authPath}\n`);
       }
     }
 
@@ -212,7 +214,8 @@ async function interactivePiConfig(workspaceDir: string): Promise<void> {
       const auth = await loadPiAuth(workspaceDir);
       auth[provider] = { apiKey };
       await savePiAuth(workspaceDir, auth);
-      console.log(`   ✅ API key saved to ~/.vargos/agent/auth.json\n`);
+      const { authPath } = getPiConfigPaths(workspaceDir);
+      console.log(`   ✅ API key saved to ${authPath}\n`);
     }
   } else {
     console.log('✅ Agent configuration complete\n');
@@ -294,12 +297,12 @@ export async function interactiveConfig(workspaceDir?: string): Promise<Record<s
   // Configure Pi agent
   await interactivePiConfig(cwd);
 
-  // Ask to save Vargos config to .env
+  // Ask to save Vargos config to .env (in workspace or cwd)
   if (Object.keys(updates).length > 0) {
     const saveToEnv = await prompt('💾 Save Vargos config to .env file? (Y/n): ');
     if (saveToEnv.toLowerCase() !== 'n') {
-      await saveEnvFile(updates);
-      console.log('✅ Configuration saved to .env\n');
+      await saveEnvFile(updates, cwd);
+      console.log(`✅ Configuration saved to ${path.join(cwd, '.env')}\n`);
     }
   }
 
@@ -307,10 +310,10 @@ export async function interactiveConfig(workspaceDir?: string): Promise<Record<s
 }
 
 /**
- * Save configuration to .env file
+ * Save configuration to .env file (in targetDir: workspace or process.cwd())
  */
-async function saveEnvFile(updates: Record<string, string>): Promise<void> {
-  const envPath = path.join(process.cwd(), '.env');
+async function saveEnvFile(updates: Record<string, string>, targetDir: string = process.cwd()): Promise<void> {
+  const envPath = path.join(targetDir, '.env');
 
   let content = '';
   try {
@@ -320,6 +323,9 @@ async function saveEnvFile(updates: Record<string, string>): Promise<void> {
   }
 
   const lines = content.split('\n');
+  if (lines.length === 1 && lines[0] === '') {
+    lines.length = 0;
+  }
   const existingKeys = new Set<string>();
 
   // Update existing lines
@@ -346,6 +352,17 @@ async function saveEnvFile(updates: Record<string, string>): Promise<void> {
   await fs.writeFile(envPath, lines.join('\n'), 'utf-8');
 }
 
+/** Expected workspace context files (shown in banner with loaded/missing) */
+const EXPECTED_CONTEXT_FILES = [
+  'AGENTS.md',
+  'SOUL.md',
+  'USER.md',
+  'TOOLS.md',
+  'MEMORY.md',
+  'HEARTBEAT.md',
+  'BOOTSTRAP.md',
+];
+
 /**
  * Print startup banner with configuration status
  */
@@ -355,6 +372,7 @@ export function printStartupBanner(options: {
   workspace: string;
   memoryBackend: string;
   sessionsBackend: string;
+  dataDir?: string;
   contextFiles: { name: string; path: string }[];
   tools: { name: string; description: string }[];
   transport?: string;
@@ -378,10 +396,19 @@ export function printStartupBanner(options: {
     ''
   );
 
+  const loadedPaths = new Map(options.contextFiles.map((f) => [f.name, f.path]));
+  const dataDirDisplay =
+    options.dataDir != null
+      ? options.dataDir.length > 49
+        ? '...' + options.dataDir.slice(-46)
+        : options.dataDir
+      : '(default)';
+
   // Configuration section
   lines.push(
     '┌─ 📁  CONFIGURATION ──────────────────────────────────────────┐',
     `│  Workspace: ${options.workspace.padEnd(49)}│`,
+    `│  Data dir:  ${dataDirDisplay.padEnd(49)}│`,
     `│  Memory:    ${options.memoryBackend.padEnd(49)}│`,
     `│  Sessions:  ${options.sessionsBackend.padEnd(49)}│`,
   );
@@ -408,15 +435,20 @@ export function printStartupBanner(options: {
 
   lines.push('└──────────────────────────────────────────────────────────────┘', '');
 
-  // Context Files section
-  if (options.contextFiles.length > 0) {
-    lines.push('┌─ 📝  CONTEXT FILES ───────────────────────────────────────────┐');
-    for (const file of options.contextFiles) {
-      const displayPath = file.path.length > 45 ? '...' + file.path.slice(-42) : file.path;
-      lines.push(`│  ✓ ${file.name.padEnd(14)} ${displayPath.padEnd(35)}│`);
-    }
-    lines.push('└──────────────────────────────────────────────────────────────┘', '');
+  // Context Files section (expected files: show loaded path or (missing))
+  lines.push('┌─ 📝  CONTEXT FILES ───────────────────────────────────────────┐');
+  for (const name of EXPECTED_CONTEXT_FILES) {
+    const pathOrMissing = loadedPaths.get(name);
+    const status = pathOrMissing ? '✓' : ' ';
+    const displayPath =
+      pathOrMissing != null
+        ? pathOrMissing.length > 45
+          ? '...' + pathOrMissing.slice(-42)
+          : pathOrMissing
+        : '(missing)';
+    lines.push(`│  ${status} ${name.padEnd(14)} ${displayPath.padEnd(35)}│`);
   }
+  lines.push('└──────────────────────────────────────────────────────────────┘', '');
 
   // Tools section
   if (options.tools.length > 0) {

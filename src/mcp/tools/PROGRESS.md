@@ -78,7 +78,7 @@ Configure via environment variables:
 ```bash
 # Memory backend
 VARGOS_MEMORY_BACKEND=file      # or 'qdrant' or 'postgres'
-VARGOS_MEMORY_DIR=~/.vargos/memory
+VARGOS_MEMORY_DIR=~/.vargos/workspace/memory
 
 # Sessions backend
 VARGOS_SESSIONS_BACKEND=file    # or 'postgres'

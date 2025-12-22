@@ -8,6 +8,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { Tool, ToolContext, ToolResult, textResult, errorResult, imageResult } from './types.js';
 import { detectMimeType } from '../../lib/mime.js';
+import { expandTilde } from '../../lib/path.js';
 
 const ReadParameters = z.object({
   path: z.string().describe('Path to the file to read'),
@@ -21,7 +22,8 @@ export const readTool: Tool = {
   parameters: ReadParameters,
   execute: async (args: unknown, context: ToolContext): Promise<ToolResult> => {
     const params = ReadParameters.parse(args);
-    const filePath = path.resolve(context.workingDir, params.path);
+    const resolvedPath = expandTilde(params.path);
+    const filePath = path.resolve(context.workingDir, resolvedPath);
 
     try {
       const stat = await fs.stat(filePath);

@@ -212,7 +212,7 @@ VARGOS_MEMORY_BACKEND=file        # file | qdrant | postgres
 VARGOS_SESSIONS_BACKEND=file      # file | postgres
 
 # File backend config
-VARGOS_MEMORY_DIR=~/.vargos/memory
+VARGOS_MEMORY_DIR=~/.vargos/workspace/memory
 
 # Qdrant config (for vector memory)
 QDRANT_URL=http://localhost:6333
