@@ -81,4 +81,22 @@ describe('edit tool', () => {
     const fileContent = await fs.readFile(path.join(tempDir, 'test.txt'), 'utf-8');
     expect(fileContent).toBe('line1\nnewLine2\nnewLine2.5\nline3');
   });
+
+  it('should resolve ~ to home directory', async () => {
+    const home = os.homedir();
+    const testFile = path.join(home, 'vargos-edit-tilde-test.txt');
+    await fs.writeFile(testFile, 'original');
+    const ctx: ToolContext = { sessionKey: 'test', workingDir: home };
+    try {
+      const result = await editTool.execute(
+        { path: '~/vargos-edit-tilde-test.txt', oldText: 'original', newText: 'edited' },
+        ctx
+      );
+      expect(result.isError).toBeUndefined();
+      const content = await fs.readFile(testFile, 'utf-8');
+      expect(content).toBe('edited');
+    } finally {
+      await fs.rm(testFile, { force: true });
+    }
+  });
 });

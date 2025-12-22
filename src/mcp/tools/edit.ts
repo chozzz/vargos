@@ -7,6 +7,7 @@ import { z } from 'zod';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { Tool, ToolContext, textResult, errorResult } from './types.js';
+import { expandTilde } from '../../lib/path.js';
 
 const EditParameters = z.object({
   path: z.string().describe('Path to the file to edit'),
@@ -20,7 +21,8 @@ export const editTool: Tool = {
   parameters: EditParameters,
   execute: async (args: unknown, context: ToolContext) => {
     const params = EditParameters.parse(args);
-    const filePath = path.resolve(context.workingDir, params.path);
+    const resolvedPath = expandTilde(params.path);
+    const filePath = path.resolve(context.workingDir, resolvedPath);
 
     try {
       // Read existing content

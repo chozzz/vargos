@@ -195,6 +195,7 @@ async function main() {
     console.error('  ✓ Created default workspace files');
   }
 
+  const dataDir = process.env.VARGOS_MEMORY_DIR ?? path.join(os.homedir(), '.vargos');
   const serviceConfig: ServiceConfig = {
     memory: (process.env.VARGOS_MEMORY_BACKEND as 'file' | 'qdrant' | 'postgres') ?? 'file',
     sessions: (process.env.VARGOS_SESSIONS_BACKEND as 'file' | 'postgres') ?? 'file',
@@ -229,9 +230,10 @@ async function main() {
     mode: 'mcp',
     version: VERSION,
     workspace: workspaceDir,
+    dataDir,
     memoryBackend: (serviceConfig.memory as string) || 'file',
     sessionsBackend: (serviceConfig.sessions as string) || 'file',
-    contextFiles: contextFilesWithPaths.length > 0 ? contextFilesWithPaths : [{ name: '(none)', path: '' }],
+    contextFiles: contextFilesWithPaths,
     tools,
     transport: serverConfig.transport,
     host: serverConfig.host,

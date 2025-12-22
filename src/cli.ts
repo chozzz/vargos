@@ -106,6 +106,7 @@ program
       mode: 'cli',
       version: VERSION,
       workspace: workspaceDir,
+      dataDir,
       memoryBackend: options.memory,
       sessionsBackend: options.sessions,
       contextFiles: contextFiles.map(f => ({ name: f.name, path: path.join(workspaceDir, f.name) })),
