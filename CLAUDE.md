@@ -237,7 +237,7 @@ VARGOS_MEMORY_BACKEND=file
 VARGOS_SESSIONS_BACKEND=file
 
 # File backend config
-VARGOS_MEMORY_DIR=~/.vargos/memory
+VARGOS_MEMORY_DIR=~/.vargos/workspace/memory
 
 # Qdrant config
 QDRANT_URL=http://localhost:6333

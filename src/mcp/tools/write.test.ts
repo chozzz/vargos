@@ -59,4 +59,20 @@ describe('write tool', () => {
     expect(fileContent).toBe('content');
   });
 
+  it('should resolve ~ to home directory', async () => {
+    const home = os.homedir();
+    const testFile = path.join(home, 'vargos-write-tilde-test.txt');
+    const ctx: ToolContext = { sessionKey: 'test', workingDir: home };
+    try {
+      const result = await writeTool.execute(
+        { path: '~/vargos-write-tilde-test.txt', content: 'tilde write ok' },
+        ctx
+      );
+      expect(result.isError).toBeUndefined();
+      const content = await fs.readFile(testFile, 'utf-8');
+      expect(content).toBe('tilde write ok');
+    } finally {
+      await fs.rm(testFile, { force: true });
+    }
+  });
 });
