@@ -24,10 +24,30 @@ import { loadPiSettings, getPiApiKey, listPiProviders, isPiConfigured, formatPiC
 const VERSION = '0.0.1';
 
 /**
+ * Detect if a directory is a project (has project markers)
+ */
+async function isProjectDir(dir: string): Promise<boolean> {
+  const markers = ['package.json', '.git', 'tsconfig.json', 'Cargo.toml', 'go.mod', 'pyproject.toml'];
+  for (const marker of markers) {
+    try {
+      await fs.access(path.join(dir, marker));
+      return true;
+    } catch {
+      // Marker not found
+    }
+  }
+  return false;
+}
+
+/**
  * Get default workspace directory
  * Uses current dir if it's a project, otherwise ~/.vargos/workspace
  */
 async function getDefaultWorkspace(): Promise<string> {
+  const cwd = process.cwd();
+  if (await isProjectDir(cwd)) {
+    return cwd;
+  }
   return path.join(os.homedir(), '.vargos', 'workspace');
 }
 
