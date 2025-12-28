@@ -6,7 +6,7 @@
 
 ## Overview
 
-Vargos exposes **13 MCP tools** and an embedded **Pi Agent Runtime** that enables:
+Vargos exposes **15 MCP tools** and an embedded **Pi Agent Runtime** that enables:
 - Read, write, and edit files
 - Execute shell commands and manage processes
 - Search memory with hybrid semantic + text search
@@ -16,13 +16,13 @@ Vargos exposes **13 MCP tools** and an embedded **Pi Agent Runtime** that enable
 
 **Key Features:**
 - 🤖 **Unified Agent Runtime** - Custom agent runtime for both CLI and MCP (like OpenClaw)
-- 🔧 **15 MCP Tools** - File, shell, web, memory, session, and cron tools
+- 🔧 **15 MCP Tools** - File, shell, web, memory, session, browser, process, and cron tools
 - 🔄 **Swappable Backends** - File, Qdrant, or PostgreSQL for memory/sessions
 - 🧠 **OpenClaw-style Memory** - Hybrid search with chunking and citations
 - 💬 **Session Management** - Main/subagent sessions with transcript history
 - 📢 **Subagent Announce** - Automatic result announcement to parent sessions
 - 💾 **SQLite Persistence** - Embeddings cached for fast restarts
-- ✅ **56 Tests** - Full test coverage with Vitest
+- ✅ **78 Tests** - Full test coverage with Vitest
 
 ---
 
@@ -57,7 +57,8 @@ nano .env
 **Minimal required config (File backends):**
 ```bash
 # No external services needed - uses local files
-VARGOS_WORKSPACE=./workspace
+# Data stored in ~/.vargos/ (sessions, memory.db)
+# Context files in ~/.vargos/workspace/ (AGENTS.md, SOUL.md, etc.)
 ```
 
 **With Qdrant + PostgreSQL:**
@@ -83,8 +84,8 @@ Start an interactive chat session with the Pi agent:
 # Uses file backends by default
 pnpm cli chat
 
-# With custom workspace
-pnpm cli chat -w ./my-project
+# With custom session ID (for continuity)
+pnpm cli chat -s myproject
 
 # With specific model
 pnpm cli chat -m gpt-4o -p openai
@@ -93,7 +94,9 @@ pnpm cli chat -m gpt-4o -p openai
 You'll see:
 ```
 🤖 Vargos CLI
-Workspace: /home/user/.vargos/workspace
+Workspace: /home/user/my-project        # Current directory (tool operations)
+Context: ~/.vargos/workspace            # AGENTS.md, SOUL.md, etc.
+Data: ~/.vargos                         # Sessions, memory.db
 Model: openai/gpt-4o-mini
 Memory: file (local)
 Sessions: file (local)
@@ -184,14 +187,29 @@ pnpm test -- src/mcp/tools/sessions.test.ts
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `VARGOS_WORKSPACE` | No | `./workspace` | Working directory for files |
+| `VARGOS_WORKSPACE` | No | Current directory | Working directory for tool operations |
 | `VARGOS_MEMORY_BACKEND` | No | `file` | Memory backend: `file`, `qdrant`, `postgres` |
 | `VARGOS_SESSIONS_BACKEND` | No | `file` | Sessions backend: `file`, `postgres` |
-| `VARGOS_MEMORY_DIR` | No | `./memory` | File backend memory directory |
 | `OPENAI_API_KEY` | For Qdrant | - | OpenAI API key for embeddings |
 | `QDRANT_URL` | For Qdrant | - | Qdrant server URL |
 | `QDRANT_API_KEY` | For Qdrant | - | Qdrant API key (if auth enabled) |
 | `POSTGRES_URL` | For Postgres | - | PostgreSQL connection string |
+
+### Data Directory Structure
+
+Vargos stores data in `~/.vargos/` (like OpenClaw):
+
+```
+~/.vargos/
+├── workspace/          # Context files (AGENTS.md, SOUL.md, TOOLS.md, etc.)
+├── sessions/           # Session JSONL files
+└── memory.db           # SQLite embeddings cache
+```
+
+**Key distinction:**
+- **Working directory** (current dir): Where tools like `read`, `exec` operate
+- **Context directory** (`~/.vargos/workspace/`): Where personality files live
+- **Data directory** (`~/.vargos/`): Sessions and embeddings (persistent)
 
 ### Interactive Configuration
 
@@ -224,7 +242,7 @@ $ pnpm cli chat
 
 ---
 
-## MCP Tools (13 Total)
+## MCP Tools (15 Total)
 
 | Tool | Description |
 |------|-------------|
@@ -241,6 +259,8 @@ $ pnpm cli chat
 | `sessions_history` | Get session transcript |
 | `sessions_send` | Send message to session |
 | `sessions_spawn` | Spawn Pi-powered subagent |
+| `cron_add` | Add scheduled task |
+| `cron_list` | List scheduled tasks |
 
 ### Subagent Example
 

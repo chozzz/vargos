@@ -69,13 +69,19 @@ program
   .option('--sessions <backend>', 'Sessions backend (file|postgres)', 'file')
   .option('--no-interactive', 'Skip interactive configuration prompts')
   .action(async (options) => {
-    // Determine workspace (auto-detect project or use default)
-    const workspaceDir = options.workspace || await getDefaultWorkspace();
+    // Tool working directory: current dir (for read/exec operations)
+    const workingDir = process.cwd();
+    
+    // Context files directory: always ~/.vargos/workspace (for AGENTS.md, SOUL.md, etc.)
+    const contextDir = path.join(os.homedir(), '.vargos', 'workspace');
+    
+    // For backward compatibility, --workspace flag sets both
+    const workspaceDir = options.workspace || workingDir;
 
     // Check and prompt for configuration (interactive by default)
     const { valid: configValid } = checkConfig();
     if (!configValid && options.interactive !== false) {
-      await interactiveConfig(workspaceDir);
+      await interactiveConfig(contextDir);
     }
 
     // Set CLI options as env vars for service initialization
@@ -86,30 +92,30 @@ program
     // Data storage always goes to ~/.vargos (like OpenClaw)
     const dataDir = path.join(os.homedir(), '.vargos');
 
-    // Initialize workspace if needed
-    const workspaceExists = await isWorkspaceInitialized(workspaceDir);
-    if (!workspaceExists) {
-      console.log(chalk.yellow('📁 Initializing workspace...'));
-      await initializeWorkspace({ workspaceDir });
-      console.log(chalk.green('  ✓ Created default workspace files'));
+    // Initialize context directory (for AGENTS.md, SOUL.md, etc.)
+    const contextExists = await isWorkspaceInitialized(contextDir);
+    if (!contextExists) {
+      console.log(chalk.yellow('📁 Initializing context files...'));
+      await initializeWorkspace({ workspaceDir: contextDir });
+      console.log(chalk.green('  ✓ Created default context files'));
     }
 
-    // Load context files
+    // Load context files from contextDir (~/.vargos/workspace)
     const contextFiles: Array<{ name: string; content: string }> = [];
     const contextFileNames = ['AGENTS.md', 'SOUL.md', 'USER.md', 'TOOLS.md', 'MEMORY.md', 'HEARTBEAT.md', 'BOOTSTRAP.md'];
     for (const name of contextFileNames) {
       try {
-        const content = await fs.readFile(path.join(workspaceDir, name), 'utf-8');
+        const content = await fs.readFile(path.join(contextDir, name), 'utf-8');
         contextFiles.push({ name, content });
       } catch {
         // File doesn't exist
       }
     }
 
-    // Load Pi agent configuration
-    const piSettings = await loadPiSettings(workspaceDir);
-    const piProviders = await listPiProviders(workspaceDir);
-    const piStatus = await isPiConfigured(workspaceDir);
+    // Load Pi agent configuration from contextDir
+    const piSettings = await loadPiSettings(contextDir);
+    const piProviders = await listPiProviders(contextDir);
+    const piStatus = await isPiConfigured(contextDir);
 
     // Use CLI options or fall back to Pi config
     const provider = options.provider || piSettings.defaultProvider || 'openai';
@@ -125,11 +131,12 @@ program
     printStartupBanner({
       mode: 'cli',
       version: VERSION,
-      workspace: workspaceDir,
+      workspace: workingDir,
+      contextDir,
       dataDir,
       memoryBackend: options.memory,
       sessionsBackend: options.sessions,
-      contextFiles: contextFiles.map(f => ({ name: f.name, path: path.join(workspaceDir, f.name) })),
+      contextFiles: contextFiles.map(f => ({ name: f.name, path: path.join(contextDir, f.name) })),
       tools,
     });
 
@@ -143,7 +150,7 @@ program
     console.error('');
 
     // Check if we have API key for the selected provider
-    const apiKey = await getPiApiKey(workspaceDir, provider);
+    const apiKey = await getPiApiKey(contextDir, provider);
     if (!apiKey) {
       console.error(chalk.yellow(`⚠️  No API key found for ${provider}`));
       console.error(chalk.gray(`   Set ${provider.toUpperCase()}_API_KEY or run 'vargos config'\n`));
@@ -151,12 +158,13 @@ program
 
     // Initialize services
     // Data (sessions, memory.db) stored in ~/.vargos (like OpenClaw)
-    // Workspace files (AGENTS.md, etc.) in project directory
+    // Context files (AGENTS.md, etc.) in contextDir (~/.vargos/workspace)
+    // Tool operations happen in workingDir (current directory)
     const serviceConfig: ServiceConfig = {
       memory: options.memory as 'file' | 'qdrant' | 'postgres',
       sessions: options.sessions as 'file' | 'postgres',
       fileMemoryDir: dataDir,
-      workspaceDir, // For memory indexing of .md files
+      workspaceDir: workingDir, // Tools operate in current directory
     };
 
     try {
@@ -243,10 +251,10 @@ program
         const result = await runtime.run({
           sessionKey,
           sessionFile,
-          workspaceDir,
+          workspaceDir: workingDir, // Tools operate in current directory
           model,
           provider,
-          apiKey: await getPiApiKey(workspaceDir, provider) || process.env.OPENAI_API_KEY,
+          apiKey: await getPiApiKey(contextDir, provider) || process.env.OPENAI_API_KEY,
           contextFiles,
         });
 
