@@ -16,6 +16,9 @@ Clean, maintainable MCP server architecture with swappable backends.
 │  MCP Tools (15 tools)                                    │
 │  read, write, edit, exec, process, browser, etc.        │
 ├─────────────────────────────────────────────────────────┤
+│  Pi Agent Runtime (src/pi/runtime.ts)                   │
+│  Unified agent runtime for CLI + MCP with tool calling  │
+├─────────────────────────────────────────────────────────┤
 │  Service Interface (core/services/types.ts)             │
 │  IMemoryService, ISessionService, IVectorService        │
 ├─────────────────────────────────────────────────────────┤
@@ -63,7 +66,13 @@ src/
 │   ├── sessions-*.ts         # Session tools
 │   └── ...
 │
-└── index.ts                  # Entry point + service init
+├── pi/                       # Pi Agent Runtime
+│   ├── runtime.ts            # Unified agent runtime
+│   ├── extension.ts          # Pi SDK tool integration
+│   └── tools.ts              # Vargos tool wrapper
+│
+├── cli.ts                    # Interactive CLI entry point
+└── index.ts                  # MCP server entry point
 ```
 
 ## Service Interfaces
@@ -392,7 +401,7 @@ async function migrateToQdrant() {
 - **Production single-user:** Qdrant for memory, File for sessions, SQLite for embeddings
 - **Production multi-user:** Qdrant for memory, Postgres for sessions, SQLite per-user
 
-## 12 Tools Complete
+## 15 Tools Complete
 
 | Category | Tools | Tests |
 |----------|-------|-------|
@@ -400,14 +409,58 @@ async function migrateToQdrant() {
 | Shell | exec, process | 14 |
 | Web | web_fetch, browser | 15 |
 | Memory | memory_search, memory_get | 7 |
-| Sessions | sessions_list, sessions_send, sessions_spawn | 6 |
-| **Total** | **12** | **56** |
+| Sessions | sessions_list, sessions_history, sessions_send, sessions_spawn | 10 |
+| Cron | cron_add, cron_list | 8 |
+| **Total** | **15** | **78** |
 
 All tests pass with any backend combination.
 
+## Pi Agent Runtime
+
+The Pi Agent Runtime (`src/pi/runtime.ts`) provides a unified agent implementation for both CLI and MCP server modes:
+
+### Features
+- **Tool Integration**: Automatically exposes all registered MCP tools to the Pi agent
+- **Session Management**: Persistent sessions with JSONL transcript storage
+- **Context Loading**: Loads AGENTS.md, SOUL.md, etc. from `~/.vargos/workspace/`
+- **Tool Call Logging**: Console output of tool calls and results for transparency
+
+### Architecture
+```
+PiAgentRuntime
+  → Pi SDK (pi-coding-agent)
+    → Tool Registry (Vargos MCP tools)
+      → Services (memory, sessions, browser, process)
+```
+
+### Data Directory Structure
+
+```
+~/.vargos/                     # Data directory (like OpenClaw)
+├── workspace/                 # Context files
+│   ├── AGENTS.md             # Agent behavior rules
+│   ├── SOUL.md               # Agent identity
+│   ├── USER.md               # User preferences
+│   ├── TOOLS.md              # Tool notes
+│   ├── MEMORY.md             # Long-term memory
+│   ├── HEARTBEAT.md          # Scheduled task checklist
+│   ├── BOOTSTRAP.md          # Initialization script
+│   └── pi/                   # Pi SDK config
+│       └── settings.json     # Provider/model settings
+├── sessions/                  # Session JSONL files
+│   └── cli-main.jsonl        # Main CLI session transcript
+└── memory.db                  # SQLite embeddings cache
+```
+
+**Key distinction:**
+- **Working directory** = Current directory where tools (`read`, `exec`) operate
+- **Context directory** = `~/.vargos/workspace/` where personality files live
+- **Data directory** = `~/.vargos/` where sessions and embeddings persist
+
 ## Feature Checklist
 
-- [x] 12 MCP tools with 56 passing tests
+- [x] 15 MCP tools with 78 passing tests
+- [x] Pi Agent Runtime for CLI + MCP server
 - [x] Swappable backends (file/Qdrant/Postgres)
 - [x] OpenClaw-style MemoryContext (hybrid search, chunking, citations)
 - [x] SQLite persistence for embeddings

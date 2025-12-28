@@ -370,6 +370,7 @@ export function printStartupBanner(options: {
   mode: 'mcp' | 'cli';
   version: string;
   workspace: string;
+  contextDir?: string;
   memoryBackend: string;
   sessionsBackend: string;
   dataDir?: string;
@@ -403,11 +404,18 @@ export function printStartupBanner(options: {
         ? '...' + options.dataDir.slice(-46)
         : options.dataDir
       : '(default)';
+  
+  const contextDirDisplay = options.contextDir
+    ? options.contextDir.length > 49
+      ? '...' + options.contextDir.slice(-46)
+      : options.contextDir
+    : '(same as workspace)';
 
   // Configuration section
   lines.push(
     '┌─ 📁  CONFIGURATION ──────────────────────────────────────────┐',
-    `│  Workspace: ${options.workspace.padEnd(49)}│`,
+    `│  Working:   ${options.workspace.padEnd(49)}│`,
+    `│  Context:   ${contextDirDisplay.padEnd(49)}│`,
     `│  Data dir:  ${dataDirDisplay.padEnd(49)}│`,
     `│  Memory:    ${options.memoryBackend.padEnd(49)}│`,
     `│  Sessions:  ${options.sessionsBackend.padEnd(49)}│`,
