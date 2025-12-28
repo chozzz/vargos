@@ -9,9 +9,15 @@ Vargos is an MCP (Model Context Protocol) server that exposes 15 tools for AI ag
 - **Shell tools**: exec, process
 - **Web tools**: web_fetch, browser
 - **Memory tools**: memory_search, memory_get
-- **Session tools**: sessions_list, sessions_send, sessions_spawn
+- **Session tools**: sessions_list, sessions_history, sessions_send, sessions_spawn
+- **Cron tools**: cron_add, cron_list
 
 **Core Philosophy:** Providing Agents to your Machine - giving AI agents practical capabilities to execute system actions.
+
+**Key Components:**
+- **MCP Server** (`index.ts`) - Stdio server for Claude Desktop, etc.
+- **Pi Agent Runtime** (`pi/runtime.ts`) - Unified agent runtime for CLI + MCP
+- **CLI** (`cli.ts`) - Interactive chat and task runner
 
 ## Repository Structure
 
@@ -52,11 +58,25 @@ vargos/
 │   │   ├── memory-search.ts
 │   │   ├── memory-get.ts
 │   │   ├── sessions-list.ts
+│   │   ├── sessions-history.ts
 │   │   ├── sessions-send.ts
 │   │   ├── sessions-spawn.ts
+│   │   ├── cron-add.ts
+│   │   ├── cron-list.ts
 │   │   └── registry.ts     # Tool registration
 │   │
-│   └── index.ts            # Entry point
+│   ├── pi/                 # Pi Agent Runtime
+│   │   ├── runtime.ts      # Unified agent runtime
+│   │   ├── extension.ts    # Pi SDK tool integration
+│   │   └── tools.ts        # Vargos tool wrapper
+│   │
+│   ├── config/             # Configuration management
+│   │   ├── interactive.ts  # Interactive config prompts
+│   │   ├── workspace.ts    # Workspace initialization
+│   │   └── pi-config.ts    # Pi SDK settings
+│   │
+│   ├── cli.ts              # Interactive CLI entry point
+│   └── index.ts            # MCP server entry point
 │
 ├── ARCHITECTURE.md         # Architecture documentation
 ├── README.md               # Project readme
@@ -127,6 +147,34 @@ export async function initializeServices(config): Promise<void> {
 export function getMemoryContext(): MemoryContext {
   return getServices().memoryContext;
 }
+```
+
+## Pi Agent Runtime
+
+The Pi Agent Runtime provides a unified agent implementation for both CLI and MCP server modes.
+
+**Location:** `src/pi/runtime.ts`
+
+**Features:**
+- Exposes all registered MCP tools to the Pi SDK
+- Persistent sessions with JSONL transcript storage
+- Loads context files from `~/.vargos/workspace/`
+- Console logging of tool calls and results
+
+**Usage:**
+```typescript
+import { PiAgentRuntime } from './pi/runtime.js';
+
+const runtime = new PiAgentRuntime();
+const result = await runtime.run({
+  sessionKey: 'cli:main',
+  sessionFile: '/path/to/session.jsonl',
+  workspaceDir: process.cwd(),
+  model: 'gpt-4o-mini',
+  provider: 'openai',
+  apiKey: process.env.OPENAI_API_KEY,
+  contextFiles: [{ name: 'AGENTS.md', content: '...' }],
+});
 ```
 
 ## MemoryContext
@@ -230,14 +278,11 @@ pnpm run test:run  # CI mode
 ## Environment Configuration
 
 ```bash
-# Memory backend: file | qdrant
+# Memory backend: file | qdrant | postgres
 VARGOS_MEMORY_BACKEND=file
 
 # Sessions backend: file | postgres
 VARGOS_SESSIONS_BACKEND=file
-
-# File backend config
-VARGOS_MEMORY_DIR=~/.vargos/workspace/memory
 
 # Qdrant config
 QDRANT_URL=http://localhost:6333
@@ -249,6 +294,38 @@ POSTGRES_URL=postgresql://localhost:5432/vargos
 # OpenAI (for embeddings in MemoryContext)
 OPENAI_API_KEY=sk-...
 ```
+
+## Data Directory Structure
+
+Vargos stores persistent data in `~/.vargos/` (following OpenClaw's pattern):
+
+```
+~/.vargos/
+├── workspace/              # Context files (AGENTS.md, SOUL.md, etc.)
+│   ├── AGENTS.md
+│   ├── SOUL.md
+│   ├── USER.md
+│   ├── TOOLS.md
+│   ├── MEMORY.md
+│   ├── HEARTBEAT.md
+│   ├── BOOTSTRAP.md
+│   └── pi/
+│       └── settings.json   # Pi SDK configuration
+├── sessions/               # Session JSONL files
+│   ├── cli-main.jsonl
+│   └── cli-myproject.jsonl
+└── memory.db               # SQLite embeddings cache
+```
+
+**Directory purposes:**
+- **Working directory** (`process.cwd()`): Where tools (`read`, `exec`, `write`) operate on files
+- **Context directory** (`~/.vargos/workspace/`): Where agent personality/context files live
+- **Data directory** (`~/.vargos/`): Where sessions and embeddings are persisted
+
+This separation allows you to:
+- Run Vargos from any project directory (tools operate there)
+- Maintain consistent agent personality across projects (context files)
+- Keep session history and embeddings persistent (data directory)
 
 ## Backend Implementations
 
