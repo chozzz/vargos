@@ -308,57 +308,6 @@ export class Gateway extends EventEmitter {
 }
 
 // ============================================================================
-// Transport Adapters
-// ============================================================================
-
-/**
- * WebSocket transport for real-time communication
- */
-export class WebSocketTransport extends EventEmitter {
-  constructor(private gateway: Gateway) {
-    super();
-  }
-
-  async handleConnection(ws: WebSocket, sessionKey: string): Promise<void> {
-    // TODO: Implement WebSocket handling
-  }
-
-  sendChunk(chunk: StreamingChunk): void {
-    // TODO: Send chunk over WebSocket
-  }
-}
-
-/**
- * HTTP/REST transport for request-response
- */
-export class HTTPTransport extends EventEmitter {
-  constructor(private gateway: Gateway) {
-    super();
-  }
-
-  async handleRequest(req: unknown, res: unknown): Promise<void> {
-    // TODO: Implement HTTP handling
-  }
-}
-
-/**
- * Server-Sent Events transport for streaming
- */
-export class SSETransport extends EventEmitter {
-  constructor(private gateway: Gateway) {
-    super();
-  }
-
-  async handleConnection(req: unknown, res: unknown): Promise<void> {
-    // TODO: Implement SSE handling
-  }
-
-  sendChunk(chunk: StreamingChunk): void {
-    // TODO: Send SSE chunk
-  }
-}
-
-// ============================================================================
 // Module Exports
 // ============================================================================
 

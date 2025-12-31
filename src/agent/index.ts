@@ -1,10 +1,12 @@
 /**
  * Agent module exports
+ * Core runtime components for Pi agent integration
  */
 
 export {
   buildSystemPrompt,
   resolvePromptMode,
+  isSubagentSessionKey,
 } from './prompt.js';
 
 export {
@@ -23,6 +25,5 @@ export {
   type LifecycleEvent,
   type AssistantStreamEvent,
   type ToolStreamEvent,
-  type CompactionStreamEvent,
   type LifecyclePhase,
 } from './lifecycle.js';

@@ -5,6 +5,9 @@
 
 import type { ToolResult } from '../mcp/tools/types.js';
 
+// Re-export from agent/prompt for consistency
+export { isSubagentSessionKey } from '../agent/prompt.js';
+
 /**
  * Format error to standard ToolResult format
  */
@@ -44,22 +47,18 @@ export async function withErrorHandling<T>(
 }
 
 /**
- * Check if a tool is allowed for subagent sessions
+ * Tools that subagents are not allowed to use
  */
 export const SUBAGENT_DENIED_TOOLS = [
   'sessions_list',
-  'sessions_history', 
+  'sessions_history',
   'sessions_send',
   'sessions_spawn',
 ] as const;
 
+/**
+ * Check if a tool is allowed for subagent sessions
+ */
 export function isToolAllowedForSubagent(toolName: string): boolean {
   return !SUBAGENT_DENIED_TOOLS.includes(toolName as typeof SUBAGENT_DENIED_TOOLS[number]);
-}
-
-/**
- * Check if session key is a subagent
- */
-export function isSubagentSessionKey(sessionKey: string): boolean {
-  return sessionKey.includes(':subagent:') || sessionKey.startsWith('subagent-');
 }

@@ -26,26 +26,3 @@ export function getVargosToolNames(): string[] {
   // Return actual registered MCP tool names from registry
   return toolRegistry.list().map(t => t.name);
 }
-
-/**
- * Get full Vargos tool names (for documentation/MCP mode)
- * @deprecated Use getVargosToolNames() instead - it returns actual registered tools
- */
-export function getFullVargosToolNames(): string[] {
-  return [
-    // Core file/shell tools
-    'read', 'write', 'edit', 'exec',
-    // Web tools
-    'web_fetch',
-    // Memory tools  
-    'memory_search', 'memory_get',
-    // Session tools
-    'sessions_list', 'sessions_history', 'sessions_send', 'sessions_spawn',
-    // Cron tools
-    'cron_add', 'cron_list',
-    // Process management
-    'process',
-    // Browser automation
-    'browser',
-  ];
-}
