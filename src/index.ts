@@ -19,7 +19,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import http from 'node:http';
-import { toolRegistry } from './mcp/tools/index.js';
+import { toolRegistry, initializeToolRegistry } from './mcp/tools/index.js';
 import { ToolContext } from './mcp/tools/types.js';
 import { initializeServices, ServiceConfig } from './services/factory.js';
 import { initializePiAgentRuntime } from './pi/runtime.js';
@@ -206,6 +206,9 @@ async function main() {
     openaiApiKey: process.env.OPENAI_API_KEY,
     workspaceDir, // For memory indexing of .md files
   };
+
+  // Register tools (dynamic imports to avoid circular deps)
+  await initializeToolRegistry();
 
   // Load context files
   const contextFiles = await loadContextFiles(workspaceDir);
