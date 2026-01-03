@@ -15,7 +15,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { PiAgentRuntime, initializePiAgentRuntime } from './pi/runtime.js';
 import { initializeServices, ServiceConfig } from './services/factory.js';
-import { toolRegistry } from './mcp/tools/index.js';
+import { toolRegistry, initializeToolRegistry } from './mcp/tools/index.js';
 import { buildSystemPrompt, resolvePromptMode } from './agent/prompt.js';
 import { interactiveConfig, printStartupBanner, checkConfig } from './config/interactive.js';
 import { initializeWorkspace, isWorkspaceInitialized } from './config/workspace.js';
@@ -120,6 +120,9 @@ program
     // Use CLI options or fall back to Pi config
     const provider = options.provider || piSettings.defaultProvider || 'openai';
     const model = options.model || piSettings.defaultModel || 'gpt-4o-mini';
+
+    // Register tools (dynamic imports to avoid circular deps)
+    await initializeToolRegistry();
 
     // Get tools with descriptions
     const tools = toolRegistry.list().map(t => ({
