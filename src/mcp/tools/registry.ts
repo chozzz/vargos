@@ -1,24 +1,11 @@
 /**
  * Tool registry - Dynamic tool loading with policy support
- * Ported from OpenClaw patterns
+ *
+ * Tools are registered lazily via initializeToolRegistry() to avoid
+ * circular imports (tools → cron → pi/runtime → pi/extension → registry).
  */
 
 import { Tool } from './types.js';
-import { readTool } from './read.js';
-import { writeTool } from './write.js';
-import { editTool } from './edit.js';
-import { execTool } from './exec.js';
-import { webFetchTool } from './web-fetch.js';
-import { memorySearchTool } from './memory-search.js';
-import { memoryGetTool } from './memory-get.js';
-import { sessionsListTool } from './sessions-list.js';
-import { sessionsHistoryTool } from './sessions-history.js';
-import { sessionsSendTool } from './sessions-send.js';
-import { sessionsSpawnTool } from './sessions-spawn.js';
-import { cronAddTool } from './cron-add.js';
-import { cronListTool } from './cron-list.js';
-import { createProcessTool } from './process.js';
-import { createBrowserTool } from './browser.js';
 
 // Tool groups (like OpenClaw)
 export const TOOL_GROUPS = {
@@ -47,25 +34,6 @@ export interface ToolPolicy {
 export class ToolRegistry {
   private tools = new Map<string, Tool>();
 
-  constructor() {
-    // Register built-in tools
-    this.register(readTool);
-    this.register(writeTool);
-    this.register(editTool);
-    this.register(execTool);
-    this.register(webFetchTool);
-    this.register(memorySearchTool);
-    this.register(memoryGetTool);
-    this.register(sessionsListTool);
-    this.register(sessionsHistoryTool);
-    this.register(sessionsSendTool);
-    this.register(sessionsSpawnTool);
-    this.register(cronAddTool);
-    this.register(cronListTool);
-    this.register(createProcessTool());
-    this.register(createBrowserTool());
-  }
-
   register(tool: Tool): void {
     if (!tool || !tool.name) {
       console.error('Attempted to register invalid tool:', tool);
@@ -88,7 +56,6 @@ export class ToolRegistry {
 
   /**
    * Filter tools by policy
-   * Like OpenClaw's tool policy filtering
    */
   filterByPolicy(policy?: ToolPolicy): Tool[] {
     const allTools = this.list();
@@ -97,7 +64,6 @@ export class ToolRegistry {
       return allTools;
     }
 
-    // Expand groups
     const expandGroups = (tools: string[]): string[] => {
       const expanded: string[] = [];
       for (const tool of tools) {
@@ -118,14 +84,8 @@ export class ToolRegistry {
     const denied = policy.deny ? new Set(expandGroups(policy.deny)) : null;
 
     return allTools.filter((tool) => {
-      // Deny wins
-      if (denied?.has(tool.name)) {
-        return false;
-      }
-      // If allow list exists, only allow those
-      if (allowed && !allowed.has(tool.name)) {
-        return false;
-      }
+      if (denied?.has(tool.name)) return false;
+      if (allowed && !allowed.has(tool.name)) return false;
       return true;
     });
   }
@@ -140,5 +100,61 @@ export class ToolRegistry {
   }
 }
 
-// Singleton instance
+// Singleton instance — empty until initializeToolRegistry() is called
 export const toolRegistry = new ToolRegistry();
+
+/**
+ * Dynamically import and register all tools.
+ * Called once from main() after modules have settled.
+ */
+export async function initializeToolRegistry(): Promise<void> {
+  const [
+    { readTool },
+    { writeTool },
+    { editTool },
+    { execTool },
+    { webFetchTool },
+    { memorySearchTool },
+    { memoryGetTool },
+    { sessionsListTool },
+    { sessionsHistoryTool },
+    { sessionsSendTool },
+    { sessionsSpawnTool },
+    { cronAddTool },
+    { cronListTool },
+    { createProcessTool },
+    { createBrowserTool },
+  ] = await Promise.all([
+    import('./read.js'),
+    import('./write.js'),
+    import('./edit.js'),
+    import('./exec.js'),
+    import('./web-fetch.js'),
+    import('./memory-search.js'),
+    import('./memory-get.js'),
+    import('./sessions-list.js'),
+    import('./sessions-history.js'),
+    import('./sessions-send.js'),
+    import('./sessions-spawn.js'),
+    import('./cron-add.js'),
+    import('./cron-list.js'),
+    import('./process.js'),
+    import('./browser.js'),
+  ]);
+
+  toolRegistry.register(readTool);
+  toolRegistry.register(writeTool);
+  toolRegistry.register(editTool);
+  toolRegistry.register(execTool);
+  toolRegistry.register(webFetchTool);
+  toolRegistry.register(memorySearchTool);
+  toolRegistry.register(memoryGetTool);
+  toolRegistry.register(sessionsListTool);
+  toolRegistry.register(sessionsHistoryTool);
+  toolRegistry.register(sessionsSendTool);
+  toolRegistry.register(sessionsSpawnTool);
+  toolRegistry.register(cronAddTool);
+  toolRegistry.register(cronListTool);
+  toolRegistry.register(createProcessTool());
+  toolRegistry.register(createBrowserTool());
+}
