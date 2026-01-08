@@ -356,6 +356,35 @@ vargos/
 - **[ARCHITECTURE.md](./ARCHITECTURE.md)** - System architecture
 - **[CLAUDE.md](./CLAUDE.md)** - Claude Code guidance
 - **[CONTRIBUTING.md](./CONTRIBUTING.md)** - Contribution guidelines
+- **[docs/USAGE.md](./docs/USAGE.md)** - Complete usage guide (CLI, MCP, Cron, Agents)
+
+---
+
+## TUI Dashboard (Planned)
+
+We're designing an interactive Terminal UI for `pnpm dev` that shows real-time analytics:
+
+**Design Documents:**
+- `memory/vargos-tui-design.md` - UX layout, components, Ink.js implementation
+- `memory/vargos-devxp-design.md` - Developer workflows, keybindings, debugging views
+
+**Planned Features:**
+- 📊 Real-time session/agent monitoring
+- 🔧 Live tool call tracing with timing
+- 💓 System health dashboard (memory, backends)
+- 🎮 Interactive controls (kill/restart agents)
+- ⌨️ Vim-style navigation + function keys
+
+**Keyboard Shortcuts (Planned):**
+| Key | Action |
+|-----|--------|
+| `F1` | Help |
+| `F2` | Agents view |
+| `F3` | Sessions view |
+| `F4` | Tool calls view |
+| `F5` | Health view |
+| `F6` | Quick actions |
+| `q` | Quit |
 
 ---
 
