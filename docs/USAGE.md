@@ -552,7 +552,8 @@ pnpm cli config:set              # Set LLM config
 ### Key Environment Variables
 
 ```bash
-VARGOS_WORKSPACE=<dir>           # Working directory
+VARGOS_DATA_DIR=~/.vargos        # Root data directory
+VARGOS_WORKSPACE=<dir>           # Context files directory
 VARGOS_MEMORY_BACKEND=file       # Memory backend
 VARGOS_SESSIONS_BACKEND=file     # Sessions backend
 OPENAI_API_KEY=sk-xxx           # For embeddings
@@ -569,10 +570,8 @@ POSTGRES_URL=postgresql://...    # For session storage
 │   ├── SOUL.md
 │   ├── USER.md
 │   ├── TOOLS.md
-│   ├── MEMORY.md
-│   ├── HEARTBEAT.md
-│   ├── BOOTSTRAP.md
 │   └── memory/          # Daily notes (YYYY-MM-DD.md)
+├── agent/               # Pi SDK configuration
 ├── sessions/            # Session JSONL files
 └── memory.db            # SQLite embeddings cache
 ```
@@ -615,4 +614,4 @@ jq . ~/.vargos/sessions/cli-main.jsonl
 
 ---
 
-*For more details, see [ARCHITECTURE.md](./ARCHITECTURE.md) and [README.md](./README.md)*
+*For more details, see [README.md](../README.md) and [CLAUDE.md](../CLAUDE.md)*

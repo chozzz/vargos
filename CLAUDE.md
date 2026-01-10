@@ -26,19 +26,57 @@ This is a **single-package TypeScript project** (not a monorepo):
 ```
 vargos/
 ├── src/
+│   ├── agent/              # Agent lifecycle + orchestration
+│   │   ├── lifecycle.ts    # Agent lifecycle events (streaming)
+│   │   ├── prompt.ts       # System prompt builder
+│   │   └── queue.ts        # Per-session message queue
+│   │
+│   ├── config/             # Configuration management
+│   │   ├── paths.ts        # Centralized path resolution (data dir, workspace, sessions)
+│   │   ├── interactive.ts  # Interactive config prompts
+│   │   ├── workspace.ts    # Workspace initialization
+│   │   └── pi-config.ts    # Pi SDK settings
+│   │
 │   ├── core/               # Core interfaces and base classes
 │   │   ├── services/
 │   │   │   └── types.ts    # Service interfaces (IMemoryService, ISessionService)
-│   │   ├── tools/
-│   │   │   ├── types.ts    # Tool interfaces
-│   │   │   └── base.ts     # BaseTool class
-│   │   └── index.ts
+│   │   └── tools/
+│   │       ├── types.ts    # Tool interfaces
+│   │       └── base.ts     # BaseTool class
+│   │
+│   ├── cron/               # Scheduled task runner
+│   │   ├── scheduler.ts    # Cron scheduler
+│   │   └── tasks/          # Task definitions
+│   │
+│   ├── gateway/            # Message gateway
+│   │   ├── core.ts         # Gateway core
+│   │   ├── transports.ts   # Transport layer
+│   │   └── plugins/        # Gateway plugins (text, etc.)
+│   │
+│   ├── lib/                # Shared utilities
+│   │   ├── mime.ts         # MIME type helpers
+│   │   └── path.ts         # Path utilities
+│   │
+│   ├── mcp/tools/          # MCP tool implementations (15 tools)
+│   │   ├── registry.ts     # Tool registration
+│   │   ├── types.ts        # Tool types
+│   │   ├── read.ts, write.ts, edit.ts
+│   │   ├── exec.ts, process.ts
+│   │   ├── web-fetch.ts, browser.ts
+│   │   ├── memory-search.ts, memory-get.ts
+│   │   ├── sessions-list.ts, sessions-history.ts
+│   │   ├── sessions-send.ts, sessions-spawn.ts
+│   │   └── cron-add.ts, cron-list.ts
+│   │
+│   ├── pi/                 # Pi Agent Runtime
+│   │   ├── runtime.ts      # Unified agent runtime
+│   │   └── extension.ts    # Pi SDK tool integration
 │   │
 │   ├── services/           # Service implementations
 │   │   ├── factory.ts      # ServiceFactory + global initialization
 │   │   ├── memory/
-│   │   │   ├── context.ts  # MemoryContext (OpenClaw-style hybrid search)
-│   │   │   ├── sqlite-storage.ts  # SQLite persistence for embeddings
+│   │   │   ├── context.ts  # MemoryContext (hybrid search)
+│   │   │   ├── sqlite-storage.ts  # SQLite persistence
 │   │   │   ├── file.ts     # File-based memory
 │   │   │   └── qdrant.ts   # Qdrant vector search
 │   │   ├── sessions/
@@ -47,41 +85,17 @@ vargos/
 │   │   ├── browser.ts      # Browser automation service
 │   │   └── process.ts      # Process management service
 │   │
-│   ├── mcp/tools/          # MCP tool implementations (15 tools)
-│   │   ├── read.ts
-│   │   ├── write.ts
-│   │   ├── edit.ts
-│   │   ├── exec.ts
-│   │   ├── process.ts
-│   │   ├── web-fetch.ts
-│   │   ├── browser.ts
-│   │   ├── memory-search.ts
-│   │   ├── memory-get.ts
-│   │   ├── sessions-list.ts
-│   │   ├── sessions-history.ts
-│   │   ├── sessions-send.ts
-│   │   ├── sessions-spawn.ts
-│   │   ├── cron-add.ts
-│   │   ├── cron-list.ts
-│   │   └── registry.ts     # Tool registration
-│   │
-│   ├── pi/                 # Pi Agent Runtime
-│   │   ├── runtime.ts      # Unified agent runtime
-│   │   ├── extension.ts    # Pi SDK tool integration
-│   │   └── tools.ts        # Vargos tool wrapper
-│   │
-│   ├── config/             # Configuration management
-│   │   ├── interactive.ts  # Interactive config prompts
-│   │   ├── workspace.ts    # Workspace initialization
-│   │   └── pi-config.ts    # Pi SDK settings
+│   ├── utils/
+│   │   └── errors.ts       # Error handling utilities
 │   │
 │   ├── cli.ts              # Interactive CLI entry point
 │   └── index.ts            # MCP server entry point
 │
-├── ARCHITECTURE.md         # Architecture documentation
-├── README.md               # Project readme
+├── README.md
+├── CLAUDE.md
+├── CONTRIBUTING.md
 ├── package.json
-└── vitest.config.ts        # Test configuration
+└── vitest.config.ts
 ```
 
 **Node.js Requirement:** 20+
@@ -149,6 +163,17 @@ export function getMemoryContext(): MemoryContext {
 }
 ```
 
+### Path Resolution
+
+All data paths are centralized in `config/paths.ts`:
+
+```typescript
+resolveDataDir()       // VARGOS_DATA_DIR || ~/.vargos
+resolveWorkspaceDir()  // VARGOS_WORKSPACE || $DATA_DIR/workspace
+resolveSessionsDir()   // $DATA_DIR/sessions
+resolveSessionFile(key) // $DATA_DIR/sessions/<key>.jsonl
+```
+
 ## Pi Agent Runtime
 
 The Pi Agent Runtime provides a unified agent implementation for both CLI and MCP server modes.
@@ -158,7 +183,7 @@ The Pi Agent Runtime provides a unified agent implementation for both CLI and MC
 **Features:**
 - Exposes all registered MCP tools to the Pi SDK
 - Persistent sessions with JSONL transcript storage
-- Loads context files from `~/.vargos/workspace/`
+- Auto-loads context files from workspace directory
 - Console logging of tool calls and results
 
 **Usage:**
@@ -173,7 +198,6 @@ const result = await runtime.run({
   model: 'gpt-4o-mini',
   provider: 'openai',
   apiKey: process.env.OPENAI_API_KEY,
-  contextFiles: [{ name: 'AGENTS.md', content: '...' }],
 });
 ```
 
@@ -222,7 +246,7 @@ import type { IMemoryService } from '../core/services/types.js';
 
 When implementing MCP tools:
 
-1. **File naming:** `*.tool.ts` (or just `*.ts` in mcp/tools/)
+1. **File naming:** `*.ts` in `mcp/tools/`
 2. **Export pattern:** Named export with tool definition
 3. **Input validation:** Use Zod schemas
 4. **Service access:** Use `getServices()` or `getMemoryContext()`
@@ -269,16 +293,13 @@ describe('read tool', () => {
 });
 ```
 
-Run tests:
-```bash
-pnpm test        # Watch mode
-pnpm run test:run  # CI mode
-```
-
 ## Environment Configuration
 
 ```bash
-# Memory backend: file | qdrant | postgres
+# Data directory (default: ~/.vargos)
+VARGOS_DATA_DIR=~/.vargos
+
+# Memory backend: file | qdrant
 VARGOS_MEMORY_BACKEND=file
 
 # Sessions backend: file | postgres
@@ -297,7 +318,7 @@ OPENAI_API_KEY=sk-...
 
 ## Data Directory Structure
 
-Vargos stores persistent data in `~/.vargos/` (following OpenClaw's pattern):
+Vargos stores persistent data in `~/.vargos/`:
 
 ```
 ~/.vargos/
@@ -306,11 +327,8 @@ Vargos stores persistent data in `~/.vargos/` (following OpenClaw's pattern):
 │   ├── SOUL.md
 │   ├── USER.md
 │   ├── TOOLS.md
-│   ├── MEMORY.md
-│   ├── HEARTBEAT.md
-│   ├── BOOTSTRAP.md
-│   └── pi/
-│       └── settings.json   # Pi SDK configuration
+│   └── memory/             # Daily notes
+├── agent/                  # Pi SDK configuration
 ├── sessions/               # Session JSONL files
 │   ├── cli-main.jsonl
 │   └── cli-myproject.jsonl
@@ -322,32 +340,13 @@ Vargos stores persistent data in `~/.vargos/` (following OpenClaw's pattern):
 - **Context directory** (`~/.vargos/workspace/`): Where agent personality/context files live
 - **Data directory** (`~/.vargos/`): Where sessions and embeddings are persisted
 
-This separation allows you to:
-- Run Vargos from any project directory (tools operate there)
-- Maintain consistent agent personality across projects (context files)
-- Keep session history and embeddings persistent (data directory)
-
-## Backend Implementations
-
-### Memory Backends
-- **FileMemoryService** - Plain text files, regex search
-- **QdrantMemoryService** - Vector DB with semantic search
-
-### Session Backends
-- **FileSessionService** - JSONL files, one per session
-- **PostgresSessionService** - Relational DB with indexing
-
-### MemoryContext Backends
-- **SQLite** - Persistent storage for embeddings and chunk metadata
-- **File watcher** - Auto-reindex when memory files change
-
 ## Swappable Backends
 
 Tools don't know about backends — they use interfaces:
 
 ```typescript
-// Works with file, Qdrant, or future backends
-const memory = getMemoryService();
+// Use getMemoryContext() for search (not raw services)
+const memory = getMemoryContext();
 const results = await memory.search(query);
 ```
 
