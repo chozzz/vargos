@@ -164,26 +164,33 @@ export class HTTPTransport extends EventEmitter {
 
 /**
  * WebSocket Transport for real-time streaming
+ * Can attach to an existing HTTP server or create its own port
  */
 export class WebSocketTransport extends EventEmitter {
   private wss?: WebSocketServer;
   private connections = new Map<string, WebSocket>();
-  
+
   constructor(
     private port: number = 3001,
-    private host: string = '127.0.0.1'
+    private host: string = '127.0.0.1',
+    private httpServer?: http.Server,
   ) {
     super();
   }
 
   async start(): Promise<void> {
-    this.wss = new WebSocketServer({ port: this.port, host: this.host });
-    
+    if (this.httpServer) {
+      this.wss = new WebSocketServer({ server: this.httpServer, path: '/ws' });
+      console.log(`WebSocket attached to HTTP server at /ws`);
+    } else {
+      this.wss = new WebSocketServer({ port: this.port, host: this.host });
+      console.log(`WebSocket server listening on ${this.host}:${this.port}`);
+    }
+
     this.wss.on('connection', (ws, req) => {
       this.handleConnection(ws, req);
     });
 
-    console.log(`🔌 WebSocket server listening on ${this.host}:${this.port}`);
     this.emit('started');
   }
 
