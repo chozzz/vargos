@@ -6,6 +6,11 @@
 import { EventEmitter } from 'node:events';
 import type { Server as HTTPServer } from 'node:http';
 import type { WebSocket } from 'ws';
+import { getPiAgentRuntime } from '../pi/runtime.js';
+import { getSessionService } from '../services/factory.js';
+import { resolveSessionFile } from '../config/paths.js';
+import { resolveWorkspaceDir } from '../config/paths.js';
+import { loadPiSettings, getPiApiKey } from '../config/pi-config.js';
 
 // ============================================================================
 // Types
@@ -207,6 +212,9 @@ export class Gateway extends EventEmitter {
   ): Promise<GatewayResponse> {
     this.emit('input:received', input, context);
 
+    // Track session context for streaming
+    this.sessions.set(context.sessionKey, context);
+
     try {
       // Step 1: Validate input
       if (!this.validateInput(input)) {
@@ -263,17 +271,79 @@ export class Gateway extends EventEmitter {
   }
 
   /**
-   * Execute agent run
+   * Execute agent run via PiAgentRuntime
    */
   private async execute(
     input: NormalizedInput,
     context: GatewayContext
   ): Promise<GatewayResponse> {
-    // TODO: Integrate with PiAgentRuntime
+    const sessions = getSessionService();
+    const sessionKey = context.sessionKey;
+
+    console.error(`[Gateway] execute: sessionKey=${sessionKey} channel=${context.channel}`);
+
+    // Ensure session exists
+    let session = await sessions.get(sessionKey);
+    if (!session) {
+      session = await sessions.create({
+        sessionKey,
+        kind: 'main',
+        label: `${context.channel}:${context.userId}`,
+        metadata: { channel: context.channel },
+      });
+    }
+
+    // Store user message as a task so PiAgentRuntime picks it up
+    const text = typeof input.content === 'string' ? input.content : input.content.toString('utf-8');
+    await sessions.addMessage({
+      sessionKey,
+      content: text,
+      role: 'user',
+      metadata: { type: 'task', channel: context.channel },
+    });
+
+    // Resolve runtime config
+    const workspaceDir = resolveWorkspaceDir();
+    const piSettings = await loadPiSettings(workspaceDir);
+    const provider = piSettings.defaultProvider || 'openai';
+    const model = piSettings.defaultModel || 'gpt-4o-mini';
+    const apiKey = await getPiApiKey(workspaceDir, provider);
+
+    if (!apiKey) {
+      console.error(`[Gateway] No API key for provider "${provider}"`);
+      return {
+        success: false,
+        content: `No API key configured for ${provider}. Run: pnpm cli config:set`,
+        type: 'error',
+      };
+    }
+
+    console.error(`[Gateway] Running agent: provider=${provider} model=${model}`);
+
+    const runtime = getPiAgentRuntime();
+    const result = await runtime.run({
+      sessionKey,
+      sessionFile: resolveSessionFile(sessionKey),
+      workspaceDir,
+      model,
+      provider,
+      apiKey,
+    });
+
+    console.error(`[Gateway] Agent result: success=${result.success} response=${(result.response || result.error || '').slice(0, 100)}`);
+
+    if (result.success) {
+      return {
+        success: true,
+        content: result.response || '',
+        type: 'text',
+      };
+    }
+
     return {
-      success: true,
-      content: 'Placeholder response',
-      type: 'text',
+      success: false,
+      content: result.error || 'Agent run failed',
+      type: 'error',
     };
   }
 
@@ -295,8 +365,10 @@ export class Gateway extends EventEmitter {
   }
 
   private findPluginForContext(context: GatewayContext): InputPlugin | undefined {
-    // TODO: Map channels to plugins
-    return undefined;
+    // Find a text plugin for the given channel
+    const textPlugins = this.plugins.get('text' as InputType, 'text-plain');
+    if (textPlugins) return textPlugins;
+    return this.plugins.findForInput({ text: '' });
   }
 
   private handleInput(input: NormalizedInput): void {
