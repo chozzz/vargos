@@ -15,9 +15,7 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { zodToJsonSchema } from 'zod-to-json-schema';
-import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
 import http from 'node:http';
 import { toolRegistry, initializeToolRegistry } from './mcp/tools/index.js';
 import { ToolContext } from './mcp/tools/types.js';
@@ -25,40 +23,11 @@ import { initializeServices, ServiceConfig } from './services/factory.js';
 import { initializePiAgentRuntime } from './pi/runtime.js';
 import { isSubagentSessionKey, isToolAllowedForSubagent, formatErrorResult } from './utils/errors.js';
 import { interactiveConfig, printStartupBanner, checkConfig } from './config/interactive.js';
-import { initializeWorkspace, isWorkspaceInitialized } from './config/workspace.js';
-import { isPiConfigured, formatPiConfigDisplay, listPiProviders, loadPiSettings } from './config/pi-config.js';
+import { initializeWorkspace, isWorkspaceInitialized, loadContextFiles } from './config/workspace.js';
+import { formatPiConfigDisplay, listPiProviders, loadPiSettings } from './config/pi-config.js';
+import { resolveDataDir, resolveWorkspaceDir } from './config/paths.js';
 
 const VERSION = '0.0.1';
-
-/**
- * Load context files (AGENTS.md, TOOLS.md, etc.)
- * Like OpenClaw's bootstrap context files
- */
-async function loadContextFiles(workspaceDir: string): Promise<Array<{ name: string; content: string }>> {
-  const files: Array<{ name: string; content: string }> = [];
-
-  const contextFiles = [
-    'AGENTS.md',
-    'SOUL.md',
-    'USER.md',
-    'TOOLS.md',
-    'HEARTBEAT.md',
-    'BOOTSTRAP.md',
-    'MEMORY.md',
-  ];
-
-  for (const filename of contextFiles) {
-    try {
-      const filePath = path.join(workspaceDir, filename);
-      const content = await fs.readFile(filePath, 'utf-8');
-      files.push({ name: filename, content });
-    } catch {
-      // File doesn't exist, skip
-    }
-  }
-
-  return files;
-}
 
 /**
  * Check if running in a TTY (interactive terminal)
@@ -185,7 +154,7 @@ async function main() {
   }
 
   // Load service configuration from environment
-  const workspaceDir = process.env.VARGOS_WORKSPACE ?? path.join(os.homedir(), '.vargos', 'workspace');
+  const workspaceDir = resolveWorkspaceDir();
 
   // Initialize workspace if needed
   const workspaceExists = await isWorkspaceInitialized(workspaceDir);
@@ -195,11 +164,11 @@ async function main() {
     console.error('  ✓ Created default workspace files');
   }
 
-  const dataDir = process.env.VARGOS_MEMORY_DIR ?? path.join(os.homedir(), '.vargos');
+  const dataDir = resolveDataDir();
   const serviceConfig: ServiceConfig = {
     memory: (process.env.VARGOS_MEMORY_BACKEND as 'file' | 'qdrant' | 'postgres') ?? 'file',
     sessions: (process.env.VARGOS_SESSIONS_BACKEND as 'file' | 'postgres') ?? 'file',
-    fileMemoryDir: process.env.VARGOS_MEMORY_DIR,
+    fileMemoryDir: dataDir,
     qdrantUrl: process.env.QDRANT_URL,
     qdrantApiKey: process.env.QDRANT_API_KEY,
     postgresUrl: process.env.POSTGRES_URL,
@@ -218,7 +187,6 @@ async function main() {
   }));
 
   // Load Pi agent configuration
-  const piStatus = await isPiConfigured(workspaceDir);
   const piProviders = await listPiProviders(workspaceDir);
   const piSettings = await loadPiSettings(workspaceDir);
 
@@ -277,6 +245,32 @@ async function main() {
 
     console.error('');
     process.exit(1);
+  }
+
+  // Load and start channel adapters
+  const { loadChannelConfigs } = await import('./channels/config.js');
+  const { createAdapter } = await import('./channels/factory.js');
+  const { getChannelRegistry } = await import('./channels/registry.js');
+
+  const channelConfigs = await loadChannelConfigs();
+  const enabledChannels = channelConfigs.filter((c) => c.enabled);
+  const channelRegistry = getChannelRegistry();
+
+  if (enabledChannels.length > 0) {
+    console.error(`\n  Channels (${enabledChannels.length}):`);
+    for (const cfg of enabledChannels) {
+      try {
+        const adapter = createAdapter(cfg);
+        channelRegistry.register(adapter);
+        await adapter.initialize();
+        await adapter.start();
+        // Status is async for WhatsApp — report what we know
+        console.error(`    ${cfg.type}: started (status: ${adapter.status})`);
+      } catch (err) {
+        console.error(`    ${cfg.type}: failed - ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    console.error('');
   }
 
   // Create MCP server
@@ -346,13 +340,15 @@ async function main() {
     await startStdioServer(server);
 
     // Handle graceful shutdown for stdio
-    process.on('SIGINT', () => {
-      console.error('\n👋 Shutting down...');
+    process.on('SIGINT', async () => {
+      console.error('\n Shutting down...');
+      await channelRegistry.stopAll();
       process.exit(0);
     });
 
-    process.on('SIGTERM', () => {
-      console.error('\n👋 Shutting down...');
+    process.on('SIGTERM', async () => {
+      console.error('\n Shutting down...');
+      await channelRegistry.stopAll();
       process.exit(0);
     });
   }

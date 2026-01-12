@@ -12,16 +12,96 @@ import chalk from 'chalk';
 import readline from 'node:readline';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
-import { PiAgentRuntime, initializePiAgentRuntime } from './pi/runtime.js';
+import { PiAgentRuntime } from './pi/runtime.js';
 import { initializeServices, ServiceConfig } from './services/factory.js';
 import { toolRegistry, initializeToolRegistry } from './mcp/tools/index.js';
-import { buildSystemPrompt, resolvePromptMode } from './agent/prompt.js';
 import { interactiveConfig, printStartupBanner, checkConfig } from './config/interactive.js';
-import { initializeWorkspace, isWorkspaceInitialized } from './config/workspace.js';
-import { loadPiSettings, getPiApiKey, listPiProviders, isPiConfigured, formatPiConfigDisplay } from './config/pi-config.js';
+import { initializeWorkspace, isWorkspaceInitialized, loadContextFiles } from './config/workspace.js';
+import { loadPiSettings, getPiApiKey, listPiProviders, formatPiConfigDisplay } from './config/pi-config.js';
+import { resolveDataDir, resolveWorkspaceDir, resolveSessionFile } from './config/paths.js';
 
 const VERSION = '0.0.1';
+
+interface CliBootstrapResult {
+  workspaceDir: string;
+  workingDir: string;
+  dataDir: string;
+  contextDir: string;
+  contextFiles: Array<{ name: string; content: string }>;
+  provider: string;
+  model: string;
+  apiKey: string | undefined;
+}
+
+/**
+ * Shared bootstrap for chat and run commands
+ * Handles config check, workspace init, tool registry, services, and context loading
+ */
+async function bootstrapCli(options: {
+  workspace?: string;
+  model?: string;
+  provider?: string;
+  memory?: string;
+  sessions?: string;
+  interactive?: boolean;
+}): Promise<CliBootstrapResult> {
+  const workingDir = process.cwd();
+  const contextDir = resolveWorkspaceDir();
+  const workspaceDir = options.workspace || workingDir;
+  const dataDir = resolveDataDir();
+
+  // Check and prompt for configuration
+  const { valid: configValid } = checkConfig();
+  if (!configValid && options.interactive !== false) {
+    await interactiveConfig(contextDir);
+  }
+
+  // Set env vars for service initialization
+  if (options.memory) process.env.VARGOS_MEMORY_BACKEND = options.memory;
+  if (options.sessions) process.env.VARGOS_SESSIONS_BACKEND = options.sessions;
+  process.env.VARGOS_WORKSPACE = workspaceDir;
+
+  // Initialize context directory
+  const contextExists = await isWorkspaceInitialized(contextDir);
+  if (!contextExists) {
+    console.log(chalk.yellow('Initializing context files...'));
+    await initializeWorkspace({ workspaceDir: contextDir });
+    console.log(chalk.green('  Created default context files'));
+  }
+
+  // Load context files
+  const contextFiles = await loadContextFiles(contextDir);
+
+  // Load Pi agent configuration
+  const piSettings = await loadPiSettings(contextDir);
+  const provider = options.provider || piSettings.defaultProvider || 'openai';
+  const model = options.model || piSettings.defaultModel || 'gpt-4o-mini';
+
+  // Register tools
+  await initializeToolRegistry();
+
+  // Initialize services
+  const memoryBackend = (options.memory || 'file') as 'file' | 'qdrant' | 'postgres';
+  const sessionsBackend = (options.sessions || 'file') as 'file' | 'postgres';
+  const serviceConfig: ServiceConfig = {
+    memory: memoryBackend,
+    sessions: sessionsBackend,
+    fileMemoryDir: dataDir,
+    workspaceDir: workingDir,
+  };
+
+  try {
+    await initializeServices(serviceConfig);
+  } catch (err) {
+    console.error(chalk.red('Service initialization failed'));
+    console.error(chalk.red(`  ${err instanceof Error ? err.message : String(err)}`));
+    process.exit(1);
+  }
+
+  const apiKey = await getPiApiKey(contextDir, provider) || process.env.OPENAI_API_KEY;
+
+  return { workspaceDir, workingDir, dataDir, contextDir, contextFiles, provider, model, apiKey };
+}
 
 /**
  * Detect if a directory is a project (has project markers)
@@ -48,7 +128,7 @@ async function getDefaultWorkspace(): Promise<string> {
   if (await isProjectDir(cwd)) {
     return cwd;
   }
-  return path.join(os.homedir(), '.vargos', 'workspace');
+  return resolveWorkspaceDir();
 }
 
 const program = new Command();
@@ -69,60 +149,7 @@ program
   .option('--sessions <backend>', 'Sessions backend (file|postgres)', 'file')
   .option('--no-interactive', 'Skip interactive configuration prompts')
   .action(async (options) => {
-    // Tool working directory: current dir (for read/exec operations)
-    const workingDir = process.cwd();
-    
-    // Context files directory: always ~/.vargos/workspace (for AGENTS.md, SOUL.md, etc.)
-    const contextDir = path.join(os.homedir(), '.vargos', 'workspace');
-    
-    // For backward compatibility, --workspace flag sets both
-    const workspaceDir = options.workspace || workingDir;
-
-    // Check and prompt for configuration (interactive by default)
-    const { valid: configValid } = checkConfig();
-    if (!configValid && options.interactive !== false) {
-      await interactiveConfig(contextDir);
-    }
-
-    // Set CLI options as env vars for service initialization
-    process.env.VARGOS_MEMORY_BACKEND = options.memory;
-    process.env.VARGOS_SESSIONS_BACKEND = options.sessions;
-    process.env.VARGOS_WORKSPACE = workspaceDir;
-    
-    // Data storage always goes to ~/.vargos (like OpenClaw)
-    const dataDir = path.join(os.homedir(), '.vargos');
-
-    // Initialize context directory (for AGENTS.md, SOUL.md, etc.)
-    const contextExists = await isWorkspaceInitialized(contextDir);
-    if (!contextExists) {
-      console.log(chalk.yellow('📁 Initializing context files...'));
-      await initializeWorkspace({ workspaceDir: contextDir });
-      console.log(chalk.green('  ✓ Created default context files'));
-    }
-
-    // Load context files from contextDir (~/.vargos/workspace)
-    const contextFiles: Array<{ name: string; content: string }> = [];
-    const contextFileNames = ['AGENTS.md', 'SOUL.md', 'USER.md', 'TOOLS.md', 'MEMORY.md', 'HEARTBEAT.md', 'BOOTSTRAP.md'];
-    for (const name of contextFileNames) {
-      try {
-        const content = await fs.readFile(path.join(contextDir, name), 'utf-8');
-        contextFiles.push({ name, content });
-      } catch {
-        // File doesn't exist
-      }
-    }
-
-    // Load Pi agent configuration from contextDir
-    const piSettings = await loadPiSettings(contextDir);
-    const piProviders = await listPiProviders(contextDir);
-    const piStatus = await isPiConfigured(contextDir);
-
-    // Use CLI options or fall back to Pi config
-    const provider = options.provider || piSettings.defaultProvider || 'openai';
-    const model = options.model || piSettings.defaultModel || 'gpt-4o-mini';
-
-    // Register tools (dynamic imports to avoid circular deps)
-    await initializeToolRegistry();
+    const boot = await bootstrapCli(options);
 
     // Get tools with descriptions
     const tools = toolRegistry.list().map(t => ({
@@ -130,20 +157,22 @@ program
       description: t.description
     }));
 
+    const piSettings = await loadPiSettings(boot.contextDir);
+    const piProviders = await listPiProviders(boot.contextDir);
+
     // Print startup banner
     printStartupBanner({
       mode: 'cli',
       version: VERSION,
-      workspace: workingDir,
-      contextDir,
-      dataDir,
+      workspace: boot.workingDir,
+      contextDir: boot.contextDir,
+      dataDir: boot.dataDir,
       memoryBackend: options.memory,
       sessionsBackend: options.sessions,
-      contextFiles: contextFiles.map(f => ({ name: f.name, path: path.join(contextDir, f.name) })),
+      contextFiles: boot.contextFiles.map(f => ({ name: f.name, path: path.join(boot.contextDir, f.name) })),
       tools,
     });
 
-    // Print Pi agent configuration
     console.error('');
     console.error(formatPiConfigDisplay({
       provider: piSettings.defaultProvider,
@@ -152,41 +181,18 @@ program
     }));
     console.error('');
 
-    // Check if we have API key for the selected provider
-    const apiKey = await getPiApiKey(contextDir, provider);
-    if (!apiKey) {
-      console.error(chalk.yellow(`⚠️  No API key found for ${provider}`));
-      console.error(chalk.gray(`   Set ${provider.toUpperCase()}_API_KEY or run 'vargos config'\n`));
+    if (!boot.apiKey) {
+      console.error(chalk.yellow(`No API key found for ${boot.provider}`));
+      console.error(chalk.gray(`   Set ${boot.provider.toUpperCase()}_API_KEY or run 'vargos config'\n`));
     }
 
-    // Initialize services
-    // Data (sessions, memory.db) stored in ~/.vargos (like OpenClaw)
-    // Context files (AGENTS.md, etc.) in contextDir (~/.vargos/workspace)
-    // Tool operations happen in workingDir (current directory)
-    const serviceConfig: ServiceConfig = {
-      memory: options.memory as 'file' | 'qdrant' | 'postgres',
-      sessions: options.sessions as 'file' | 'postgres',
-      fileMemoryDir: dataDir,
-      workspaceDir: workingDir, // Tools operate in current directory
-    };
+    console.error(chalk.green('  Services initialized'));
 
-    try {
-      await initializeServices(serviceConfig);
-      console.error(chalk.green('  ✓ Services initialized'));
-    } catch (err) {
-      console.error(chalk.red('  ✗ Service initialization failed'));
-      console.error(chalk.red(`   ${err instanceof Error ? err.message : String(err)}`));
-      process.exit(1);
-    }
-
-    // Create session (persistent key like OpenClaw)
+    // Create session
     const sessionKey = options.session ? `cli:${options.session}` : 'cli:main';
-    
-    // Create the session in Vargos session service
     const { getSessionService } = await import('./services/factory.js');
     const sessions = getSessionService();
-    
-    // Check if session exists, create if not
+
     let session = await sessions.get(sessionKey);
     if (!session) {
       session = await sessions.create({
@@ -194,15 +200,15 @@ program
         kind: 'main',
         label: `CLI Chat (${options.session || 'main'})`,
         metadata: {
-          model,
-          provider,
-          workspaceDir,
+          model: boot.model,
+          provider: boot.provider,
+          workspaceDir: boot.workspaceDir,
           createdAt: new Date().toISOString(),
         },
       });
-      console.error(chalk.dim(`  → New session: ${sessionKey}`));
+      console.error(chalk.dim(`  New session: ${sessionKey}`));
     } else {
-      console.error(chalk.dim(`  → Resuming session: ${sessionKey}`));
+      console.error(chalk.dim(`  Resuming session: ${sessionKey}`));
     }
 
     // Create readline interface
@@ -217,8 +223,7 @@ program
     const runtime = new PiAgentRuntime();
     let messageCount = 0;
 
-    // Get session file path for Pi SDK
-    const sessionFile = path.join(dataDir, 'sessions', `${sessionKey.replace(/:/g, '-')}.jsonl`);
+    const sessionFile = resolveSessionFile(sessionKey);
     await fs.mkdir(path.dirname(sessionFile), { recursive: true });
 
     const askQuestion = () => {
@@ -229,7 +234,7 @@ program
       const input = line.trim();
 
       if (input.toLowerCase() === 'exit' || input.toLowerCase() === 'quit') {
-        console.log(chalk.blue('\nGoodbye! 👋'));
+        console.log(chalk.blue('\nGoodbye!'));
         rl.close();
         return;
       }
@@ -242,7 +247,6 @@ program
       messageCount++;
       console.log(chalk.gray('\nThinking...'));
 
-      // Add user message to session before running agent
       await sessions.addMessage({
         sessionKey,
         content: input,
@@ -254,21 +258,21 @@ program
         const result = await runtime.run({
           sessionKey,
           sessionFile,
-          workspaceDir: workingDir, // Tools operate in current directory
-          model,
-          provider,
-          apiKey: await getPiApiKey(contextDir, provider) || process.env.OPENAI_API_KEY,
-          contextFiles,
+          workspaceDir: boot.workingDir,
+          model: boot.model,
+          provider: boot.provider,
+          apiKey: boot.apiKey,
+          contextFiles: boot.contextFiles,
         });
 
         if (result.success) {
-          console.log(chalk.cyan('\n🤖 Agent:'));
+          console.log(chalk.cyan('\nAgent:'));
           console.log(result.response || '(no response)');
         } else {
-          console.log(chalk.red(`\n❌ Error: ${result.error}`));
+          console.log(chalk.red(`\nError: ${result.error}`));
         }
       } catch (err) {
-        console.log(chalk.red(`\n❌ Error: ${err instanceof Error ? err.message : String(err)}`));
+        console.log(chalk.red(`\nError: ${err instanceof Error ? err.message : String(err)}`));
       }
 
       console.log();
@@ -286,75 +290,25 @@ program
   .option('-p, --provider <provider>', 'Provider to use (overrides saved config)')
   .option('--no-interactive', 'Skip interactive configuration prompts')
   .action(async (task, options) => {
-    // Determine workspace (auto-detect project or use default)
-    const workspaceDir = options.workspace || await getDefaultWorkspace();
+    const boot = await bootstrapCli(options);
 
-    // Check and prompt for configuration
-    const { valid: configValid } = checkConfig();
-    if (!configValid && options.interactive !== false) {
-      await interactiveConfig(workspaceDir);
-    }
-
-    process.env.VARGOS_WORKSPACE = workspaceDir;
-
-    // Initialize workspace if needed
-    const workspaceExists = await isWorkspaceInitialized(workspaceDir);
-    if (!workspaceExists) {
-      console.log(chalk.yellow('📁 Initializing workspace...'));
-      await initializeWorkspace({ workspaceDir });
-      console.log(chalk.green('  ✓ Created default workspace files'));
-    }
-
-    // Load Pi agent configuration
-    const piSettings = await loadPiSettings(workspaceDir);
-    const piProviders = await listPiProviders(workspaceDir);
-
-    // Use CLI options or fall back to Pi config
-    const provider = options.provider || piSettings.defaultProvider || 'openai';
-    const model = options.model || piSettings.defaultModel || 'gpt-4o-mini';
-
-    console.log(chalk.blue.bold('\n🤖 Vargos CLI'));
+    console.log(chalk.blue.bold('\nVargos CLI'));
     console.log(chalk.gray(`Task: ${task}`));
-    console.log(chalk.gray(`Workspace: ${workspaceDir}`));
-    console.log(chalk.gray(`Model: ${provider}/${model}`));
+    console.log(chalk.gray(`Workspace: ${boot.workingDir}`));
+    console.log(chalk.gray(`Model: ${boot.provider}/${boot.model}`));
     console.log();
 
-    // Data storage always goes to ~/.vargos (like OpenClaw)
-    const runDataDir = path.join(os.homedir(), '.vargos');
-    
-    // Initialize services
-    const serviceConfig: ServiceConfig = {
-      memory: 'file',
-      sessions: 'file',
-      fileMemoryDir: runDataDir,
-      workspaceDir, // For memory indexing of .md files
-    };
-
-    try {
-      await initializeServices(serviceConfig);
-      console.log(chalk.green('✓ Services initialized'));
-    } catch (err) {
-      console.error(chalk.red('✗ Service initialization failed'));
-      console.error(chalk.red(`  ${err instanceof Error ? err.message : String(err)}`));
-      process.exit(1);
-    }
-
     const sessionKey = `cli-run:${Date.now()}`;
-    const sessionFile = path.join(workspaceDir, 'sessions', `${sessionKey}.jsonl`);
-    
+    const sessionFile = resolveSessionFile(sessionKey);
     await fs.mkdir(path.dirname(sessionFile), { recursive: true });
 
-    // Create session and add task
     const { getSessionService } = await import('./services/factory.js');
     const sessions = getSessionService();
     await sessions.create({
       sessionKey,
       kind: 'main',
       label: `Task: ${task.slice(0, 30)}...`,
-      metadata: {
-        model,
-        provider,
-      },
+      metadata: { model: boot.model, provider: boot.provider },
     });
 
     await sessions.addMessage({
@@ -365,22 +319,18 @@ program
     });
 
     const runtime = new PiAgentRuntime();
-    
-    // Get session file path for Pi SDK
-    const runSessionFile = path.join(runDataDir, 'sessions', `${sessionKey.replace(/:/g, '-')}.jsonl`);
-    await fs.mkdir(path.dirname(runSessionFile), { recursive: true });
 
     console.log(chalk.gray('Running task...\n'));
 
     try {
       const result = await runtime.run({
         sessionKey,
-        sessionFile: runSessionFile,
-        workspaceDir,
-        model,
-        provider,
-        apiKey: await getPiApiKey(workspaceDir, provider) || process.env.OPENAI_API_KEY,
-        contextFiles: [],
+        sessionFile,
+        workspaceDir: boot.workingDir,
+        model: boot.model,
+        provider: boot.provider,
+        apiKey: boot.apiKey,
+        contextFiles: boot.contextFiles,
       });
 
       if (result.success) {
@@ -417,8 +367,8 @@ function prompt(question: string): Promise<string> {
  * Interactive LLM configuration
  */
 async function interactiveLLMConfig(workspaceDir: string): Promise<void> {
-  console.log(chalk.blue('\n🔧  LLM Configuration'));
-  console.log(chalk.gray('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'));
+  console.log(chalk.blue('\n LLM Configuration'));
+  console.log(chalk.gray(''));
 
   const settings = await loadPiSettings(workspaceDir);
 
@@ -501,7 +451,7 @@ async function interactiveLLMConfig(workspaceDir: string): Promise<void> {
     await savePiAuth(workspaceDir, auth);
   }
 
-  console.log(chalk.green('\n✅  Configuration saved!'));
+  console.log(chalk.green('\nConfiguration saved!'));
   console.log(chalk.gray(`   Provider: ${provider}`));
   console.log(chalk.gray(`   Model: ${model}`));
   if (baseUrl) {
@@ -539,8 +489,8 @@ program
     const settings = await loadPiSettings(workspaceDir);
     const providers = await listPiProviders(workspaceDir);
 
-    console.log(chalk.blue('\n🔧  Current LLM Configuration'));
-    console.log(chalk.gray('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'));
+    console.log(chalk.blue('\nCurrent LLM Configuration'));
+    console.log(chalk.gray(''));
     console.log('');
     console.log(formatPiConfigDisplay({
       provider: settings.defaultProvider,
@@ -555,7 +505,7 @@ program
   .description('Restart the Vargos server (requires vargos to be running)')
   .action(async () => {
     // Find and kill existing vargos process, then restart
-    console.log(chalk.yellow('🔄  Restarting Vargos...'));
+    console.log(chalk.yellow('Restarting Vargos...'));
 
     const { exec } = await import('node:child_process');
     const { promisify } = await import('node:util');
@@ -597,7 +547,7 @@ program
       });
 
       child.unref();
-      console.log(chalk.green('✅  Vargos restarted (PID: ' + child.pid + ')'));
+      console.log(chalk.green('Vargos restarted (PID: ' + child.pid + ')'));
       console.log(chalk.gray('   Logs: pnpm dev (or check your terminal)'));
       process.exit(0);
     } catch (err) {
@@ -612,39 +562,47 @@ program
   .option('-w, --workspace <dir>', 'Workspace directory (default: auto-detect project or ~/.vargos/workspace)')
   .action(async (options) => {
     const workspaceDir = options.workspace || await getDefaultWorkspace();
-    
-    console.log(chalk.blue('\n📅  Starting Cron Scheduler'));
-    console.log(chalk.gray('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'));
+
+    console.log(chalk.blue('\nStarting Cron Scheduler'));
+    console.log(chalk.gray(''));
     console.log();
 
     const { initializeCronScheduler, createTwiceDailyVargosAnalysis } = await import('./cron/index.js');
-    
+
     const scheduler = initializeCronScheduler(workspaceDir);
     createTwiceDailyVargosAnalysis(scheduler);
-    
-    console.log(chalk.green('✅  Scheduler started'));
+
+    console.log(chalk.green('Scheduler started'));
     console.log();
-    
+
     const tasks = scheduler.listTasks();
     console.log(chalk.yellow(`Scheduled Tasks (${tasks.length}):`));
     for (const task of tasks) {
-      console.log(`  • ${task.name}`);
+      console.log(`  ${task.name}`);
       console.log(`    Schedule: ${task.schedule}`);
-      console.log(`    Status: ${task.enabled ? '✅ Enabled' : '⏸️  Disabled'}`);
+      console.log(`    Status: ${task.enabled ? 'Enabled' : 'Disabled'}`);
       console.log();
     }
-    
+
     console.log(chalk.gray('Times are in UTC:'));
     console.log(chalk.gray('  23:00 UTC = 09:00 AEST (morning)'));
     console.log(chalk.gray('  11:00 UTC = 21:00 AEST (evening)'));
     console.log();
     console.log(chalk.yellow('Press Ctrl+C to stop'));
     console.log();
-    
+
     scheduler.startAll();
-    
+
     // Keep process alive
     process.stdin.resume();
+  });
+
+program
+  .command('onboard')
+  .description('Interactive channel setup (WhatsApp, Telegram)')
+  .action(async () => {
+    const { runOnboarding } = await import('./channels/onboard.js');
+    await runOnboarding();
   });
 
 program

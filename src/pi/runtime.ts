@@ -16,16 +16,35 @@ import {
   type AgentSessionEvent,
   type CompactionResult,
 } from '@mariozechner/pi-coding-agent';
-import { getVargosToolNames } from './tools.js';
-import { createVargosCustomTools } from './extension.js';
+import { getVargosToolNames, createVargosCustomTools } from './extension.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
 import { buildSystemPrompt, resolvePromptMode } from '../agent/prompt.js';
 import { getSessionService } from '../services/factory.js';
 import { getAgentLifecycle, type AgentStreamEvent } from '../agent/lifecycle.js';
 import { getSessionMessageQueue } from '../agent/queue.js';
 import { getPiConfigPaths } from '../config/pi-config.js';
+import { loadContextFiles } from '../config/workspace.js';
+
+/**
+ * Extract plain text from Pi SDK content (string, array of content blocks, or object)
+ */
+function extractTextContent(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((block: { type?: string; text?: string }) =>
+        block?.type === 'text' && block?.text ? block.text : '')
+      .filter(Boolean)
+      .join('\n');
+  }
+  // Fallback: try to get .text or stringify
+  if (content && typeof content === 'object') {
+    const obj = content as Record<string, unknown>;
+    if (typeof obj.text === 'string') return obj.text;
+  }
+  return String(content);
+}
 
 export interface PiAgentConfig {
   sessionKey: string;
@@ -106,6 +125,11 @@ export class PiAgentRuntime {
   private async executeRun(config: PiAgentConfig, runId: string): Promise<PiAgentRunResult> {
     const startedAt = Date.now();
 
+    // Auto-load context files from workspace when not provided
+    const contextFiles = config.contextFiles?.length
+      ? config.contextFiles
+      : await loadContextFiles(config.workspaceDir);
+
     try {
       // Start lifecycle
       this.lifecycle.startRun(runId, config.sessionKey);
@@ -124,7 +148,7 @@ export class PiAgentRuntime {
         mode: promptMode,
         workspaceDir: config.workspaceDir,
         toolNames: vargosToolNames,
-        contextFiles: config.contextFiles,
+        contextFiles,
         extraSystemPrompt: config.extraSystemPrompt,
         userTimezone: config.userTimezone,
         repoRoot: config.workspaceDir,
@@ -159,7 +183,7 @@ export class PiAgentRuntime {
 
       // Create Vargos custom tools for Pi SDK
       // These wrap Vargos MCP tools into Pi SDK's ToolDefinition format
-      const vargosCustomTools = createVargosCustomTools(config.workspaceDir);
+      const vargosCustomTools = createVargosCustomTools(config.workspaceDir, config.sessionKey);
 
       // Create agent session with Vargos custom tools
       // We pass empty built-in tools and all Vargos tools as customTools
@@ -178,9 +202,10 @@ export class PiAgentRuntime {
       // Subscribe to Pi session events
       this.subscribeToSessionEvents(session, config.sessionKey, runId);
 
-      // Get task from session messages
+      // Get task from session messages (last task message wins for channel conversations)
       const messages = await this.loadSessionMessages(config.sessionKey);
-      const taskMessage = messages.find((m) => m.metadata?.type === 'task');
+      const taskMessages = messages.filter((m) => m.metadata?.type === 'task');
+      const taskMessage = taskMessages[taskMessages.length - 1];
       const task = taskMessage?.content ?? 'Complete your assigned task.';
 
       // Prepend system context
@@ -198,9 +223,9 @@ export class PiAgentRuntime {
       for (let i = sessionEntries.length - 1; i >= 0; i--) {
         const entry = sessionEntries[i];
         if (entry.type === 'message') {
-          const msg = (entry as { message?: { role?: string; content?: string } }).message;
+          const msg = (entry as { message?: { role?: string; content?: unknown } }).message;
           if (msg?.role === 'assistant' && msg?.content) {
-            response = msg.content;
+            response = extractTextContent(msg.content);
             break;
           }
         }
