@@ -6,6 +6,7 @@
 import readline from 'node:readline';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import {
   getPiConfigPaths,
   loadPiAuth,
@@ -352,7 +353,6 @@ async function saveEnvFile(updates: Record<string, string>, targetDir: string = 
   await fs.writeFile(envPath, lines.join('\n'), 'utf-8');
 }
 
-/** Expected workspace context files (shown in banner with loaded/missing) */
 const EXPECTED_CONTEXT_FILES = [
   'AGENTS.md',
   'SOUL.md',
@@ -362,6 +362,12 @@ const EXPECTED_CONTEXT_FILES = [
   'HEARTBEAT.md',
   'BOOTSTRAP.md',
 ];
+
+/** Replace homedir prefix with ~ for display */
+function shortenHome(p: string): string {
+  const home = os.homedir();
+  return p.startsWith(home) ? '~' + p.slice(home.length) : p;
+}
 
 /**
  * Print startup banner with configuration status
@@ -381,121 +387,54 @@ export function printStartupBanner(options: {
   host?: string;
   endpoint?: string;
 }): void {
-  const lines: string[] = [];
+  const log = (s: string) => console.error(s);
 
-  // Header
-  lines.push(
-    '',
-    '╔══════════════════════════════════════════════════════════════╗',
-    options.mode === 'mcp'
-      ? '║           🔧  VARGOS MCP SERVER                              ║'
-      : '║           🤖  VARGOS CLI                                     ║',
-    '╚══════════════════════════════════════════════════════════════╝',
-    '',
-    `  Version: ${options.version}`,
-    `  Mode:    ${options.mode === 'mcp' ? 'MCP Server' : 'Interactive CLI'}`,
-    ''
-  );
+  log('');
+  log(`  Vargos v${options.version}`);
+  log('');
 
-  const loadedPaths = new Map(options.contextFiles.map((f) => [f.name, f.path]));
-  const dataDirDisplay =
-    options.dataDir != null
-      ? options.dataDir.length > 49
-        ? '...' + options.dataDir.slice(-46)
-        : options.dataDir
-      : '(default)';
-  
-  const contextDirDisplay = options.contextDir
-    ? options.contextDir.length > 49
-      ? '...' + options.contextDir.slice(-46)
-      : options.contextDir
-    : '(same as workspace)';
-
-  // Configuration section
-  lines.push(
-    '┌─ 📁  CONFIGURATION ──────────────────────────────────────────┐',
-    `│  Working:   ${options.workspace.padEnd(49)}│`,
-    `│  Context:   ${contextDirDisplay.padEnd(49)}│`,
-    `│  Data dir:  ${dataDirDisplay.padEnd(49)}│`,
-    `│  Memory:    ${options.memoryBackend.padEnd(49)}│`,
-    `│  Sessions:  ${options.sessionsBackend.padEnd(49)}│`,
-  );
-
+  // Config
+  log('  Config');
+  log(`    Data      ${shortenHome(options.dataDir ?? '~/.vargos')}`);
+  log(`    Workspace ${shortenHome(options.workspace)}`);
+  log(`    Memory    ${options.memoryBackend}`);
+  log(`    Sessions  ${options.sessionsBackend}`);
   if (options.transport) {
-    const transportInfo = options.transport === 'stdio'
-      ? 'stdio (stdin/stdout)'
-      : 'HTTP';
-    lines.push(`│  Transport: ${transportInfo.padEnd(49)}│`);
-
-    if (options.transport === 'stdio') {
-      lines.push(`│  ${' '.repeat(62)}│`);
-      lines.push(`│  ℹ️  MCP server communicates via stdin/stdout                │`);
-      lines.push(`│     No HTTP host/port. Use with Claude Desktop, Cursor, etc. │`);
-    } else if (options.transport === 'http' && options.host && options.port) {
-      const endpoint = options.endpoint ?? '/mcp';
-      lines.push(`│  ${' '.repeat(62)}│`);
-      lines.push(`│  🌐  Listening: http://${`${options.host}:${options.port}${endpoint}`.padEnd(34)}│`);
-      lines.push(`│  ${' '.repeat(62)}│`);
-      lines.push(`│  ℹ️  HTTP transport enabled. Connect clients to the URL above │`);
-      lines.push(`│     CORS enabled for all origins.                            │`);
-    }
+    log(`    Transport ${options.transport}`);
   }
+  log('');
 
-  lines.push('└──────────────────────────────────────────────────────────────┘', '');
+  // Context files — summary line + names only
+  const loadedNames = options.contextFiles.map((f) => f.name);
+  const totalExpected = EXPECTED_CONTEXT_FILES.length;
+  log(`  Context (${loadedNames.length} of ${totalExpected} loaded)`);
+  log(`    ${loadedNames.join('  ')}`);
+  log('');
 
-  // Context Files section (expected files: show loaded path or (missing))
-  lines.push('┌─ 📝  CONTEXT FILES ───────────────────────────────────────────┐');
-  for (const name of EXPECTED_CONTEXT_FILES) {
-    const pathOrMissing = loadedPaths.get(name);
-    const status = pathOrMissing ? '✓' : ' ';
-    const displayPath =
-      pathOrMissing != null
-        ? pathOrMissing.length > 45
-          ? '...' + pathOrMissing.slice(-42)
-          : pathOrMissing
-        : '(missing)';
-    lines.push(`│  ${status} ${name.padEnd(14)} ${displayPath.padEnd(35)}│`);
-  }
-  lines.push('└──────────────────────────────────────────────────────────────┘', '');
-
-  // Tools section
+  // Tools — grouped by category, no truncation
   if (options.tools.length > 0) {
-    lines.push('┌─ 🛠️   AVAILABLE TOOLS ───────────────────────────────────────┐');
-    
-    // Group tools by category
+    log(`  Tools (${options.tools.length})`);
+
     const categories: Record<string, string[]> = {
-      'File': [],
-      'Shell': [],
-      'Web': [],
-      'Memory': [],
-      'Session': [],
-      'Other': [],
+      'File': [], 'Shell': [], 'Web': [],
+      'Memory': [], 'Session': [], 'Cron': [],
     };
-    
+
     for (const tool of options.tools) {
       if (tool.name.match(/read|write|edit/)) categories['File'].push(tool.name);
-      else if (tool.name.match(/exec|process|bash/)) categories['Shell'].push(tool.name);
+      else if (tool.name.match(/exec|process/)) categories['Shell'].push(tool.name);
       else if (tool.name.match(/web|browser/)) categories['Web'].push(tool.name);
       else if (tool.name.match(/memory/)) categories['Memory'].push(tool.name);
       else if (tool.name.match(/session/)) categories['Session'].push(tool.name);
-      else categories['Other'].push(tool.name);
+      else if (tool.name.match(/cron/)) categories['Cron'].push(tool.name);
+      else categories['Cron'].push(tool.name); // fallback
     }
-    
+
     for (const [category, tools] of Object.entries(categories)) {
       if (tools.length > 0) {
-        lines.push(`│  ${category.padEnd(10)} ${tools.join(', ').slice(0, 50).padEnd(50)}│`);
+        log(`    ${category.padEnd(10)}${tools.join(', ')}`);
       }
     }
-    
-    lines.push(`│  ${`Total: ${options.tools.length} tools`.padEnd(62)}│`);
-    lines.push('└──────────────────────────────────────────────────────────────┘', '');
+    log('');
   }
-
-  // Ready status
-  lines.push(
-    '  ✅  Ready and waiting for connections...',
-    ''
-  );
-
-  console.error(lines.join('\n'));
 }

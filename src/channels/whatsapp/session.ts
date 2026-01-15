@@ -12,6 +12,7 @@ import makeWASocket, {
   type ConnectionState,
 } from '@whiskeysockets/baileys';
 import qrcode from 'qrcode-terminal';
+import pino from 'pino';
 import { promises as fs } from 'node:fs';
 
 export interface WhatsAppSessionEvents {
@@ -39,11 +40,14 @@ export async function createWhatsAppSocket(
   const { state, saveCreds } = await useMultiFileAuthState(authDir);
   const { version } = await fetchLatestBaileysVersion();
 
+  const logger = pino({ level: 'silent' }) as any;
+
   const sock = makeWASocket({
     version,
+    logger,
     auth: {
       creds: state.creds,
-      keys: makeCacheableSignalKeyStore(state.keys, undefined as any),
+      keys: makeCacheableSignalKeyStore(state.keys, logger),
     },
     printQRInTerminal: false,
     generateHighQualityLinkPreview: false,

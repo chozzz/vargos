@@ -60,3 +60,4 @@ MEMORY.md
 HEARTBEAT.md
 BOOTSTRAP.md
 memory/
+memory.db*
