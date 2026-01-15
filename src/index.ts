@@ -24,7 +24,6 @@ import { initializePiAgentRuntime } from './pi/runtime.js';
 import { isSubagentSessionKey, isToolAllowedForSubagent, formatErrorResult } from './utils/errors.js';
 import { interactiveConfig, printStartupBanner, checkConfig } from './config/interactive.js';
 import { initializeWorkspace, isWorkspaceInitialized, loadContextFiles } from './config/workspace.js';
-import { formatPiConfigDisplay, listPiProviders, loadPiSettings } from './config/pi-config.js';
 import { resolveDataDir, resolveWorkspaceDir } from './config/paths.js';
 
 const VERSION = '0.0.1';
@@ -59,8 +58,6 @@ function getServerConfig(): {
 async function startStdioServer(server: Server): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error('📡 MCP server connected (stdio)');
-  console.error('');
 }
 
 /**
@@ -109,8 +106,6 @@ async function startHttpServer(
 
   return new Promise((resolve) => {
     httpServer.listen(config.port, config.host, () => {
-      console.error(`📡 MCP server listening on http://${config.host}:${config.port}${config.endpoint}`);
-      console.error('');
       resolve();
     });
 
@@ -186,10 +181,6 @@ async function main() {
     path: path.join(workspaceDir, f.name)
   }));
 
-  // Load Pi agent configuration
-  const piProviders = await listPiProviders(workspaceDir);
-  const piSettings = await loadPiSettings(workspaceDir);
-
   // Get tools with descriptions
   const tools = toolRegistry.list().map(t => ({
     name: t.name,
@@ -212,23 +203,15 @@ async function main() {
     endpoint: serverConfig.endpoint,
   });
 
-  // Print Pi agent configuration
-  console.error(formatPiConfigDisplay({
-    provider: piSettings.defaultProvider,
-    model: piSettings.defaultModel,
-    apiKeys: piProviders,
-  }));
-  console.error('');
-
   // Initialize services
-  console.error('🔌 Initializing services...');
+  console.error('  Services');
 
   try {
     await initializeServices(serviceConfig);
-    console.error('  ✓ MemoryContext initialized');
+    console.error('    Memory     ok');
 
     initializePiAgentRuntime();
-    console.error('  ✓ VargosAgentRuntime initialized');
+    console.error('    Runtime    ok');
   } catch (err) {
     console.error('');
     console.error('❌ Service initialization failed:');
@@ -257,21 +240,20 @@ async function main() {
   const channelRegistry = getChannelRegistry();
 
   if (enabledChannels.length > 0) {
-    console.error(`\n  Channels (${enabledChannels.length}):`);
+    console.error('  Channels');
     for (const cfg of enabledChannels) {
       try {
         const adapter = createAdapter(cfg);
         channelRegistry.register(adapter);
         await adapter.initialize();
         await adapter.start();
-        // Status is async for WhatsApp — report what we know
-        console.error(`    ${cfg.type}: started (status: ${adapter.status})`);
+        console.error(`    ${cfg.type.padEnd(10)}${adapter.status}`);
       } catch (err) {
-        console.error(`    ${cfg.type}: failed - ${err instanceof Error ? err.message : String(err)}`);
+        console.error(`    ${cfg.type.padEnd(10)}failed (${err instanceof Error ? err.message : String(err)})`);
       }
     }
-    console.error('');
   }
+  console.error('');
 
   // Create MCP server
   const server = new Server(
@@ -336,8 +318,12 @@ async function main() {
   // Start server with appropriate transport
   if (serverConfig.transport === 'http') {
     await startHttpServer(server, serverConfig);
+    console.error(`  Listening on http://${serverConfig.host}:${serverConfig.port}${serverConfig.endpoint}`);
+    console.error('');
   } else {
     await startStdioServer(server);
+    console.error('  Listening on stdio');
+    console.error('');
 
     // Handle graceful shutdown for stdio
     process.on('SIGINT', async () => {
