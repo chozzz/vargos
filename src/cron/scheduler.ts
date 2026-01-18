@@ -6,8 +6,8 @@
 import { CronJob } from 'cron';
 import { getSessionService } from '../services/factory.js';
 import { getPiAgentRuntime } from '../pi/runtime.js';
-import path from 'node:path';
-import os from 'node:os';
+import { resolveWorkspaceDir, resolveSessionFile } from '../config/paths.js';
+import { loadPiSettings, getPiApiKey } from '../config/pi-config.js';
 
 export interface CronTask {
   id: string;
@@ -27,7 +27,7 @@ export class CronScheduler {
   private jobs: Map<string, CronJobInstance> = new Map();
   private workspaceDir: string;
 
-  constructor(workspaceDir: string = path.join(os.homedir(), '.vargos', 'workspace')) {
+  constructor(workspaceDir: string = resolveWorkspaceDir()) {
     this.workspaceDir = workspaceDir;
   }
 
@@ -94,12 +94,11 @@ export class CronScheduler {
    * Execute a task by spawning subagents
    */
   private async executeTask(task: CronTask): Promise<void> {
-    console.log(`[Cron] Executing task: ${task.name}`);
+    console.error(`[Cron] Executing task: ${task.name}`);
 
     const sessions = getSessionService();
     const sessionKey = `cron:${task.id}:${Date.now()}`;
 
-    // Create parent session for this cron run
     await sessions.create({
       sessionKey,
       kind: 'main',
@@ -110,7 +109,6 @@ export class CronScheduler {
       },
     });
 
-    // Add task description
     await sessions.addMessage({
       sessionKey,
       content: task.task,
@@ -118,21 +116,25 @@ export class CronScheduler {
       metadata: { type: 'cron_task' },
     });
 
-    // Spawn subagent to handle the task
     const runtime = getPiAgentRuntime();
-    
-    // Get session file path for Pi SDK
-    const dataDir = path.join(os.homedir(), '.vargos');
-    const sessionFile = path.join(dataDir, 'sessions', `${sessionKey.replace(/:/g, '-')}.jsonl`);
+    const sessionFile = resolveSessionFile(sessionKey);
+
+    // Load Pi config for model/provider/apiKey
+    const settings = await loadPiSettings(this.workspaceDir);
+    const provider = settings.defaultProvider;
+    const model = settings.defaultModel;
+    const apiKey = provider ? await getPiApiKey(this.workspaceDir, provider) : undefined;
 
     runtime.run({
       sessionKey,
       sessionFile,
       workspaceDir: this.workspaceDir,
-      contextFiles: [],
+      model,
+      provider,
+      apiKey,
     }).then(result => {
       if (result.success) {
-        console.log(`[Cron] Task ${task.name} completed successfully`);
+        console.error(`[Cron] Task ${task.name} completed`);
       } else {
         console.error(`[Cron] Task ${task.name} failed:`, result.error);
       }

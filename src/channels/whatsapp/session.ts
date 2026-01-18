@@ -65,8 +65,14 @@ export async function createWhatsAppSocket(
     if (connection === 'close') {
       const err = lastDisconnect?.error as { output?: { statusCode?: number } } | undefined;
       const statusCode = err?.output?.statusCode;
-      const loggedOut = statusCode === DisconnectReason.loggedOut;
-      events.onDisconnected(loggedOut ? 'logged_out' : `closed:${statusCode}`);
+
+      if (statusCode === DisconnectReason.loggedOut) {
+        events.onDisconnected('logged_out');
+      } else if (statusCode === DisconnectReason.restartRequired) {
+        events.onDisconnected('restart_required');
+      } else {
+        events.onDisconnected(`closed:${statusCode}`);
+      }
     }
 
     if (connection === 'open') {

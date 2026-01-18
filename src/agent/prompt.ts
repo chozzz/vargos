@@ -24,7 +24,6 @@ const BOOTSTRAP_FILES = [
   'AGENTS.md',
   'SOUL.md',
   'TOOLS.md',
-  'IDENTITY.md',
   'USER.md',
   'HEARTBEAT.md',
   'MEMORY.md',     // Project context and curated memories

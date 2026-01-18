@@ -603,6 +603,7 @@ program
   .action(async () => {
     const { runOnboarding } = await import('./channels/onboard.js');
     await runOnboarding();
+    process.exit(0);
   });
 
 program

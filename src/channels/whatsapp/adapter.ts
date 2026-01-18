@@ -58,9 +58,12 @@ export class WhatsAppAdapter implements ChannelAdapter {
         onDisconnected: (reason) => {
           console.error(`[WhatsApp] Disconnected: ${reason}`);
           this.status = 'disconnected';
-          if (reason !== 'logged_out') {
-            this.scheduleReconnect();
+          if (reason === 'logged_out') return;
+          // restart_required (515) — reconnect immediately, no backoff
+          if (reason === 'restart_required') {
+            this.reconnectAttempt = 0;
           }
+          this.scheduleReconnect();
         },
         onMessage: (msg) => this.handleInbound(msg),
       });

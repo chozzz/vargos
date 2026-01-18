@@ -20,7 +20,11 @@ pnpm install
 pnpm cli chat
 
 # MCP server (stdio, for Claude Desktop etc.)
+# First run prompts for identity + channel setup
 pnpm cli server
+
+# Set up WhatsApp/Telegram channels
+pnpm cli onboard
 
 # One-shot task
 pnpm cli run "Analyze this codebase"
@@ -83,9 +87,10 @@ For Qdrant + PostgreSQL, see `.env.example` for all options.
 vargos/
 ├── src/
 │   ├── agent/              # Agent lifecycle, prompt, queue
-│   ├── config/             # Paths, workspace, Pi config
+│   ├── channels/           # WhatsApp + Telegram adapters
+│   ├── config/             # Paths, workspace, identity, Pi config
 │   ├── core/               # Interfaces (services, tools)
-│   ├── cron/               # Scheduler + task definitions
+│   ├── cron/               # Scheduler, heartbeat runner, task definitions
 │   ├── gateway/            # Message gateway (transports, plugins)
 │   ├── lib/                # Shared utilities (mime, path)
 │   ├── mcp/tools/          # 15 MCP tool implementations
@@ -107,6 +112,8 @@ vargos/
 ~/.vargos/
 ├── workspace/          # Context files (AGENTS.md, SOUL.md, etc.)
 ├── agent/              # Pi SDK configuration
+├── channels.json       # Channel adapter configs
+├── channels/           # Channel auth state (WhatsApp etc.)
 ├── sessions/           # Session JSONL transcripts
 └── memory.db           # SQLite embeddings cache
 ```

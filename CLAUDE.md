@@ -33,6 +33,7 @@ vargos/
 │   │
 │   ├── config/             # Configuration management
 │   │   ├── paths.ts        # Centralized path resolution (data dir, workspace, sessions)
+│   │   ├── identity.ts     # First-run identity setup (USER.md/SOUL.md prompts)
 │   │   ├── interactive.ts  # Interactive config prompts
 │   │   ├── workspace.ts    # Workspace initialization
 │   │   └── pi-config.ts    # Pi SDK settings
@@ -45,7 +46,8 @@ vargos/
 │   │       └── base.ts     # BaseTool class
 │   │
 │   ├── cron/               # Scheduled task runner
-│   │   ├── scheduler.ts    # Cron scheduler
+│   │   ├── scheduler.ts    # Cron scheduler (auto-starts with server)
+│   │   ├── heartbeat.ts    # Periodic HEARTBEAT.md runner
 │   │   └── tasks/          # Task definitions
 │   │
 │   ├── gateway/            # Message gateway
@@ -168,10 +170,12 @@ export function getMemoryContext(): MemoryContext {
 All data paths are centralized in `config/paths.ts`:
 
 ```typescript
-resolveDataDir()       // VARGOS_DATA_DIR || ~/.vargos
-resolveWorkspaceDir()  // VARGOS_WORKSPACE || $DATA_DIR/workspace
-resolveSessionsDir()   // $DATA_DIR/sessions
-resolveSessionFile(key) // $DATA_DIR/sessions/<key>.jsonl
+resolveDataDir()            // VARGOS_DATA_DIR || ~/.vargos
+resolveWorkspaceDir()       // VARGOS_WORKSPACE || $DATA_DIR/workspace
+resolveSessionsDir()        // $DATA_DIR/sessions
+resolveSessionFile(key)     // $DATA_DIR/sessions/<key>.jsonl
+resolveChannelsDir()        // $DATA_DIR/channels
+resolveChannelConfigFile()  // $DATA_DIR/channels.json
 ```
 
 ## Pi Agent Runtime
@@ -327,8 +331,12 @@ Vargos stores persistent data in `~/.vargos/`:
 │   ├── SOUL.md
 │   ├── USER.md
 │   ├── TOOLS.md
+│   ├── HEARTBEAT.md
 │   └── memory/             # Daily notes
 ├── agent/                  # Pi SDK configuration
+├── channels.json           # Channel adapter configs
+├── channels/
+│   └── whatsapp/           # Baileys auth state
 ├── sessions/               # Session JSONL files
 │   ├── cli-main.jsonl
 │   └── cli-myproject.jsonl
