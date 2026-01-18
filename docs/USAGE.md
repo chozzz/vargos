@@ -110,34 +110,41 @@ pnpm cli server
 pnpm dev
 ```
 
+On first run, you'll be prompted to set up your identity (name, timezone) and configure a
+communication channel (WhatsApp or Telegram). Subsequent runs skip these prompts.
+
 **What you'll see:**
 ```
-🔧 Vargos MCP Server
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Version: 0.0.1
-Mode: stdio
+  Vargos v0.0.1
 
-📁 Configuration:
-  Workspace: /home/user/.vargos/workspace
-  Memory: file (local)
-  Sessions: file (./sessions)
+  Config
+    Data      ~/.vargos
+    Workspace ~/.vargos/workspace
+    Memory    file
+    Sessions  file
+    Transport stdio
 
-🔌 Services:
-  ✓ MemoryContext initialized
-  ✓ SessionService initialized
-  ✓ PiAgentRuntime initialized
+  Context (5 of 7 loaded)
+    AGENTS.md  SOUL.md  USER.md  TOOLS.md  HEARTBEAT.md
 
-📝 Context Files:
-  ✓ AGENTS.md
-  ✓ TOOLS.md
-  ✗ SOUL.md (optional)
-  ✗ USER.md (optional)
+  Tools (15)
+    File      read, write, edit
+    Shell     exec, process
+    Web       web_fetch, browser
+    Memory    memory_search, memory_get
+    Session   sessions_list, sessions_history, sessions_send, sessions_spawn
+    Cron      cron_add, cron_list
 
-📡 Server:
-  Transport: stdio
-  Tools: 15 registered
+  Services
+    Memory     ok
+    Runtime    ok
+    Scheduler  0 task(s)
+    Heartbeat  off (empty)
 
-✅ Ready for connections
+  Channels
+    whatsapp  connected
+
+  Listening on stdio
 ```
 
 ### Claude Desktop Configuration
@@ -202,33 +209,15 @@ Claude: Let me search the memory.
 
 Automate periodic tasks with scheduled background agents.
 
-### Start the Scheduler
+### Scheduler Startup
+
+The cron scheduler starts automatically with `pnpm cli server`. No default tasks are
+registered — tasks are added via the `cron_add` MCP tool at runtime.
+
+For standalone scheduler testing:
 
 ```bash
 pnpm cli scheduler
-```
-
-**What you'll see:**
-```
-📅  Starting Cron Scheduler
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-✅  Scheduler started
-
-Scheduled Tasks (2):
-  • Vargos Morning Analysis (AEST)
-    Schedule: 0 23 * * *
-    Status: ✅ Enabled
-
-  • Vargos Evening Analysis (AEST)
-    Schedule: 0 11 * * *
-    Status: ✅ Enabled
-
-Times are in UTC:
-  23:00 UTC = 09:00 AEST (morning)
-  11:00 UTC = 21:00 AEST (evening)
-
-Press Ctrl+C to stop
 ```
 
 ### How Cron Works
@@ -253,14 +242,14 @@ Store Results
 (Notify User - future)
 ```
 
-### View Scheduled Tasks
+### Heartbeat
 
-Tasks are defined in `src/cron/tasks/`. Currently configured:
+The heartbeat runner checks `HEARTBEAT.md` every 30 minutes. If the file has content
+(not just headers/comments), it sends the content to the agent. If nothing needs
+attention, the agent replies `HEARTBEAT_OK` and the cycle is silent.
 
-| Task | Schedule | Description |
-|------|----------|-------------|
-| Morning Analysis | 0 23 * * * | Daily code analysis at 9 AM AEST |
-| Evening Analysis | 0 11 * * * | Daily review at 9 PM AEST |
+Add tasks to `~/.vargos/workspace/HEARTBEAT.md` when you want periodic agent attention.
+Leave it empty to save API cost.
 
 ---
 
@@ -345,12 +334,12 @@ Session: agent:default:subagent:123456 (running)
 
 | Channel | Status | How |
 |---------|--------|-----|
-| Session announcement | ✅ Working | Results posted to parent session |
-| File output | ✅ Working | Agent writes to `memory/results/*.md` |
-| Console log | ✅ Working | Logs to `~/.vargos/sessions/` |
-| WhatsApp | 🚧 Future | Via gateway |
-| Discord | 🚧 Future | Via gateway |
-| Webhook | 🚧 Easy add | HTTP POST |
+| Session announcement | Working | Results posted to parent session |
+| File output | Working | Agent writes to `memory/results/*.md` |
+| Console log | Working | Logs to `~/.vargos/sessions/` |
+| WhatsApp | Working | Via `pnpm cli onboard` |
+| Telegram | Working | Via `pnpm cli onboard` |
+| Webhook | Easy add | HTTP POST |
 
 **Best practice for file output:**
 ```markdown
@@ -536,12 +525,15 @@ pnpm cli chat -p <provider>      # Specific provider
 pnpm cli run "<task>"
 pnpm cli run "<task>" -w <dir>
 
-# MCP server
+# MCP server (includes scheduler + heartbeat + channels)
 pnpm cli server                  # Stdio mode
 pnpm dev                         # Same as above
 
+# Channels
+pnpm cli onboard                 # Set up WhatsApp/Telegram
+
 # Scheduler
-pnpm cli scheduler               # Start cron jobs
+pnpm cli scheduler               # Standalone scheduler
 
 # Configuration
 pnpm cli config                  # Interactive config
@@ -570,8 +562,11 @@ POSTGRES_URL=postgresql://...    # For session storage
 │   ├── SOUL.md
 │   ├── USER.md
 │   ├── TOOLS.md
+│   ├── HEARTBEAT.md
 │   └── memory/          # Daily notes (YYYY-MM-DD.md)
 ├── agent/               # Pi SDK configuration
+├── channels.json        # Channel adapter configs
+├── channels/            # Channel auth state (WhatsApp etc.)
 ├── sessions/            # Session JSONL files
 └── memory.db            # SQLite embeddings cache
 ```

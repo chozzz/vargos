@@ -3,8 +3,9 @@
  */
 
 export { CronScheduler, getCronScheduler, initializeCronScheduler } from './scheduler.js';
-export { 
-  createTwiceDailyVargosAnalysis, 
+export { isHeartbeatEmpty, startHeartbeat, stopHeartbeat } from './heartbeat.js';
+export {
+  createTwiceDailyVargosAnalysis,
   createDailyVargosAnalysis,
   spawnAreaAnalysis,
   ANALYSIS_AREAS,
