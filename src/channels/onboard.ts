@@ -13,6 +13,7 @@ import { resolveChannelsDir } from '../config/paths.js';
 import { createWhatsAppSocket } from './whatsapp/session.js';
 import { TelegramAdapter } from './telegram/adapter.js';
 import type { ChannelConfig } from './types.js';
+import type { WASocket } from '@whiskeysockets/baileys';
 
 function prompt(question: string): Promise<string> {
   const rl = readline.createInterface({
@@ -43,28 +44,48 @@ async function setupWhatsApp(): Promise<void> {
   console.log('Scan the QR code below with WhatsApp > Linked Devices:');
   console.log('');
 
-  // Use raw socket — no adapter, no gateway, no message processing
   let connected = false;
   let connectedName = '';
+  let needsRestart = false;
 
-  try {
-    const sock = await createWhatsAppSocket(authDir, {
+  const MAX_RESTARTS = 3;
+  let restarts = 0;
+  // Track sock in a mutable container so TS doesn't narrow it to never
+  const state: { sock: WASocket | null } = { sock: null };
+
+  const connect = async () => {
+    state.sock = await createWhatsAppSocket(authDir, {
       onQR: () => { /* qrcode-terminal already prints it */ },
       onConnected: (name) => {
         connected = true;
         connectedName = name;
       },
       onDisconnected: (reason) => {
-        if (!connected) {
+        if (connected) return;
+        if (reason === 'restart_required' && restarts < MAX_RESTARTS) {
+          needsRestart = true;
+          console.log(chalk.yellow('  Restart required — reconnecting...'));
+        } else {
           console.log(chalk.yellow(`  Connection issue: ${reason}`));
         }
       },
-      onMessage: () => { /* ignore messages during onboard */ },
+      onMessage: () => { /* ignore during onboard */ },
     });
+  };
 
-    // Wait for connection (up to 90s for QR scan)
-    const timeout = Date.now() + 90_000;
-    while (!connected && Date.now() < timeout) {
+  try {
+    await connect();
+
+    // Wait for connection (up to 90s), handle restart_required by retrying
+    const deadline = Date.now() + 90_000;
+    while (!connected && Date.now() < deadline) {
+      if (needsRestart) {
+        needsRestart = false;
+        restarts++;
+        try { state.sock?.end(undefined); } catch { /* ignore */ }
+        await new Promise((r) => setTimeout(r, 1000));
+        await connect();
+      }
       await new Promise((r) => setTimeout(r, 1000));
     }
 
@@ -79,7 +100,7 @@ async function setupWhatsApp(): Promise<void> {
       console.log(chalk.red('Connection timed out. Try again with: pnpm cli onboard'));
     }
 
-    sock.end(undefined);
+    try { state.sock?.end(undefined); } catch { /* ignore */ }
   } catch (err) {
     console.error(chalk.red(`Setup failed: ${err instanceof Error ? err.message : String(err)}`));
   }
@@ -191,7 +212,4 @@ export async function runOnboarding(): Promise<void> {
   console.log(chalk.gray('Start receiving messages:'));
   console.log(chalk.gray('  pnpm cli server'));
   console.log('');
-
-  // Exit cleanly — onboard is done, no dangling sockets
-  process.exit(0);
 }

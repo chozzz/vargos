@@ -15,6 +15,7 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { zodToJsonSchema } from 'zod-to-json-schema';
+import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import http from 'node:http';
 import { toolRegistry, initializeToolRegistry } from './mcp/tools/index.js';
@@ -25,6 +26,9 @@ import { isSubagentSessionKey, isToolAllowedForSubagent, formatErrorResult } fro
 import { interactiveConfig, printStartupBanner, checkConfig } from './config/interactive.js';
 import { initializeWorkspace, isWorkspaceInitialized, loadContextFiles } from './config/workspace.js';
 import { resolveDataDir, resolveWorkspaceDir } from './config/paths.js';
+import { checkIdentitySetup } from './config/identity.js';
+import { initializeCronScheduler, getCronScheduler } from './cron/scheduler.js';
+import { isHeartbeatEmpty, startHeartbeat, stopHeartbeat } from './cron/heartbeat.js';
 
 const VERSION = '0.0.1';
 
@@ -154,10 +158,13 @@ async function main() {
   // Initialize workspace if needed
   const workspaceExists = await isWorkspaceInitialized(workspaceDir);
   if (!workspaceExists) {
-    console.error('📁 Initializing workspace...');
+    console.error('  Initializing workspace...');
     await initializeWorkspace({ workspaceDir });
-    console.error('  ✓ Created default workspace files');
+    console.error('  Created default workspace files');
   }
+
+  // Prompt for identity if USER.md has placeholders (TTY only)
+  await checkIdentitySetup(workspaceDir);
 
   const dataDir = resolveDataDir();
   const serviceConfig: ServiceConfig = {
@@ -212,6 +219,25 @@ async function main() {
 
     initializePiAgentRuntime();
     console.error('    Runtime    ok');
+
+    // Start cron scheduler
+    const scheduler = initializeCronScheduler(workspaceDir);
+    scheduler.startAll();
+    const taskCount = scheduler.listTasks().length;
+    console.error(`    Scheduler  ${taskCount} task(s)`);
+
+    // Start heartbeat if HEARTBEAT.md has content
+    let heartbeatContent = '';
+    try {
+      heartbeatContent = await fs.readFile(path.join(workspaceDir, 'HEARTBEAT.md'), 'utf-8');
+    } catch { /* missing */ }
+
+    if (!isHeartbeatEmpty(heartbeatContent)) {
+      startHeartbeat(workspaceDir);
+      console.error('    Heartbeat  30m');
+    } else {
+      console.error('    Heartbeat  off (empty)');
+    }
   } catch (err) {
     console.error('');
     console.error('❌ Service initialization failed:');
@@ -235,9 +261,22 @@ async function main() {
   const { createAdapter } = await import('./channels/factory.js');
   const { getChannelRegistry } = await import('./channels/registry.js');
 
-  const channelConfigs = await loadChannelConfigs();
-  const enabledChannels = channelConfigs.filter((c) => c.enabled);
+  let channelConfigs = await loadChannelConfigs();
+  let enabledChannels = channelConfigs.filter((c) => c.enabled);
   const channelRegistry = getChannelRegistry();
+
+  // If no channels and TTY, offer to run onboarding
+  if (enabledChannels.length === 0 && process.stdin.isTTY) {
+    const { runOnboarding } = await import('./channels/onboard.js');
+    console.error('  Channels');
+    console.error('    none configured');
+    console.error('');
+    await runOnboarding();
+
+    // Reload configs after onboarding
+    channelConfigs = await loadChannelConfigs();
+    enabledChannels = channelConfigs.filter((c) => c.enabled);
+  }
 
   if (enabledChannels.length > 0) {
     console.error('  Channels');
@@ -328,12 +367,16 @@ async function main() {
     // Handle graceful shutdown for stdio
     process.on('SIGINT', async () => {
       console.error('\n Shutting down...');
+      stopHeartbeat();
+      getCronScheduler().stopAll();
       await channelRegistry.stopAll();
       process.exit(0);
     });
 
     process.on('SIGTERM', async () => {
       console.error('\n Shutting down...');
+      stopHeartbeat();
+      getCronScheduler().stopAll();
       await channelRegistry.stopAll();
       process.exit(0);
     });
