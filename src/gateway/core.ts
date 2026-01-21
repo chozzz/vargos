@@ -293,8 +293,23 @@ export class Gateway extends EventEmitter {
       });
     }
 
+    // Extract text and images from input
+    const images: Array<{ data: string; mimeType: string }> = [];
+    let text: string;
+
+    if (input.type === 'image' && Buffer.isBuffer(input.content)) {
+      images.push({
+        data: input.content.toString('base64'),
+        mimeType: (input.metadata.mimeType as string) || 'image/jpeg',
+      });
+      text = (input.metadata.caption as string) || 'User sent an image.';
+    } else {
+      text = typeof input.content === 'string'
+        ? input.content
+        : input.content.toString('utf-8');
+    }
+
     // Store user message as a task so PiAgentRuntime picks it up
-    const text = typeof input.content === 'string' ? input.content : input.content.toString('utf-8');
     await sessions.addMessage({
       sessionKey,
       content: text,
@@ -328,6 +343,7 @@ export class Gateway extends EventEmitter {
       model,
       provider,
       apiKey,
+      images: images.length ? images : undefined,
     });
 
     console.error(`[Gateway] Agent result: success=${result.success} response=${(result.response || result.error || '').slice(0, 100)}`);
