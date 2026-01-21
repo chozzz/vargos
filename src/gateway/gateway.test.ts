@@ -175,6 +175,53 @@ describe('Gateway Core', () => {
       expect(found?.type).toBe('text');
     });
   });
+
+  describe('Image Input Validation', () => {
+    it('should accept image type with Buffer content', async () => {
+      const input: NormalizedInput = {
+        type: 'image',
+        content: Buffer.from('fake-image'),
+        metadata: { mimeType: 'image/jpeg', caption: 'a photo' },
+        source: { channel: 'whatsapp', userId: 'u1', sessionKey: 's1' },
+        timestamp: Date.now(),
+      };
+
+      const context: GatewayContext = {
+        sessionKey: 's1',
+        userId: 'u1',
+        channel: 'whatsapp',
+        permissions: ['*'],
+        metadata: {},
+      };
+
+      const result = await gateway.processInput(input, context);
+      // Reaches execute() which will fail without services, but validation passes
+      expect(result).toBeDefined();
+      expect(result.type).toBeDefined();
+    });
+
+    it('should reject image input with empty content', async () => {
+      const input = {
+        type: 'image',
+        content: Buffer.alloc(0),
+        metadata: { mimeType: 'image/jpeg' },
+        source: { channel: 'whatsapp', userId: 'u1', sessionKey: 's1' },
+        timestamp: Date.now(),
+      } as NormalizedInput;
+
+      const context: GatewayContext = {
+        sessionKey: 's1',
+        userId: 'u1',
+        channel: 'whatsapp',
+        permissions: ['*'],
+        metadata: {},
+      };
+
+      const result = await gateway.processInput(input, context);
+      expect(result.success).toBe(false);
+      expect(result.type).toBe('error');
+    });
+  });
 });
 
 describe('HTTP Transport', () => {

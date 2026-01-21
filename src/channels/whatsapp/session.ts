@@ -8,8 +8,10 @@ import makeWASocket, {
   DisconnectReason,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
+  downloadMediaMessage,
   type WASocket,
   type ConnectionState,
+  type WAMessage,
 } from '@whiskeysockets/baileys';
 import qrcode from 'qrcode-terminal';
 import pino from 'pino';
@@ -29,6 +31,10 @@ export interface WhatsAppInboundMessage {
   fromMe: boolean;
   isGroup: boolean;
   timestamp: number;
+  mediaType?: 'image' | 'audio' | 'video' | 'document' | 'sticker';
+  mediaBuffer?: Buffer;
+  mimeType?: string;
+  caption?: string;
 }
 
 export async function createWhatsAppSocket(
@@ -90,26 +96,69 @@ export async function createWhatsAppSocket(
 
     for (const msg of messages) {
       if (!msg.message) continue;
-
-      const text =
-        msg.message.conversation ||
-        msg.message.extendedTextMessage?.text ||
-        '';
-      if (!text) continue;
-
-      const jid = msg.key.remoteJid || '';
-      events.onMessage({
-        messageId: msg.key.id || '',
-        jid,
-        text,
-        fromMe: msg.key.fromMe || false,
-        isGroup: jid.endsWith('@g.us'),
-        timestamp: typeof msg.messageTimestamp === 'number'
-          ? msg.messageTimestamp * 1000
-          : Date.now(),
-      });
+      processInboundMessage(msg, events);
     }
   });
 
   return sock;
+}
+
+/**
+ * Extract text and media from a Baileys message, then emit via events.onMessage
+ */
+export async function processInboundMessage(
+  msg: WAMessage,
+  events: WhatsAppSessionEvents,
+): Promise<void> {
+  const m = msg.message!;
+  const jid = msg.key.remoteJid || '';
+  const base = {
+    messageId: msg.key.id || '',
+    jid,
+    fromMe: msg.key.fromMe || false,
+    isGroup: jid.endsWith('@g.us'),
+    timestamp: typeof msg.messageTimestamp === 'number'
+      ? msg.messageTimestamp * 1000
+      : Date.now(),
+  };
+
+  // Detect media type
+  const mediaMsg =
+    m.imageMessage ? { type: 'image' as const, msg: m.imageMessage } :
+    m.audioMessage ? { type: 'audio' as const, msg: m.audioMessage } :
+    m.videoMessage ? { type: 'video' as const, msg: m.videoMessage } :
+    m.documentMessage ? { type: 'document' as const, msg: m.documentMessage } :
+    m.stickerMessage ? { type: 'sticker' as const, msg: m.stickerMessage } :
+    null;
+
+  if (mediaMsg) {
+    let mediaBuffer: Buffer | undefined;
+    try {
+      const downloaded = await downloadMediaMessage(msg, 'buffer', {});
+      mediaBuffer = Buffer.isBuffer(downloaded)
+        ? downloaded
+        : Buffer.from(downloaded as Uint8Array);
+    } catch (err) {
+      console.error(`[WhatsApp] Media download failed for ${base.messageId}:`, err);
+    }
+
+    const caption = (mediaMsg.msg as { caption?: string }).caption || '';
+    const mimeType = (mediaMsg.msg as { mimetype?: string }).mimetype || undefined;
+
+    events.onMessage({
+      ...base,
+      text: caption,
+      mediaType: mediaMsg.type,
+      mediaBuffer,
+      mimeType,
+      caption,
+    });
+    return;
+  }
+
+  // Plain text
+  const text = m.conversation || m.extendedTextMessage?.text || '';
+  if (!text) return;
+
+  events.onMessage({ ...base, text });
 }

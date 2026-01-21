@@ -9,6 +9,8 @@ import type {
   TelegramUpdate,
   TelegramResponse,
   TelegramUser,
+  TelegramMessage,
+  TelegramFile,
 } from './types.js';
 import { createDedupeCache } from '../../lib/dedupe.js';
 import { createMessageDebouncer } from '../../lib/debounce.js';
@@ -16,6 +18,7 @@ import { deliverReply } from '../../lib/reply-delivery.js';
 import { getGateway, type NormalizedInput, type GatewayContext } from '../../gateway/core.js';
 
 const API_BASE = 'https://api.telegram.org/bot';
+const API_FILE_BASE = 'https://api.telegram.org/file/bot';
 const POLL_TIMEOUT_S = 30;
 const RECONNECT_DELAY_MS = 5000;
 
@@ -104,7 +107,10 @@ export class TelegramAdapter implements ChannelAdapter {
 
   private handleUpdate(update: TelegramUpdate): void {
     const msg = update.message;
-    if (!msg?.text) return;
+    if (!msg) return;
+
+    // Must have text, photo, or voice
+    if (!msg.text && !msg.photo && !msg.voice && !msg.audio) return;
 
     // Skip non-private chats
     if (msg.chat.type !== 'private') return;
@@ -116,8 +122,106 @@ export class TelegramAdapter implements ChannelAdapter {
     if (!this.dedupe.add(msgKey)) return;
 
     const chatId = String(msg.chat.id);
-    console.error(`[Telegram] Received from ${chatId}: ${msg.text.slice(0, 80)}`);
-    this.debouncer.push(chatId, msg.text);
+
+    // Media messages bypass debouncer
+    if (msg.photo || msg.voice || msg.audio) {
+      this.handleMedia(chatId, msg).catch((err) => {
+        console.error(`[Telegram] handleMedia error for ${chatId}:`, err);
+      });
+      return;
+    }
+
+    console.error(`[Telegram] Received from ${chatId}: ${msg.text!.slice(0, 80)}`);
+    this.debouncer.push(chatId, msg.text!);
+  }
+
+  private async downloadFile(fileId: string): Promise<Buffer> {
+    const file = await this.apiCall<TelegramFile>('getFile', { file_id: fileId });
+    if (!file.file_path) throw new Error('No file_path returned from getFile');
+
+    const url = `${API_FILE_BASE}${this.botToken}/${file.file_path}`;
+    const res = await fetch(url, { signal: this.abortController?.signal });
+    if (!res.ok) throw new Error(`File download failed: ${res.status}`);
+
+    return Buffer.from(await res.arrayBuffer());
+  }
+
+  private async handleMedia(chatId: string, msg: TelegramMessage): Promise<void> {
+    const sessionKey = `telegram:${chatId}`;
+
+    const context: GatewayContext = {
+      sessionKey,
+      userId: chatId,
+      channel: 'telegram',
+      permissions: ['*'],
+      metadata: {},
+    };
+
+    const gateway = getGateway();
+
+    // Photo — pick largest (last in array), send as image input
+    if (msg.photo?.length) {
+      const largest = msg.photo[msg.photo.length - 1];
+      console.error(`[Telegram] Received photo from ${chatId}`);
+
+      try {
+        const buffer = await this.downloadFile(largest.file_id);
+        const input: NormalizedInput = {
+          type: 'image',
+          content: buffer,
+          metadata: {
+            mimeType: 'image/jpeg',
+            caption: msg.caption,
+          },
+          source: { channel: 'telegram', userId: chatId, sessionKey },
+          timestamp: Date.now(),
+        };
+
+        const result = await gateway.processInput(input, context);
+        if (result.success && result.content) {
+          const replyText = typeof result.content === 'string'
+            ? result.content
+            : result.content.toString('utf-8');
+          await deliverReply(
+            (chunk) => this.send(chatId, chunk),
+            replyText,
+            { maxChunkSize: 4000 },
+          );
+        }
+      } catch (err) {
+        console.error(`[Telegram] Photo download failed for ${chatId}:`, err);
+      }
+      return;
+    }
+
+    // Voice / audio — describe textually
+    const duration = msg.voice?.duration ?? msg.audio?.duration;
+    const label = msg.voice ? 'Voice message' : 'Audio message';
+    const text = msg.caption
+      ? `[${label}, ${duration}s] ${msg.caption}`
+      : `[${label}, ${duration}s]`;
+
+    console.error(`[Telegram] Received ${label.toLowerCase()} from ${chatId} (${duration}s)`);
+
+    const input: NormalizedInput = {
+      type: 'text',
+      content: text,
+      metadata: { encoding: 'utf-8' },
+      source: { channel: 'telegram', userId: chatId, sessionKey },
+      timestamp: Date.now(),
+    };
+
+    const result = await gateway.processInput(input, context);
+    if (result.success && result.content) {
+      const replyText = typeof result.content === 'string'
+        ? result.content
+        : result.content.toString('utf-8');
+      await deliverReply(
+        (chunk) => this.send(chatId, chunk),
+        replyText,
+        { maxChunkSize: 4000 },
+      );
+    }
   }
 
   private async handleBatch(chatId: string, messages: string[]): Promise<void> {

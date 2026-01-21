@@ -93,16 +93,92 @@ export class WhatsAppAdapter implements ChannelAdapter {
   }
 
   private handleInbound(msg: WhatsAppInboundMessage): void {
-    // Skip self messages, groups, and empty text
-    if (msg.fromMe || msg.isGroup || !msg.text) return;
+    // Skip self messages and groups
+    if (msg.fromMe || msg.isGroup) return;
+
+    // Skip messages with no text and no media
+    if (!msg.text && !msg.mediaType) return;
 
     // Deduplicate
     if (!this.dedupe.add(msg.messageId)) return;
 
-    console.error(`[WhatsApp] Received from ${msg.jid}: ${msg.text.slice(0, 80)}`);
+    // Media messages bypass debouncer — send directly to gateway
+    if (msg.mediaType) {
+      console.error(`[WhatsApp] Received ${msg.mediaType} from ${msg.jid}`);
+      this.handleMedia(msg).catch((err) => {
+        console.error(`[WhatsApp] handleMedia error for ${msg.jid}:`, err);
+      });
+      return;
+    }
 
-    // Debounce per sender
+    console.error(`[WhatsApp] Received from ${msg.jid}: ${msg.text.slice(0, 80)}`);
     this.debouncer.push(msg.jid, msg.text);
+  }
+
+  private async handleMedia(msg: WhatsAppInboundMessage): Promise<void> {
+    const jid = msg.jid;
+    const sessionKey = `whatsapp:${jid.replace('@s.whatsapp.net', '')}`;
+
+    const context: GatewayContext = {
+      sessionKey,
+      userId: jid,
+      channel: 'whatsapp',
+      permissions: ['*'],
+      metadata: {},
+    };
+
+    const gateway = getGateway();
+
+    // Images with a downloaded buffer → send as image input for vision
+    if (msg.mediaType === 'image' && msg.mediaBuffer) {
+      const input: NormalizedInput = {
+        type: 'image',
+        content: msg.mediaBuffer,
+        metadata: {
+          mimeType: msg.mimeType || 'image/jpeg',
+          caption: msg.caption,
+        },
+        source: { channel: 'whatsapp', userId: jid, sessionKey },
+        timestamp: Date.now(),
+      };
+
+      const result = await gateway.processInput(input, context);
+      if (result.success && result.content) {
+        const replyText = typeof result.content === 'string'
+          ? result.content
+          : result.content.toString('utf-8');
+        await deliverReply((chunk) => this.send(jid, chunk), replyText);
+      }
+      return;
+    }
+
+    // Audio/voice/video/document/sticker → describe textually
+    const descriptions: Record<string, string> = {
+      audio: 'Voice message',
+      video: 'Video message',
+      document: 'Document',
+      sticker: 'Sticker',
+    };
+    const label = descriptions[msg.mediaType!] || 'Media';
+    const text = msg.caption
+      ? `[${label}] ${msg.caption}`
+      : `[${label} received]`;
+
+    const input: NormalizedInput = {
+      type: 'text',
+      content: text,
+      metadata: { encoding: 'utf-8' },
+      source: { channel: 'whatsapp', userId: jid, sessionKey },
+      timestamp: Date.now(),
+    };
+
+    const result = await gateway.processInput(input, context);
+    if (result.success && result.content) {
+      const replyText = typeof result.content === 'string'
+        ? result.content
+        : result.content.toString('utf-8');
+      await deliverReply((chunk) => this.send(jid, chunk), replyText);
+    }
   }
 
   private async handleBatch(jid: string, messages: string[]): Promise<void> {

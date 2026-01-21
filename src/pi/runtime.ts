@@ -57,6 +57,7 @@ export interface PiAgentConfig {
   extraSystemPrompt?: string;
   userTimezone?: string;
   runId?: string;
+  images?: Array<{ data: string; mimeType: string }>;
 }
 
 export interface PiAgentRunResult {
@@ -211,8 +212,13 @@ export class PiAgentRuntime {
       // Prepend system context
       const prompt = `${systemContext}\n\n## Task\n\n${task}`;
 
-      // Prompt the agent
-      await session.prompt(prompt);
+      // Prompt the agent (with optional vision images)
+      const piImages = config.images?.map(img => ({
+        type: 'image' as const,
+        data: img.data,
+        mimeType: img.mimeType,
+      }));
+      await session.prompt(prompt, piImages?.length ? { images: piImages } : undefined);
 
       // Get response from session history
       const sessionEntries = sessionManager.getEntries();
