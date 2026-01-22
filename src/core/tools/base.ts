@@ -59,29 +59,3 @@ export abstract class BaseTool implements Tool {
   protected async beforeExecute(_args: unknown, _context: ToolContext): Promise<void> {}
   protected async afterExecute(_args: unknown, _result: ToolResult, _context: ToolContext): Promise<void> {}
 }
-
-// Simple function-based tool wrapper
-export function createTool(config: {
-  name: string;
-  description: string;
-  parameters: z.ZodSchema;
-  execute: (args: unknown, context: ToolContext) => Promise<ToolResult>;
-}): Tool {
-  return {
-    name: config.name,
-    description: config.description,
-    parameters: config.parameters,
-    execute: async (args, context) => {
-      try {
-        const validated = config.parameters.parse(args);
-        return await config.execute(validated, context);
-      } catch (err) {
-        if (err instanceof z.ZodError) {
-          const issues = err.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ');
-          return errorResult(`Parameter validation failed: ${issues}`);
-        }
-        throw err;
-      }
-    },
-  };
-}

@@ -55,7 +55,7 @@ export function getPiConfigPaths(workspaceDir: string): {
 /**
  * Ensure Pi agent directory exists
  */
-export async function ensurePiAgentDir(workspaceDir: string): Promise<void> {
+async function ensurePiAgentDir(workspaceDir: string): Promise<void> {
   const { agentDir } = getPiConfigPaths(workspaceDir);
   await fs.mkdir(agentDir, { recursive: true });
 }
@@ -110,19 +110,6 @@ export async function savePiSettings(
 }
 
 /**
- * Set API key for a provider
- */
-export async function setPiApiKey(
-  workspaceDir: string,
-  provider: string,
-  apiKey: string
-): Promise<void> {
-  const auth = await loadPiAuth(workspaceDir);
-  auth[provider] = { apiKey };
-  await savePiAuth(workspaceDir, auth);
-}
-
-/**
  * Get API key for a provider (from file or environment)
  */
 export async function getPiApiKey(
@@ -136,33 +123,6 @@ export async function getPiApiKey(
   // Check auth.json
   const auth = await loadPiAuth(workspaceDir);
   return auth[provider]?.apiKey;
-}
-
-/**
- * Set default model and provider
- */
-export async function setPiDefaultModel(
-  workspaceDir: string,
-  provider: string,
-  modelId: string
-): Promise<void> {
-  const settings = await loadPiSettings(workspaceDir);
-  settings.defaultProvider = provider;
-  settings.defaultModel = modelId;
-  await savePiSettings(workspaceDir, settings);
-}
-
-/**
- * Get default model configuration
- */
-export async function getPiDefaultModel(
-  workspaceDir: string
-): Promise<{ provider?: string; model?: string }> {
-  const settings = await loadPiSettings(workspaceDir);
-  return {
-    provider: settings.defaultProvider,
-    model: settings.defaultModel,
-  };
 }
 
 /**

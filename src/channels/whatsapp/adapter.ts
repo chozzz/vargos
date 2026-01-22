@@ -9,7 +9,7 @@ import { createWhatsAppSocket, type WhatsAppInboundMessage } from './session.js'
 import { createDedupeCache } from '../../lib/dedupe.js';
 import { createMessageDebouncer } from '../../lib/debounce.js';
 import { deliverReply } from '../../lib/reply-delivery.js';
-import { getGateway, type NormalizedInput, type GatewayContext } from '../../gateway/core.js';
+import { getGateway, type InputType, type NormalizedInput, type GatewayContext } from '../../gateway/core.js';
 import { resolveChannelsDir } from '../../config/paths.js';
 import path from 'node:path';
 
@@ -152,12 +152,38 @@ export class WhatsAppAdapter implements ChannelAdapter {
       return;
     }
 
-    // Audio/voice/video/document/sticker → describe textually
+    // Audio/voice/video/document/sticker — forward buffer when available
+    const typeMap: Record<string, InputType> = {
+      audio: 'voice', video: 'video', document: 'file', sticker: 'file',
+    };
+    const inputType: InputType = typeMap[msg.mediaType!] || 'file';
+
+    if (msg.mediaBuffer) {
+      const input: NormalizedInput = {
+        type: inputType,
+        content: msg.mediaBuffer,
+        metadata: {
+          mimeType: msg.mimeType,
+          caption: msg.caption,
+        },
+        source: { channel: 'whatsapp', userId: jid, sessionKey },
+        timestamp: Date.now(),
+      };
+
+      const result = await gateway.processInput(input, context);
+      if (result.success && result.content) {
+        const replyText = typeof result.content === 'string'
+          ? result.content
+          : result.content.toString('utf-8');
+        await deliverReply((chunk) => this.send(jid, chunk), replyText);
+      }
+      return;
+    }
+
+    // No buffer (download failed) — send text description
     const descriptions: Record<string, string> = {
-      audio: 'Voice message',
-      video: 'Video message',
-      document: 'Document',
-      sticker: 'Sticker',
+      audio: 'Voice message', video: 'Video message',
+      document: 'Document', sticker: 'Sticker',
     };
     const label = descriptions[msg.mediaType!] || 'Media';
     const text = msg.caption

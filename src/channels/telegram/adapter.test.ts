@@ -120,9 +120,16 @@ describe('TelegramAdapter media handling', () => {
     expect(call.input.source.channel).toBe('telegram');
   });
 
-  it('should handle voice updates as text description', async () => {
+  it('should handle voice updates with file download', async () => {
     await adapter.initialize();
     await adapter.start();
+
+    // Mock getFile + file download
+    mockFetch.mockResolvedValueOnce(
+      telegramResponse({ file_id: 'v1', file_unique_id: 'vu1', file_path: 'voice/file_0.oga' }),
+    );
+    const fakeAudio = new Uint8Array([0x4F, 0x67, 0x67, 0x53]).buffer;
+    mockFetch.mockResolvedValueOnce({ ok: true, arrayBuffer: async () => fakeAudio });
 
     const handleUpdate = (adapter as any).handleUpdate.bind(adapter);
     handleUpdate({
@@ -146,14 +153,22 @@ describe('TelegramAdapter media handling', () => {
     });
 
     const call = processInputCalls[0];
-    expect(call.input.type).toBe('text');
-    expect(call.input.content).toBe('[Voice message, 7s]');
+    expect(call.input.type).toBe('voice');
+    expect(Buffer.isBuffer(call.input.content)).toBe(true);
+    expect(call.input.metadata.mimeType).toBe('audio/ogg');
     expect(call.input.source.channel).toBe('telegram');
   });
 
-  it('should handle audio updates with caption', async () => {
+  it('should handle audio updates with file download and caption', async () => {
     await adapter.initialize();
     await adapter.start();
+
+    // Mock getFile + file download
+    mockFetch.mockResolvedValueOnce(
+      telegramResponse({ file_id: 'a1', file_unique_id: 'au1', file_path: 'music/file_0.mp3' }),
+    );
+    const fakeAudio = new Uint8Array([0xFF, 0xFB, 0x90, 0x00]).buffer;
+    mockFetch.mockResolvedValueOnce({ ok: true, arrayBuffer: async () => fakeAudio });
 
     const handleUpdate = (adapter as any).handleUpdate.bind(adapter);
     handleUpdate({
@@ -179,8 +194,10 @@ describe('TelegramAdapter media handling', () => {
     });
 
     const call = processInputCalls[0];
-    expect(call.input.type).toBe('text');
-    expect(call.input.content).toBe('[Audio message, 180s] Listen to this song');
+    expect(call.input.type).toBe('voice');
+    expect(Buffer.isBuffer(call.input.content)).toBe(true);
+    expect(call.input.metadata.mimeType).toBe('audio/mpeg');
+    expect(call.input.metadata.caption).toBe('Listen to this song');
   });
 
   it('should skip non-private chats', async () => {

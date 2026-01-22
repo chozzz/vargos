@@ -301,7 +301,3 @@ export function getAgentLifecycle(): AgentLifecycle {
   return globalLifecycle;
 }
 
-export function initializeAgentLifecycle(): AgentLifecycle {
-  globalLifecycle = new AgentLifecycle();
-  return globalLifecycle;
-}

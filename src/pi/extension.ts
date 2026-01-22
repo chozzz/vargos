@@ -4,14 +4,11 @@
  * Allows Pi SDK agent to use Vargos tools exactly like OpenClaw
  */
 
-import type { ToolDefinition, ExtensionAPI, ExtensionFactory } from '@mariozechner/pi-coding-agent';
+import type { ToolDefinition } from '@mariozechner/pi-coding-agent';
 import type { AgentToolResult, AgentToolUpdateCallback } from '@mariozechner/pi-agent-core';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { toolRegistry } from '../mcp/tools/registry.js';
 import type { Tool, ToolContext } from '../mcp/tools/types.js';
-
-// Session key for CLI mode
-const CLI_SESSION_KEY = 'cli:main';
 
 /**
  * Convert Zod schema to JSON Schema for Pi SDK
@@ -30,7 +27,7 @@ function createParamsSchema(zodSchema: import('zod').ZodSchema): any {
 /**
  * Wrap a Vargos MCP tool into Pi SDK ToolDefinition format
  */
-function wrapVargosTool(tool: Tool, workingDir: string): ToolDefinition {
+function wrapVargosTool(tool: Tool, workingDir: string, sessionKey: string = 'default'): ToolDefinition {
   const parameters = createParamsSchema(tool.parameters);
 
   return {
@@ -46,7 +43,7 @@ function wrapVargosTool(tool: Tool, workingDir: string): ToolDefinition {
       _signal?: AbortSignal
     ): Promise<AgentToolResult<unknown>> => {
       const toolContext: ToolContext = {
-        sessionKey: CLI_SESSION_KEY,
+        sessionKey,
         workingDir,
       };
 
@@ -97,24 +94,9 @@ function wrapVargosTool(tool: Tool, workingDir: string): ToolDefinition {
  * Create Vargos custom tools for Pi SDK
  * These are passed as customTools to createAgentSession
  */
-export function createVargosCustomTools(workingDir: string): ToolDefinition[] {
+export function createVargosCustomTools(workingDir: string, sessionKey: string = 'default'): ToolDefinition[] {
   const tools = toolRegistry.list();
-  return tools.map(tool => wrapVargosTool(tool, workingDir));
-}
-
-/**
- * Create Vargos Pi SDK Extension Factory
- * Registers Vargos MCP tools as Pi SDK tools
- */
-export function createVargosExtensionFactory(workingDir: string): ExtensionFactory {
-  return (pi: ExtensionAPI) => {
-    // Register all Vargos tools
-    const tools = toolRegistry.list();
-    for (const tool of tools) {
-      const wrappedTool = wrapVargosTool(tool, workingDir);
-      pi.registerTool(wrappedTool);
-    }
-  };
+  return tools.map(tool => wrapVargosTool(tool, workingDir, sessionKey));
 }
 
 /**
