@@ -6,6 +6,28 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
+export const CONTEXT_FILE_NAMES = [
+  'AGENTS.md', 'SOUL.md', 'USER.md', 'TOOLS.md',
+  'MEMORY.md', 'HEARTBEAT.md', 'BOOTSTRAP.md',
+] as const;
+
+/**
+ * Load context files from a workspace directory
+ * Skips missing files silently
+ */
+export async function loadContextFiles(
+  workspaceDir: string,
+): Promise<Array<{ name: string; content: string }>> {
+  const files: Array<{ name: string; content: string }> = [];
+  for (const name of CONTEXT_FILE_NAMES) {
+    try {
+      const content = await fs.readFile(path.join(workspaceDir, name), 'utf-8');
+      files.push({ name, content });
+    } catch { /* skip missing */ }
+  }
+  return files;
+}
+
 // Default content for context files
 const DEFAULT_AGENTS_MD = `# AGENTS.md - Your Workspace
 
@@ -248,15 +270,20 @@ export async function initializeWorkspace(options: WorkspaceInitOptions): Promis
   }
 
   // Create default context files if they don't exist
-  const files: Array<{ name: string; content: string }> = [
-    { name: 'AGENTS.md', content: DEFAULT_AGENTS_MD },
-    { name: 'TOOLS.md', content: DEFAULT_TOOLS_MD },
-    { name: 'SOUL.md', content: DEFAULT_SOUL_MD },
-    { name: 'USER.md', content: DEFAULT_USER_MD },
-    { name: 'HEARTBEAT.md', content: DEFAULT_HEARTBEAT_MD },
-    { name: 'MEMORY.md', content: DEFAULT_MEMORY_MD },
-    { name: 'BOOTSTRAP.md', content: DEFAULT_BOOTSTRAP_MD },
-  ];
+  const defaultContent: Record<string, string> = {
+    'AGENTS.md': DEFAULT_AGENTS_MD,
+    'SOUL.md': DEFAULT_SOUL_MD,
+    'USER.md': DEFAULT_USER_MD,
+    'TOOLS.md': DEFAULT_TOOLS_MD,
+    'MEMORY.md': DEFAULT_MEMORY_MD,
+    'HEARTBEAT.md': DEFAULT_HEARTBEAT_MD,
+    'BOOTSTRAP.md': DEFAULT_BOOTSTRAP_MD,
+  };
+
+  const files = CONTEXT_FILE_NAMES.map(name => ({
+    name,
+    content: defaultContent[name] ?? '',
+  }));
 
   for (const { name, content } of files) {
     const filePath = path.join(workspaceDir, name);

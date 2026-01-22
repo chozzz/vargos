@@ -25,6 +25,8 @@ import { getAgentLifecycle, type AgentStreamEvent } from '../agent/lifecycle.js'
 import { getSessionMessageQueue } from '../agent/queue.js';
 import { getPiConfigPaths } from '../config/pi-config.js';
 import { loadContextFiles } from '../config/workspace.js';
+import { sanitizeHistory, limitHistoryTurns, getHistoryLimit } from '../agent/history.js';
+import { prepareSessionManager } from '../agent/session-init.js';
 
 /**
  * Extract plain text from Pi SDK content (string, array of content blocks, or object)
@@ -58,6 +60,7 @@ export interface PiAgentConfig {
   userTimezone?: string;
   runId?: string;
   images?: Array<{ data: string; mimeType: string }>;
+  channel?: string;
 }
 
 export interface PiAgentRunResult {
@@ -154,10 +157,14 @@ export class PiAgentRuntime {
         userTimezone: config.userTimezone,
         repoRoot: config.workspaceDir,
         model: config.model,
+        channel: config.channel,
       });
 
       // Create Pi session manager
       const sessionManager = SessionManager.open(config.sessionFile);
+
+      // Fix partial-write edge case
+      await prepareSessionManager({ sessionManager, sessionFile: config.sessionFile });
 
       // Create auth storage for API keys
       const authStorage = new AuthStorage(piPaths.authPath);
@@ -199,6 +206,16 @@ export class PiAgentRuntime {
         tools: [], // No built-in Pi SDK tools - we use Vargos tools instead
         customTools: vargosCustomTools, // All Vargos MCP tools
       });
+
+      // Sanitize and limit history before prompting
+      const existingMessages = session.messages;
+      if (existingMessages.length > 0) {
+        const sanitized = sanitizeHistory(existingMessages);
+        const limited = limitHistoryTurns(sanitized, getHistoryLimit(config.sessionKey));
+        if (limited.length !== existingMessages.length) {
+          session.agent.replaceMessages(limited);
+        }
+      }
 
       // Subscribe to Pi session events
       this.subscribeToSessionEvents(session, config.sessionKey, runId);

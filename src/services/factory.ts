@@ -5,7 +5,6 @@
  */
 
 import path from 'node:path';
-import os from 'node:os';
 import {
   type IMemoryService,
   type ISessionService,
@@ -19,6 +18,7 @@ import { QdrantMemoryService } from './memory/qdrant.js';
 import { FileSessionService } from './sessions/file.js';
 import { PostgresSessionService } from './sessions/postgres.js';
 import { MemoryContext, initializeMemoryContext } from './memory/context.js';
+import { resolveDataDir } from '../config/paths.js';
 
 export class ServiceFactory {
   private config: ServiceConfig;
@@ -33,7 +33,7 @@ export class ServiceFactory {
     switch (type) {
       case 'file':
         return new FileMemoryService({
-          baseDir: this.config.fileMemoryDir ?? path.join(os.homedir(), '.vargos', 'memory'),
+          baseDir: this.config.fileMemoryDir ?? path.join(resolveDataDir(), 'memory'),
         });
 
       case 'qdrant':
@@ -60,7 +60,7 @@ export class ServiceFactory {
     switch (type) {
       case 'file':
         return new FileSessionService({
-          baseDir: this.config.fileMemoryDir ?? path.join(os.homedir(), '.vargos'),
+          baseDir: this.config.fileMemoryDir ?? resolveDataDir(),
         });
 
       case 'postgres':
@@ -83,8 +83,7 @@ export class ServiceFactory {
   }
 
   async createMemoryContext(): Promise<MemoryContext> {
-    // Data storage (sessions, cache, sqlite) goes in ~/.vargos/
-    const dataDir = this.config.fileMemoryDir ?? path.join(os.homedir(), '.vargos');
+    const dataDir = this.config.fileMemoryDir ?? resolveDataDir();
 
     // Memory indexing happens on the workspace directory (where AGENTS.md, MEMORY.md, etc. live)
     // This ensures the agent can search and recall from these context files
@@ -144,16 +143,8 @@ export function getServices(): ServiceProvider {
   return globalServices;
 }
 
-export function getMemoryService(): IMemoryService {
-  return getServices().memory;
-}
-
 export function getSessionService(): ISessionService {
   return getServices().sessions;
-}
-
-export function getVectorService(): IVectorService | null {
-  return getServices().vector;
 }
 
 export function getMemoryContext(): import('./memory/context.js').MemoryContext {

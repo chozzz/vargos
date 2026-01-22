@@ -31,6 +31,11 @@ export function resolveSessionFile(sessionKey: string): string {
   return path.join(resolveSessionsDir(), `${sessionKey.replace(/:/g, '-')}.jsonl`);
 }
 
+export function resolveMediaDir(sessionKey?: string): string {
+  const base = path.join(resolveDataDir(), 'media');
+  return sessionKey ? path.join(base, sessionKey.replace(/:/g, '-')) : base;
+}
+
 export function resolveChannelsDir(): string {
   return path.join(resolveDataDir(), 'channels');
 }

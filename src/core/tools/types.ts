@@ -41,9 +41,6 @@ export interface Tool {
   execute: (args: unknown, context: ToolContext) => Promise<ToolResult>;
 }
 
-// Tool factory type for creating configured tools
-export type ToolFactory<TConfig = unknown> = (config?: TConfig) => Tool;
-
 // Helper functions for creating results
 export function textResult(text: string, metadata?: Record<string, unknown>): ToolResult {
   return { content: [{ type: 'text', text }], metadata };
@@ -75,16 +72,3 @@ export class ToolError extends Error {
   }
 }
 
-// Security error
-export class SecurityError extends ToolError {
-  constructor(message: string, details?: Record<string, unknown>) {
-    super(message, 'SECURITY_VIOLATION', details);
-  }
-}
-
-// Validation error
-export class ValidationError extends ToolError {
-  constructor(message: string, details?: Record<string, unknown>) {
-    super(message, 'VALIDATION_ERROR', details);
-  }
-}

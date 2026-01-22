@@ -20,33 +20,6 @@ export function formatErrorResult(error: unknown): ToolResult {
 }
 
 /**
- * Format success result
- */
-export function formatSuccessResult(text: string): ToolResult {
-  return {
-    content: [{ type: 'text', text }],
-    isError: false,
-  };
-}
-
-/**
- * Safely execute an async function with error handling
- */
-export async function withErrorHandling<T>(
-  fn: () => Promise<T>,
-  errorMapper?: (error: unknown) => T
-): Promise<T> {
-  try {
-    return await fn();
-  } catch (err) {
-    if (errorMapper) {
-      return errorMapper(err);
-    }
-    throw err;
-  }
-}
-
-/**
  * Tools that subagents are not allowed to use
  */
 export const SUBAGENT_DENIED_TOOLS = [

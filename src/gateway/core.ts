@@ -8,8 +8,8 @@ import type { Server as HTTPServer } from 'node:http';
 import type { WebSocket } from 'ws';
 import { getPiAgentRuntime } from '../pi/runtime.js';
 import { getSessionService } from '../services/factory.js';
-import { resolveSessionFile } from '../config/paths.js';
-import { resolveWorkspaceDir } from '../config/paths.js';
+import { resolveSessionFile, resolveWorkspaceDir } from '../config/paths.js';
+import { saveMedia } from '../lib/media.js';
 import { loadPiSettings, getPiApiKey } from '../config/pi-config.js';
 
 // ============================================================================
@@ -296,17 +296,23 @@ export class Gateway extends EventEmitter {
     // Extract text and images from input
     const images: Array<{ data: string; mimeType: string }> = [];
     let text: string;
+    let savedPath: string | undefined;
 
-    if (input.type === 'image' && Buffer.isBuffer(input.content)) {
-      images.push({
-        data: input.content.toString('base64'),
-        mimeType: (input.metadata.mimeType as string) || 'image/jpeg',
-      });
-      text = (input.metadata.caption as string) || 'User sent an image.';
+    if (Buffer.isBuffer(input.content)) {
+      const mimeType = (input.metadata.mimeType as string) || 'application/octet-stream';
+
+      // Vision-capable types get passed to the model
+      if (input.type === 'image') {
+        images.push({ data: input.content.toString('base64'), mimeType });
+      }
+
+      savedPath = await saveMedia({ buffer: input.content, sessionKey, mimeType });
+
+      const label = input.type === 'image' ? 'Image' : input.type.charAt(0).toUpperCase() + input.type.slice(1);
+      const caption = (input.metadata.caption as string) || `User sent ${label.toLowerCase() === 'file' ? 'a' : 'an'} ${label.toLowerCase()}.`;
+      text = `${caption}\n\n[${label} saved: ${savedPath}]`;
     } else {
-      text = typeof input.content === 'string'
-        ? input.content
-        : input.content.toString('utf-8');
+      text = input.content as string;
     }
 
     // Store user message as a task so PiAgentRuntime picks it up
@@ -314,7 +320,7 @@ export class Gateway extends EventEmitter {
       sessionKey,
       content: text,
       role: 'user',
-      metadata: { type: 'task', channel: context.channel },
+      metadata: { type: 'task', channel: context.channel, ...(savedPath && { mediaPath: savedPath }) },
     });
 
     // Resolve runtime config
@@ -344,6 +350,7 @@ export class Gateway extends EventEmitter {
       provider,
       apiKey,
       images: images.length ? images : undefined,
+      channel: context.channel,
     });
 
     console.error(`[Gateway] Agent result: success=${result.success} response=${(result.response || result.error || '').slice(0, 100)}`);

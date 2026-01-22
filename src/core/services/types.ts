@@ -151,8 +151,3 @@ export interface ServiceConfig {
   workspaceDir?: string;
 }
 
-export interface IServiceFactory {
-  createMemoryService(config: ServiceConfig): IMemoryService;
-  createSessionService(config: ServiceConfig): ISessionService;
-  createVectorService(config: ServiceConfig): IVectorService | null;
-}

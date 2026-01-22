@@ -16,8 +16,6 @@ export interface QueuedMessage {
   reject: (error: Error) => void;
 }
 
-export type QueueMode = 'collect' | 'steer' | 'followup';
-
 /**
  * Per-session message queue
  * Ensures one run at a time per session
@@ -166,7 +164,3 @@ export function getSessionMessageQueue(): SessionMessageQueue {
   return globalQueue;
 }
 
-export function initializeSessionMessageQueue(): SessionMessageQueue {
-  globalQueue = new SessionMessageQueue();
-  return globalQueue;
-}
