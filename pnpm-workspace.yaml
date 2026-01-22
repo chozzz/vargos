@@ -1,8 +1,0 @@
-packages:
-  # - "apps/chatbot"
-  - "apps/core"
-  - "apps/mastra"
-  - "apps/cli"
-  - "apps/agents"
-  - "apps/web"
-  - "packages/*"

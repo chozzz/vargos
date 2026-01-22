@@ -7,30 +7,6 @@
 
 import { Tool } from './types.js';
 
-// Tool groups (like OpenClaw)
-export const TOOL_GROUPS = {
-  runtime: ['exec', 'process', 'bash'],
-  fs: ['read', 'write', 'edit', 'apply_patch'],
-  sessions: ['sessions_list', 'sessions_history', 'sessions_send', 'sessions_spawn', 'session_status'],
-  memory: ['memory_search', 'memory_get'],
-  ui: ['browser', 'canvas'],
-  automation: ['cron_add', 'cron_list', 'cron_remove', 'cron_enable', 'cron_disable', 'gateway'],
-  messaging: ['message'],
-};
-
-// Default subagent tool deny list (like OpenClaw)
-export const DEFAULT_SUBAGENT_DENY_LIST = [
-  'sessions_list',
-  'sessions_history',
-  'sessions_send',
-  'sessions_spawn',
-];
-
-export interface ToolPolicy {
-  allow?: string[];
-  deny?: string[];
-}
-
 export class ToolRegistry {
   private tools = new Map<string, Tool>();
 
@@ -52,51 +28,6 @@ export class ToolRegistry {
 
   has(name: string): boolean {
     return this.tools.has(name);
-  }
-
-  /**
-   * Filter tools by policy
-   */
-  filterByPolicy(policy?: ToolPolicy): Tool[] {
-    const allTools = this.list();
-
-    if (!policy) {
-      return allTools;
-    }
-
-    const expandGroups = (tools: string[]): string[] => {
-      const expanded: string[] = [];
-      for (const tool of tools) {
-        if (tool.startsWith('group:')) {
-          const groupName = tool.slice(6);
-          const groupTools = TOOL_GROUPS[groupName as keyof typeof TOOL_GROUPS];
-          if (groupTools) {
-            expanded.push(...groupTools);
-          }
-        } else {
-          expanded.push(tool);
-        }
-      }
-      return expanded;
-    };
-
-    const allowed = policy.allow ? new Set(expandGroups(policy.allow)) : null;
-    const denied = policy.deny ? new Set(expandGroups(policy.deny)) : null;
-
-    return allTools.filter((tool) => {
-      if (denied?.has(tool.name)) return false;
-      if (allowed && !allowed.has(tool.name)) return false;
-      return true;
-    });
-  }
-
-  /**
-   * Get tools for subagent (with default restrictions)
-   */
-  getSubagentTools(): Tool[] {
-    return this.filterByPolicy({
-      deny: DEFAULT_SUBAGENT_DENY_LIST,
-    });
   }
 }
 

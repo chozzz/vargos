@@ -16,6 +16,7 @@ export interface SystemPromptOptions {
   repoRoot?: string;
   model?: string;
   thinking?: 'off' | 'low' | 'medium' | 'high';
+  channel?: string;
 }
 
 // Bootstrap files to inject (in priority order)
@@ -69,15 +70,20 @@ export async function buildSystemPrompt(options: SystemPromptOptions): Promise<s
     sections.push(bootstrapContent);
   }
 
-  // 5. Current Date & Time
+  // 5. Channel context (if from a messaging channel)
+  if (options.channel) {
+    sections.push(buildChannelSection(options.channel));
+  }
+
+  // 6. Current Date & Time
   if (userTimezone) {
     sections.push(buildTimeSection(userTimezone));
   }
 
-  // 6. Runtime info
+  // 7. Runtime info
   sections.push(buildRuntimeSection(repoRoot, model, thinking));
 
-  // 7. Extra prompt if provided
+  // 8. Extra prompt if provided
   if (options.extraSystemPrompt) {
     sections.push(`## Additional Context\n\n${options.extraSystemPrompt}`);
   }
@@ -159,18 +165,21 @@ function buildDocumentationSection(): string {
   ].join('\n');
 }
 
+// Subagents only need these files to save tokens
+const SUBAGENT_ALLOWLIST = new Set(['AGENTS.md', 'TOOLS.md']);
+
 /**
- * Load and inject bootstrap files
+ * Load and inject bootstrap files.
+ * Uses 70/20 head/tail truncation to preserve both beginning and end of large files.
  */
 async function loadBootstrapFiles(workspaceDir: string, mode: 'full' | 'minimal'): Promise<string | null> {
   const lines: string[] = [];
   const isFirstRun = await checkFirstRun(workspaceDir);
+  let hasSoulFile = false;
 
   for (const filename of BOOTSTRAP_FILES) {
-    // Skip BOOTSTRAP.md unless first run
-    if (filename === 'BOOTSTRAP.md' && !isFirstRun) {
-      continue;
-    }
+    if (filename === 'BOOTSTRAP.md' && !isFirstRun) continue;
+    if (mode === 'minimal' && !SUBAGENT_ALLOWLIST.has(filename)) continue;
 
     const filepath = path.join(workspaceDir, filename);
     let content: string;
@@ -178,47 +187,54 @@ async function loadBootstrapFiles(workspaceDir: string, mode: 'full' | 'minimal'
     try {
       content = await fs.readFile(filepath, 'utf-8');
     } catch {
-      // File doesn't exist - inject missing marker
       if (mode === 'full') {
         lines.push(`<!-- ${filename} - missing -->`);
       }
       continue;
     }
 
-    // Skip empty files
-    if (!content.trim()) {
-      continue;
-    }
+    if (!content.trim()) continue;
 
-    // Truncate large files
+    if (filename === 'SOUL.md') hasSoulFile = true;
+
+    // 70/20 head/tail truncation — keeps start and end, drops middle
     const maxChars = DEFAULT_BOOTSTRAP_MAX_CHARS;
     let displayContent = content;
-    let truncated = false;
 
     if (content.length > maxChars) {
-      displayContent = content.slice(0, maxChars);
-      truncated = true;
+      const headChars = Math.floor(maxChars * 0.7);
+      const tailChars = Math.floor(maxChars * 0.2);
+      const head = content.slice(0, headChars);
+      const tail = content.slice(-tailChars);
+      displayContent = `${head}\n\n[...truncated, read ${filename} for full content...]\n\n${tail}`;
     }
 
-    // Add file content with header
     lines.push(`<!-- ${filename} -->`);
     lines.push(displayContent);
-    if (truncated) {
-      lines.push(`\n<!-- ... truncated (${content.length - maxChars} more chars) -->`);
-    }
     lines.push('');
   }
 
-  if (lines.length === 0) {
-    return null;
+  // SOUL.md persona hint
+  if (hasSoulFile) {
+    lines.push('If SOUL.md is present, embody its persona. Avoid stiff, generic replies.');
+    lines.push('');
   }
 
-  const label = mode === 'minimal' ? 'Subagent Context' : 'Project Context';
+  if (lines.length === 0) return null;
 
+  const label = mode === 'minimal' ? 'Subagent Context' : 'Project Context';
+  return [`## ${label}`, '', ...lines].join('\n');
+}
+
+/**
+ * Build channel context section
+ */
+function buildChannelSection(channel: string): string {
   return [
-    `## ${label}`,
+    '## Channel',
     '',
-    ...lines,
+    `This message arrived via: ${channel}`,
+    'Respond appropriately for this medium (concise for chat, detailed for CLI).',
   ].join('\n');
 }
 

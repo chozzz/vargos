@@ -194,33 +194,40 @@ export class TelegramAdapter implements ChannelAdapter {
       return;
     }
 
-    // Voice / audio — describe textually
+    // Voice / audio — download and forward buffer
+    const fileId = msg.voice?.file_id ?? msg.audio?.file_id;
+    const mimeType = msg.voice?.mime_type ?? msg.audio?.mime_type ?? 'audio/ogg';
     const duration = msg.voice?.duration ?? msg.audio?.duration;
     const label = msg.voice ? 'Voice message' : 'Audio message';
-    const text = msg.caption
-      ? `[${label}, ${duration}s] ${msg.caption}`
-      : `[${label}, ${duration}s]`;
 
     console.error(`[Telegram] Received ${label.toLowerCase()} from ${chatId} (${duration}s)`);
 
-    const input: NormalizedInput = {
-      type: 'text',
-      content: text,
-      metadata: { encoding: 'utf-8' },
-      source: { channel: 'telegram', userId: chatId, sessionKey },
-      timestamp: Date.now(),
-    };
+    try {
+      const buffer = await this.downloadFile(fileId!);
+      const input: NormalizedInput = {
+        type: 'voice',
+        content: buffer,
+        metadata: {
+          mimeType,
+          caption: msg.caption || `[${label}, ${duration}s]`,
+        },
+        source: { channel: 'telegram', userId: chatId, sessionKey },
+        timestamp: Date.now(),
+      };
 
-    const result = await gateway.processInput(input, context);
-    if (result.success && result.content) {
-      const replyText = typeof result.content === 'string'
-        ? result.content
-        : result.content.toString('utf-8');
-      await deliverReply(
-        (chunk) => this.send(chatId, chunk),
-        replyText,
-        { maxChunkSize: 4000 },
-      );
+      const result = await gateway.processInput(input, context);
+      if (result.success && result.content) {
+        const replyText = typeof result.content === 'string'
+          ? result.content
+          : result.content.toString('utf-8');
+        await deliverReply(
+          (chunk) => this.send(chatId, chunk),
+          replyText,
+          { maxChunkSize: 4000 },
+        );
+      }
+    } catch (err) {
+      console.error(`[Telegram] Audio download failed for ${chatId}:`, err);
     }
   }
 

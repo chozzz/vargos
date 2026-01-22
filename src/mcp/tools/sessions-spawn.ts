@@ -4,11 +4,11 @@
  */
 
 import { z } from 'zod';
-import path from 'node:path';
 import { Tool, ToolContext, textResult, errorResult } from './types.js';
 import { getSessionService } from '../../services/factory.js';
 import { isSubagentSessionKey } from '../../agent/prompt.js';
 import { getPiAgentRuntime } from '../../pi/runtime.js';
+import { resolveSessionFile } from '../../config/paths.js';
 
 const SessionsSpawnParameters = z.object({
   task: z.string().describe('Task description for the sub-agent'),
@@ -72,8 +72,7 @@ export const sessionsSpawnTool: Tool = {
 
       const runtime = getPiAgentRuntime();
 
-      // Get session file path for Pi SDK
-      const childSessionFile = path.join(context.workingDir, 'sessions', `${childKey.replace(/:/g, '-')}.jsonl`);
+      const childSessionFile = resolveSessionFile(childKey);
 
       // Run in background (don't await)
       runtime
