@@ -8,8 +8,7 @@ import type { ChannelAdapter, ChannelStatus } from '../types.js';
 import { createWhatsAppSocket, type WhatsAppInboundMessage } from './session.js';
 import { createDedupeCache } from '../../lib/dedupe.js';
 import { createMessageDebouncer } from '../../lib/debounce.js';
-import { deliverReply } from '../../lib/reply-delivery.js';
-import { getGateway, type InputType, type NormalizedInput, type GatewayContext } from '../../gateway/core.js';
+import { processAndDeliver, type InputType, type NormalizedInput, type GatewayContext } from '../../gateway/core.js';
 import { resolveChannelsDir } from '../../config/paths.js';
 import path from 'node:path';
 
@@ -127,56 +126,26 @@ export class WhatsAppAdapter implements ChannelAdapter {
       metadata: {},
     };
 
-    const gateway = getGateway();
+    const send = (chunk: string) => this.send(jid, chunk);
 
-    // Images with a downloaded buffer → send as image input for vision
-    if (msg.mediaType === 'image' && msg.mediaBuffer) {
-      const input: NormalizedInput = {
-        type: 'image',
-        content: msg.mediaBuffer,
-        metadata: {
-          mimeType: msg.mimeType || 'image/jpeg',
-          caption: msg.caption,
-        },
-        source: { channel: 'whatsapp', userId: jid, sessionKey },
-        timestamp: Date.now(),
-      };
-
-      const result = await gateway.processInput(input, context);
-      if (result.success && result.content) {
-        const replyText = typeof result.content === 'string'
-          ? result.content
-          : result.content.toString('utf-8');
-        await deliverReply((chunk) => this.send(jid, chunk), replyText);
-      }
-      return;
-    }
-
-    // Audio/voice/video/document/sticker — forward buffer when available
     const typeMap: Record<string, InputType> = {
-      audio: 'voice', video: 'video', document: 'file', sticker: 'file',
+      image: 'image', audio: 'voice', video: 'video', document: 'file', sticker: 'file',
     };
     const inputType: InputType = typeMap[msg.mediaType!] || 'file';
 
+    // Media with downloaded buffer
     if (msg.mediaBuffer) {
       const input: NormalizedInput = {
         type: inputType,
         content: msg.mediaBuffer,
         metadata: {
-          mimeType: msg.mimeType,
+          mimeType: msg.mimeType || (inputType === 'image' ? 'image/jpeg' : undefined),
           caption: msg.caption,
         },
         source: { channel: 'whatsapp', userId: jid, sessionKey },
         timestamp: Date.now(),
       };
-
-      const result = await gateway.processInput(input, context);
-      if (result.success && result.content) {
-        const replyText = typeof result.content === 'string'
-          ? result.content
-          : result.content.toString('utf-8');
-        await deliverReply((chunk) => this.send(jid, chunk), replyText);
-      }
+      await processAndDeliver(input, context, send);
       return;
     }
 
@@ -186,25 +155,14 @@ export class WhatsAppAdapter implements ChannelAdapter {
       document: 'Document', sticker: 'Sticker',
     };
     const label = descriptions[msg.mediaType!] || 'Media';
-    const text = msg.caption
-      ? `[${label}] ${msg.caption}`
-      : `[${label} received]`;
-
     const input: NormalizedInput = {
       type: 'text',
-      content: text,
+      content: msg.caption ? `[${label}] ${msg.caption}` : `[${label} received]`,
       metadata: { encoding: 'utf-8' },
       source: { channel: 'whatsapp', userId: jid, sessionKey },
       timestamp: Date.now(),
     };
-
-    const result = await gateway.processInput(input, context);
-    if (result.success && result.content) {
-      const replyText = typeof result.content === 'string'
-        ? result.content
-        : result.content.toString('utf-8');
-      await deliverReply((chunk) => this.send(jid, chunk), replyText);
-    }
+    await processAndDeliver(input, context, send);
   }
 
   private async handleBatch(jid: string, messages: string[]): Promise<void> {
@@ -229,24 +187,9 @@ export class WhatsAppAdapter implements ChannelAdapter {
       metadata: {},
     };
 
-    const gateway = getGateway();
-    const result = await gateway.processInput(input, context);
-
+    const result = await processAndDeliver(input, context, (chunk) => this.send(jid, chunk));
     if (!result.success) {
       console.error(`[WhatsApp] Gateway error for ${sessionKey}:`, result.content);
-      return;
-    }
-
-    if (result.content) {
-      const replyText = typeof result.content === 'string'
-        ? result.content
-        : result.content.toString('utf-8');
-
-      console.error(`[WhatsApp] Sending reply to ${jid}: "${replyText.slice(0, 80)}..."`);
-      await deliverReply(
-        (chunk) => this.send(jid, chunk),
-        replyText,
-      );
     }
   }
 
