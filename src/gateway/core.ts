@@ -11,6 +11,7 @@ import { getSessionService } from '../services/factory.js';
 import { resolveSessionFile, resolveWorkspaceDir } from '../config/paths.js';
 import { saveMedia } from '../lib/media.js';
 import { loadPiSettings, getPiApiKey } from '../config/pi-config.js';
+import { deliverReply, type SendFn } from '../lib/reply-delivery.js';
 
 // ============================================================================
 // Types
@@ -419,4 +420,20 @@ export function getGateway(): Gateway {
 export function initializeGateway(options?: ConstructorParameters<typeof Gateway>[0]): Gateway {
   globalGateway = new Gateway(options);
   return globalGateway;
+}
+
+/** Process input through gateway and deliver the reply in one call. */
+export async function processAndDeliver(
+  input: NormalizedInput,
+  context: GatewayContext,
+  send: SendFn,
+): Promise<GatewayResponse> {
+  const result = await getGateway().processInput(input, context);
+  if (result.success && result.content) {
+    const text = typeof result.content === 'string'
+      ? result.content
+      : result.content.toString('utf-8');
+    await deliverReply(send, text);
+  }
+  return result;
 }
