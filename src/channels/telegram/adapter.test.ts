@@ -6,16 +6,10 @@ import type { NormalizedInput } from '../../gateway/core.js';
 const processInputCalls: Array<{ input: NormalizedInput }> = [];
 
 vi.mock('../../gateway/core.js', () => ({
-  getGateway: () => ({
-    processInput: vi.fn(async (input: NormalizedInput) => {
-      processInputCalls.push({ input });
-      return { success: true, content: 'ok', type: 'text' as const };
-    }),
+  processAndDeliver: vi.fn(async (input: NormalizedInput) => {
+    processInputCalls.push({ input });
+    return { success: true, content: 'ok', type: 'text' as const };
   }),
-}));
-
-vi.mock('../../lib/reply-delivery.js', () => ({
-  deliverReply: vi.fn(async () => {}),
 }));
 
 // Mock fetch globally for apiCall + downloadFile

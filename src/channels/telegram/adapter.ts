@@ -14,8 +14,7 @@ import type {
 } from './types.js';
 import { createDedupeCache } from '../../lib/dedupe.js';
 import { createMessageDebouncer } from '../../lib/debounce.js';
-import { deliverReply } from '../../lib/reply-delivery.js';
-import { getGateway, type NormalizedInput, type GatewayContext } from '../../gateway/core.js';
+import { processAndDeliver, type NormalizedInput, type GatewayContext } from '../../gateway/core.js';
 
 const API_BASE = 'https://api.telegram.org/bot';
 const API_FILE_BASE = 'https://api.telegram.org/file/bot';
@@ -157,7 +156,7 @@ export class TelegramAdapter implements ChannelAdapter {
       metadata: {},
     };
 
-    const gateway = getGateway();
+    const send = (chunk: string) => this.send(chatId, chunk);
 
     // Photo — pick largest (last in array), send as image input
     if (msg.photo?.length) {
@@ -169,25 +168,11 @@ export class TelegramAdapter implements ChannelAdapter {
         const input: NormalizedInput = {
           type: 'image',
           content: buffer,
-          metadata: {
-            mimeType: 'image/jpeg',
-            caption: msg.caption,
-          },
+          metadata: { mimeType: 'image/jpeg', caption: msg.caption },
           source: { channel: 'telegram', userId: chatId, sessionKey },
           timestamp: Date.now(),
         };
-
-        const result = await gateway.processInput(input, context);
-        if (result.success && result.content) {
-          const replyText = typeof result.content === 'string'
-            ? result.content
-            : result.content.toString('utf-8');
-          await deliverReply(
-            (chunk) => this.send(chatId, chunk),
-            replyText,
-            { maxChunkSize: 4000 },
-          );
-        }
+        await processAndDeliver(input, context, send);
       } catch (err) {
         console.error(`[Telegram] Photo download failed for ${chatId}:`, err);
       }
@@ -207,25 +192,11 @@ export class TelegramAdapter implements ChannelAdapter {
       const input: NormalizedInput = {
         type: 'voice',
         content: buffer,
-        metadata: {
-          mimeType,
-          caption: msg.caption || `[${label}, ${duration}s]`,
-        },
+        metadata: { mimeType, caption: msg.caption || `[${label}, ${duration}s]` },
         source: { channel: 'telegram', userId: chatId, sessionKey },
         timestamp: Date.now(),
       };
-
-      const result = await gateway.processInput(input, context);
-      if (result.success && result.content) {
-        const replyText = typeof result.content === 'string'
-          ? result.content
-          : result.content.toString('utf-8');
-        await deliverReply(
-          (chunk) => this.send(chatId, chunk),
-          replyText,
-          { maxChunkSize: 4000 },
-        );
-      }
+      await processAndDeliver(input, context, send);
     } catch (err) {
       console.error(`[Telegram] Audio download failed for ${chatId}:`, err);
     }
@@ -251,20 +222,7 @@ export class TelegramAdapter implements ChannelAdapter {
       metadata: {},
     };
 
-    const gateway = getGateway();
-    const result = await gateway.processInput(input, context);
-
-    if (result.success && result.content) {
-      const replyText = typeof result.content === 'string'
-        ? result.content
-        : result.content.toString('utf-8');
-
-      await deliverReply(
-        (chunk) => this.send(chatId, chunk),
-        replyText,
-        { maxChunkSize: 4000 },
-      );
-    }
+    await processAndDeliver(input, context, (chunk) => this.send(chatId, chunk));
   }
 
   private async apiCall<T>(method: string, params?: Record<string, unknown>): Promise<T> {
