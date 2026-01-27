@@ -2,7 +2,7 @@
 /**
  * Vargos CLI
  * Interactive command-line interface for chatting with the Vargos agent
- * Like OpenClaw's CLI mode
+ * Interactive chat and task runner
  */
 
 import 'dotenv/config';
@@ -135,7 +135,7 @@ const program = new Command();
 
 program
   .name('vargos')
-  .description('Vargos - Agentic MCP server with OpenClaw-style tools')
+  .description('Vargos - Agentic MCP server')
   .version(VERSION);
 
 program

@@ -1,6 +1,6 @@
 /**
  * Pi SDK integration for Vargos
- * Embeds pi-coding-agent with OpenClaw-style features:
+ * Embeds pi-coding-agent with:
  * - Message queue for per-session serialization
  * - Lifecycle events for streaming
  * - Bootstrap file injection
@@ -77,7 +77,7 @@ export interface PiAgentRunResult {
 
 /**
  * Pi Agent Runtime
- * Manages Pi SDK agent sessions with OpenClaw-style features
+ * Manages Pi SDK agent sessions
  */
 export class PiAgentRuntime {
   private lifecycle = getAgentLifecycle();

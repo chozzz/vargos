@@ -1,7 +1,7 @@
 {
   "name": "vargos",
   "version": "0.0.1",
-  "description": "Vargos - Agentic MCP server with OpenClaw-style tools",
+  "description": "Vargos - Agentic MCP server",
   "type": "module",
   "scripts": {
     "dev": "tsx src/index.ts",

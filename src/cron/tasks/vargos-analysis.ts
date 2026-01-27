@@ -63,9 +63,9 @@ export const ANALYSIS_AREAS: AnalysisArea[] = [
   },
   {
     name: 'Integration & Ecosystem',
-    focus: 'OpenClaw parity and future features',
+    focus: 'Feature completeness and future direction',
     questions: [
-      'Gap analysis: what OpenClaw features are missing?',
+      'Gap analysis: what features are missing?',
       'Priority ranking for missing features',
       'Suggest gateway implementation approach',
       'WhatsApp/Discord integration architecture',
@@ -119,7 +119,7 @@ ${area.questions.map(q => `- ${q}`).join('\n')}
 You are analyzing the Vargos codebase to suggest improvements to the user.
 
 CONTEXT:
-- Vargos is an open-source alternative to OpenClaw, focused on MCP (Model Context Protocol)
+- Vargos is an open-source agentic MCP (Model Context Protocol) server
 - Goal: Enable self-hosted agents that other LLMs can consume from anywhere
 - User wants Vargos to eventually replace them as a programmer
 - Will share repo with others - needs to be production-ready
@@ -177,7 +177,7 @@ This is a comprehensive review that should:
 3. Analyze dependency tree for risks
 4. Review security considerations
 5. Benchmark actual performance
-6. Compare with OpenClaw architecture
+6. Compare with similar agentic tool servers
 
 Output: Detailed report in memory/vargos-analysis/deep-YYYY-MM-DD.md
 

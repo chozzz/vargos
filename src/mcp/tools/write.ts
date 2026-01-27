@@ -1,5 +1,5 @@
 /**
- * File write tool - Ported from OpenClaw
+ * File write tool
  * Creates or overwrites files
  */
 

@@ -1,7 +1,6 @@
 /**
  * Session message queue
  * Per-session serialization to prevent race conditions
- * Like OpenClaw's session lane system
  */
 
 import { EventEmitter } from 'node:events';

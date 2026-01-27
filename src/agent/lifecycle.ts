@@ -1,6 +1,6 @@
 /**
  * Agent lifecycle events
- * Stream start/end/error events like OpenClaw
+ * Stream start/end/error events
  */
 
 import { EventEmitter } from 'node:events';

@@ -1,5 +1,5 @@
 /**
- * File read tool - Ported from OpenClaw
+ * File read tool
  * Reads file contents with support for text and images
  */
 

@@ -1,5 +1,5 @@
 /**
- * MIME type detection - Ported from OpenClaw
+ * MIME type detection
  */
 
 /**

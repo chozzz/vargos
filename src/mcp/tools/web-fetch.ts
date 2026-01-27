@@ -1,5 +1,5 @@
 /**
- * Web fetch tool - Ported from OpenClaw
+ * Web fetch tool
  * Fetch URLs and extract readable content
  */
 

@@ -1,5 +1,5 @@
 /**
- * Shell execution tool - Ported from OpenClaw
+ * Shell execution tool
  * Execute shell commands with safety controls
  */
 

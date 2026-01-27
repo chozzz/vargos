@@ -1,5 +1,5 @@
 /**
- * Process management tool - Ported from OpenClaw
+ * Process management tool
  * Manage background processes: list, write, send-keys, kill
  * 
  * Architecture: Uses ProcessService for state management

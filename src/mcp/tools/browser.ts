@@ -1,5 +1,5 @@
 /**
- * Browser automation tool - Ported from OpenClaw
+ * Browser automation tool
  * Multi-action browser tool for web automation
  */
 

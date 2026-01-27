@@ -1,5 +1,5 @@
 /**
- * File edit tool - Ported from OpenClaw
+ * File edit tool
  * Surgical text replacement (find and replace)
  */
 
