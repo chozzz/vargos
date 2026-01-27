@@ -1,6 +1,6 @@
 /**
  * History sanitization and limiting for Vargos sessions
- * Ported from OpenClaw's session management patterns
+ * Sanitize and limit session history for context windows
  */
 
 import type { AgentMessage } from '@mariozechner/pi-agent-core';

@@ -1,5 +1,5 @@
 /**
- * Memory search tool - OpenClaw-style
+ * Memory search tool
  * Mandatory recall step with hybrid search
  */
 
@@ -15,7 +15,7 @@ const MemorySearchParameters = z.object({
 
 export const memorySearchTool: Tool = {
   name: 'memory_search',
-  // OpenClaw-style mandatory recall description
+  // Mandatory recall description
   description: 'Mandatory recall step: semantically search MEMORY.md + memory/*.md (and optional session transcripts) before answering questions about prior work, decisions, dates, people, preferences, or todos; returns top snippets with path + lines.',
   parameters: MemorySearchParameters,
   execute: async (args: unknown, context: ToolContext) => {

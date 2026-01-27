@@ -1,6 +1,5 @@
 /**
  * Cron add tool - Schedule recurring tasks
- * Like OpenClaw's cron tool
  */
 
 import { z } from 'zod';

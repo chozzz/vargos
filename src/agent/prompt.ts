@@ -1,6 +1,6 @@
 /**
  * System prompt builder for Vargos
- * OpenClaw-style prompt assembly with bootstrap file injection
+ * System prompt assembly with bootstrap file injection
  */
 
 import { promises as fs } from 'node:fs';
@@ -34,7 +34,7 @@ const BOOTSTRAP_FILES = [
 const DEFAULT_BOOTSTRAP_MAX_CHARS = 20000;
 
 /**
- * Build system prompt like OpenClaw
+ * Build system prompt from workspace context files
  */
 export async function buildSystemPrompt(options: SystemPromptOptions): Promise<string> {
   const { mode, workspaceDir, toolNames, userTimezone, repoRoot, model, thinking } = options;
@@ -96,7 +96,7 @@ export async function buildSystemPrompt(options: SystemPromptOptions): Promise<s
  * Build tooling section with detailed descriptions
  */
 async function buildToolingSection(toolNames: string[]): Promise<string> {
-  // Core tool descriptions (OpenClaw-style)
+  // Core tool descriptions
   const coreToolDescriptions: Record<string, string> = {
     read: 'Read file contents',
     write: 'Create or overwrite files',
@@ -157,11 +157,7 @@ function buildDocumentationSection(): string {
   return [
     '## Documentation',
     '',
-    'Vargos docs: /usr/lib/node_modules/openclaw/docs (or https://docs.openclaw.ai)',
-    'Source: https://github.com/openclaw/openclaw',
-    'Skills: https://clawhub.com',
-    '',
-    'Consult local docs first for OpenClaw behavior, commands, configuration, or architecture.',
+    'Consult workspace docs (AGENTS.md, TOOLS.md, etc.) for behavior, commands, configuration, or architecture.',
   ].join('\n');
 }
 
@@ -288,7 +284,7 @@ function buildIdentitySection(): string {
   return [
     '## Identity',
     '',
-    'You are Vargos, an agentic MCP (Model Context Protocol) server with OpenClaw-style tools.',
+    'You are Vargos, an agentic MCP (Model Context Protocol) server.',
     'You help users by providing powerful tools for file manipulation, shell execution, browser automation, and agent management.',
     '',
     'Before making assumptions about the codebase:',
