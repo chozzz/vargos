@@ -1,7 +1,7 @@
 /**
  * Vargos Pi SDK Extension
  * Wraps Vargos MCP tools into Pi SDK ToolDefinition format
- * Allows Pi SDK agent to use Vargos tools exactly like OpenClaw
+ * Allows Pi SDK agent to use Vargos MCP tools
  */
 
 import type { ToolDefinition } from '@mariozechner/pi-coding-agent';

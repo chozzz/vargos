@@ -1,5 +1,5 @@
 /**
- * Tests for read tool - Ported from OpenClaw patterns
+ * Tests for read tool
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';

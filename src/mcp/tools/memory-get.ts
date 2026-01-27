@@ -1,5 +1,5 @@
 /**
- * Memory get tool - OpenClaw-style
+ * Memory get tool
  * Safe snippet read from memory files
  */
 
@@ -15,7 +15,7 @@ const MemoryGetParameters = z.object({
 
 export const memoryGetTool: Tool = {
   name: 'memory_get',
-  // OpenClaw-style description
+  // Safe snippet read description
   description: 'Safe snippet read from MEMORY.md or memory/*.md with optional from/lines; use after memory_search to pull only the needed lines and keep context small.',
   parameters: MemoryGetParameters,
   execute: async (args: unknown, context: ToolContext) => {

@@ -207,7 +207,7 @@ const result = await runtime.run({
 
 ## MemoryContext
 
-OpenClaw-style memory system with hybrid search:
+Memory system with hybrid search:
 
 **Features:**
 - Hybrid search (vector + text) with configurable weights
