@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { Gateway, PluginRegistry, TextInputPlugin, type GatewayContext, type NormalizedInput } from '../gateway/index.js';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { Gateway, PluginRegistry, TextInputPlugin, getGateway, initializeGateway, type GatewayContext, type GatewayResponse, type NormalizedInput } from '../gateway/index.js';
+import { processAndDeliver } from '../gateway/core.js';
 
 describe('Gateway Core', () => {
   let gateway: Gateway;
@@ -237,5 +238,118 @@ describe('WebSocket Transport', () => {
     const { WebSocketTransport } = await import('../gateway/transports.js');
     const transport = new WebSocketTransport(9998, '127.0.0.1');
     expect(transport).toBeDefined();
+  });
+});
+
+describe('processAndDeliver', () => {
+  const input: NormalizedInput = {
+    type: 'text',
+    content: 'hello',
+    metadata: {},
+    source: { channel: 'test', userId: 'u1', sessionKey: 's1' },
+    timestamp: Date.now(),
+  };
+
+  const context: GatewayContext = {
+    sessionKey: 's1',
+    userId: 'u1',
+    channel: 'test',
+    permissions: ['*'],
+    metadata: {},
+  };
+
+  const successResult: GatewayResponse = { success: true, content: 'reply', type: 'text' };
+  const errorResult: GatewayResponse = { success: false, content: 'fail', type: 'error' };
+
+  let processInputSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    initializeGateway();
+    processInputSpy = vi.spyOn(getGateway(), 'processInput');
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it('should return result without sendTyping', async () => {
+    processInputSpy.mockResolvedValue(successResult);
+    const send = vi.fn();
+    const result = await processAndDeliver(input, context, send);
+    expect(result).toEqual(successResult);
+  });
+
+  it('should call send for successful results', async () => {
+    processInputSpy.mockResolvedValue(successResult);
+    const send = vi.fn().mockResolvedValue(undefined);
+    await processAndDeliver(input, context, send);
+    // deliverReply calls send with chunked content
+    expect(send).toHaveBeenCalled();
+  });
+
+  it('should not call send for failed results', async () => {
+    processInputSpy.mockResolvedValue(errorResult);
+    const send = vi.fn();
+    await processAndDeliver(input, context, send);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('should fire sendTyping immediately', async () => {
+    processInputSpy.mockResolvedValue(successResult);
+    const send = vi.fn();
+    const typing = vi.fn().mockResolvedValue(undefined);
+
+    await processAndDeliver(input, context, send, typing);
+    expect(typing).toHaveBeenCalledTimes(1);
+  });
+
+  it('should refresh typing on 4s interval', async () => {
+    const typing = vi.fn().mockResolvedValue(undefined);
+    const send = vi.fn();
+
+    // Make processInput hang until we resolve it
+    let resolveProcess!: (v: GatewayResponse) => void;
+    processInputSpy.mockReturnValue(new Promise((r) => { resolveProcess = r; }));
+
+    const promise = processAndDeliver(input, context, send, typing);
+
+    // Initial call
+    expect(typing).toHaveBeenCalledTimes(1);
+
+    // Advance 4s — second call
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(typing).toHaveBeenCalledTimes(2);
+
+    // Advance another 4s — third call
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(typing).toHaveBeenCalledTimes(3);
+
+    // Resolve and finish
+    resolveProcess(successResult);
+    await promise;
+  });
+
+  it('should clear interval after processing completes', async () => {
+    const typing = vi.fn().mockResolvedValue(undefined);
+    const send = vi.fn();
+    processInputSpy.mockResolvedValue(successResult);
+
+    await processAndDeliver(input, context, send, typing);
+    const callsAfter = typing.mock.calls.length;
+
+    // Advancing time should not fire more typing calls
+    await vi.advanceTimersByTimeAsync(8000);
+    expect(typing).toHaveBeenCalledTimes(callsAfter);
+  });
+
+  it('should not break if sendTyping rejects', async () => {
+    processInputSpy.mockResolvedValue(successResult);
+    const send = vi.fn();
+    const typing = vi.fn().mockRejectedValue(new Error('network'));
+
+    const result = await processAndDeliver(input, context, send, typing);
+    expect(result).toEqual(successResult);
   });
 });

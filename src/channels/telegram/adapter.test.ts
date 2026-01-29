@@ -3,11 +3,11 @@ import type { TelegramUpdate } from './types.js';
 import type { NormalizedInput } from '../../gateway/core.js';
 
 // Track what the gateway receives
-const processInputCalls: Array<{ input: NormalizedInput }> = [];
+const processInputCalls: Array<{ input: NormalizedInput; hasTyping: boolean }> = [];
 
 vi.mock('../../gateway/core.js', () => ({
-  processAndDeliver: vi.fn(async (input: NormalizedInput) => {
-    processInputCalls.push({ input });
+  processAndDeliver: vi.fn(async (input: NormalizedInput, _ctx: unknown, _send: unknown, sendTyping?: unknown) => {
+    processInputCalls.push({ input, hasTyping: typeof sendTyping === 'function' });
     return { success: true, content: 'ok', type: 'text' as const };
   }),
 }));
@@ -112,6 +112,7 @@ describe('TelegramAdapter media handling', () => {
     expect(call.input.metadata.mimeType).toBe('image/jpeg');
     expect(call.input.metadata.caption).toBe('Look at this');
     expect(call.input.source.channel).toBe('telegram');
+    expect(call.hasTyping).toBe(true);
   });
 
   it('should handle voice updates with file download', async () => {
@@ -151,6 +152,7 @@ describe('TelegramAdapter media handling', () => {
     expect(Buffer.isBuffer(call.input.content)).toBe(true);
     expect(call.input.metadata.mimeType).toBe('audio/ogg');
     expect(call.input.source.channel).toBe('telegram');
+    expect(call.hasTyping).toBe(true);
   });
 
   it('should handle audio updates with file download and caption', async () => {
@@ -192,6 +194,7 @@ describe('TelegramAdapter media handling', () => {
     expect(Buffer.isBuffer(call.input.content)).toBe(true);
     expect(call.input.metadata.mimeType).toBe('audio/mpeg');
     expect(call.input.metadata.caption).toBe('Listen to this song');
+    expect(call.hasTyping).toBe(true);
   });
 
   it('should skip non-private chats', async () => {

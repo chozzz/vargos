@@ -145,7 +145,8 @@ export class WhatsAppAdapter implements ChannelAdapter {
         source: { channel: 'whatsapp', userId: jid, sessionKey },
         timestamp: Date.now(),
       };
-      await processAndDeliver(input, context, send);
+      const typing = () => this.sock!.sendPresenceUpdate('composing', jid);
+      await processAndDeliver(input, context, send, typing);
       return;
     }
 
@@ -162,7 +163,8 @@ export class WhatsAppAdapter implements ChannelAdapter {
       source: { channel: 'whatsapp', userId: jid, sessionKey },
       timestamp: Date.now(),
     };
-    await processAndDeliver(input, context, send);
+    const typing = () => this.sock!.sendPresenceUpdate('composing', jid);
+    await processAndDeliver(input, context, send, typing);
   }
 
   private async handleBatch(jid: string, messages: string[]): Promise<void> {
@@ -187,7 +189,8 @@ export class WhatsAppAdapter implements ChannelAdapter {
       metadata: {},
     };
 
-    const result = await processAndDeliver(input, context, (chunk) => this.send(jid, chunk));
+    const typing = () => this.sock!.sendPresenceUpdate('composing', jid);
+    const result = await processAndDeliver(input, context, (chunk) => this.send(jid, chunk), typing);
     if (!result.success) {
       console.error(`[WhatsApp] Gateway error for ${sessionKey}:`, result.content);
     }
