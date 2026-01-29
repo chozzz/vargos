@@ -17,6 +17,11 @@ import qrcode from 'qrcode-terminal';
 import pino from 'pino';
 import { promises as fs } from 'node:fs';
 
+// libsignal-node's session_record.js uses console.info to dump raw Signal
+// protocol state (crypto keys, ratchets) on every session close/open.
+// We don't use console.info anywhere — silence it to suppress the noise.
+console.info = () => {};
+
 export interface WhatsAppSessionEvents {
   onQR: (qr: string) => void;
   onConnected: (name: string) => void;

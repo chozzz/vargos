@@ -427,13 +427,25 @@ export async function processAndDeliver(
   input: NormalizedInput,
   context: GatewayContext,
   send: SendFn,
+  sendTyping?: () => Promise<void>,
 ): Promise<GatewayResponse> {
-  const result = await getGateway().processInput(input, context);
-  if (result.success && result.content) {
-    const text = typeof result.content === 'string'
-      ? result.content
-      : result.content.toString('utf-8');
-    await deliverReply(send, text);
+  let typingInterval: ReturnType<typeof setInterval> | undefined;
+
+  if (sendTyping) {
+    sendTyping().catch(() => {});
+    typingInterval = setInterval(() => sendTyping().catch(() => {}), 4000);
   }
-  return result;
+
+  try {
+    const result = await getGateway().processInput(input, context);
+    if (result.success && result.content) {
+      const text = typeof result.content === 'string'
+        ? result.content
+        : result.content.toString('utf-8');
+      await deliverReply(send, text);
+    }
+    return result;
+  } finally {
+    if (typingInterval) clearInterval(typingInterval);
+  }
 }

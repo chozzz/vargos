@@ -172,7 +172,8 @@ export class TelegramAdapter implements ChannelAdapter {
           source: { channel: 'telegram', userId: chatId, sessionKey },
           timestamp: Date.now(),
         };
-        await processAndDeliver(input, context, send);
+        const typing = async () => { await this.apiCall('sendChatAction', { chat_id: chatId, action: 'typing' }); };
+        await processAndDeliver(input, context, send, typing);
       } catch (err) {
         console.error(`[Telegram] Photo download failed for ${chatId}:`, err);
       }
@@ -196,7 +197,8 @@ export class TelegramAdapter implements ChannelAdapter {
         source: { channel: 'telegram', userId: chatId, sessionKey },
         timestamp: Date.now(),
       };
-      await processAndDeliver(input, context, send);
+      const typing = async () => { await this.apiCall('sendChatAction', { chat_id: chatId, action: 'typing' }); };
+      await processAndDeliver(input, context, send, typing);
     } catch (err) {
       console.error(`[Telegram] Audio download failed for ${chatId}:`, err);
     }
@@ -222,7 +224,8 @@ export class TelegramAdapter implements ChannelAdapter {
       metadata: {},
     };
 
-    await processAndDeliver(input, context, (chunk) => this.send(chatId, chunk));
+    const typing = async () => { await this.apiCall('sendChatAction', { chat_id: chatId, action: 'typing' }); };
+    await processAndDeliver(input, context, (chunk) => this.send(chatId, chunk), typing);
   }
 
   private async apiCall<T>(method: string, params?: Record<string, unknown>): Promise<T> {
