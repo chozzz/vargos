@@ -10,10 +10,8 @@ import { createDedupeCache } from '../../lib/dedupe.js';
 import { createMessageDebouncer } from '../../lib/debounce.js';
 import { processAndDeliver, type InputType, type NormalizedInput, type GatewayContext } from '../../gateway/core.js';
 import { resolveChannelsDir } from '../../config/paths.js';
+import { Reconnector } from '../reconnect.js';
 import path from 'node:path';
-
-const RECONNECT_BASE_MS = 2000;
-const RECONNECT_MAX_MS = 60_000;
 
 export class WhatsAppAdapter implements ChannelAdapter {
   readonly type = 'whatsapp' as const;
@@ -22,10 +20,12 @@ export class WhatsAppAdapter implements ChannelAdapter {
   private sock: WASocket | null = null;
   private dedupe = createDedupeCache({ ttlMs: 120_000 });
   private debouncer: ReturnType<typeof createMessageDebouncer>;
-  private reconnectAttempt = 0;
+  private reconnector = new Reconnector();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private allowFrom: Set<string> | null;
 
-  constructor() {
+  constructor(allowFrom?: string[]) {
+    this.allowFrom = allowFrom?.length ? new Set(allowFrom) : null;
     this.debouncer = createMessageDebouncer(
       (jid, messages) => {
         this.handleBatch(jid, messages).catch((err) => {
@@ -41,6 +41,12 @@ export class WhatsAppAdapter implements ChannelAdapter {
   }
 
   async start(): Promise<void> {
+    // Clean up previous socket before reconnecting
+    if (this.sock) {
+      try { this.sock.end(undefined); } catch { /* already closed */ }
+      this.sock = null;
+    }
+
     this.status = 'connecting';
     const authDir = path.join(resolveChannelsDir(), 'whatsapp');
 
@@ -52,16 +58,16 @@ export class WhatsAppAdapter implements ChannelAdapter {
         onConnected: (name) => {
           console.error(`[WhatsApp] Connected as ${name}`);
           this.status = 'connected';
-          this.reconnectAttempt = 0;
+          this.reconnector.reset();
         },
         onDisconnected: (reason) => {
           console.error(`[WhatsApp] Disconnected: ${reason}`);
-          this.status = 'disconnected';
-          if (reason === 'logged_out') return;
-          // restart_required (515) — reconnect immediately, no backoff
-          if (reason === 'restart_required') {
-            this.reconnectAttempt = 0;
+          this.sock = null;
+          if (reason === 'logged_out' || reason === 'forbidden') {
+            this.status = 'error';
+            return;
           }
+          this.status = 'disconnected';
           this.scheduleReconnect();
         },
         onMessage: (msg) => this.handleInbound(msg),
@@ -94,6 +100,12 @@ export class WhatsAppAdapter implements ChannelAdapter {
   private handleInbound(msg: WhatsAppInboundMessage): void {
     // Skip self messages and groups
     if (msg.fromMe || msg.isGroup) return;
+
+    // Whitelist filter
+    if (this.allowFrom) {
+      const phone = msg.jid.replace('@s.whatsapp.net', '');
+      if (!this.allowFrom.has(phone)) return;
+    }
 
     // Skip messages with no text and no media
     if (!msg.text && !msg.mediaType) return;
@@ -198,12 +210,13 @@ export class WhatsAppAdapter implements ChannelAdapter {
 
   private scheduleReconnect(): void {
     if (this.reconnectTimer) return;
-    const delay = Math.min(
-      RECONNECT_BASE_MS * 2 ** this.reconnectAttempt,
-      RECONNECT_MAX_MS,
-    );
-    this.reconnectAttempt++;
-    console.error(`[WhatsApp] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempt})`);
+    const delay = this.reconnector.next();
+    if (delay === null) {
+      console.error('[WhatsApp] Max reconnect attempts reached — giving up');
+      this.status = 'error';
+      return;
+    }
+    console.error(`[WhatsApp] Reconnecting in ${delay}ms (attempt ${this.reconnector.attempts})`);
     this.reconnectTimer = setTimeout(async () => {
       this.reconnectTimer = null;
       await this.start();

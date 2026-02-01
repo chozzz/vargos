@@ -142,15 +142,6 @@ export class SessionMessageQueue extends EventEmitter {
     });
   }
 
-  /**
-   * Force start processing if stuck
-   */
-  kick(sessionKey: string): void {
-    if (this.running.has(sessionKey)) {
-      return;
-    }
-    this.processQueue(sessionKey);
-  }
 }
 
 // Global queue instance
