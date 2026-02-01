@@ -14,6 +14,7 @@ export {
   type GatewayContext,
   type GatewayResponse,
   type StreamingChunk,
+  type PreparedInput,
 } from './core.js';
 
 export {
@@ -24,3 +25,11 @@ export {
 export {
   TextInputPlugin,
 } from './plugins/text.js';
+
+export {
+  ImageInputPlugin,
+} from './plugins/image.js';
+
+export {
+  MediaInputPlugin,
+} from './plugins/media.js';

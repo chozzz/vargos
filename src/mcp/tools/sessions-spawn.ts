@@ -9,6 +9,7 @@ import { getSessionService } from '../../services/factory.js';
 import { isSubagentSessionKey } from '../../agent/prompt.js';
 import { getPiAgentRuntime } from '../../pi/runtime.js';
 import { resolveSessionFile } from '../../config/paths.js';
+import { getSubagentRegistry } from '../../agent/subagent-registry.js';
 
 const SessionsSpawnParameters = z.object({
   task: z.string().describe('Task description for the sub-agent'),
@@ -71,10 +72,12 @@ export const sessionsSpawnTool: Tool = {
       });
 
       const runtime = getPiAgentRuntime();
-
       const childSessionFile = resolveSessionFile(childKey);
 
-      // Run in background (don't await)
+      // Track parent-child so registry can deliver results
+      getSubagentRegistry().track(childKey, context.sessionKey);
+
+      // Run in background (don't await) — registry handles completion delivery
       runtime
         .runSubagent(
           {
@@ -87,9 +90,6 @@ export const sessionsSpawnTool: Tool = {
           },
           context.sessionKey
         )
-        .then((result) => {
-          console.log(`Subagent ${childKey} completed:`, result.success ? 'success' : 'error');
-        })
         .catch((err) => {
           console.error(`Subagent ${childKey} failed:`, err);
         });

@@ -43,3 +43,7 @@ export function resolveChannelsDir(): string {
 export function resolveChannelConfigFile(): string {
   return path.join(resolveDataDir(), 'channels.json');
 }
+
+export function resolveConfigFile(): string {
+  return path.join(resolveWorkspaceDir(), 'config.json');
+}

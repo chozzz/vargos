@@ -59,9 +59,14 @@ export async function buildSystemPrompt(options: SystemPromptOptions): Promise<s
     sections.push(await buildCodebaseContextSection(workspaceDir));
   }
 
-  // 3. Documentation section (for full mode)
+  // 3. Memory recall guidance (full mode only)
   if (mode === 'full') {
-    sections.push(buildDocumentationSection());
+    sections.push(buildMemorySection());
+  }
+
+  // 3.5 Heartbeat protocol
+  if (mode === 'full') {
+    sections.push(buildHeartbeatSection());
   }
 
   // 4. Project Context - Injected bootstrap files
@@ -101,8 +106,8 @@ async function buildToolingSection(toolNames: string[]): Promise<string> {
     read: 'Read file contents',
     write: 'Create or overwrite files',
     edit: 'Make precise edits to files by replacing exact text',
-    exec: 'Execute shell commands with safety controls',
-    process: 'Manage background exec sessions',
+    exec: 'Execute shell commands (git, gh, npm, curl, etc.). Use for cloning repos, running builds, managing git workflows',
+    process: 'Manage long-running background exec sessions (start, poll, log, kill)',
     browser: 'Control web browser for automation (navigate, click, screenshot)',
     'web_fetch': 'Fetch and extract readable content from URLs',
     'memory_search': 'Search indexed memory files with hybrid vector+text',
@@ -131,7 +136,18 @@ async function buildToolingSection(toolNames: string[]): Promise<string> {
     '',
     'Use tools naturally to complete tasks. When using tools, wait for results before proceeding.',
     'Tool names are case-sensitive. Call tools exactly as listed.',
-    'If a task is more complex or takes longer, spawn a sub-agent with sessions_spawn.'
+    'If a task is more complex or takes longer, spawn a sub-agent with sessions_spawn.',
+    '',
+    '### Shell & Git',
+    '',
+    'The `exec` tool runs any shell command. Common patterns:',
+    '- **Git:** `git clone`, `git checkout -b`, `git push`, `git diff`, `git log`',
+    '- **GitHub CLI:** `gh repo clone owner/repo`, `gh pr create`, `gh issue list`, `gh run list`',
+    '- **Node/Python:** `npm install`, `pnpm build`, `pip install`, `python script.py`',
+    '- **System:** `ls`, `find`, `grep`, `curl`, `wget`, `tar`, `zip`',
+    '',
+    'For long-running commands, use `process` to run in background and monitor with poll/log.',
+    'Check TOOLS.md for environment-specific notes.',
   );
 
   return lines.join('\n');
@@ -151,13 +167,31 @@ function buildWorkspaceSection(workspaceDir: string): string {
 }
 
 /**
- * Build documentation section
+ * Build memory recall guidance
  */
-function buildDocumentationSection(): string {
+function buildMemorySection(): string {
   return [
-    '## Documentation',
+    '## Memory Recall',
     '',
-    'Consult workspace docs (AGENTS.md, TOOLS.md, etc.) for behavior, commands, configuration, or architecture.',
+    'Before answering about prior work, decisions, dates, people, preferences, or todos:',
+    '1. Run `memory_search` on MEMORY.md + memory/*.md',
+    '2. Use `memory_get` to pull only the needed lines',
+    '3. If low confidence after search, say you checked but found nothing',
+    '',
+    'Do NOT guess from conversation history alone — always search memory files first.',
+  ].join('\n');
+}
+
+/**
+ * Build heartbeat protocol guidance
+ */
+function buildHeartbeatSection(): string {
+  return [
+    '## Heartbeats',
+    '',
+    'When you receive a heartbeat poll, read HEARTBEAT.md for pending tasks.',
+    'If nothing needs attention, reply with exactly: HEARTBEAT_OK',
+    'If something needs attention, reply with the alert text — do NOT include HEARTBEAT_OK.',
   ].join('\n');
 }
 

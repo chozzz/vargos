@@ -9,98 +9,37 @@ import type { WebSocket } from 'ws';
 import { getPiAgentRuntime } from '../pi/runtime.js';
 import { getSessionService } from '../services/factory.js';
 import { resolveSessionFile, resolveWorkspaceDir } from '../config/paths.js';
-import { saveMedia } from '../lib/media.js';
 import { loadPiSettings, getPiApiKey } from '../config/pi-config.js';
 import { deliverReply, type SendFn } from '../lib/reply-delivery.js';
+import { TextInputPlugin } from './plugins/text.js';
+import { ImageInputPlugin } from './plugins/image.js';
+import { MediaInputPlugin } from './plugins/media.js';
+
+// Re-export all types so existing imports from './core.js' keep working
+export {
+  type InputType,
+  type InputHandler,
+  type NormalizedInput,
+  type GatewayContext,
+  type GatewayResponse,
+  type StreamingChunk,
+  type PreparedInput,
+  InputPlugin,
+} from './types.js';
+
+import type {
+  InputType,
+  NormalizedInput,
+  GatewayContext,
+  GatewayResponse,
+  StreamingChunk,
+} from './types.js';
+import { InputPlugin } from './types.js';
 
 // ============================================================================
-// Types
+// Plugin Registry
 // ============================================================================
 
-export type InputType = 'text' | 'voice' | 'image' | 'file' | 'video' | 'location' | 'custom';
-
-export interface InputHandler {
-  type: InputType;
-  name: string;
-  validate(input: unknown): boolean;
-  transform(input: unknown): Promise<NormalizedInput>;
-}
-
-export interface NormalizedInput {
-  type: InputType;
-  content: string | Buffer;
-  metadata: {
-    mimeType?: string;
-    filename?: string;
-    size?: number;
-    encoding?: string;
-    [key: string]: unknown;
-  };
-  source: {
-    channel: string;
-    userId: string;
-    sessionKey: string;
-  };
-  timestamp: number;
-}
-
-export interface GatewayContext {
-  sessionKey: string;
-  userId: string;
-  channel: string;
-  permissions: string[];
-  metadata: Record<string, unknown>;
-}
-
-export interface GatewayResponse {
-  success: boolean;
-  content: string | Buffer;
-  type: 'text' | 'image' | 'file' | 'error';
-  metadata?: Record<string, unknown>;
-}
-
-export interface StreamingChunk {
-  type: 'assistant' | 'tool' | 'compaction' | 'lifecycle';
-  content: string;
-  isComplete: boolean;
-  metadata?: Record<string, unknown>;
-}
-
-// ============================================================================
-// Plugin System
-// ============================================================================
-
-/**
- * Base class for input plugins
- */
-export abstract class InputPlugin extends EventEmitter {
-  abstract readonly type: InputType;
-  abstract readonly name: string;
-
-  /**
-   * Validate raw input from channel
-   */
-  abstract validate(input: unknown): boolean;
-
-  /**
-   * Transform channel-specific input to normalized format
-   */
-  abstract transform(input: unknown, context: GatewayContext): Promise<NormalizedInput>;
-
-  /**
-   * Handle response formatting for this channel
-   */
-  abstract formatResponse(response: GatewayResponse, context: GatewayContext): Promise<unknown>;
-
-  /**
-   * Stream response chunks
-   */
-  abstract streamChunk(chunk: StreamingChunk, context: GatewayContext): void;
-}
-
-/**
- * Plugin registry for managing input handlers
- */
 export class PluginRegistry extends EventEmitter {
   private plugins = new Map<InputType, Map<string, InputPlugin>>();
 
@@ -124,6 +63,12 @@ export class PluginRegistry extends EventEmitter {
 
   get(type: InputType, name: string): InputPlugin | undefined {
     return this.plugins.get(type)?.get(name);
+  }
+
+  getByType(type: InputType): InputPlugin | undefined {
+    const bucket = this.plugins.get(type);
+    if (!bucket) return undefined;
+    return bucket.values().next().value;
   }
 
   list(): Array<{ type: InputType; name: string }> {
@@ -152,9 +97,6 @@ export class PluginRegistry extends EventEmitter {
 // Gateway Core
 // ============================================================================
 
-/**
- * Main Gateway class - orchestrates input processing
- */
 export class Gateway extends EventEmitter {
   private plugins = new PluginRegistry();
   private sessions = new Map<string, GatewayContext>();
@@ -168,68 +110,46 @@ export class Gateway extends EventEmitter {
     maxConcurrentSessions?: number;
   } = {}) {
     super();
+    this.registerPlugin(new TextInputPlugin());
+    this.registerPlugin(new ImageInputPlugin());
+    this.registerPlugin(new MediaInputPlugin('voice'));
+    this.registerPlugin(new MediaInputPlugin('file'));
+    this.registerPlugin(new MediaInputPlugin('video'));
   }
 
-  /**
-   * Initialize and start gateway
-   */
   async start(): Promise<void> {
     this.emit('starting');
-    
-    // TODO: Initialize HTTP server
-    // TODO: Initialize WebSocket server
-    // TODO: Start listening
-    
     this.emit('started');
   }
 
-  /**
-   * Stop gateway gracefully
-   */
   async stop(): Promise<void> {
     this.emit('stopping');
-    
-    // TODO: Close all connections
-    // TODO: Stop servers
-    // TODO: Clean up
-    
     this.emit('stopped');
   }
 
-  /**
-   * Register an input plugin
-   */
   registerPlugin(plugin: InputPlugin): void {
     plugin.on('input', (input: NormalizedInput) => this.handleInput(input));
     this.plugins.register(plugin);
   }
 
-  /**
-   * Process input through the pipeline
-   */
   async processInput(
     input: NormalizedInput,
     context: GatewayContext
   ): Promise<GatewayResponse> {
     this.emit('input:received', input, context);
 
-    // Track session context for streaming
     this.sessions.set(context.sessionKey, context);
 
     try {
-      // Step 1: Validate input
       if (!this.validateInput(input)) {
         throw new Error('Invalid input');
       }
 
-      // Step 2: Check permissions
       if (!this.checkPermissions(context, input.type)) {
         throw new Error('Insufficient permissions');
       }
 
-      // Step 3: Queue for processing
       const result = await this.queueForProcessing(input, context);
-      
       this.emit('input:processed', input, result);
       return result;
     } catch (error) {
@@ -242,13 +162,7 @@ export class Gateway extends EventEmitter {
     }
   }
 
-  /**
-   * Handle streaming response
-   */
-  streamResponse(
-    sessionKey: string,
-    chunk: StreamingChunk
-  ): void {
+  streamResponse(sessionKey: string, chunk: StreamingChunk): void {
     const context = this.sessions.get(sessionKey);
     if (!context) return;
 
@@ -259,21 +173,13 @@ export class Gateway extends EventEmitter {
     this.emit('stream', sessionKey, chunk);
   }
 
-  /**
-   * Queue input for serialized processing
-   */
   private async queueForProcessing(
     input: NormalizedInput,
     context: GatewayContext
   ): Promise<GatewayResponse> {
-    // TODO: Integrate with SessionMessageQueue
-    // For now, direct processing
     return this.execute(input, context);
   }
 
-  /**
-   * Execute agent run via PiAgentRuntime
-   */
   private async execute(
     input: NormalizedInput,
     context: GatewayContext
@@ -283,7 +189,6 @@ export class Gateway extends EventEmitter {
 
     console.error(`[Gateway] execute: sessionKey=${sessionKey} channel=${context.channel}`);
 
-    // Ensure session exists
     let session = await sessions.get(sessionKey);
     if (!session) {
       session = await sessions.create({
@@ -294,29 +199,12 @@ export class Gateway extends EventEmitter {
       });
     }
 
-    // Extract text and images from input
-    const images: Array<{ data: string; mimeType: string }> = [];
-    let text: string;
-    let savedPath: string | undefined;
+    // Delegate input preparation to the matching plugin
+    const plugin = this.plugins.getByType(input.type);
+    const { text, images, savedPath } = plugin
+      ? await plugin.prepare(input)
+      : { text: String(input.content) };
 
-    if (Buffer.isBuffer(input.content)) {
-      const mimeType = (input.metadata.mimeType as string) || 'application/octet-stream';
-
-      // Vision-capable types get passed to the model
-      if (input.type === 'image') {
-        images.push({ data: input.content.toString('base64'), mimeType });
-      }
-
-      savedPath = await saveMedia({ buffer: input.content, sessionKey, mimeType });
-
-      const label = input.type === 'image' ? 'Image' : input.type.charAt(0).toUpperCase() + input.type.slice(1);
-      const caption = (input.metadata.caption as string) || `User sent ${label.toLowerCase() === 'file' ? 'a' : 'an'} ${label.toLowerCase()}.`;
-      text = `${caption}\n\n[${label} saved: ${savedPath}]`;
-    } else {
-      text = input.content as string;
-    }
-
-    // Store user message as a task so PiAgentRuntime picks it up
     await sessions.addMessage({
       sessionKey,
       content: text,
@@ -324,7 +212,6 @@ export class Gateway extends EventEmitter {
       metadata: { type: 'task', channel: context.channel, ...(savedPath && { mediaPath: savedPath }) },
     });
 
-    // Resolve runtime config
     const workspaceDir = resolveWorkspaceDir();
     const piSettings = await loadPiSettings(workspaceDir);
     const provider = piSettings.defaultProvider || 'openai';
@@ -350,7 +237,7 @@ export class Gateway extends EventEmitter {
       model,
       provider,
       apiKey,
-      images: images.length ? images : undefined,
+      images: images?.length ? images : undefined,
       channel: context.channel,
     });
 
@@ -373,7 +260,7 @@ export class Gateway extends EventEmitter {
 
   private validateInput(input: NormalizedInput): boolean {
     const validTypes: InputType[] = ['text', 'voice', 'image', 'file', 'video', 'location', 'custom'];
-    
+
     return !!(
       input.type &&
       validTypes.includes(input.type) &&
@@ -384,12 +271,10 @@ export class Gateway extends EventEmitter {
   }
 
   private checkPermissions(context: GatewayContext, inputType: InputType): boolean {
-    // TODO: Implement permission checking
     return true;
   }
 
   private findPluginForContext(context: GatewayContext): InputPlugin | undefined {
-    // Find a text plugin for the given channel
     const textPlugins = this.plugins.get('text' as InputType, 'text-plain');
     if (textPlugins) return textPlugins;
     return this.plugins.findForInput({ text: '' });
@@ -398,7 +283,7 @@ export class Gateway extends EventEmitter {
   private handleInput(input: NormalizedInput): void {
     const context = this.sessions.get(input.source.sessionKey);
     if (!context) return;
-    
+
     this.processInput(input, context).catch(console.error);
   }
 }
@@ -407,7 +292,6 @@ export class Gateway extends EventEmitter {
 // Module Exports
 // ============================================================================
 
-// Singleton instance
 let globalGateway: Gateway | null = null;
 
 export function getGateway(): Gateway {

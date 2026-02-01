@@ -75,14 +75,20 @@ export async function createWhatsAppSocket(
 
     if (connection === 'close') {
       const err = lastDisconnect?.error as { output?: { statusCode?: number } } | undefined;
-      const statusCode = err?.output?.statusCode;
+      const code = err?.output?.statusCode;
 
-      if (statusCode === DisconnectReason.loggedOut) {
-        events.onDisconnected('logged_out');
-      } else if (statusCode === DisconnectReason.restartRequired) {
+      // Terminal — don't reconnect
+      if (code === DisconnectReason.loggedOut
+        || code === DisconnectReason.connectionReplaced
+        || code === DisconnectReason.forbidden) {
+        const label = code === DisconnectReason.loggedOut ? 'logged_out'
+          : code === DisconnectReason.connectionReplaced ? 'connection_replaced'
+          : 'forbidden';
+        events.onDisconnected(label);
+      } else if (code === DisconnectReason.restartRequired) {
         events.onDisconnected('restart_required');
       } else {
-        events.onDisconnected(`closed:${statusCode}`);
+        events.onDisconnected(`closed:${code}`);
       }
     }
 
