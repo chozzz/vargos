@@ -116,17 +116,58 @@ async function startHttpServer(
     // Handle graceful shutdown
     process.on('SIGINT', () => {
       console.error('\n👋 Shutting down HTTP server...');
+      releaseProcessLock();
       httpServer.close(() => process.exit(0));
     });
 
     process.on('SIGTERM', () => {
       console.error('\n👋 Shutting down HTTP server...');
+      releaseProcessLock();
       httpServer.close(() => process.exit(0));
     });
   });
 }
 
+/**
+ * Process-level PID lock — prevents duplicate instances from clashing
+ * on port binding and WhatsApp connections
+ */
+async function acquireProcessLock(): Promise<boolean> {
+  const pidFile = path.join(resolveDataDir(), 'vargos.pid');
+  try {
+    await fs.mkdir(path.dirname(pidFile), { recursive: true });
+  } catch { /* exists */ }
+
+  // Check existing lock
+  try {
+    const existing = parseInt(await fs.readFile(pidFile, 'utf-8'), 10);
+    if (existing && existing !== process.pid) {
+      try {
+        process.kill(existing, 0); // probe — throws if dead
+        return false; // still alive
+      } catch { /* stale lock */ }
+    }
+  } catch { /* no lock file */ }
+
+  await fs.writeFile(pidFile, String(process.pid));
+  return true;
+}
+
+async function releaseProcessLock(): Promise<void> {
+  try {
+    await fs.unlink(path.join(resolveDataDir(), 'vargos.pid'));
+  } catch { /* already gone */ }
+}
+
 async function main() {
+  // Prevent duplicate instances
+  if (!(await acquireProcessLock())) {
+    const pidFile = path.join(resolveDataDir(), 'vargos.pid');
+    const pid = await fs.readFile(pidFile, 'utf-8').catch(() => '?');
+    console.error(`Another vargos instance is already running (PID: ${pid}) — exiting.`);
+    process.exit(1);
+  }
+
   // Get server configuration early
   const serverConfig = getServerConfig();
 
@@ -370,6 +411,7 @@ async function main() {
       stopHeartbeat();
       getCronScheduler().stopAll();
       await channelRegistry.stopAll();
+      await releaseProcessLock();
       process.exit(0);
     });
 
@@ -378,6 +420,7 @@ async function main() {
       stopHeartbeat();
       getCronScheduler().stopAll();
       await channelRegistry.stopAll();
+      await releaseProcessLock();
       process.exit(0);
     });
   }

@@ -1,6 +1,44 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { Gateway, PluginRegistry, TextInputPlugin, getGateway, initializeGateway, type GatewayContext, type GatewayResponse, type NormalizedInput } from '../gateway/index.js';
+import { Gateway, PluginRegistry, TextInputPlugin, ImageInputPlugin, MediaInputPlugin, getGateway, initializeGateway, type GatewayContext, type GatewayResponse, type NormalizedInput } from '../gateway/index.js';
 import { processAndDeliver } from '../gateway/core.js';
+
+vi.mock('../lib/media.js', () => ({
+  saveMedia: vi.fn().mockResolvedValue('/tmp/mock-saved-path.jpg'),
+}));
+
+vi.mock('../services/factory.js', () => {
+  const mockSessions = {
+    get: vi.fn().mockResolvedValue({ sessionKey: 'test' }),
+    create: vi.fn().mockResolvedValue({ sessionKey: 'test' }),
+    addMessage: vi.fn().mockResolvedValue(undefined),
+  };
+  return {
+    getSessionService: vi.fn(() => mockSessions),
+    getServices: vi.fn(() => ({ sessions: mockSessions })),
+  };
+});
+
+vi.mock('../pi/runtime.js', () => {
+  const mockRuntime = {
+    run: vi.fn().mockResolvedValue({ success: true, response: 'agent reply' }),
+  };
+  return {
+    getPiAgentRuntime: vi.fn(() => mockRuntime),
+    initializePiAgentRuntime: vi.fn(),
+    PiAgentRuntime: vi.fn(() => mockRuntime),
+  };
+});
+
+vi.mock('../config/pi-config.js', () => ({
+  loadPiSettings: vi.fn().mockResolvedValue({ defaultProvider: 'openai', defaultModel: 'gpt-4o-mini' }),
+  getPiApiKey: vi.fn().mockResolvedValue('sk-test-key'),
+}));
+
+vi.mock('../config/paths.js', () => ({
+  resolveSessionFile: vi.fn((key: string) => `/tmp/sessions/${key}.jsonl`),
+  resolveWorkspaceDir: vi.fn(() => '/tmp/workspace'),
+  resolveMediaDir: vi.fn((key: string) => `/tmp/media/${key}`),
+}));
 
 describe('Gateway Core', () => {
   let gateway: Gateway;
@@ -201,12 +239,12 @@ describe('Gateway Core', () => {
       expect(result.type).toBeDefined();
     });
 
-    it('should reject image input with empty content', async () => {
+    it('should reject input with missing source fields', async () => {
       const input = {
         type: 'image',
-        content: Buffer.alloc(0),
+        content: Buffer.from('data'),
         metadata: { mimeType: 'image/jpeg' },
-        source: { channel: 'whatsapp', userId: 'u1', sessionKey: 's1' },
+        source: { channel: 'whatsapp', userId: '', sessionKey: '' },
         timestamp: Date.now(),
       } as NormalizedInput;
 
@@ -222,6 +260,226 @@ describe('Gateway Core', () => {
       expect(result.success).toBe(false);
       expect(result.type).toBe('error');
     });
+  });
+});
+
+describe('Plugin prepare()', () => {
+  it('TextInputPlugin returns text only', async () => {
+    const plugin = new TextInputPlugin();
+    const input: NormalizedInput = {
+      type: 'text',
+      content: 'hello',
+      metadata: {},
+      source: { channel: 'test', userId: 'u1', sessionKey: 's1' },
+      timestamp: Date.now(),
+    };
+    const result = await plugin.prepare(input);
+    expect(result).toEqual({ text: 'hello' });
+  });
+
+  it('ImageInputPlugin returns text, images, and savedPath', async () => {
+    const plugin = new ImageInputPlugin();
+    const input: NormalizedInput = {
+      type: 'image',
+      content: Buffer.from('fake-img'),
+      metadata: { mimeType: 'image/jpeg', caption: 'a photo' },
+      source: { channel: 'whatsapp', userId: 'u1', sessionKey: 's1' },
+      timestamp: Date.now(),
+    };
+    const result = await plugin.prepare(input);
+    expect(result.savedPath).toBe('/tmp/mock-saved-path.jpg');
+    expect(result.text).toContain('a photo');
+    expect(result.text).toContain('[Image saved:');
+    expect(result.images).toHaveLength(1);
+    expect(result.images![0].mimeType).toBe('image/jpeg');
+    expect(result.images![0].data).toBe(Buffer.from('fake-img').toString('base64'));
+  });
+
+  it('MediaInputPlugin (voice) returns text and savedPath, no images', async () => {
+    const plugin = new MediaInputPlugin('voice');
+    const input: NormalizedInput = {
+      type: 'voice',
+      content: Buffer.from('fake-audio'),
+      metadata: { mimeType: 'audio/ogg' },
+      source: { channel: 'telegram', userId: 'u1', sessionKey: 's1' },
+      timestamp: Date.now(),
+    };
+    const result = await plugin.prepare(input);
+    expect(result.savedPath).toBe('/tmp/mock-saved-path.jpg');
+    expect(result.text).toContain('[Voice saved:');
+    expect(result.images).toBeUndefined();
+  });
+
+  it('MediaInputPlugin (file) uses correct article', async () => {
+    const plugin = new MediaInputPlugin('file');
+    const input: NormalizedInput = {
+      type: 'file',
+      content: Buffer.from('fake-file'),
+      metadata: { mimeType: 'application/pdf' },
+      source: { channel: 'telegram', userId: 'u1', sessionKey: 's1' },
+      timestamp: Date.now(),
+    };
+    const result = await plugin.prepare(input);
+    expect(result.text).toContain('User sent a file.');
+  });
+});
+
+describe('Gateway execute flow', () => {
+  let gateway: Gateway;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    gateway = new Gateway();
+  });
+
+  afterEach(async () => {
+    await gateway.stop();
+  });
+
+  const makeContext = (sessionKey: string, channel: string): GatewayContext => ({
+    sessionKey,
+    userId: 'u1',
+    channel,
+    permissions: ['*'],
+    metadata: {},
+  });
+
+  it('text input → TextPlugin.prepare → runtime.run with text only', async () => {
+    const { getPiAgentRuntime } = await import('../pi/runtime.js');
+    const { getSessionService } = await import('../services/factory.js');
+    const runtime = getPiAgentRuntime();
+    const sessions = getSessionService();
+
+    const input: NormalizedInput = {
+      type: 'text',
+      content: 'hello from whatsapp',
+      metadata: {},
+      source: { channel: 'whatsapp', userId: 'u1', sessionKey: 'wa:123' },
+      timestamp: Date.now(),
+    };
+
+    const result = await gateway.processInput(input, makeContext('wa:123', 'whatsapp'));
+
+    expect(result.success).toBe(true);
+    expect(result.content).toBe('agent reply');
+
+    // Session message stored with plain text
+    expect(sessions.addMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ content: 'hello from whatsapp', role: 'user' }),
+    );
+
+    // Runtime called without images
+    expect(runtime.run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionKey: 'wa:123',
+        images: undefined,
+        channel: 'whatsapp',
+      }),
+    );
+  });
+
+  it('image input → ImagePlugin.prepare → runtime.run with images array', async () => {
+    const { getPiAgentRuntime } = await import('../pi/runtime.js');
+    const { getSessionService } = await import('../services/factory.js');
+    const runtime = getPiAgentRuntime();
+    const sessions = getSessionService();
+
+    const input: NormalizedInput = {
+      type: 'image',
+      content: Buffer.from('fake-jpeg'),
+      metadata: { mimeType: 'image/jpeg', caption: 'sunset photo' },
+      source: { channel: 'telegram', userId: 'u1', sessionKey: 'tg:42' },
+      timestamp: Date.now(),
+    };
+
+    const result = await gateway.processInput(input, makeContext('tg:42', 'telegram'));
+
+    expect(result.success).toBe(true);
+
+    // Session message contains caption + saved path
+    expect(sessions.addMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining('sunset photo'),
+        metadata: expect.objectContaining({ mediaPath: '/tmp/mock-saved-path.jpg' }),
+      }),
+    );
+
+    // Runtime receives base64 images
+    expect(runtime.run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        images: [{ data: Buffer.from('fake-jpeg').toString('base64'), mimeType: 'image/jpeg' }],
+        channel: 'telegram',
+      }),
+    );
+  });
+
+  it('voice input → MediaPlugin.prepare → runtime.run without images', async () => {
+    const { getPiAgentRuntime } = await import('../pi/runtime.js');
+    const { getSessionService } = await import('../services/factory.js');
+    const runtime = getPiAgentRuntime();
+    const sessions = getSessionService();
+
+    const input: NormalizedInput = {
+      type: 'voice',
+      content: Buffer.from('fake-ogg'),
+      metadata: { mimeType: 'audio/ogg' },
+      source: { channel: 'whatsapp', userId: 'u1', sessionKey: 'wa:456' },
+      timestamp: Date.now(),
+    };
+
+    const result = await gateway.processInput(input, makeContext('wa:456', 'whatsapp'));
+
+    expect(result.success).toBe(true);
+
+    // Session message references saved path
+    expect(sessions.addMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining('[Voice saved:'),
+        metadata: expect.objectContaining({ mediaPath: '/tmp/mock-saved-path.jpg' }),
+      }),
+    );
+
+    // No images for voice
+    expect(runtime.run).toHaveBeenCalledWith(
+      expect.objectContaining({ images: undefined }),
+    );
+  });
+
+  it('file input → MediaPlugin.prepare → runtime.run without images', async () => {
+    const { getPiAgentRuntime } = await import('../pi/runtime.js');
+    const runtime = getPiAgentRuntime();
+
+    const input: NormalizedInput = {
+      type: 'file',
+      content: Buffer.from('fake-pdf'),
+      metadata: { mimeType: 'application/pdf' },
+      source: { channel: 'telegram', userId: 'u1', sessionKey: 'tg:99' },
+      timestamp: Date.now(),
+    };
+
+    await gateway.processInput(input, makeContext('tg:99', 'telegram'));
+
+    expect(runtime.run).toHaveBeenCalledWith(
+      expect.objectContaining({ images: undefined, channel: 'telegram' }),
+    );
+  });
+
+  it('processAndDeliver sends reply back to channel', async () => {
+    const send = vi.fn().mockResolvedValue(undefined);
+
+    const input: NormalizedInput = {
+      type: 'text',
+      content: 'ping',
+      metadata: {},
+      source: { channel: 'whatsapp', userId: 'u1', sessionKey: 'wa:789' },
+      timestamp: Date.now(),
+    };
+
+    initializeGateway();
+    const result = await processAndDeliver(input, makeContext('wa:789', 'whatsapp'), send);
+
+    expect(result.success).toBe(true);
+    expect(send).toHaveBeenCalled();
   });
 });
 

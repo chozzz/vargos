@@ -32,9 +32,11 @@ export class TelegramAdapter implements ChannelAdapter {
   private abortController: AbortController | null = null;
   private dedupe = createDedupeCache({ ttlMs: 120_000 });
   private debouncer: ReturnType<typeof createMessageDebouncer>;
+  private allowFrom: Set<string> | null;
 
-  constructor(botToken: string) {
+  constructor(botToken: string, allowFrom?: string[]) {
     this.botToken = botToken;
+    this.allowFrom = allowFrom?.length ? new Set(allowFrom) : null;
     this.debouncer = createMessageDebouncer(
       (chatId, messages) => {
         this.handleBatch(chatId, messages).catch((err) => {
@@ -116,6 +118,9 @@ export class TelegramAdapter implements ChannelAdapter {
 
     // Skip bot's own messages
     if (msg.from?.id === this.botUser?.id) return;
+
+    // Whitelist filter
+    if (this.allowFrom && !this.allowFrom.has(String(msg.chat.id))) return;
 
     const msgKey = `${msg.chat.id}:${msg.message_id}`;
     if (!this.dedupe.add(msgKey)) return;

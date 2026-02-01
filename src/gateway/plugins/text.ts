@@ -3,7 +3,7 @@
  * Handles plain text messages from various channels
  */
 
-import { InputPlugin, type NormalizedInput, type GatewayContext, type GatewayResponse, type StreamingChunk } from '../core.js';
+import { InputPlugin, type NormalizedInput, type PreparedInput, type GatewayContext, type GatewayResponse, type StreamingChunk } from '../types.js';
 
 export class TextInputPlugin extends InputPlugin {
   readonly type = 'text' as const;
@@ -39,6 +39,10 @@ export class TextInputPlugin extends InputPlugin {
       },
       timestamp: Date.now(),
     };
+  }
+
+  async prepare(input: NormalizedInput): Promise<PreparedInput> {
+    return { text: input.content as string };
   }
 
   async formatResponse(response: GatewayResponse, context: GatewayContext): Promise<unknown> {
