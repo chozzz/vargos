@@ -18,7 +18,7 @@ vi.mock('../services/factory.js', () => {
   };
 });
 
-vi.mock('../pi/runtime.js', () => {
+vi.mock('../agent/runtime.js', () => {
   const mockRuntime = {
     run: vi.fn().mockResolvedValue({ success: true, response: 'agent reply' }),
   };
@@ -345,7 +345,7 @@ describe('Gateway execute flow', () => {
   });
 
   it('text input → TextPlugin.prepare → runtime.run with text only', async () => {
-    const { getPiAgentRuntime } = await import('../pi/runtime.js');
+    const { getPiAgentRuntime } = await import('../agent/runtime.js');
     const { getSessionService } = await import('../services/factory.js');
     const runtime = getPiAgentRuntime();
     const sessions = getSessionService();
@@ -379,7 +379,7 @@ describe('Gateway execute flow', () => {
   });
 
   it('image input → ImagePlugin.prepare → runtime.run with images array', async () => {
-    const { getPiAgentRuntime } = await import('../pi/runtime.js');
+    const { getPiAgentRuntime } = await import('../agent/runtime.js');
     const { getSessionService } = await import('../services/factory.js');
     const runtime = getPiAgentRuntime();
     const sessions = getSessionService();
@@ -414,7 +414,7 @@ describe('Gateway execute flow', () => {
   });
 
   it('voice input → MediaPlugin.prepare → runtime.run without images', async () => {
-    const { getPiAgentRuntime } = await import('../pi/runtime.js');
+    const { getPiAgentRuntime } = await import('../agent/runtime.js');
     const { getSessionService } = await import('../services/factory.js');
     const runtime = getPiAgentRuntime();
     const sessions = getSessionService();
@@ -446,7 +446,7 @@ describe('Gateway execute flow', () => {
   });
 
   it('file input → MediaPlugin.prepare → runtime.run without images', async () => {
-    const { getPiAgentRuntime } = await import('../pi/runtime.js');
+    const { getPiAgentRuntime } = await import('../agent/runtime.js');
     const runtime = getPiAgentRuntime();
 
     const input: NormalizedInput = {
@@ -480,22 +480,6 @@ describe('Gateway execute flow', () => {
 
     expect(result.success).toBe(true);
     expect(send).toHaveBeenCalled();
-  });
-});
-
-describe('HTTP Transport', () => {
-  it('should be instantiable', async () => {
-    const { HTTPTransport } = await import('../gateway/transports.js');
-    const transport = new HTTPTransport(9999, '127.0.0.1');
-    expect(transport).toBeDefined();
-  });
-});
-
-describe('WebSocket Transport', () => {
-  it('should be instantiable', async () => {
-    const { WebSocketTransport } = await import('../gateway/transports.js');
-    const transport = new WebSocketTransport(9998, '127.0.0.1');
-    expect(transport).toBeDefined();
   });
 });
 

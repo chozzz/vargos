@@ -9,7 +9,7 @@ import * as os from 'node:os';
 import { memorySearchTool } from './memory-search.js';
 import { memoryGetTool } from './memory-get.js';
 import { ToolContext, getFirstTextContent } from './types.js';
-import { initializeServices, closeServices } from '../../services/factory.js';
+import { initializeServices, closeServices } from '../services/factory.js';
 
 describe('memory tools', () => {
   let tempDir: string;

@@ -4,7 +4,7 @@
 
 import { z } from 'zod';
 import { Tool, ToolContext, textResult, errorResult } from './types.js';
-import { getCronScheduler } from '../../cron/index.js';
+import { getCronScheduler } from '../cron/index.js';
 
 const CronAddParameters = z.object({
   name: z.string().describe('Name of the scheduled task'),

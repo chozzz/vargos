@@ -5,7 +5,7 @@
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { getPiAgentRuntime } from '../pi/runtime.js';
+import { getPiAgentRuntime } from '../agent/runtime.js';
 import { resolveSessionFile } from '../config/paths.js';
 import { loadPiSettings, getPiApiKey } from '../config/pi-config.js';
 

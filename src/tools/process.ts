@@ -6,9 +6,9 @@
  */
 
 import { z } from 'zod';
-import { BaseTool } from '../../core/tools/base.js';
-import { ToolContext, ToolResult, textResult, errorResult } from '../../core/tools/types.js';
-import { getProcessService, ProcessSession } from '../../services/process.js';
+import { BaseTool } from './base.js';
+import { ToolContext, ToolResult, textResult, errorResult } from './types.js';
+import { getProcessService, ProcessSession } from '../services/process.js';
 
 const ProcessAction = z.enum([
   'list', 'poll', 'write', 'send-keys', 'kill', 'remove'

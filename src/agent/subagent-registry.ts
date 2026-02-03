@@ -9,7 +9,7 @@ import { getChannelRegistry } from '../channels/registry.js';
 import { deliverReply } from '../lib/reply-delivery.js';
 import { resolveWorkspaceDir, resolveSessionFile } from '../config/paths.js';
 import { loadPiSettings, getPiApiKey } from '../config/pi-config.js';
-import type { PiAgentRunResult } from '../pi/runtime.js';
+import type { PiAgentRunResult } from './runtime.js';
 
 interface TrackedSubagent {
   childKey: string;
@@ -74,7 +74,7 @@ export class SubagentRegistry {
     });
 
     // Lazily import runtime to avoid circular dep at module load
-    const { getPiAgentRuntime } = await import('../pi/runtime.js');
+    const { getPiAgentRuntime } = await import('./runtime.js');
     const runtime = getPiAgentRuntime();
 
     const workspaceDir = resolveWorkspaceDir();

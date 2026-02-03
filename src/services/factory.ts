@@ -10,7 +10,7 @@ import {
   type ISessionService,
   type IVectorService,
   type ServiceConfig,
-} from '../core/services/types.js';
+} from './types.js';
 
 export type { ServiceConfig };
 import { FileMemoryService } from './memory/file.js';

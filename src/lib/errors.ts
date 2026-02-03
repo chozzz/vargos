@@ -3,7 +3,7 @@
  * Extracted to reduce code duplication
  */
 
-import type { ToolResult } from '../mcp/tools/types.js';
+import type { ToolResult } from '../tools/types.js';
 
 // Re-export from agent/prompt for consistency
 export { isSubagentSessionKey } from '../agent/prompt.js';

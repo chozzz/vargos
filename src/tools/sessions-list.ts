@@ -6,7 +6,7 @@
 
 import { z } from 'zod';
 import { Tool, ToolContext, textResult, errorResult } from './types.js';
-import { getSessionService } from '../../services/factory.js';
+import { getSessionService } from '../services/factory.js';
 
 const SessionsListParameters = z.object({
   kinds: z.array(z.enum(['main', 'subagent'])).optional().describe('Filter by session kinds'),

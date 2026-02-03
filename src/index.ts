@@ -1,6 +1,5 @@
 /**
  * Vargos MCP Server
- * Entry point with configurable service backends, Pi agent runtime, and transport options
  * Supports both stdio and HTTP transports
  */
 
@@ -15,58 +14,32 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { zodToJsonSchema } from 'zod-to-json-schema';
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
 import http from 'node:http';
-import { toolRegistry, initializeToolRegistry } from './mcp/tools/index.js';
-import { ToolContext } from './mcp/tools/types.js';
-import { initializeServices, ServiceConfig } from './services/factory.js';
-import { initializePiAgentRuntime } from './pi/runtime.js';
-import { isSubagentSessionKey, isToolAllowedForSubagent, formatErrorResult } from './utils/errors.js';
-import { interactiveConfig, printStartupBanner, checkConfig } from './config/interactive.js';
-import { initializeWorkspace, isWorkspaceInitialized, loadContextFiles } from './config/workspace.js';
-import { resolveDataDir, resolveWorkspaceDir } from './config/paths.js';
-import { checkIdentitySetup } from './config/identity.js';
-import { initializeCronScheduler, getCronScheduler } from './cron/scheduler.js';
-import { isHeartbeatEmpty, startHeartbeat, stopHeartbeat } from './cron/heartbeat.js';
+import path from 'node:path';
+import { promises as fs } from 'node:fs';
+import { toolRegistry } from './tools/index.js';
+import { ToolContext } from './tools/types.js';
+import { isSubagentSessionKey, isToolAllowedForSubagent, formatErrorResult } from './lib/errors.js';
+import { printStartupBanner } from './config/banner.js';
+import { resolveDataDir } from './config/paths.js';
+import { boot, startBackgroundServices, shutdown, acquireProcessLock, releaseProcessLock } from './boot.js';
 
 const VERSION = '0.0.1';
 
-/**
- * Check if running in a TTY (interactive terminal)
- */
-function isInteractive(): boolean {
-  return process.stdin.isTTY && process.stdout.isTTY;
+function getServerConfig() {
+  return {
+    transport: (process.env.VARGOS_TRANSPORT as 'stdio' | 'http') ?? 'stdio',
+    host: process.env.VARGOS_HOST ?? '127.0.0.1',
+    port: parseInt(process.env.VARGOS_PORT ?? '3000', 10),
+    endpoint: process.env.VARGOS_ENDPOINT ?? '/mcp',
+  };
 }
 
-/**
- * Get server configuration from environment
- */
-function getServerConfig(): {
-  transport: 'stdio' | 'http';
-  host: string;
-  port: number;
-  endpoint: string;
-} {
-  const transport = (process.env.VARGOS_TRANSPORT as 'stdio' | 'http') ?? 'stdio';
-  const host = process.env.VARGOS_HOST ?? '127.0.0.1';
-  const port = parseInt(process.env.VARGOS_PORT ?? '3000', 10);
-  const endpoint = process.env.VARGOS_ENDPOINT ?? '/mcp';
-
-  return { transport, host, port, endpoint };
-}
-
-/**
- * Start MCP server with stdio transport
- */
 async function startStdioServer(server: Server): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }
 
-/**
- * Start MCP server with HTTP transport
- */
 async function startHttpServer(
   server: Server,
   config: { host: string; port: number; endpoint: string }
@@ -78,7 +51,6 @@ async function startHttpServer(
   await server.connect(transport);
 
   const httpServer = http.createServer(async (req, res) => {
-    // CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Mcp-Session-Id');
@@ -89,14 +61,12 @@ async function startHttpServer(
       return;
     }
 
-    // Only handle requests to the MCP endpoint
     if (!req.url?.startsWith(config.endpoint)) {
       res.writeHead(404);
       res.end(JSON.stringify({ error: 'Not found' }));
       return;
     }
 
-    // Handle the request
     try {
       await transport.handleRequest(req, res);
     } catch (err) {
@@ -109,58 +79,18 @@ async function startHttpServer(
   });
 
   return new Promise((resolve) => {
-    httpServer.listen(config.port, config.host, () => {
-      resolve();
-    });
+    httpServer.listen(config.port, config.host, () => resolve());
 
-    // Handle graceful shutdown
-    process.on('SIGINT', () => {
-      console.error('\n👋 Shutting down HTTP server...');
+    const onShutdown = () => {
       releaseProcessLock();
       httpServer.close(() => process.exit(0));
-    });
-
-    process.on('SIGTERM', () => {
-      console.error('\n👋 Shutting down HTTP server...');
-      releaseProcessLock();
-      httpServer.close(() => process.exit(0));
-    });
+    };
+    process.on('SIGINT', onShutdown);
+    process.on('SIGTERM', onShutdown);
   });
 }
 
-/**
- * Process-level PID lock — prevents duplicate instances from clashing
- * on port binding and WhatsApp connections
- */
-async function acquireProcessLock(): Promise<boolean> {
-  const pidFile = path.join(resolveDataDir(), 'vargos.pid');
-  try {
-    await fs.mkdir(path.dirname(pidFile), { recursive: true });
-  } catch { /* exists */ }
-
-  // Check existing lock
-  try {
-    const existing = parseInt(await fs.readFile(pidFile, 'utf-8'), 10);
-    if (existing && existing !== process.pid) {
-      try {
-        process.kill(existing, 0); // probe — throws if dead
-        return false; // still alive
-      } catch { /* stale lock */ }
-    }
-  } catch { /* no lock file */ }
-
-  await fs.writeFile(pidFile, String(process.pid));
-  return true;
-}
-
-async function releaseProcessLock(): Promise<void> {
-  try {
-    await fs.unlink(path.join(resolveDataDir(), 'vargos.pid'));
-  } catch { /* already gone */ }
-}
-
 async function main() {
-  // Prevent duplicate instances
   if (!(await acquireProcessLock())) {
     const pidFile = path.join(resolveDataDir(), 'vargos.pid');
     const pid = await fs.readFile(pidFile, 'utf-8').catch(() => '?');
@@ -168,81 +98,27 @@ async function main() {
     process.exit(1);
   }
 
-  // Get server configuration early
   const serverConfig = getServerConfig();
 
-  // Check configuration
-  const { valid: configValid, missing } = checkConfig();
+  const { workspaceDir, dataDir, contextFiles } = await boot();
 
-  // If config invalid and interactive, prompt for missing values
-  if (!configValid && isInteractive()) {
-    await interactiveConfig();
-  } else if (!configValid) {
-    // Non-interactive mode with missing config - fail fast
-    console.error('');
-    console.error('❌ Configuration Error');
-    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.error('');
-    console.error('Missing required configuration:');
-    for (const config of missing) {
-      console.error(`  • ${config.key}: ${config.why}`);
-    }
-    console.error('');
-    console.error('Set these environment variables or run interactively.');
-    console.error('');
-    process.exit(1);
-  }
-
-  // Load service configuration from environment
-  const workspaceDir = resolveWorkspaceDir();
-
-  // Initialize workspace if needed
-  const workspaceExists = await isWorkspaceInitialized(workspaceDir);
-  if (!workspaceExists) {
-    console.error('  Initializing workspace...');
-    await initializeWorkspace({ workspaceDir });
-    console.error('  Created default workspace files');
-  }
-
-  // Prompt for identity if USER.md has placeholders (TTY only)
-  await checkIdentitySetup(workspaceDir);
-
-  const dataDir = resolveDataDir();
-  const serviceConfig: ServiceConfig = {
-    memory: (process.env.VARGOS_MEMORY_BACKEND as 'file' | 'qdrant' | 'postgres') ?? 'file',
-    sessions: (process.env.VARGOS_SESSIONS_BACKEND as 'file' | 'postgres') ?? 'file',
-    fileMemoryDir: dataDir,
-    qdrantUrl: process.env.QDRANT_URL,
-    qdrantApiKey: process.env.QDRANT_API_KEY,
-    postgresUrl: process.env.POSTGRES_URL,
-    openaiApiKey: process.env.OPENAI_API_KEY,
-    workspaceDir, // For memory indexing of .md files
-  };
-
-  // Register tools (dynamic imports to avoid circular deps)
-  await initializeToolRegistry();
-
-  // Load context files
-  const contextFiles = await loadContextFiles(workspaceDir);
   const contextFilesWithPaths = contextFiles.map(f => ({
     name: f.name,
     path: path.join(workspaceDir, f.name)
   }));
 
-  // Get tools with descriptions
   const tools = toolRegistry.list().map(t => ({
     name: t.name,
     description: t.description
   }));
 
-  // Print startup banner
   printStartupBanner({
     mode: 'mcp',
     version: VERSION,
     workspace: workspaceDir,
     dataDir,
-    memoryBackend: (serviceConfig.memory as string) || 'file',
-    sessionsBackend: (serviceConfig.sessions as string) || 'file',
+    memoryBackend: process.env.VARGOS_MEMORY_BACKEND ?? 'file',
+    sessionsBackend: process.env.VARGOS_SESSIONS_BACKEND ?? 'file',
     contextFiles: contextFilesWithPaths,
     tools,
     transport: serverConfig.transport,
@@ -251,136 +127,35 @@ async function main() {
     endpoint: serverConfig.endpoint,
   });
 
-  // Initialize services
-  console.error('  Services');
+  console.error('  Services     ok');
 
-  try {
-    await initializeServices(serviceConfig);
-    console.error('    Memory     ok');
-
-    initializePiAgentRuntime();
-    console.error('    Runtime    ok');
-
-    // Start cron scheduler
-    const scheduler = initializeCronScheduler(workspaceDir);
-    scheduler.startAll();
-    const taskCount = scheduler.listTasks().length;
-    console.error(`    Scheduler  ${taskCount} task(s)`);
-
-    // Start heartbeat if HEARTBEAT.md has content
-    let heartbeatContent = '';
-    try {
-      heartbeatContent = await fs.readFile(path.join(workspaceDir, 'HEARTBEAT.md'), 'utf-8');
-    } catch { /* missing */ }
-
-    if (!isHeartbeatEmpty(heartbeatContent)) {
-      startHeartbeat(workspaceDir);
-      console.error('    Heartbeat  30m');
-    } else {
-      console.error('    Heartbeat  off (empty)');
-    }
-  } catch (err) {
-    console.error('');
-    console.error('❌ Service initialization failed:');
-    console.error(`   ${err instanceof Error ? err.message : String(err)}`);
-    console.error('');
-
-    if (serviceConfig.memory === 'qdrant') {
-      console.error('💡 Is Qdrant running? Start with:');
-      console.error('   docker run -p 6333:6333 qdrant/qdrant');
-    }
-    if (serviceConfig.sessions === 'postgres') {
-      console.error('💡 Is PostgreSQL running? Check your POSTGRES_URL.');
-    }
-
-    console.error('');
-    process.exit(1);
-  }
-
-  // Load and start channel adapters
-  const { loadChannelConfigs } = await import('./channels/config.js');
-  const { createAdapter } = await import('./channels/factory.js');
-  const { getChannelRegistry } = await import('./channels/registry.js');
-
-  let channelConfigs = await loadChannelConfigs();
-  let enabledChannels = channelConfigs.filter((c) => c.enabled);
-  const channelRegistry = getChannelRegistry();
-
-  // If no channels and TTY, offer to run onboarding
-  if (enabledChannels.length === 0 && process.stdin.isTTY) {
-    const { runOnboarding } = await import('./channels/onboard.js');
-    console.error('  Channels');
-    console.error('    none configured');
-    console.error('');
-    await runOnboarding();
-
-    // Reload configs after onboarding
-    channelConfigs = await loadChannelConfigs();
-    enabledChannels = channelConfigs.filter((c) => c.enabled);
-  }
-
-  if (enabledChannels.length > 0) {
-    console.error('  Channels');
-    for (const cfg of enabledChannels) {
-      try {
-        const adapter = createAdapter(cfg);
-        channelRegistry.register(adapter);
-        await adapter.initialize();
-        await adapter.start();
-        console.error(`    ${cfg.type.padEnd(10)}${adapter.status}`);
-      } catch (err) {
-        console.error(`    ${cfg.type.padEnd(10)}failed (${err instanceof Error ? err.message : String(err)})`);
-      }
-    }
-  }
-  console.error('');
+  await startBackgroundServices(workspaceDir);
 
   // Create MCP server
   const server = new Server(
-    {
-      name: 'vargos',
-      version: VERSION,
-    },
-    {
-      capabilities: {
-        tools: {},
-      },
-    }
+    { name: 'vargos', version: VERSION },
+    { capabilities: { tools: {} } }
   );
 
-  // List available tools
-  server.setRequestHandler(ListToolsRequestSchema, async () => {
-    const tools = toolRegistry.list();
-    return {
-      tools: tools.map((tool) => ({
-        name: tool.name,
-        description: tool.description,
-        inputSchema: zodToJsonSchema(tool.parameters),
-      })),
-    };
-  });
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({
+    tools: toolRegistry.list().map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      inputSchema: zodToJsonSchema(tool.parameters),
+    })),
+  }));
 
-  // Execute tool
   server.setRequestHandler(CallToolRequestSchema, async (request): Promise<CallToolResult> => {
     const { name, arguments: args } = request.params;
     const tool = toolRegistry.get(name);
 
     if (!tool) {
-      return {
-        content: [{ type: 'text', text: `Unknown tool: ${name}` }],
-        isError: true,
-      };
+      return { content: [{ type: 'text', text: `Unknown tool: ${name}` }], isError: true };
     }
 
-    // Determine session key (could be passed in args or use default)
     const sessionKey = (args as Record<string, unknown>)?.sessionKey as string || 'default';
+    const context: ToolContext = { sessionKey, workingDir: workspaceDir };
 
-    const context: ToolContext = {
-      sessionKey,
-      workingDir: workspaceDir,
-    };
-
-    // Filter tools for subagents
     if (isSubagentSessionKey(sessionKey) && !isToolAllowedForSubagent(name)) {
       const error = formatErrorResult(`Tool '${name}' is not available to subagents.`);
       return { content: error.content, isError: true };
@@ -395,7 +170,6 @@ async function main() {
     }
   });
 
-  // Start server with appropriate transport
   if (serverConfig.transport === 'http') {
     await startHttpServer(server, serverConfig);
     console.error(`  Listening on http://${serverConfig.host}:${serverConfig.port}${serverConfig.endpoint}`);
@@ -405,30 +179,19 @@ async function main() {
     console.error('  Listening on stdio');
     console.error('');
 
-    // Handle graceful shutdown for stdio
-    process.on('SIGINT', async () => {
+    const onShutdown = async () => {
       console.error('\n Shutting down...');
-      stopHeartbeat();
-      getCronScheduler().stopAll();
-      await channelRegistry.stopAll();
-      await releaseProcessLock();
+      await shutdown();
       process.exit(0);
-    });
-
-    process.on('SIGTERM', async () => {
-      console.error('\n Shutting down...');
-      stopHeartbeat();
-      getCronScheduler().stopAll();
-      await channelRegistry.stopAll();
-      await releaseProcessLock();
-      process.exit(0);
-    });
+    };
+    process.on('SIGINT', onShutdown);
+    process.on('SIGTERM', onShutdown);
   }
 }
 
 main().catch((err) => {
   console.error('');
-  console.error('❌ Fatal error:');
+  console.error('Fatal error:');
   console.error(`   ${err instanceof Error ? err.message : String(err)}`);
   console.error('');
   process.exit(1);

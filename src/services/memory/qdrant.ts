@@ -11,7 +11,7 @@ import {
   type MemoryWriteOptions,
   type SearchOptions,
   type SearchResult,
-} from '../../core/services/types.js';
+} from '../types.js';
 
 export interface QdrantMemoryConfig {
   url: string;
@@ -291,7 +291,7 @@ export class QdrantMemoryService implements IMemoryService {
 
     if (options.filters?.paths && options.filters.paths.length > 0) {
       should.push(
-        ...options.filters.paths.map(p => ({
+        ...options.filters.paths.map((p: string) => ({
           key: 'path',
           match: { value: p },
         }))

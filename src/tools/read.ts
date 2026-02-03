@@ -7,8 +7,8 @@ import { z } from 'zod';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { Tool, ToolContext, ToolResult, textResult, errorResult, imageResult } from './types.js';
-import { detectMimeType } from '../../lib/mime.js';
-import { expandTilde } from '../../lib/path.js';
+import { detectMimeType } from '../lib/mime.js';
+import { expandTilde } from '../lib/path.js';
 
 const ReadParameters = z.object({
   path: z.string().describe('Path to the file to read'),

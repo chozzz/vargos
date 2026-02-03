@@ -18,11 +18,6 @@ export {
 } from './core.js';
 
 export {
-  HTTPTransport,
-  WebSocketTransport,
-} from './transports.js';
-
-export {
   TextInputPlugin,
 } from './plugins/text.js';
 

@@ -7,8 +7,8 @@
 import type { ToolDefinition } from '@mariozechner/pi-coding-agent';
 import type { AgentToolResult, AgentToolUpdateCallback } from '@mariozechner/pi-agent-core';
 import { zodToJsonSchema } from 'zod-to-json-schema';
-import { toolRegistry } from '../mcp/tools/registry.js';
-import type { Tool, ToolContext } from '../mcp/tools/types.js';
+import { toolRegistry } from '../tools/registry.js';
+import type { Tool, ToolContext } from '../tools/types.js';
 
 /**
  * Convert Zod schema to JSON Schema for Pi SDK
