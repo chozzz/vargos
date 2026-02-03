@@ -10,7 +10,7 @@ import { sessionsListTool } from './sessions-list.js';
 import { sessionsSendTool } from './sessions-send.js';
 import { sessionsSpawnTool } from './sessions-spawn.js';
 import { ToolContext, getFirstTextContent } from './types.js';
-import { initializeServices, closeServices } from '../../services/factory.js';
+import { initializeServices, closeServices } from '../services/factory.js';
 
 describe('session tools', () => {
   let tempDir: string;

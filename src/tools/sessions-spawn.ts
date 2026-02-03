@@ -5,11 +5,11 @@
 
 import { z } from 'zod';
 import { Tool, ToolContext, textResult, errorResult } from './types.js';
-import { getSessionService } from '../../services/factory.js';
-import { isSubagentSessionKey } from '../../agent/prompt.js';
-import { getPiAgentRuntime } from '../../pi/runtime.js';
-import { resolveSessionFile } from '../../config/paths.js';
-import { getSubagentRegistry } from '../../agent/subagent-registry.js';
+import { getSessionService } from '../services/factory.js';
+import { isSubagentSessionKey } from '../agent/prompt.js';
+import { getPiAgentRuntime } from '../agent/runtime.js';
+import { resolveSessionFile } from '../config/paths.js';
+import { getSubagentRegistry } from '../agent/subagent-registry.js';
 
 const SessionsSpawnParameters = z.object({
   task: z.string().describe('Task description for the sub-agent'),

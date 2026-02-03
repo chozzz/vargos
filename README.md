@@ -1,6 +1,6 @@
 # Vargos
 
-MCP server with an embedded agent runtime. Gives AI agents practical tools to interact with real-world systems — file ops, shell, memory, sessions, browser, and cron.
+MCP server with an embedded agent runtime. Gives AI agents practical tools to interact with real-world systems — file ops, shell, memory, sessions, browser, and cron. Routes messages from WhatsApp and Telegram through a plugin-based gateway.
 
 ## Quick Start
 
@@ -16,18 +16,18 @@ git clone https://github.com/chozzz/vargos.git
 cd vargos
 pnpm install
 
-# Interactive CLI
-pnpm cli chat
-
-# MCP server (stdio, for Claude Desktop etc.)
+# MCP server (stdio mode, for Claude Desktop etc.)
 # First run prompts for identity + channel setup
-pnpm cli server
+pnpm dev
 
-# Set up WhatsApp/Telegram channels
-pnpm cli onboard
+# Interactive CLI chat
+pnpm chat
 
 # One-shot task
-pnpm cli run "Analyze this codebase"
+tsx src/cli.ts run "Analyze this codebase"
+
+# Channel setup (WhatsApp/Telegram)
+tsx src/cli.ts onboard
 ```
 
 ### Configuration
@@ -44,12 +44,12 @@ For Qdrant + PostgreSQL, see `.env.example` for all options.
 
 | Tool | Description |
 |------|-------------|
-| `read` | Read file contents |
-| `write` | Write/create files |
-| `edit` | Edit files with precise replacements |
-| `exec` | Execute shell commands |
-| `process` | Manage background processes |
-| `web_fetch` | Fetch and extract web content |
+| `read` | Read file contents (5MB limit, image support) |
+| `write` | Write/create files (append mode) |
+| `edit` | Precise text replacement |
+| `exec` | Shell commands (60s timeout) |
+| `process` | Background process management |
+| `web_fetch` | Fetch + extract readable web content |
 | `browser` | Browser automation (Playwright) |
 | `memory_search` | Hybrid semantic + text search |
 | `memory_get` | Read specific memory files |
@@ -63,65 +63,107 @@ For Qdrant + PostgreSQL, see `.env.example` for all options.
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────┐
-│  MCP Tools (15 tools)                       │
-│  read, write, exec, memory_search, etc.     │
-├─────────────────────────────────────────────┤
-│  Pi Agent Runtime (src/pi/runtime.ts)       │
-│  Unified agent for CLI + MCP server         │
-├─────────────────────────────────────────────┤
-│  Service Interfaces (core/services/types.ts)│
-│  IMemoryService, ISessionService            │
-├─────────────────────────────────────────────┤
-│  Service Implementations (services/)        │
-│  File, Qdrant, PostgreSQL backends          │
-├─────────────────────────────────────────────┤
-│  MemoryContext (services/memory/context.ts) │
-│  Hybrid search, SQLite persistence          │
-└─────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                        Entry Points                              │
+│                                                                  │
+│  index.ts (MCP server)    cli.ts (chat/run)    boot.ts (shared)  │
+└────────────┬─────────────────────┬───────────────────────────────┘
+             │                     │
+             ▼                     ▼
+┌─────────────────────┐  ┌─────────────────────────────────────────┐
+│  MCP Protocol       │  │  Channels (WhatsApp, Telegram)          │
+│  stdio | HTTP       │  │  dedupe → debounce → gateway → agent    │
+│  ListTools          │  │                                         │
+│  CallTool           │  │  Gateway (plugin-based message routing)  │
+└────────┬────────────┘  └──────────────────┬──────────────────────┘
+         │                                  │
+         ▼                                  ▼
+┌──────────────────────────────────────────────────────────────────┐
+│  Tool Registry (15 tools)                                        │
+│  read, write, edit, exec, process, web_fetch, browser            │
+│  memory_search, memory_get, sessions_*, cron_*                   │
+└────────────────────────────┬─────────────────────────────────────┘
+                             │
+         ┌───────────────────┼───────────────────┐
+         ▼                   ▼                   ▼
+┌─────────────────┐ ┌─────────────────┐ ┌─────────────────────────┐
+│  Agent Runtime   │ │  Services       │ │  Cron Scheduler         │
+│  (Pi SDK)        │ │  Memory (file/  │ │  Heartbeat (30m)        │
+│  prompt builder  │ │    qdrant)      │ │  Scheduled tasks        │
+│  tool execution  │ │  Sessions (file/│ │  (spawns subagents)     │
+│  subagent spawn  │ │    postgres)    │ │                         │
+└─────────────────┘ │  Browser        │ └─────────────────────────┘
+                    │  Process        │
+                    └─────────────────┘
+```
+
+### Message Flow
+
+```
+                MCP Client                    WhatsApp / Telegram
+                    │                              │
+                    ▼                              ▼
+              ┌──────────┐                  ┌─────────────┐
+              │ MCP      │                  │ Channel     │
+              │ Server   │                  │ Adapter     │
+              └────┬─────┘                  └──────┬──────┘
+                   │                               │
+                   │  CallToolRequest         dedupe + debounce
+                   │                               │
+                   ▼                               ▼
+              ┌──────────┐                  ┌─────────────┐
+              │ Tool     │                  │ Gateway     │
+              │ Registry │                  │ (plugins)   │
+              └────┬─────┘                  └──────┬──────┘
+                   │                               │
+                   │  tool.execute()          processAndDeliver()
+                   │                               │
+                   ▼                               ▼
+              ┌──────────┐                  ┌─────────────┐
+              │ Services │                  │ Pi Agent    │
+              │ (memory, │                  │ Runtime     │
+              │ sessions)│                  │ (uses tools)│
+              └──────────┘                  └──────┬──────┘
+                                                   │
+                                              reply via
+                                            adapter.send()
 ```
 
 ## Project Structure
 
 ```
-vargos/
-├── src/
-│   ├── agent/              # Agent lifecycle, prompt, queue
-│   ├── channels/           # WhatsApp + Telegram adapters
-│   ├── config/             # Paths, workspace, identity, Pi config
-│   ├── core/               # Interfaces (services, tools)
-│   ├── cron/               # Scheduler, heartbeat runner, task definitions
-│   ├── gateway/            # Message gateway (transports, plugins)
-│   ├── lib/                # Shared utilities (mime, path)
-│   ├── mcp/tools/          # 15 MCP tool implementations
-│   ├── pi/                 # Pi Agent Runtime + extension
-│   ├── services/           # Memory, sessions, browser, process
-│   ├── utils/              # Error handling
-│   ├── cli.ts              # CLI entry point
-│   └── index.ts            # MCP server entry point
-├── docs/
-│   └── USAGE.md            # Detailed usage guide
-├── CLAUDE.md
-├── CONTRIBUTING.md
-└── LICENSE.md
+src/
+├── index.ts          # MCP server (stdio + HTTP transport)
+├── cli.ts            # CLI: chat, run, config, onboard, scheduler
+├── boot.ts           # Shared boot sequence
+├── agent/            # Pi agent runtime, prompt builder, lifecycle events
+├── tools/            # 15 MCP tool implementations + registry
+├── gateway/          # Message gateway with input plugins (text, image, media)
+├── channels/         # WhatsApp (Baileys) + Telegram adapters
+├── config/           # Paths, validation, onboarding, identity, Pi config
+├── services/         # Memory (file/qdrant), sessions (file/postgres), browser, process
+├── cron/             # Scheduler, heartbeat, task definitions
+└── lib/              # Errors, MIME, dedup, debounce, media, reply delivery
 ```
 
 ## Data Directory
 
 ```
 ~/.vargos/
-├── workspace/          # Context files (AGENTS.md, SOUL.md, etc.)
-├── agent/              # Pi SDK configuration
-├── channels.json       # Channel adapter configs
-├── channels/           # Channel auth state (WhatsApp etc.)
-├── sessions/           # Session JSONL transcripts
-└── memory.db           # SQLite embeddings cache
+├── workspace/        # Context files (AGENTS.md, SOUL.md, USER.md, etc.)
+│   └── memory/       # Daily notes (YYYY-MM-DD.md)
+├── agent/            # Pi SDK config + auth
+├── channels.json     # Channel adapter configs
+├── channels/         # Channel auth state (WhatsApp linked devices)
+├── sessions/         # Session JSONL transcripts
+├── memory.db         # SQLite embeddings cache
+└── vargos.pid        # Process lock (prevents duplicate instances)
 ```
 
 **Key distinction:**
 - **Working directory** (cwd): Where tools like `read`, `exec` operate
 - **Context directory** (`~/.vargos/workspace/`): Agent personality files
-- **Data directory** (`~/.vargos/`): Sessions and embeddings
+- **Data directory** (`~/.vargos/`): Sessions, embeddings, channel state
 
 ## Configuration
 
@@ -131,10 +173,28 @@ vargos/
 | `VARGOS_WORKSPACE` | `$DATA_DIR/workspace` | Context files directory |
 | `VARGOS_MEMORY_BACKEND` | `file` | Memory: `file` or `qdrant` |
 | `VARGOS_SESSIONS_BACKEND` | `file` | Sessions: `file` or `postgres` |
-| `OPENAI_API_KEY` | - | For Qdrant embeddings |
+| `VARGOS_TRANSPORT` | `stdio` | MCP transport: `stdio` or `http` |
+| `OPENAI_API_KEY` | - | For embeddings + Pi agent |
 | `QDRANT_URL` | - | Qdrant server URL |
 | `POSTGRES_URL` | - | PostgreSQL connection string |
-| `VARGOS_TRANSPORT` | `stdio` | MCP transport: `stdio` or `http` |
+
+### Claude Desktop Configuration
+
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "vargos": {
+      "command": "pnpm",
+      "args": ["--cwd", "/path/to/vargos", "dev"],
+      "env": {
+        "VARGOS_WORKSPACE": "/path/to/workspace"
+      }
+    }
+  }
+}
+```
 
 ## Testing
 
@@ -150,15 +210,17 @@ pnpm run test:run      # CI mode
 | **File** | Development, small projects (zero deps) |
 | **Qdrant** | Production memory (semantic search) |
 | **Postgres** | Production sessions (ACID, indexing) |
-| **SQLite** | Embeddings cache (automatic) |
+| **SQLite** | Embeddings cache (automatic, always on) |
 
 ## Documentation
 
-- **[docs/USAGE.md](./docs/USAGE.md)** - CLI, MCP server, cron, agents
-- **[CLAUDE.md](./CLAUDE.md)** - Developer guide for Claude Code
-- **[CONTRIBUTING.md](./CONTRIBUTING.md)** - Contribution guidelines
+- **[docs/USAGE.md](./docs/USAGE.md)** — CLI, MCP server, cron, agents
+- **[CLAUDE.md](./CLAUDE.md)** — Developer guide (architecture, modules, conventions)
+- **[CONTRIBUTING.md](./CONTRIBUTING.md)** — Contribution guidelines
 
 ## Troubleshooting
+
+**"Another vargos instance is already running"** — Kill existing: `rm ~/.vargos/vargos.pid`
 
 **"Cannot find module '@mariozechner/pi-coding-agent'"** — Run `pnpm install`
 

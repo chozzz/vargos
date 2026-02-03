@@ -1,6 +1,6 @@
 # Vargos Usage Guide
 
-Complete guide to using Vargos: CLI, MCP server, Cron scheduler, and background agents.
+Complete guide to using Vargos: CLI, MCP server, cron scheduler, and background agents.
 
 ---
 
@@ -11,7 +11,7 @@ Complete guide to using Vargos: CLI, MCP server, Cron scheduler, and background 
 3. [Cron Scheduler](#cron-scheduler)
 4. [Background Agents](#background-agents)
 5. [Session Management](#session-management)
-6. [Common Workflows](#common-workflows)
+6. [Channels](#channels)
 
 ---
 
@@ -22,33 +22,17 @@ Interactive command-line interface for chatting with the Vargos agent.
 ### Start Interactive Chat
 
 ```bash
-# Basic usage
-pnpm cli chat
+# Default session
+pnpm chat
 
-# With custom session (for continuity)
-pnpm cli chat -s myproject
+# Named session (for continuity)
+tsx src/cli.ts chat -s myproject
 
 # With specific model
-pnpm cli chat -m gpt-4o -p openai
+tsx src/cli.ts chat -m gpt-4o -p openai
 
 # With custom workspace directory
-pnpm cli chat -w ./my-project
-```
-
-**What you'll see:**
-```
-🤖 Vargos CLI
-Workspace: /home/user/my-project        # Current directory (tool operations)
-Context: ~/.vargos/workspace            # AGENTS.md, SOUL.md, etc.
-Data: ~/.vargos                         # Sessions, memory.db
-Model: openai/gpt-4o-mini
-Memory: file (local)
-Sessions: file (local)
-Context files: AGENTS.md, TOOLS.md
-
-Type your message, or "exit" to quit.
-
-You: _
+tsx src/cli.ts chat -w ./my-project
 ```
 
 ### Run One-Shot Task
@@ -56,42 +40,8 @@ You: _
 Execute a single task and exit:
 
 ```bash
-# Analyze codebase
-pnpm cli run "Analyze this codebase for security issues"
-
-# Refactor specific file
-pnpm cli run "Refactor src/auth.ts to use dependency injection"
-
-# With custom workspace
-pnpm cli run "Generate tests for all functions" -w ./src
-```
-
-**Flow example:**
-```
-$ pnpm cli run "List all TODOs in the codebase"
-
-🤖 Vargos CLI
-Task: List all TODOs in the codebase
-Workspace: /home/user/project
-Model: openai/gpt-4o-mini
-
-✓ Services initialized
-Running task...
-
-🔧 exec: command="grep -r 'TODO' src/"
-
-🔧 Tool: exec
-✅ exec → STDOUT:
-src/auth.ts:  // TODO: Implement refresh token
-src/db.ts:    // TODO: Add connection pooling
-src/api.ts:   // TODO: Rate limiting
-
-Exit code: 0
-
-Found 3 TODOs:
-1. src/auth.ts - Implement refresh token
-2. src/db.ts - Add connection pooling
-3. src/api.ts - Rate limiting
+tsx src/cli.ts run "Analyze this codebase for security issues"
+tsx src/cli.ts run "Refactor src/auth.ts to use DI" -w ./src
 ```
 
 ---
@@ -103,17 +53,16 @@ Run Vargos as an MCP server for Claude Desktop, Cursor, or other MCP clients.
 ### Start MCP Server
 
 ```bash
-# Stdio mode (for Claude Desktop)
-pnpm cli server
-
-# Or directly
+# Stdio mode (default, for Claude Desktop)
 pnpm dev
+
+# HTTP mode
+VARGOS_TRANSPORT=http VARGOS_PORT=3000 pnpm dev
 ```
 
-On first run, you'll be prompted to set up your identity (name, timezone) and configure a
-communication channel (WhatsApp or Telegram). Subsequent runs skip these prompts.
+On first run, you'll be prompted to set up your identity (name, timezone) and configure a communication channel (WhatsApp or Telegram). Subsequent runs skip these prompts.
 
-**What you'll see:**
+**Startup output:**
 ```
   Vargos v0.0.1
 
@@ -135,9 +84,7 @@ communication channel (WhatsApp or Telegram). Subsequent runs skip these prompts
     Session   sessions_list, sessions_history, sessions_send, sessions_spawn
     Cron      cron_add, cron_list
 
-  Services
-    Memory     ok
-    Runtime    ok
+  Services     ok
     Scheduler  0 task(s)
     Heartbeat  off (empty)
 
@@ -156,7 +103,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
   "mcpServers": {
     "vargos": {
       "command": "pnpm",
-      "args": ["--cwd", "/path/to/vargos", "cli", "server"],
+      "args": ["--cwd", "/path/to/vargos", "dev"],
       "env": {
         "VARGOS_WORKSPACE": "/path/to/workspace"
       }
@@ -165,42 +112,15 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 }
 ```
 
-### MCP Tool Usage Flow
+### How MCP Tools Work
 
-**Example 1: File Operations**
+MCP clients send `CallToolRequest` → Vargos looks up the tool in the registry → executes with context (sessionKey, workingDir) → returns `CallToolResult`.
+
 ```
-User: Read the README file
-
-Claude: I'll read the README for you.
-
-🔧 read: path="README.md"
-✅ read → # Vargos
-Vargos is an MCP server with an embedded agent runtime...
-```
-
-**Example 2: Execute Commands**
-```
-User: Check git status
-
-Claude: Let me check the git status.
-
-🔧 exec: command="git status"
-✅ exec → On branch main
-Your branch is up to date with 'origin/main'.
-
-nothing to commit, working tree clean
-```
-
-**Example 3: Memory Search**
-```
-User: What did we discuss about authentication?
-
-Claude: Let me search the memory.
-
-🔧 memory_search: query="authentication"
-✅ memory_search → Found 3 matches:
-- memory/2026-02-08.md#L45: "Discussed OAuth vs JWT..."
-- memory/2026-02-07.md#L12: "Auth middleware design..."
+MCP Client → CallToolRequest("read", {path: "README.md"})
+           → ToolRegistry.get("read")
+           → ReadTool.execute({path: "README.md"}, context)
+           → { content: [{ type: "text", text: "# Vargos..." }] }
 ```
 
 ---
@@ -209,47 +129,35 @@ Claude: Let me search the memory.
 
 Automate periodic tasks with scheduled background agents.
 
-### Scheduler Startup
+### How It Works
 
-The cron scheduler starts automatically with `pnpm cli server`. No default tasks are
-registered — tasks are added via the `cron_add` MCP tool at runtime.
+The cron scheduler starts automatically with `pnpm dev`. Tasks are added via the `cron_add` MCP tool at runtime.
 
-For standalone scheduler testing:
+For standalone testing:
 
 ```bash
-pnpm cli scheduler
+tsx src/cli.ts scheduler
 ```
 
-### How Cron Works
+**Execution flow:**
 
-1. **Schedule triggers** → Creates parent session
-2. **Spawns subagent** → Agent executes the task
-3. **Results stored** → Transcript saved to session
-4. **Notification** (future) → Send results via configured channel
-
-**Flow diagram:**
 ```
-Cron Schedule
-     ↓
-Create Session (cron:task-id:timestamp)
-     ↓
-Spawn Subagent
-     ↓
-Execute Task
-     ↓
-Store Results
-     ↓
-(Notify User - future)
+Cron trigger
+    ↓
+Create session (cron:task-id:timestamp)
+    ↓
+Spawn subagent with task
+    ↓
+Agent executes (full tool access)
+    ↓
+Results stored in session transcript
 ```
 
 ### Heartbeat
 
-The heartbeat runner checks `HEARTBEAT.md` every 30 minutes. If the file has content
-(not just headers/comments), it sends the content to the agent. If nothing needs
-attention, the agent replies `HEARTBEAT_OK` and the cycle is silent.
+The heartbeat runner checks `HEARTBEAT.md` every 30 minutes. If the file has actionable content (not just headers/comments), it sends the content to the agent. If nothing needs attention, the agent replies `HEARTBEAT_OK` and the cycle is silent.
 
-Add tasks to `~/.vargos/workspace/HEARTBEAT.md` when you want periodic agent attention.
-Leave it empty to save API cost.
+Add tasks to `~/.vargos/workspace/HEARTBEAT.md` when you want periodic agent attention. Leave it empty to save API cost.
 
 ---
 
@@ -257,160 +165,51 @@ Leave it empty to save API cost.
 
 Spawn agents that run independently and report back.
 
-### Spawn from CLI
+### Spawning
 
 ```bash
-# Start interactive chat
-pnpm cli chat
+# In CLI chat
+pnpm chat
 
-# Then in chat:
-You: Spawn an agent to analyze our test coverage
+You: Spawn an agent to analyze test coverage and write results to memory/results/coverage.md
 ```
 
-**What happens:**
+### How It Works
+
 ```
-You: Spawn an agent to analyze our test coverage
-
-🤖 Agent:
-I'll spawn a background agent to analyze test coverage.
-
-🔧 sessions_spawn:
-  task: "Analyze test coverage in this codebase"
-  label: "coverage-analysis"
-
-✅ sessions_spawn → Spawned sub-agent session: agent:default:subagent:123456
-Task: Analyze test coverage in this codebase
-
-The sub-agent is running in the background.
-You will receive an announcement when it completes.
+Parent Session
+    ↓
+sessions_spawn tool called
+    ↓
+Create child session (parent:subagent:child-id)
+    ↓
+Start Pi Runtime with minimal context (AGENTS.md + TOOLS.md)
+    ↓
+Agent executes task independently
+    ↓
+On completion → announce result to parent session
 ```
 
-### How Background Agents Work
-
-**Spawn flow:**
-```
-Parent Session (CLI chat)
-     ↓
-sessions_spawn called
-     ↓
-Create Child Session (agent:default:subagent:xxx)
-     ↓
-Start Pi Runtime with minimal context
-     ↓
-Agent executes task (independent process)
-     ↓
-On completion → Announce result to parent
-```
-
-**Agent limitations:**
+**Subagent restrictions:**
 - Cannot spawn other subagents
 - Minimal context (AGENTS.md + TOOLS.md only)
 - Cannot use session tools (sessions_list, sessions_send, etc.)
-
-### Monitoring Background Agents
-
-**Current:** Check session list
-```bash
-# In another terminal
-pnpm cli chat
-
-You: List all sessions
-
-🔧 sessions_list
-
-Session: cli:main (you)
-Session: agent:default:subagent:123456 (running)
-  Label: coverage-analysis
-  Kind: subagent
-  Status: active
-```
-
-**Future (with TUI):** Real-time dashboard showing:
-- Active agents with progress bars
-- Live transcript/output
-- Kill/restart controls
-
-### Agent Output Channels
-
-| Channel | Status | How |
-|---------|--------|-----|
-| Session announcement | Working | Results posted to parent session |
-| File output | Working | Agent writes to `memory/results/*.md` |
-| Console log | Working | Logs to `~/.vargos/sessions/` |
-| WhatsApp | Working | Via `pnpm cli onboard` |
-| Telegram | Working | Via `pnpm cli onboard` |
-| Webhook | Easy add | HTTP POST |
-
-**Best practice for file output:**
-```markdown
-In your spawn task:
-"Analyze the codebase and write findings to memory/results/analysis-{{timestamp}}.md"
-```
 
 ---
 
 ## Session Management
 
-Sessions persist conversation history and state.
+Sessions persist conversation history as JSONL files.
 
 ### Session Types
 
 | Type | Prefix | Use Case |
 |------|--------|----------|
 | CLI | `cli:` | Interactive terminal sessions |
-| MCP | `mcp:` | MCP client connections |
-| Subagent | `agent:*:subagent:` | Background tasks |
+| MCP | `default` | MCP client connections |
+| Subagent | `*:subagent:*` | Background tasks |
 | Cron | `cron:*` | Scheduled tasks |
-
-### List Sessions
-
-```bash
-pnpm cli chat
-
-You: List my sessions
-
-🔧 sessions_list
-
-Found 4 sessions:
-
-Session: cli:main
-  Kind: main
-  Label: CLI Chat (main)
-  Updated: 2026-02-08T14:32:00Z
-  Messages: 47
-
-Session: cli:myproject  
-  Kind: main
-  Label: CLI Chat (myproject)
-  Updated: 2026-02-07T09:15:00Z
-  Messages: 12
-
-Session: agent:default:subagent:abc123
-  Kind: subagent
-  Label: Task: coverage analysis...
-  Updated: 2026-02-08T14:30:00Z
-```
-
-### View Session History
-
-```bash
-You: Show history for cli:myproject
-
-🔧 sessions_history: sessionKey="cli:myproject", limit=10
-
-Session: cli:myproject
-Total messages: 12
----
-
-[1] 2026-02-07T09:00:00 - user:
-  "Start a new React project"
-
-[2] 2026-02-07T09:00:05 - assistant:
-  "I'll help you start a React project..."
-
-[3] 2026-02-07T09:00:08 - tool: exec
-  "npx create-react-app my-app"
-```
+| Channel | `wa:*`, `tg:*` | WhatsApp/Telegram conversations |
 
 ### Session Continuity
 
@@ -418,95 +217,104 @@ Sessions persist across restarts:
 
 ```bash
 # Monday
-pnpm cli chat -s myproject
-You: Working on feature X...
-^C (exit)
+pnpm chat
+# ... work on project ...
+# Ctrl+C
 
-# Tuesday - resume same session
-pnpm cli chat -s myproject
+# Tuesday — resume same session
+pnpm chat
 # Context preserved, can continue conversation
+```
+
+Named sessions for project separation:
+
+```bash
+tsx src/cli.ts chat -s backend-api
+tsx src/cli.ts chat -s frontend-ui
+```
+
+### Storage
+
+Session transcripts stored as JSONL in `~/.vargos/sessions/`.
+
+```bash
+# View raw transcript
+jq . ~/.vargos/sessions/cli-main.jsonl
 ```
 
 ---
 
-## Common Workflows
+## Channels
 
-### Workflow 1: Code Review Agent
+Vargos routes messages from WhatsApp and Telegram through the gateway to the agent runtime.
 
-```bash
-# 1. Start chat
-pnpm cli chat -s code-review
-
-# 2. Spawn review agent
-You: Spawn an agent to review src/auth.ts for security issues
-      Write results to memory/reviews/auth-security.md
-
-# 3. Continue working while agent runs...
-You: (do other work)
-
-# 4. Check when done
-You: List sessions
-# See agent completed
-
-# 5. Read results
-You: Read memory/reviews/auth-security.md
-```
-
-### Workflow 2: Daily Standup Notes
+### Setup
 
 ```bash
-# 1. Configure morning cron
-pnpm cli scheduler
-
-# 2. Or manually generate
-pnpm cli chat -s standup
-
-You: Summarize what I worked on yesterday by reading memory/2026-02-07.md
-     and generate today's standup notes
-
-# 3. Agent reads memory, generates summary
+tsx src/cli.ts onboard
 ```
 
-### Workflow 3: MCP + Claude Desktop
+Or channels are auto-configured on first `pnpm dev` run (TTY only).
 
-```bash
-# Terminal 1: Start MCP server
-pnpm cli server
+### WhatsApp
 
-# Terminal 2: Or use with Claude Desktop
-# (Claude Desktop auto-starts via config)
+- Uses Baileys library (linked devices protocol)
+- QR code displayed in terminal for pairing
+- Messages deduplicated (120s TTL) and debounced (1.5s batch)
+- Auto-reconnects with exponential backoff
+- Auth state persisted in `~/.vargos/channels/whatsapp/`
+
+### Telegram
+
+- Bot token authentication
+- Long-polling for updates
+- Sender whitelist support (`allowFrom` in config)
+- Supports text, photos, voice, audio, documents
+
+### Message Flow
+
+```
+Incoming message (WhatsApp/Telegram)
+    ↓
+Channel adapter receives
+    ↓
+Dedup cache (skip if seen in last 120s)
+    ↓
+Debouncer (batch rapid messages, 1.5s delay)
+    ↓
+Gateway.processAndDeliver()
+    ↓
+Plugin selected by type (text/image/voice/file)
+    ↓
+Plugin prepares input (extract text, encode images, save media)
+    ↓
+Store in session (role: user)
+    ↓
+PiAgentRuntime.run() — agent executes with full tool access
+    ↓
+Store response in session
+    ↓
+Reply delivered via adapter.send()
 ```
 
-**In Claude Desktop:**
+### Configuration
+
+Channel configs stored in `~/.vargos/channels.json`:
+
+```json
+[
+  {
+    "type": "whatsapp",
+    "enabled": true
+  },
+  {
+    "type": "telegram",
+    "enabled": true,
+    "botToken": "123456:ABC...",
+    "allowFrom": ["user_id_1"]
+  }
+]
 ```
-User: Analyze the codebase structure
-
-Claude: 🔧 exec: command="find src -type f -name '*.ts' | head -20"
-        ✅ Found 18 TypeScript files...
-        
-        🔧 read: path="src/index.ts"
-        ✅ Reading main entry point...
-        
-        The codebase has a clean structure...
-```
-
-### Workflow 4: Multi-Session Project
-
-```bash
-# Session 1: Backend work
-pnpm cli chat -s backend-api
-You: Design the API endpoints...
-
-# Session 2: Frontend work  
-pnpm cli chat -s frontend-ui
-You: Create React components...
-
-# Session 3: DevOps
-pnpm cli chat -s devops-deploy
-You: Write deployment scripts...
-```
-
-Each session maintains its own context and history.
 
 ---
 
@@ -515,98 +323,30 @@ Each session maintains its own context and history.
 ### Commands
 
 ```bash
-# Interactive chat
-pnpm cli chat                    # Default session
-pnpm cli chat -s <name>          # Named session
-pnpm cli chat -m <model>         # Specific model
-pnpm cli chat -p <provider>      # Specific provider
-
-# One-shot task
-pnpm cli run "<task>"
-pnpm cli run "<task>" -w <dir>
-
-# MCP server (includes scheduler + heartbeat + channels)
-pnpm cli server                  # Stdio mode
-pnpm dev                         # Same as above
-
-# Channels
-pnpm cli onboard                 # Set up WhatsApp/Telegram
-
-# Scheduler
-pnpm cli scheduler               # Standalone scheduler
-
-# Configuration
-pnpm cli config                  # Interactive config
-pnpm cli config:get              # Show current config
-pnpm cli config:set              # Set LLM config
+pnpm dev                               # MCP server (stdio)
+pnpm chat                              # Interactive CLI chat
+tsx src/cli.ts chat -s <name>          # Named session
+tsx src/cli.ts run "<task>"            # One-shot task
+tsx src/cli.ts config                  # Interactive config wizard
+tsx src/cli.ts config:get              # Show current config
+tsx src/cli.ts config:set              # Set LLM provider/model
+tsx src/cli.ts onboard                 # Channel setup
+tsx src/cli.ts scheduler               # Standalone cron
 ```
 
-### Key Environment Variables
+### Environment Variables
 
 ```bash
 VARGOS_DATA_DIR=~/.vargos        # Root data directory
 VARGOS_WORKSPACE=<dir>           # Context files directory
-VARGOS_MEMORY_BACKEND=file       # Memory backend
-VARGOS_SESSIONS_BACKEND=file     # Sessions backend
-OPENAI_API_KEY=sk-xxx           # For embeddings
-QDRANT_URL=http://...            # For vector search
-POSTGRES_URL=postgresql://...    # For session storage
-```
-
-### Directory Structure
-
-```
-~/.vargos/
-├── workspace/           # Context files (AGENTS.md, etc.)
-│   ├── AGENTS.md
-│   ├── SOUL.md
-│   ├── USER.md
-│   ├── TOOLS.md
-│   ├── HEARTBEAT.md
-│   └── memory/          # Daily notes (YYYY-MM-DD.md)
-├── agent/               # Pi SDK configuration
-├── channels.json        # Channel adapter configs
-├── channels/            # Channel auth state (WhatsApp etc.)
-├── sessions/            # Session JSONL files
-└── memory.db            # SQLite embeddings cache
+VARGOS_MEMORY_BACKEND=file       # Memory backend (file | qdrant)
+VARGOS_SESSIONS_BACKEND=file     # Sessions backend (file | postgres)
+VARGOS_TRANSPORT=stdio           # MCP transport (stdio | http)
+OPENAI_API_KEY=sk-xxx            # For embeddings + Pi agent
+QDRANT_URL=http://...            # Qdrant vector search
+POSTGRES_URL=postgresql://...    # PostgreSQL sessions
 ```
 
 ---
 
-## Troubleshooting
-
-### Check if services are running
-
-```bash
-# List active sessions
-pnpm cli chat
-You: List all sessions
-
-# Check session details
-You: Show history for <session-key>
-```
-
-### Reset a stuck session
-
-```bash
-# Delete and recreate
-pnpm cli chat
-You: Send a message to <session-key>: "/reset"
-
-# Or manually delete session file
-rm ~/.vargos/sessions/<session-key>.jsonl
-```
-
-### View logs
-
-```bash
-# Session transcripts are JSONL files
-cat ~/.vargos/sessions/cli-main.jsonl
-
-# Pretty print
-jq . ~/.vargos/sessions/cli-main.jsonl
-```
-
----
-
-*For more details, see [README.md](../README.md) and [CLAUDE.md](../CLAUDE.md)*
+*For architecture details, see [CLAUDE.md](../CLAUDE.md). For contribution guidelines, see [CONTRIBUTING.md](../CONTRIBUTING.md).*

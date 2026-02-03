@@ -6,7 +6,7 @@
 import { EventEmitter } from 'node:events';
 import type { Server as HTTPServer } from 'node:http';
 import type { WebSocket } from 'ws';
-import { getPiAgentRuntime } from '../pi/runtime.js';
+import { getPiAgentRuntime } from '../agent/runtime.js';
 import { getSessionService } from '../services/factory.js';
 import { resolveSessionFile, resolveWorkspaceDir } from '../config/paths.js';
 import { loadPiSettings, getPiApiKey } from '../config/pi-config.js';

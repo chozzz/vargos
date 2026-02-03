@@ -5,7 +5,7 @@
 
 import { z } from 'zod';
 import { Tool, ToolContext, textResult, errorResult } from './types.js';
-import { getSessionService } from '../../services/factory.js';
+import { getSessionService } from '../services/factory.js';
 
 const SessionsHistoryParameters = z.object({
   sessionKey: z.string().describe('Target session key'),
