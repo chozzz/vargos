@@ -8,7 +8,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { initializeServices, closeServices, getSessionService } from '../../services/factory.js';
-import { PiAgentRuntime } from '../../pi/runtime.js';
+import { PiAgentRuntime } from '../../agent/runtime.js';
 
 describe('session lifecycle edge cases', () => {
   let tempDir: string;

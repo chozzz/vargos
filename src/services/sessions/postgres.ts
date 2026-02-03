@@ -9,7 +9,7 @@ import {
   type ISessionService,
   type Session,
   type SessionMessage,
-} from '../../core/services/types.js';
+} from '../types.js';
 
 export interface PostgresSessionConfig {
   url: string; // postgres://user:pass@host:port/db

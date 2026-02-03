@@ -19,14 +19,14 @@ import {
 import { getVargosToolNames, createVargosCustomTools } from './extension.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { buildSystemPrompt, resolvePromptMode } from '../agent/prompt.js';
+import { buildSystemPrompt, resolvePromptMode } from './prompt.js';
 import { getSessionService } from '../services/factory.js';
-import { getAgentLifecycle, type AgentStreamEvent } from '../agent/lifecycle.js';
-import { getSessionMessageQueue } from '../agent/queue.js';
+import { getAgentLifecycle, type AgentStreamEvent } from './lifecycle.js';
+import { getSessionMessageQueue } from './queue.js';
 import { getPiConfigPaths } from '../config/pi-config.js';
 import { loadContextFiles } from '../config/workspace.js';
-import { sanitizeHistory, limitHistoryTurns, getHistoryLimit } from '../agent/history.js';
-import { prepareSessionManager } from '../agent/session-init.js';
+import { sanitizeHistory, limitHistoryTurns, getHistoryLimit } from './history.js';
+import { prepareSessionManager } from './session-init.js';
 
 /**
  * Extract plain text from Pi SDK content (string, array of content blocks, or object)

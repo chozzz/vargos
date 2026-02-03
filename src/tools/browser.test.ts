@@ -6,8 +6,8 @@
 
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import { BrowserTool } from './browser.js';
-import { ToolContext, getFirstTextContent } from '../../core/tools/types.js';
-import { getBrowserService } from '../../services/browser.js';
+import { ToolContext, getFirstTextContent } from './types.js';
+import { getBrowserService } from '../services/browser.js';
 
 // Check if browser is available
 async function isBrowserAvailable(): Promise<boolean> {

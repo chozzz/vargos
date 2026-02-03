@@ -7,7 +7,7 @@ import { z } from 'zod';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { Tool, ToolContext, textResult, errorResult } from './types.js';
-import { expandTilde } from '../../lib/path.js';
+import { expandTilde } from '../lib/path.js';
 
 const EditParameters = z.object({
   path: z.string().describe('Path to the file to edit'),

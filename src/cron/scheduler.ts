@@ -5,7 +5,7 @@
 
 import { CronJob } from 'cron';
 import { getSessionService } from '../services/factory.js';
-import { getPiAgentRuntime } from '../pi/runtime.js';
+import { getPiAgentRuntime } from '../agent/runtime.js';
 import { resolveWorkspaceDir, resolveSessionFile } from '../config/paths.js';
 import { loadPiSettings, getPiApiKey } from '../config/pi-config.js';
 

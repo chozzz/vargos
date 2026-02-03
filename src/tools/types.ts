@@ -1,11 +1,9 @@
 /**
  * Core tool abstractions for Vargos
- * Clean, reusable base classes for all tools
  */
 
 import { z } from 'zod';
 
-// Tool result types
 export interface TextContent {
   type: 'text';
   text: string;
@@ -25,7 +23,6 @@ export interface ToolResult {
   metadata?: Record<string, unknown>;
 }
 
-// Tool context passed to all tool executions
 export interface ToolContext {
   sessionKey: string;
   workingDir: string;
@@ -33,7 +30,6 @@ export interface ToolContext {
   abortSignal?: AbortSignal;
 }
 
-// Core tool interface
 export interface Tool {
   name: string;
   description: string;
@@ -41,7 +37,6 @@ export interface Tool {
   execute: (args: unknown, context: ToolContext) => Promise<ToolResult>;
 }
 
-// Helper functions for creating results
 export function textResult(text: string, metadata?: Record<string, unknown>): ToolResult {
   return { content: [{ type: 'text', text }], metadata };
 }
@@ -60,7 +55,6 @@ export function getFirstTextContent(content: ToolContent[]): string {
   return c?.type === 'text' ? c.text : '';
 }
 
-// Base error class for tool errors
 export class ToolError extends Error {
   constructor(
     message: string,
@@ -71,4 +65,3 @@ export class ToolError extends Error {
     this.name = 'ToolError';
   }
 }
-

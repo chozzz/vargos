@@ -1,173 +1,307 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code when working in this repository.
 
 ## Project Overview
 
-Vargos is an MCP (Model Context Protocol) server that exposes 15 tools for AI agents to interact with real-world systems:
-- **File tools**: read, write, edit
-- **Shell tools**: exec, process
-- **Web tools**: web_fetch, browser
-- **Memory tools**: memory_search, memory_get
-- **Session tools**: sessions_list, sessions_history, sessions_send, sessions_spawn
-- **Cron tools**: cron_add, cron_list
+Vargos is an MCP server with an embedded Pi agent runtime. It exposes 15 tools for AI agents and routes messages from multiple channels (WhatsApp, Telegram) through a plugin-based gateway.
 
-**Core Philosophy:** Providing Agents to your Machine - giving AI agents practical capabilities to execute system actions.
-
-**Key Components:**
-- **MCP Server** (`index.ts`) - Stdio server for Claude Desktop, etc.
-- **Pi Agent Runtime** (`pi/runtime.ts`) - Unified agent runtime for CLI + MCP
-- **CLI** (`cli.ts`) - Interactive chat and task runner
+**Entry points:**
+- `src/index.ts` — MCP server (stdio + HTTP)
+- `src/cli.ts` — Interactive chat and task runner (commander)
+- `src/boot.ts` — Shared init sequence used by both
 
 ## Repository Structure
 
-This is a **single-package TypeScript project** (not a monorepo):
-
 ```
-vargos/
-├── src/
-│   ├── agent/              # Agent lifecycle + orchestration
-│   │   ├── lifecycle.ts    # Agent lifecycle events (streaming)
-│   │   ├── prompt.ts       # System prompt builder
-│   │   └── queue.ts        # Per-session message queue
-│   │
-│   ├── config/             # Configuration management
-│   │   ├── paths.ts        # Centralized path resolution (data dir, workspace, sessions)
-│   │   ├── identity.ts     # First-run identity setup (USER.md/SOUL.md prompts)
-│   │   ├── interactive.ts  # Interactive config prompts
-│   │   ├── workspace.ts    # Workspace initialization
-│   │   └── pi-config.ts    # Pi SDK settings
-│   │
-│   ├── core/               # Core interfaces and base classes
-│   │   ├── services/
-│   │   │   └── types.ts    # Service interfaces (IMemoryService, ISessionService)
-│   │   └── tools/
-│   │       ├── types.ts    # Tool interfaces
-│   │       └── base.ts     # BaseTool class
-│   │
-│   ├── cron/               # Scheduled task runner
-│   │   ├── scheduler.ts    # Cron scheduler (auto-starts with server)
-│   │   ├── heartbeat.ts    # Periodic HEARTBEAT.md runner
-│   │   └── tasks/          # Task definitions
-│   │
-│   ├── gateway/            # Message gateway
-│   │   ├── core.ts         # Gateway core
-│   │   ├── transports.ts   # Transport layer
-│   │   └── plugins/        # Gateway plugins (text, etc.)
-│   │
-│   ├── lib/                # Shared utilities
-│   │   ├── mime.ts         # MIME type helpers
-│   │   └── path.ts         # Path utilities
-│   │
-│   ├── mcp/tools/          # MCP tool implementations (15 tools)
-│   │   ├── registry.ts     # Tool registration
-│   │   ├── types.ts        # Tool types
-│   │   ├── read.ts, write.ts, edit.ts
-│   │   ├── exec.ts, process.ts
-│   │   ├── web-fetch.ts, browser.ts
-│   │   ├── memory-search.ts, memory-get.ts
-│   │   ├── sessions-list.ts, sessions-history.ts
-│   │   ├── sessions-send.ts, sessions-spawn.ts
-│   │   └── cron-add.ts, cron-list.ts
-│   │
-│   ├── pi/                 # Pi Agent Runtime
-│   │   ├── runtime.ts      # Unified agent runtime
-│   │   └── extension.ts    # Pi SDK tool integration
-│   │
-│   ├── services/           # Service implementations
-│   │   ├── factory.ts      # ServiceFactory + global initialization
-│   │   ├── memory/
-│   │   │   ├── context.ts  # MemoryContext (hybrid search)
-│   │   │   ├── sqlite-storage.ts  # SQLite persistence
-│   │   │   ├── file.ts     # File-based memory
-│   │   │   └── qdrant.ts   # Qdrant vector search
-│   │   ├── sessions/
-│   │   │   ├── file.ts     # JSONL session storage
-│   │   │   └── postgres.ts # PostgreSQL sessions
-│   │   ├── browser.ts      # Browser automation service
-│   │   └── process.ts      # Process management service
-│   │
-│   ├── utils/
-│   │   └── errors.ts       # Error handling utilities
-│   │
-│   ├── cli.ts              # Interactive CLI entry point
-│   └── index.ts            # MCP server entry point
+src/
+├── index.ts                # MCP server entry (stdio + HTTP transport)
+├── cli.ts                  # CLI: chat, run, config, onboard, scheduler
+├── boot.ts                 # Shared boot: config → workspace → tools → services → runtime
 │
-├── README.md
-├── CLAUDE.md
-├── CONTRIBUTING.md
-├── package.json
-└── vitest.config.ts
+├── agent/                  # Agent runtime + orchestration
+│   ├── runtime.ts          # PiAgentRuntime — wraps Pi SDK, message queueing
+│   ├── extension.ts        # Converts Vargos tools → Pi SDK tool format
+│   ├── lifecycle.ts        # EventEmitter for streaming run events
+│   ├── prompt.ts           # System prompt builder (full/minimal/none modes)
+│   ├── queue.ts            # Per-session message queue (serialized execution)
+│   ├── history.ts          # Session history helpers
+│   ├── session-init.ts     # Pi session file initialization
+│   └── subagent-registry.ts # Subagent tracking
+│
+├── tools/                  # 15 MCP tool implementations
+│   ├── registry.ts         # ToolRegistry singleton (lazy-loaded)
+│   ├── types.ts            # Tool, ToolContext, ToolResult interfaces
+│   ├── base.ts             # BaseTool abstract class
+│   ├── index.ts            # Re-exports + initializeToolRegistry()
+│   ├── read.ts             # Read files (5MB limit, image support)
+│   ├── write.ts            # Write/create files (append mode)
+│   ├── edit.ts             # Precise text replacement
+│   ├── exec.ts             # Shell commands (60s timeout, 100KB output)
+│   ├── process.ts          # Background process management
+│   ├── web-fetch.ts        # Fetch + extract readable content
+│   ├── browser.ts          # Playwright browser automation
+│   ├── memory-search.ts    # Hybrid semantic + text search
+│   ├── memory-get.ts       # Read specific memory files
+│   ├── sessions-list.ts    # List sessions
+│   ├── sessions-history.ts # Session transcript
+│   ├── sessions-send.ts    # Send message to session
+│   ├── sessions-spawn.ts   # Spawn Pi-powered subagent
+│   ├── cron-add.ts         # Add scheduled task
+│   └── cron-list.ts        # List cron jobs
+│
+├── gateway/                # Message gateway (channel → agent)
+│   ├── core.ts             # Gateway + PluginRegistry
+│   ├── types.ts            # InputType, NormalizedInput, InputPlugin
+│   ├── index.ts            # Re-exports
+│   └── plugins/
+│       ├── text.ts         # Text input handler
+│       ├── image.ts        # Image input (base64 encoding)
+│       └── media.ts        # Voice, file, video input
+│
+├── channels/               # External messaging adapters
+│   ├── types.ts            # ChannelAdapter interface, ChannelConfig
+│   ├── factory.ts          # Creates WhatsApp/Telegram adapters from config
+│   ├── registry.ts         # Active adapter registry
+│   ├── config.ts           # ~/.vargos/channels.json management
+│   ├── onboard.ts          # Channel setup wizard (@clack/prompts)
+│   ├── reconnect.ts        # Exponential backoff reconnection
+│   ├── whatsapp/
+│   │   ├── adapter.ts      # Baileys WebSocket, QR auth, message routing
+│   │   └── session.ts      # Inbound message processing + media download
+│   └── telegram/
+│       ├── adapter.ts      # Long-polling, whitelist, bot token auth
+│       └── types.ts        # Telegram API types
+│
+├── config/                 # Configuration
+│   ├── paths.ts            # Centralized path resolution (~/.vargos/*)
+│   ├── validate.ts         # checkConfig() — env var validation
+│   ├── onboard.ts          # Interactive config wizard (provider, model, API key)
+│   ├── banner.ts           # Startup banner display
+│   ├── identity.ts         # First-run USER.md/SOUL.md setup
+│   ├── workspace.ts        # Workspace dir init + context file loading
+│   └── pi-config.ts        # Pi SDK settings + auth storage
+│
+├── services/               # Service layer (swappable backends)
+│   ├── factory.ts          # ServiceFactory singleton, getServices(), getMemoryContext()
+│   ├── types.ts            # IMemoryService, ISessionService, IVectorService
+│   ├── browser.ts          # Playwright browser automation
+│   ├── process.ts          # Background process management
+│   ├── memory/
+│   │   ├── context.ts      # MemoryContext — hybrid search, auto-indexing, citations
+│   │   ├── file.ts         # File-based memory (markdown, text search)
+│   │   ├── qdrant.ts       # Qdrant vector search
+│   │   └── sqlite-storage.ts # SQLite embeddings cache
+│   └── sessions/
+│       ├── file.ts         # JSONL session storage
+│       └── postgres.ts     # PostgreSQL session storage
+│
+├── cron/                   # Scheduled tasks
+│   ├── scheduler.ts        # CronScheduler singleton, spawns subagents
+│   ├── heartbeat.ts        # HEARTBEAT.md poller (30m interval)
+│   ├── index.ts            # Re-exports
+│   └── tasks/              # Task definitions
+│
+└── lib/                    # Shared utilities
+    ├── errors.ts           # formatErrorResult(), subagent tool restrictions
+    ├── mime.ts             # MIME detection from buffer signatures
+    ├── path.ts             # expandTilde()
+    ├── media.ts            # Media file persistence
+    ├── dedupe.ts           # In-memory dedup cache (TTL-based)
+    ├── debounce.ts         # Message debouncer (batches rapid messages)
+    └── reply-delivery.ts   # Channel reply delivery + message splitting
 ```
 
-**Node.js Requirement:** 20+
+## Module Responsibilities
+
+### Boot Sequence (`boot.ts`)
+
+```
+boot()
+  ├── checkConfig()           validate env vars (interactive if TTY)
+  ├── initializeWorkspace()   create dirs, scaffold context files
+  ├── checkIdentitySetup()    prompt for USER.md/SOUL.md (TTY only)
+  ├── initializeToolRegistry()  lazy-load all 15 tools
+  ├── initializeServices()    memory + session backends
+  └── initializePiAgentRuntime()
+
+startBackgroundServices()
+  ├── CronScheduler.startAll()
+  ├── startHeartbeat()        poll HEARTBEAT.md every 30m
+  └── Channel adapters        load configs → create → initialize → start
+```
+
+### MCP Server (`index.ts`)
+
+Exposes tools to external MCP clients (Claude Desktop, Cursor, etc.) via stdio or HTTP.
+
+```
+MCP Client (Claude Desktop)
+    │
+    ▼
+┌──────────────────────────────────┐
+│  MCP Server (index.ts)           │
+│  ┌────────────────────────────┐  │
+│  │ ListToolsRequest           │  │  → toolRegistry.list()
+│  │ CallToolRequest            │  │  → tool.execute(args, context)
+│  └────────────────────────────┘  │
+│  Transport: stdio | HTTP         │
+│  Subagent restrictions enforced  │
+│  PID lock (one instance only)    │
+└──────────────────────────────────┘
+```
+
+### Channel → Gateway → Agent Flow
+
+Messages from WhatsApp/Telegram flow through the gateway to the agent runtime.
+
+```
+WhatsApp DM / Telegram msg
+    │
+    ▼
+┌─────────────┐     ┌──────────────┐     ┌─────────────────┐
+│  Channel     │────▶│  Gateway     │────▶│  Agent Runtime   │
+│  Adapter     │     │  core.ts     │     │  (Pi SDK)        │
+│              │     │              │     │                   │
+│  dedupe      │     │  plugin      │     │  system prompt    │
+│  debounce    │     │  routing     │     │  tool execution   │
+│  reconnect   │     │  session mgmt│     │  response extract │
+└─────────────┘     └──────────────┘     └─────────────────┘
+    ▲                                            │
+    │           reply via adapter.send()         │
+    └────────────────────────────────────────────┘
+
+Detailed flow:
+1. Adapter receives message → dedup check → debounce batch
+2. Gateway.processAndDeliver() called
+3. Plugin selected by input type (text/image/voice/file)
+4. Plugin prepares input (extract text, encode images, save media)
+5. Message stored in session (role: user)
+6. PiAgentRuntime.run() executes with full tool access
+7. Agent response stored in session
+8. Reply delivered back to channel adapter
+```
+
+### Agent Runtime (`agent/runtime.ts`)
+
+Wraps `@mariozechner/pi-coding-agent` to provide a unified agent for both CLI and gateway.
+
+```
+PiAgentRuntime.run(config)
+    │
+    ├── SessionMessageQueue      serialize per-session (one run at a time)
+    ├── Pi SessionManager        open session file, auth, model registry
+    ├── createVargosCustomTools() wrap 15 MCP tools as Pi SDK tools
+    ├── buildSystemPrompt()      context injection (first message only)
+    │     ├── identity, tooling, workspace
+    │     ├── context files (AGENTS.md, SOUL.md, etc.)
+    │     └── channel context (if from messaging)
+    ├── session.prompt(task)     execute via Pi SDK
+    │     └── tool calls → Vargos tools → results back to Pi
+    └── extract response from session history
+```
+
+### Subagent Spawning
+
+```
+Parent session
+    │
+    ▼
+sessions_spawn tool called
+    │
+    ├── Create child session (parent:subagent:child-id)
+    ├── Minimal prompt (AGENTS.md + TOOLS.md only)
+    ├── Restricted tools (no session tools, no spawning)
+    └── On completion → announce result to parent session
+```
+
+### Tool Architecture
+
+Tools are shared between MCP server (direct) and agent runtime (via Pi SDK wrapper).
+
+```
+                    ┌─────────────────────┐
+                    │  ToolRegistry       │
+                    │  (15 tools)         │
+                    └────────┬────────────┘
+                             │
+              ┌──────────────┼──────────────┐
+              ▼              ▼              ▼
+         MCP Server    Pi SDK Agent    Cron Scheduler
+         (direct)      (extension.ts)  (subagent)
+```
 
 ## Development Commands
 
 ```bash
-# Install dependencies
-pnpm install
-
-# Run tests
-pnpm test              # Watch mode
-pnpm run test:run      # Run once (CI)
-
-# Run development server
-pnpm dev
-
-# Lint
-pnpm lint
+pnpm install              # Install deps
+pnpm dev                  # Start MCP server (stdio)
+pnpm chat                 # Interactive CLI chat
+pnpm test                 # Tests (watch mode)
+pnpm run test:run         # Tests (CI, run once)
+pnpm lint                 # ESLint + typecheck
+pnpm run typecheck        # TypeScript only
 ```
 
-## Architecture
+CLI subcommands (via `tsx src/cli.ts`):
+```bash
+pnpm chat                          # Interactive chat (default session)
+tsx src/cli.ts chat -s myproject   # Named session
+tsx src/cli.ts run "Analyze X"     # One-shot task
+tsx src/cli.ts config              # Interactive config wizard
+tsx src/cli.ts onboard             # Channel setup (WhatsApp/Telegram)
+tsx src/cli.ts scheduler           # Standalone cron
+```
 
-### 4-Layer Architecture
+## Coding Conventions
 
-1. **MCP Tools** (`mcp/tools/*.ts`)
-   - 15 tool implementations
-   - Validate input with Zod schemas
-   - Call services via `getServices()` or `getMemoryContext()`
-
-2. **Service Interfaces** (`core/services/types.ts`)
-   - `IMemoryService` - Memory storage (file, Qdrant)
-   - `ISessionService` - Session storage (file, Postgres)
-   - `IVectorService` - Vector operations
-
-3. **Service Implementations** (`services/`)
-   - Swappable backends
-   - MemoryContext for hybrid search
-
-4. **Infrastructure** (SQLite, file system, Qdrant client, Postgres)
-
-### Service Factory Pattern
+### Imports
+- ESM with `.js` extensions on all internal imports
+- External packages first, then internal
 
 ```typescript
-// services/factory.ts
-export class ServiceFactory {
-  createMemoryService(): IMemoryService { /* ... */ }
-  createSessionService(): ISessionService { /* ... */ }
-  async createMemoryContext(): Promise<MemoryContext> { /* ... */ }
-}
+import { z } from 'zod';
+import { promises as fs } from 'node:fs';
 
-// Global initialization
-export async function initializeServices(config): Promise<void> {
-  const factory = new ServiceFactory(config);
-  globalServices = {
-    memory: factory.createMemoryService(),
-    sessions: factory.createSessionService(),
-    memoryContext: await factory.createMemoryContext(),
-  };
-}
-
-// Tool usage
-export function getMemoryContext(): MemoryContext {
-  return getServices().memoryContext;
-}
+import { getServices } from '../services/factory.js';
+import type { IMemoryService } from '../services/types.js';
 ```
 
-### Path Resolution
+### Patterns
+- **Singleton**: `getX()` lazy getter + `initializeX()` for explicit creation
+- **File naming**: kebab-case (`memory-search.ts`), PascalCase classes (`MemoryContext`)
+- **Tool implementation**: Zod schema → execute(args, context) → ToolResult
 
-All data paths are centralized in `config/paths.ts`:
+### Adding a New Tool
+
+1. Create `tools/<name>.ts` with Tool interface
+2. Register in `tools/index.ts` via `initializeToolRegistry()`
+3. Add tests in `tools/<name>.test.ts`
+
+```typescript
+// tools/example.ts
+import { z } from 'zod';
+import type { Tool } from './types.js';
+
+export const ExampleTool: Tool = {
+  name: 'example',
+  description: 'Does something',
+  parameters: z.object({ input: z.string() }),
+  async execute(args, context) {
+    return { content: [{ type: 'text', text: 'result' }] };
+  },
+};
+```
+
+### Adding a Backend
+
+1. Implement interface from `services/types.ts`
+2. Add to `services/<type>/<name>.ts`
+3. Register in `services/factory.ts`
+
+## Path Resolution
+
+All paths centralized in `config/paths.ts`:
 
 ```typescript
 resolveDataDir()            // VARGOS_DATA_DIR || ~/.vargos
@@ -178,197 +312,65 @@ resolveChannelsDir()        // $DATA_DIR/channels
 resolveChannelConfigFile()  // $DATA_DIR/channels.json
 ```
 
-## Pi Agent Runtime
-
-The Pi Agent Runtime provides a unified agent implementation for both CLI and MCP server modes.
-
-**Location:** `src/pi/runtime.ts`
-
-**Features:**
-- Exposes all registered MCP tools to the Pi SDK
-- Persistent sessions with JSONL transcript storage
-- Auto-loads context files from workspace directory
-- Console logging of tool calls and results
-
-**Usage:**
-```typescript
-import { PiAgentRuntime } from './pi/runtime.js';
-
-const runtime = new PiAgentRuntime();
-const result = await runtime.run({
-  sessionKey: 'cli:main',
-  sessionFile: '/path/to/session.jsonl',
-  workspaceDir: process.cwd(),
-  model: 'gpt-4o-mini',
-  provider: 'openai',
-  apiKey: process.env.OPENAI_API_KEY,
-});
-```
-
-## MemoryContext
-
-Memory system with hybrid search:
-
-**Features:**
-- Hybrid search (vector + text) with configurable weights
-- Automatic chunking with overlap
-- SQLite persistence for embeddings
-- Session transcript indexing
-- File watcher for auto-reindex
-- Citations (file + line range)
-
-**Usage:**
-```typescript
-import { getMemoryContext } from '../services/factory.js';
-
-const memory = getMemoryContext();
-const results = await memory.search('option A', { maxResults: 5 });
-// Returns: [{ chunk, score, citation: 'memory/2026-02-06.md#L10-L25' }]
-```
-
-## Coding Conventions
-
-### File Naming
-- **kebab-case** for files: `memory-search.ts`, `sqlite-storage.ts`
-- **PascalCase** for classes: `MemoryContext`, `FileMemoryService`
-
-### Import Organization
-- External packages first, then internal modules
-- Internal imports use `.js` extension (ESM)
-
-```typescript
-// External
-import { z } from 'zod';
-import { promises as fs } from 'node:fs';
-
-// Internal
-import { getServices } from '../services/factory.js';
-import type { IMemoryService } from '../core/services/types.js';
-```
-
-## MCP Tool Implementation
-
-When implementing MCP tools:
-
-1. **File naming:** `*.ts` in `mcp/tools/`
-2. **Export pattern:** Named export with tool definition
-3. **Input validation:** Use Zod schemas
-4. **Service access:** Use `getServices()` or `getMemoryContext()`
-
-Example:
-```typescript
-// mcp/tools/read.ts
-import { z } from 'zod';
-import { getServices } from '../../services/factory.js';
-
-export const ReadTool = {
-  name: 'read',
-  description: 'Read a file',
-  parameters: z.object({
-    path: z.string(),
-    offset: z.number().optional(),
-    limit: z.number().optional(),
-  }),
-  async execute(args) {
-    const services = getServices();
-    const content = await services.memory.read(args.path, {
-      offset: args.offset,
-      limit: args.limit,
-    });
-    return { content };
-  },
-};
-```
-
-## Testing
-
-All tools have corresponding test files:
-
-```typescript
-// mcp/tools/read.test.ts
-import { describe, it, expect } from 'vitest';
-import { ReadTool } from './read.js';
-
-describe('read tool', () => {
-  it('should read a file', async () => {
-    const result = await ReadTool.execute({ path: 'test.md' });
-    expect(result.content).toBeDefined();
-  });
-});
-```
-
-## Environment Configuration
+## Environment Variables
 
 ```bash
-# Data directory (default: ~/.vargos)
-VARGOS_DATA_DIR=~/.vargos
-
-# Memory backend: file | qdrant
-VARGOS_MEMORY_BACKEND=file
-
-# Sessions backend: file | postgres
-VARGOS_SESSIONS_BACKEND=file
-
-# Qdrant config
-QDRANT_URL=http://localhost:6333
-QDRANT_API_KEY=optional
-
-# PostgreSQL config
-POSTGRES_URL=postgresql://localhost:5432/vargos
-
-# OpenAI (for embeddings in MemoryContext)
-OPENAI_API_KEY=sk-...
+VARGOS_DATA_DIR=~/.vargos           # Root data directory
+VARGOS_WORKSPACE=$DATA_DIR/workspace # Context files
+VARGOS_MEMORY_BACKEND=file          # file | qdrant
+VARGOS_SESSIONS_BACKEND=file        # file | postgres
+VARGOS_TRANSPORT=stdio              # stdio | http
+VARGOS_HOST=127.0.0.1              # HTTP transport only
+VARGOS_PORT=3000                    # HTTP transport only
+VARGOS_ENDPOINT=/mcp               # HTTP transport only
+OPENAI_API_KEY=sk-...              # For embeddings + Pi runtime
+QDRANT_URL=http://localhost:6333   # Qdrant vector search
+POSTGRES_URL=postgresql://...      # PostgreSQL sessions
 ```
 
-## Data Directory Structure
-
-Vargos stores persistent data in `~/.vargos/`:
+## Data Directory
 
 ```
 ~/.vargos/
-├── workspace/              # Context files (AGENTS.md, SOUL.md, etc.)
-│   ├── AGENTS.md
-│   ├── SOUL.md
-│   ├── USER.md
-│   ├── TOOLS.md
-│   ├── HEARTBEAT.md
-│   └── memory/             # Daily notes
-├── agent/                  # Pi SDK configuration
-├── channels.json           # Channel adapter configs
+├── workspace/           # Context files
+│   ├── AGENTS.md        # Agent behavior rules
+│   ├── SOUL.md          # Agent personality
+│   ├── USER.md          # User info (name, timezone)
+│   ├── TOOLS.md         # Tool usage guidance
+│   ├── MEMORY.md        # Persistent memory notes
+│   ├── HEARTBEAT.md     # Periodic task list
+│   └── memory/          # Daily notes (YYYY-MM-DD.md)
+├── agent/               # Pi SDK config + auth
+├── channels.json        # Channel adapter configs
 ├── channels/
-│   └── whatsapp/           # Baileys auth state
-├── sessions/               # Session JSONL files
-│   ├── cli-main.jsonl
-│   └── cli-myproject.jsonl
-└── memory.db               # SQLite embeddings cache
+│   └── whatsapp/        # Baileys auth state
+├── sessions/            # Session JSONL transcripts
+├── memory.db            # SQLite embeddings cache
+└── vargos.pid           # Process lock file
 ```
 
-**Directory purposes:**
-- **Working directory** (`process.cwd()`): Where tools (`read`, `exec`, `write`) operate on files
-- **Context directory** (`~/.vargos/workspace/`): Where agent personality/context files live
-- **Data directory** (`~/.vargos/`): Where sessions and embeddings are persisted
+## What's Supported
 
-## Swappable Backends
-
-Tools don't know about backends — they use interfaces:
-
-```typescript
-// Use getMemoryContext() for search (not raw services)
-const memory = getMemoryContext();
-const results = await memory.search(query);
-```
-
-To add a new backend:
-1. Create implementation in `services/<type>/<name>.ts`
-2. Implement interface from `core/services/types.ts`
-3. Register in `services/factory.ts`
-4. Add tests
+| Feature | Status | Notes |
+|---------|--------|-------|
+| MCP stdio transport | Working | Default, for Claude Desktop |
+| MCP HTTP transport | Working | Set `VARGOS_TRANSPORT=http` |
+| WhatsApp channel | Working | Baileys, linked devices QR auth |
+| Telegram channel | Working | Bot token, long-polling |
+| File memory backend | Working | Zero deps, text search |
+| Qdrant memory backend | Working | Vector semantic search |
+| File session backend | Working | JSONL files |
+| PostgreSQL sessions | Working | ACID, indexable |
+| Subagent spawning | Working | Isolated sessions, restricted tools |
+| Cron scheduling | Working | Agent-executed tasks |
+| Heartbeat polling | Working | 30m interval, HEARTBEAT.md |
+| Browser automation | Working | Requires Playwright installed |
+| Hybrid memory search | Working | Vector + text weighted scoring |
 
 ## Important Notes
 
-- **Less code is better** - Remove unused or deprecated code
-- **Test coverage** - All tools should have tests
-- **No business logic in tools** - Delegate to services
-- **Use MemoryContext for search** - Not raw memory service
-- **File watcher** - Enabled in dev mode (`NODE_ENV=development`)
-- **Session indexing** - Configure `sessionsDir` to index transcripts
+- **Less code is better** — remove unused code, don't extend
+- **No business logic in tools** — delegate to services
+- **Use MemoryContext for search** — not raw memory service
+- **Tools are shared** — same 15 tools serve MCP clients and Pi agent
+- **One instance only** — PID lock prevents duplicate processes
