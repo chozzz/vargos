@@ -69,6 +69,7 @@ export class AgentLifecycle extends EventEmitter {
     abortController: AbortController;
   }>();
 
+
   /**
    * Start a new run
    */
@@ -143,7 +144,7 @@ export class AgentLifecycle extends EventEmitter {
     };
 
     this.emit('stream', event);
-    this.emit('error', runId, error);
+    this.emit('run_error', runId, error);
   }
 
   /**

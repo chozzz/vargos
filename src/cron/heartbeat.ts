@@ -6,8 +6,8 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { getPiAgentRuntime } from '../agent/runtime.js';
-import { resolveSessionFile } from '../config/paths.js';
-import { loadPiSettings, getPiApiKey } from '../config/pi-config.js';
+import { resolveSessionFile, resolveDataDir } from '../config/paths.js';
+import { loadConfig } from '../config/pi-config.js';
 
 const DEFAULT_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -46,15 +46,14 @@ async function tick(workspaceDir: string): Promise<void> {
   const content = await readHeartbeat(workspaceDir);
   if (isHeartbeatEmpty(content)) return;
 
-  const settings = await loadPiSettings(workspaceDir);
-  const provider = settings.defaultProvider;
-  const model = settings.defaultModel;
-  if (!provider || !model) {
-    console.error('[Heartbeat] No provider/model configured — skipping');
+  const config = await loadConfig(resolveDataDir());
+  if (!config) {
+    console.error('[Heartbeat] No config.json — skipping');
     return;
   }
-
-  const apiKey = await getPiApiKey(workspaceDir, provider);
+  const { provider, model } = config.agent;
+  const envKey = process.env[`${provider.toUpperCase()}_API_KEY`];
+  const apiKey = envKey || config.agent.apiKey;
   if (!apiKey) {
     console.error('[Heartbeat] No API key — skipping');
     return;
@@ -97,6 +96,7 @@ async function tick(workspaceDir: string): Promise<void> {
       model,
       provider,
       apiKey,
+      baseUrl: config.agent.baseUrl,
     });
 
     if (result.success && result.response?.includes('HEARTBEAT_OK')) {

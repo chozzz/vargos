@@ -7,8 +7,8 @@
 import { getSessionService } from '../services/factory.js';
 import { getChannelRegistry } from '../channels/registry.js';
 import { deliverReply } from '../lib/reply-delivery.js';
-import { resolveWorkspaceDir, resolveSessionFile } from '../config/paths.js';
-import { loadPiSettings, getPiApiKey } from '../config/pi-config.js';
+import { resolveWorkspaceDir, resolveSessionFile, resolveDataDir } from '../config/paths.js';
+import { loadConfig } from '../config/pi-config.js';
 import type { PiAgentRunResult } from './runtime.js';
 
 interface TrackedSubagent {
@@ -78,10 +78,14 @@ export class SubagentRegistry {
     const runtime = getPiAgentRuntime();
 
     const workspaceDir = resolveWorkspaceDir();
-    const piSettings = await loadPiSettings(workspaceDir);
-    const provider = piSettings.defaultProvider || 'openai';
-    const model = piSettings.defaultModel || 'gpt-4o-mini';
-    const apiKey = await getPiApiKey(workspaceDir, provider);
+    const config = await loadConfig(resolveDataDir());
+    if (!config) {
+      console.error('[SubagentRegistry] No config.json — skipping re-prompt');
+      return;
+    }
+    const { provider, model } = config.agent;
+    const envKey = process.env[`${provider.toUpperCase()}_API_KEY`];
+    const apiKey = envKey || config.agent.apiKey;
 
     if (!apiKey) {
       console.error('[SubagentRegistry] No API key — skipping re-prompt');
@@ -95,6 +99,7 @@ export class SubagentRegistry {
       model,
       provider,
       apiKey,
+      baseUrl: config.agent.baseUrl,
       contextFiles: [],
     });
 

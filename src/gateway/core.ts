@@ -8,8 +8,8 @@ import type { Server as HTTPServer } from 'node:http';
 import type { WebSocket } from 'ws';
 import { getPiAgentRuntime } from '../agent/runtime.js';
 import { getSessionService } from '../services/factory.js';
-import { resolveSessionFile, resolveWorkspaceDir } from '../config/paths.js';
-import { loadPiSettings, getPiApiKey } from '../config/pi-config.js';
+import { resolveSessionFile, resolveWorkspaceDir, resolveDataDir } from '../config/paths.js';
+import { loadConfig } from '../config/pi-config.js';
 import { deliverReply, type SendFn } from '../lib/reply-delivery.js';
 import { TextInputPlugin } from './plugins/text.js';
 import { ImageInputPlugin } from './plugins/image.js';
@@ -213,16 +213,21 @@ export class Gateway extends EventEmitter {
     });
 
     const workspaceDir = resolveWorkspaceDir();
-    const piSettings = await loadPiSettings(workspaceDir);
-    const provider = piSettings.defaultProvider || 'openai';
-    const model = piSettings.defaultModel || 'gpt-4o-mini';
-    const apiKey = await getPiApiKey(workspaceDir, provider);
+    const config = await loadConfig(resolveDataDir());
+    if (!config) {
+      console.error('[Gateway] No config.json — run: vargos config');
+      return { success: false, content: 'Not configured. Run: vargos config', type: 'error' };
+    }
+    const provider = config.agent.provider;
+    const model = config.agent.model;
+    const envKey = process.env[`${provider.toUpperCase()}_API_KEY`];
+    const apiKey = envKey || config.agent.apiKey;
 
     if (!apiKey) {
       console.error(`[Gateway] No API key for provider "${provider}"`);
       return {
         success: false,
-        content: `No API key configured for ${provider}. Run: pnpm cli config:set`,
+        content: `No API key configured for ${provider}. Run: vargos config`,
         type: 'error',
       };
     }
@@ -237,6 +242,7 @@ export class Gateway extends EventEmitter {
       model,
       provider,
       apiKey,
+      baseUrl: config.agent.baseUrl,
       images: images?.length ? images : undefined,
       channel: context.channel,
     });

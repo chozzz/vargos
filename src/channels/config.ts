@@ -1,45 +1,38 @@
 /**
- * Channel configuration persistence
- * Load/save channel configs from ~/.vargos/channels.json
+ * Channel configuration — reads/writes channels section of main config.json
  */
 
-import { promises as fs } from 'node:fs';
-import { resolveChannelConfigFile } from '../config/paths.js';
-import type { ChannelConfig, ChannelsFile, ChannelType } from './types.js';
+import { loadConfig, saveConfig, type ChannelEntry } from '../config/pi-config.js';
+import { resolveDataDir } from '../config/paths.js';
+import type { ChannelConfig, ChannelType } from './types.js';
 
+/** Load channel configs from main config.json, converting record → array */
 export async function loadChannelConfigs(): Promise<ChannelConfig[]> {
-  const configPath = resolveChannelConfigFile();
-  try {
-    const content = await fs.readFile(configPath, 'utf-8');
-    const data = JSON.parse(content) as ChannelsFile;
-    return data.channels ?? [];
-  } catch {
-    return [];
+  const config = await loadConfig(resolveDataDir());
+  if (!config?.channels) return [];
+
+  return Object.entries(config.channels).map(([type, entry]) => ({
+    type: type as ChannelType,
+    enabled: entry.enabled !== false,
+    ...entry,
+  }));
+}
+
+/** Add or update a channel in main config.json */
+export async function addChannelConfig(channelConfig: ChannelConfig): Promise<void> {
+  const dataDir = resolveDataDir();
+  const config = await loadConfig(dataDir);
+  if (!config) {
+    throw new Error('No config.json — run: vargos config');
   }
-}
 
-export async function saveChannelConfigs(channels: ChannelConfig[]): Promise<void> {
-  const configPath = resolveChannelConfigFile();
-  const data: ChannelsFile = { channels };
-  await fs.writeFile(configPath, JSON.stringify(data, null, 2), 'utf-8');
-}
+  if (!config.channels) config.channels = {};
 
-export async function addChannelConfig(config: ChannelConfig): Promise<void> {
-  const channels = await loadChannelConfigs();
-  // Replace existing config for same type, or append
-  const idx = channels.findIndex((c) => c.type === config.type);
-  if (idx >= 0) {
-    channels[idx] = config;
-  } else {
-    channels.push(config);
-  }
-  await saveChannelConfigs(channels);
-}
+  const entry: ChannelEntry = {};
+  if (channelConfig.enabled !== undefined) entry.enabled = channelConfig.enabled;
+  if (channelConfig.botToken) entry.botToken = channelConfig.botToken;
+  if (channelConfig.allowFrom) entry.allowFrom = channelConfig.allowFrom;
 
-export async function removeChannelConfig(type: ChannelType): Promise<boolean> {
-  const channels = await loadChannelConfigs();
-  const filtered = channels.filter((c) => c.type !== type);
-  if (filtered.length === channels.length) return false;
-  await saveChannelConfigs(filtered);
-  return true;
+  config.channels[channelConfig.type] = entry;
+  await saveConfig(dataDir, config);
 }

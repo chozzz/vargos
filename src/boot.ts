@@ -1,98 +1,152 @@
 /**
  * Shared boot sequence for MCP server and CLI
- * Handles config validation, workspace init, tool registry, and services
+ * All startup output flows through here so both entry points see progress
  */
 
 import { promises as fs } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
-import { checkConfig } from './config/validate.js';
-import { interactiveConfig } from './config/onboard.js';
+import { checkEnv, validateConfig, checkLocalProvider } from './config/validate.js';
 import { initializeWorkspace, isWorkspaceInitialized, loadContextFiles } from './config/workspace.js';
 import { resolveDataDir, resolveWorkspaceDir } from './config/paths.js';
 import { checkIdentitySetup } from './config/identity.js';
-import { initializeToolRegistry } from './tools/index.js';
+import { loadConfig, syncPiSdkFiles } from './config/pi-config.js';
+import { initializeToolRegistry, toolRegistry } from './tools/index.js';
 import { initializeServices, type ServiceConfig } from './services/factory.js';
 import { initializePiAgentRuntime } from './agent/runtime.js';
 import { initializeCronScheduler, getCronScheduler } from './cron/scheduler.js';
 import { isHeartbeatEmpty, startHeartbeat, stopHeartbeat } from './cron/heartbeat.js';
 
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
+const { version: VERSION } = require('../package.json');
+
+function shortenHome(p: string): string {
+  const home = os.homedir();
+  return p.startsWith(home) ? '~' + p.slice(home.length) : p;
+}
+
 export interface BootResult {
   workspaceDir: string;
   dataDir: string;
   contextFiles: Array<{ name: string; content: string }>;
+  provider: string;
+  model: string;
+  apiKey: string | undefined;
+  baseUrl: string | undefined;
 }
 
 /**
  * Core boot sequence shared by MCP server and CLI
- * - Validates config (prompts interactively if TTY)
- * - Initializes workspace + identity
- * - Registers tools
- * - Initializes services + runtime
+ * Logs progress to stderr so both entry points show it
  */
 export async function boot(opts?: { interactive?: boolean }): Promise<BootResult> {
-  const { valid: configValid, missing } = checkConfig();
+  const workspaceDir = resolveWorkspaceDir();
+  const dataDir = resolveDataDir();
+  const log = (s: string) => console.error(s);
 
-  if (!configValid && opts?.interactive !== false && process.stdin.isTTY) {
-    await interactiveConfig();
-  } else if (!configValid) {
-    console.error('');
-    console.error('Configuration Error');
-    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.error('');
-    console.error('Missing required configuration:');
-    for (const config of missing) {
-      console.error(`  ${config.key}: ${config.why}`);
+  log('');
+  log(`  Vargos v${VERSION}`);
+  log('');
+  log('  Config');
+  log(`    Data       ${shortenHome(dataDir)}`);
+  log(`    Workspace  ${shortenHome(workspaceDir)}`);
+  log('');
+
+  const { warnings: envWarnings } = checkEnv();
+  for (const w of envWarnings) log(`  ${w}`);
+
+  log('  Boot');
+
+  // Workspace
+  if (!(await isWorkspaceInitialized(workspaceDir))) {
+    await initializeWorkspace({ workspaceDir });
+  }
+  log('    Workspace  ok');
+
+  // Identity (TTY only)
+  await checkIdentitySetup(workspaceDir);
+  log('    Identity   ok');
+
+  // Config — single config.json as source of truth
+  let config = await loadConfig(dataDir);
+  if (!config) {
+    if (process.stdin.isTTY) {
+      const { interactivePiConfig } = await import('./config/onboard.js');
+      await interactivePiConfig(dataDir);
+      config = await loadConfig(dataDir);
     }
-    console.error('');
-    console.error('Set these environment variables or run interactively.');
-    console.error('');
+    if (!config) {
+      log('    No config found. Run: vargos config');
+      process.exit(1);
+    }
+  }
+  // Validate config before proceeding
+  const validation = validateConfig(config);
+  for (const w of validation.warnings) log(`  ⚠ ${w}`);
+  if (!validation.valid) {
+    for (const e of validation.errors) log(`  ✗ ${e}`);
+    log('');
     process.exit(1);
   }
 
-  const workspaceDir = resolveWorkspaceDir();
-  const dataDir = resolveDataDir();
-
-  // Workspace init
-  if (!(await isWorkspaceInitialized(workspaceDir))) {
-    console.error('  Initializing workspace...');
-    await initializeWorkspace({ workspaceDir });
+  // Check local provider reachability before proceeding
+  const connectErr = await checkLocalProvider(config.agent.provider, config.agent.baseUrl);
+  if (connectErr) {
+    log(`  ✗ ${connectErr}`);
+    log('');
+    process.exit(1);
   }
 
-  // Identity check (TTY only)
-  await checkIdentitySetup(workspaceDir);
+  await syncPiSdkFiles(workspaceDir, config.agent);
+  const provider = config.agent.provider;
+  const model = config.agent.model;
+  const envKey = process.env[`${provider.toUpperCase()}_API_KEY`];
+  const apiKey = envKey || config.agent.apiKey;
+  log(`    Agent      ${provider} / ${model}`);
 
   // Tools
   await initializeToolRegistry();
+  log(`    Tools      ${toolRegistry.list().length} registered`);
 
   // Services
   const serviceConfig: ServiceConfig = {
-    memory: (process.env.VARGOS_MEMORY_BACKEND as 'file' | 'qdrant' | 'postgres') ?? 'file',
-    sessions: (process.env.VARGOS_SESSIONS_BACKEND as 'file' | 'postgres') ?? 'file',
     fileMemoryDir: dataDir,
-    qdrantUrl: process.env.QDRANT_URL,
-    qdrantApiKey: process.env.QDRANT_API_KEY,
-    postgresUrl: process.env.POSTGRES_URL,
     openaiApiKey: process.env.OPENAI_API_KEY,
     workspaceDir,
   };
-
   await initializeServices(serviceConfig);
+  log('    Services   ok');
+
+  // Runtime
   initializePiAgentRuntime();
+  log('    Runtime    ok');
 
+  // Context files
   const contextFiles = await loadContextFiles(workspaceDir);
+  log('');
+  const EXPECTED = ['AGENTS.md', 'SOUL.md', 'USER.md', 'TOOLS.md', 'MEMORY.md', 'HEARTBEAT.md', 'BOOTSTRAP.md'];
+  log(`  Context (${contextFiles.length} of ${EXPECTED.length})`);
+  if (contextFiles.length > 0) {
+    log(`    ${contextFiles.map((f) => f.name).join('  ')}`);
+  }
+  log('');
 
-  return { workspaceDir, dataDir, contextFiles };
+  return { workspaceDir, dataDir, contextFiles, provider, model, apiKey, baseUrl: config.agent.baseUrl };
 }
 
 /**
  * Start cron, heartbeat, and channel adapters
  */
 export async function startBackgroundServices(workspaceDir: string): Promise<void> {
+  const log = (s: string) => console.error(s);
+
+  log('  Background');
+
   // Cron
   const scheduler = initializeCronScheduler(workspaceDir);
   scheduler.startAll();
-  const taskCount = scheduler.listTasks().length;
-  console.error(`    Scheduler  ${taskCount} task(s)`);
+  log(`    Scheduler  ${scheduler.listTasks().length} task(s)`);
 
   // Heartbeat
   let heartbeatContent = '';
@@ -102,10 +156,11 @@ export async function startBackgroundServices(workspaceDir: string): Promise<voi
 
   if (!isHeartbeatEmpty(heartbeatContent)) {
     startHeartbeat(workspaceDir);
-    console.error('    Heartbeat  30m');
+    log('    Heartbeat  30m');
   } else {
-    console.error('    Heartbeat  off (empty)');
+    log('    Heartbeat  off (empty)');
   }
+  log('');
 
   // Channels
   const { loadChannelConfigs } = await import('./channels/config.js');
@@ -118,29 +173,29 @@ export async function startBackgroundServices(workspaceDir: string): Promise<voi
 
   if (enabledChannels.length === 0 && process.stdin.isTTY) {
     const { runOnboarding } = await import('./channels/onboard.js');
-    console.error('  Channels');
-    console.error('    none configured');
-    console.error('');
+    log('  Channels');
+    log('    none configured');
+    log('');
     await runOnboarding();
     channelConfigs = await loadChannelConfigs();
     enabledChannels = channelConfigs.filter((c) => c.enabled);
   }
 
   if (enabledChannels.length > 0) {
-    console.error('  Channels');
+    log('  Channels');
     for (const cfg of enabledChannels) {
       try {
         const adapter = createAdapter(cfg);
         channelRegistry.register(adapter);
         await adapter.initialize();
         await adapter.start();
-        console.error(`    ${cfg.type.padEnd(10)}${adapter.status}`);
+        log(`    ${cfg.type.padEnd(10)} ${adapter.status}`);
       } catch (err) {
-        console.error(`    ${cfg.type.padEnd(10)}failed (${err instanceof Error ? err.message : String(err)})`);
+        log(`    ${cfg.type.padEnd(10)} failed (${err instanceof Error ? err.message : String(err)})`);
       }
     }
+    log('');
   }
-  console.error('');
 }
 
 /**

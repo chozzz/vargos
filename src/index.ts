@@ -3,8 +3,6 @@
  * Supports both stdio and HTTP transports
  */
 
-import 'dotenv/config';
-
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -20,11 +18,12 @@ import { promises as fs } from 'node:fs';
 import { toolRegistry } from './tools/index.js';
 import { ToolContext } from './tools/types.js';
 import { isSubagentSessionKey, isToolAllowedForSubagent, formatErrorResult } from './lib/errors.js';
-import { printStartupBanner } from './config/banner.js';
 import { resolveDataDir } from './config/paths.js';
 import { boot, startBackgroundServices, shutdown, acquireProcessLock, releaseProcessLock } from './boot.js';
 
-const VERSION = '0.0.1';
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
+const { version: VERSION } = require('../package.json');
 
 function getServerConfig() {
   return {
@@ -100,34 +99,7 @@ async function main() {
 
   const serverConfig = getServerConfig();
 
-  const { workspaceDir, dataDir, contextFiles } = await boot();
-
-  const contextFilesWithPaths = contextFiles.map(f => ({
-    name: f.name,
-    path: path.join(workspaceDir, f.name)
-  }));
-
-  const tools = toolRegistry.list().map(t => ({
-    name: t.name,
-    description: t.description
-  }));
-
-  printStartupBanner({
-    mode: 'mcp',
-    version: VERSION,
-    workspace: workspaceDir,
-    dataDir,
-    memoryBackend: process.env.VARGOS_MEMORY_BACKEND ?? 'file',
-    sessionsBackend: process.env.VARGOS_SESSIONS_BACKEND ?? 'file',
-    contextFiles: contextFilesWithPaths,
-    tools,
-    transport: serverConfig.transport,
-    host: serverConfig.host,
-    port: serverConfig.port,
-    endpoint: serverConfig.endpoint,
-  });
-
-  console.error('  Services     ok');
+  const { workspaceDir } = await boot();
 
   await startBackgroundServices(workspaceDir);
 

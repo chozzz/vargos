@@ -39,11 +39,3 @@ export function resolveMediaDir(sessionKey?: string): string {
 export function resolveChannelsDir(): string {
   return path.join(resolveDataDir(), 'channels');
 }
-
-export function resolveChannelConfigFile(): string {
-  return path.join(resolveDataDir(), 'channels.json');
-}
-
-export function resolveConfigFile(): string {
-  return path.join(resolveWorkspaceDir(), 'config.json');
-}
