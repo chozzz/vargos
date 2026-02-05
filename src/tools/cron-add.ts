@@ -21,7 +21,7 @@ export const cronAddTool: Tool = {
     const params = CronAddParameters.parse(args);
 
     try {
-      const scheduler = getCronScheduler(context.workingDir);
+      const scheduler = getCronScheduler();
       
       const task = scheduler.addTask({
         name: params.name,

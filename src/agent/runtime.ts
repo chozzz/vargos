@@ -55,6 +55,7 @@ export interface PiAgentConfig {
   model?: string;
   provider?: string;
   apiKey?: string;
+  baseUrl?: string;
   contextFiles?: Array<{ name: string; content: string }>;
   extraSystemPrompt?: string;
   userTimezone?: string;
@@ -147,11 +148,14 @@ export class PiAgentRuntime {
       // Create auth storage for API keys
       const authStorage = new AuthStorage(piPaths.authPath);
 
-      // Set API key if provided
-      if (config.apiKey && config.provider) {
-        authStorage.setRuntimeApiKey(config.provider, config.apiKey);
-      } else if (config.apiKey) {
-        authStorage.setRuntimeApiKey('openai', config.apiKey);
+      const provider = config.provider ?? 'openai';
+
+      // Set API key — ollama/lmstudio need a dummy key for Pi SDK auth checks
+      const LOCAL_PROVIDERS = new Set(['ollama', 'lmstudio']);
+      if (config.apiKey) {
+        authStorage.setRuntimeApiKey(provider, config.apiKey);
+      } else if (LOCAL_PROVIDERS.has(provider)) {
+        authStorage.setRuntimeApiKey(provider, 'local');
       }
 
       // Create model registry
@@ -163,8 +167,30 @@ export class PiAgentRuntime {
       // Build model configuration
       let model = undefined;
       if (config.model) {
-        const provider = config.provider ?? 'openai';
         model = modelRegistry.find(provider, config.model) ?? undefined;
+
+        // Register local providers not in Pi SDK's built-in registry
+        if (!model && LOCAL_PROVIDERS.has(provider) && config.model) {
+          const raw = config.baseUrl?.replace(/\/$/, '')
+            ?? (provider === 'ollama' ? 'http://127.0.0.1:11434' : 'http://127.0.0.1:1234');
+          const baseUrl = raw.endsWith('/v1') ? raw : raw + '/v1';
+
+          modelRegistry.registerProvider(provider, {
+            baseUrl,
+            apiKey: config.apiKey ?? 'local',
+            api: 'openai-completions' as any,
+            models: [{
+              id: config.model,
+              name: config.model,
+              reasoning: false,
+              input: ['text'] as ('text' | 'image')[],
+              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+              contextWindow: 128_000,
+              maxTokens: 8_192,
+            }],
+          });
+          model = modelRegistry.find(provider, config.model) ?? undefined;
+        }
       }
 
       // Create Vargos custom tools for Pi SDK
@@ -280,6 +306,10 @@ export class PiAgentRuntime {
     } catch (err) {
       const duration = Date.now() - startedAt;
       const message = err instanceof Error ? err.message : String(err);
+      console.error(`[PiRuntime] Run ${runId} failed (${(duration / 1000).toFixed(1)}s): ${message}`);
+      if (err instanceof Error && err.stack) {
+        console.error(err.stack);
+      }
 
       // Error lifecycle
       this.lifecycle.errorRun(runId, message);
@@ -478,7 +508,7 @@ export class PiAgentRuntime {
   onLifecycle(callback: (phase: string, runId: string, data?: unknown) => void): void {
     this.lifecycle.on('start', (runId: string, sessionKey: string) => callback('start', runId, { sessionKey }));
     this.lifecycle.on('end', (runId: string, data: unknown) => callback('end', runId, data));
-    this.lifecycle.on('error', (runId: string, error: Error) => callback('error', runId, { error }));
+    this.lifecycle.on('run_error', (runId: string, error: Error) => callback('error', runId, { error }));
     this.lifecycle.on('abort', (runId: string, reason: string) => callback('abort', runId, { reason }));
   }
 }

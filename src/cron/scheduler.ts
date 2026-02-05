@@ -6,8 +6,8 @@
 import { CronJob } from 'cron';
 import { getSessionService } from '../services/factory.js';
 import { getPiAgentRuntime } from '../agent/runtime.js';
-import { resolveWorkspaceDir, resolveSessionFile } from '../config/paths.js';
-import { loadPiSettings, getPiApiKey } from '../config/pi-config.js';
+import { resolveSessionFile, resolveDataDir } from '../config/paths.js';
+import { loadConfig } from '../config/pi-config.js';
 
 export interface CronTask {
   id: string;
@@ -26,9 +26,11 @@ export interface CronJobInstance {
 export class CronScheduler {
   private jobs: Map<string, CronJobInstance> = new Map();
   private workspaceDir: string;
+  private dataDir: string;
 
-  constructor(workspaceDir: string = resolveWorkspaceDir()) {
+  constructor(workspaceDir: string, dataDir: string = resolveDataDir()) {
     this.workspaceDir = workspaceDir;
+    this.dataDir = dataDir;
   }
 
   /**
@@ -119,11 +121,14 @@ export class CronScheduler {
     const runtime = getPiAgentRuntime();
     const sessionFile = resolveSessionFile(sessionKey);
 
-    // Load Pi config for model/provider/apiKey
-    const settings = await loadPiSettings(this.workspaceDir);
-    const provider = settings.defaultProvider;
-    const model = settings.defaultModel;
-    const apiKey = provider ? await getPiApiKey(this.workspaceDir, provider) : undefined;
+    const config = await loadConfig(this.dataDir);
+    if (!config) {
+      console.error(`[Cron] No config.json — skipping task ${task.name}`);
+      return;
+    }
+    const { provider, model } = config.agent;
+    const envKey = process.env[`${provider.toUpperCase()}_API_KEY`];
+    const apiKey = envKey || config.agent.apiKey;
 
     runtime.run({
       sessionKey,
@@ -132,6 +137,7 @@ export class CronScheduler {
       model,
       provider,
       apiKey,
+      baseUrl: config.agent.baseUrl,
     }).then(result => {
       if (result.success) {
         console.error(`[Cron] Task ${task.name} completed`);
@@ -147,14 +153,14 @@ export class CronScheduler {
 // Singleton instance
 let globalScheduler: CronScheduler | null = null;
 
-export function getCronScheduler(workspaceDir?: string): CronScheduler {
+export function getCronScheduler(): CronScheduler {
   if (!globalScheduler) {
-    globalScheduler = new CronScheduler(workspaceDir);
+    throw new Error('CronScheduler not initialized — call initializeCronScheduler() first');
   }
   return globalScheduler;
 }
 
-export function initializeCronScheduler(workspaceDir?: string): CronScheduler {
-  globalScheduler = new CronScheduler(workspaceDir);
+export function initializeCronScheduler(workspaceDir: string, dataDir?: string): CronScheduler {
+  globalScheduler = new CronScheduler(workspaceDir, dataDir);
   return globalScheduler;
 }

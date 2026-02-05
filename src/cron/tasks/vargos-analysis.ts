@@ -21,8 +21,7 @@ export const ANALYSIS_AREAS: AnalysisArea[] = [
       'Review memory usage patterns in session and memory services',
       'Evaluate Pi Agent Runtime for memory leaks or inefficiencies',
       'Check if file-based backends (JSONL) will bottleneck under load',
-      'Suggest when users should switch to Postgres/Qdrant',
-      'Recommend connection pooling strategies',
+      'Recommend optimization strategies for file-based storage',
     ],
   },
   {
@@ -30,7 +29,6 @@ export const ANALYSIS_AREAS: AnalysisArea[] = [
     focus: 'Multi-instance deployment and load distribution',
     questions: [
       'Design for running multiple Vargos instances behind a load balancer',
-      'Ensure session statelessness for shared storage (Postgres)',
       'Evaluate if memory search works across instances',
       'Suggest Redis or similar for distributed state',
       'Rate limiting strategies for public MCP endpoints',

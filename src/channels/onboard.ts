@@ -8,7 +8,7 @@ import readline from 'node:readline';
 import chalk from 'chalk';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { loadChannelConfigs, addChannelConfig, removeChannelConfig } from './config.js';
+import { loadChannelConfigs, addChannelConfig } from './config.js';
 import { resolveChannelsDir } from '../config/paths.js';
 import { createWhatsAppSocket } from './whatsapp/session.js';
 import { TelegramAdapter } from './telegram/adapter.js';
@@ -26,6 +26,15 @@ function prompt(question: string): Promise<string> {
       resolve(answer.trim());
     });
   });
+}
+
+/** Prompt for allowFrom whitelist. Empty input = accept all. */
+async function promptAllowFrom(label: string, example: string): Promise<string[]> {
+  console.log(`  Allowed ${label} (comma-separated, empty = accept all):`);
+  console.log(chalk.gray(`    Example: ${example}`));
+  const input = await prompt('    > ');
+  if (!input) return [];
+  return input.split(',').map((s) => s.trim()).filter(Boolean);
 }
 
 async function setupWhatsApp(): Promise<void> {
@@ -90,11 +99,14 @@ async function setupWhatsApp(): Promise<void> {
     }
 
     if (connected) {
-      const config: ChannelConfig = { type: 'whatsapp', enabled: true };
-      await addChannelConfig(config);
       console.log('');
       console.log(chalk.green(`Connected as ${connectedName}`));
-      console.log(chalk.green('Saved to ~/.vargos/channels.json'));
+      console.log('');
+
+      const allowFrom = await promptAllowFrom('phone numbers', '+61423222658');
+      const config: ChannelConfig = { type: 'whatsapp', enabled: true, allowFrom };
+      await addChannelConfig(config);
+      console.log(chalk.green('Saved to ~/.vargos/config.json'));
     } else {
       console.log('');
       console.log(chalk.red('Connection timed out. Try again with: pnpm cli onboard'));
@@ -127,11 +139,14 @@ async function setupTelegram(): Promise<void> {
 
   try {
     await adapter.initialize();
-    const config: ChannelConfig = { type: 'telegram', enabled: true, botToken: token };
-    await addChannelConfig(config);
     console.log('');
     console.log(chalk.green('Telegram bot verified'));
-    console.log(chalk.green('Saved to ~/.vargos/channels.json'));
+    console.log('');
+
+    const allowFrom = await promptAllowFrom('chat IDs', '12345678');
+    const config: ChannelConfig = { type: 'telegram', enabled: true, botToken: token, allowFrom };
+    await addChannelConfig(config);
+    console.log(chalk.green('Saved to ~/.vargos/config.json'));
   } catch (err) {
     console.error(chalk.red(`Validation failed: ${err instanceof Error ? err.message : String(err)}`));
     console.log(chalk.gray('Check your bot token and try again.'));
@@ -146,36 +161,19 @@ async function viewChannels(): Promise<void> {
   } else {
     for (const ch of channels) {
       const status = ch.enabled ? chalk.green('enabled') : chalk.gray('disabled');
-      const detail = ch.type === 'telegram' && ch.botToken
-        ? ` (token: ...${String(ch.botToken).slice(-6)})`
-        : '';
-      console.log(`  ${ch.type}: ${status}${detail}`);
+      const parts = [status];
+      if (ch.type === 'telegram' && ch.botToken) {
+        parts.push(`token: ...${String(ch.botToken).slice(-6)}`);
+      }
+      if (ch.allowFrom?.length) {
+        parts.push(`allow: ${ch.allowFrom.join(', ')}`);
+      } else {
+        parts.push('allow: all');
+      }
+      console.log(`  ${ch.type}: ${parts.join(' | ')}`);
     }
   }
   console.log('');
-}
-
-async function removeChannel(): Promise<void> {
-  const channels = await loadChannelConfigs();
-  if (channels.length === 0) {
-    console.log(chalk.gray('\n  No channels to remove\n'));
-    return;
-  }
-
-  console.log('');
-  channels.forEach((ch, i) => console.log(`  ${i + 1}. ${ch.type}`));
-  console.log('');
-
-  const choice = await prompt('  Remove (number): ');
-  const idx = parseInt(choice, 10) - 1;
-  if (idx < 0 || idx >= channels.length) {
-    console.log(chalk.yellow('  Invalid choice'));
-    return;
-  }
-
-  const type = channels[idx].type;
-  await removeChannelConfig(type);
-  console.log(chalk.green(`  Removed ${type}`));
 }
 
 export async function runOnboarding(): Promise<void> {
@@ -186,7 +184,6 @@ export async function runOnboarding(): Promise<void> {
   console.log('  1. WhatsApp (scan QR code)');
   console.log('  2. Telegram (paste bot token)');
   console.log('  3. View configured channels');
-  console.log('  4. Remove a channel');
   console.log('');
 
   const choice = await prompt('  > ');
@@ -200,9 +197,6 @@ export async function runOnboarding(): Promise<void> {
       break;
     case '3':
       await viewChannels();
-      break;
-    case '4':
-      await removeChannel();
       break;
     default:
       console.log(chalk.yellow('  Invalid choice'));
