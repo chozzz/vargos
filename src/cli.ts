@@ -3,22 +3,20 @@
  * Vargos CLI — interactive chat and task runner
  */
 
-import 'dotenv/config';
-
 import { Command } from 'commander';
 import chalk from 'chalk';
 import readline from 'node:readline';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { PiAgentRuntime } from './agent/runtime.js';
-import { toolRegistry } from './tools/index.js';
-import { printStartupBanner } from './config/banner.js';
-import { interactiveConfig } from './config/onboard.js';
-import { loadPiSettings, getPiApiKey, listPiProviders, formatPiConfigDisplay } from './config/pi-config.js';
-import { resolveWorkspaceDir, resolveSessionFile } from './config/paths.js';
+import { getPiAgentRuntime } from './agent/runtime.js';
+import { interactivePiConfig } from './config/onboard.js';
+import { loadConfig } from './config/pi-config.js';
+import { resolveWorkspaceDir, resolveSessionFile, resolveDataDir } from './config/paths.js';
 import { boot, type BootResult } from './boot.js';
 
-const VERSION = '0.0.1';
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
+const { version: VERSION } = require('../package.json');
 
 async function isProjectDir(dir: string): Promise<boolean> {
   const markers = ['package.json', '.git', 'tsconfig.json', 'Cargo.toml', 'go.mod', 'pyproject.toml'];
@@ -46,36 +44,23 @@ function prompt(question: string): Promise<string> {
 
 interface CliBootResult extends BootResult {
   workingDir: string;
-  provider: string;
-  model: string;
-  apiKey: string | undefined;
 }
 
 async function bootstrapCli(options: {
   workspace?: string;
   model?: string;
   provider?: string;
-  memory?: string;
-  sessions?: string;
   interactive?: boolean;
 }): Promise<CliBootResult> {
-  if (options.memory) process.env.VARGOS_MEMORY_BACKEND = options.memory;
-  if (options.sessions) process.env.VARGOS_SESSIONS_BACKEND = options.sessions;
   if (options.workspace) process.env.VARGOS_WORKSPACE = options.workspace;
 
   const result = await boot({ interactive: options.interactive });
 
-  const piSettings = await loadPiSettings(result.workspaceDir);
-  const provider = options.provider || piSettings.defaultProvider || 'openai';
-  const model = options.model || piSettings.defaultModel || 'gpt-4o-mini';
-  const apiKey = await getPiApiKey(result.workspaceDir, provider) || process.env.OPENAI_API_KEY;
-
   return {
     ...result,
     workingDir: options.workspace || process.cwd(),
-    provider,
-    model,
-    apiKey,
+    provider: options.provider || result.provider,
+    model: options.model || result.model,
   };
 }
 
@@ -93,42 +78,9 @@ program
   .option('-m, --model <model>', 'Model to use')
   .option('-p, --provider <provider>', 'Provider to use')
   .option('-s, --session <id>', 'Session ID (default: main)')
-  .option('--memory <backend>', 'Memory backend (file|qdrant|postgres)', 'file')
-  .option('--sessions <backend>', 'Sessions backend (file|postgres)', 'file')
   .option('--no-interactive', 'Skip interactive configuration prompts')
   .action(async (options) => {
     const b = await bootstrapCli(options);
-
-    const tools = toolRegistry.list().map(t => ({ name: t.name, description: t.description }));
-    const piSettings = await loadPiSettings(b.workspaceDir);
-    const piProviders = await listPiProviders(b.workspaceDir);
-
-    printStartupBanner({
-      mode: 'cli',
-      version: VERSION,
-      workspace: b.workingDir,
-      contextDir: b.workspaceDir,
-      dataDir: b.dataDir,
-      memoryBackend: options.memory,
-      sessionsBackend: options.sessions,
-      contextFiles: b.contextFiles.map(f => ({ name: f.name, path: path.join(b.workspaceDir, f.name) })),
-      tools,
-    });
-
-    console.error('');
-    console.error(formatPiConfigDisplay({
-      provider: piSettings.defaultProvider,
-      model: piSettings.defaultModel,
-      apiKeys: piProviders,
-    }));
-    console.error('');
-
-    if (!b.apiKey) {
-      console.error(chalk.yellow(`No API key found for ${b.provider}`));
-      console.error(chalk.gray(`   Set ${b.provider.toUpperCase()}_API_KEY or run 'vargos config'\n`));
-    }
-
-    console.error(chalk.green('  Services initialized'));
 
     const sessionKey = options.session ? `cli:${options.session}` : 'cli:main';
     const { getSessionService } = await import('./services/factory.js');
@@ -155,7 +107,7 @@ program
 
     console.log(chalk.yellow('\nType your message, or "exit" to quit.\n'));
 
-    const runtime = new PiAgentRuntime();
+    const runtime = getPiAgentRuntime();
     const sessionFile = resolveSessionFile(sessionKey);
     await fs.mkdir(path.dirname(sessionFile), { recursive: true });
 
@@ -182,6 +134,7 @@ program
           model: b.model,
           provider: b.provider,
           apiKey: b.apiKey,
+          baseUrl: b.baseUrl,
           contextFiles: b.contextFiles,
         });
 
@@ -233,7 +186,7 @@ program
 
     await sessions.addMessage({ sessionKey, content: task, role: 'user', metadata: { type: 'task' } });
 
-    const runtime = new PiAgentRuntime();
+    const runtime = getPiAgentRuntime();
     console.log(chalk.gray('Running task...\n'));
 
     try {
@@ -244,6 +197,7 @@ program
         model: b.model,
         provider: b.provider,
         apiKey: b.apiKey,
+        baseUrl: b.baseUrl,
         contextFiles: b.contextFiles,
       });
 
@@ -260,106 +214,47 @@ program
     }
   });
 
-async function interactiveLLMConfig(workspaceDir: string): Promise<void> {
-  console.log(chalk.blue('\n LLM Configuration'));
-  console.log(chalk.gray(''));
-
-  const settings = await loadPiSettings(workspaceDir);
-
-  console.log(chalk.yellow('\nSelect provider:'));
-  console.log('  1. openai (GPT-4o, GPT-4o-mini)');
-  console.log('  2. anthropic (Claude)');
-  console.log('  3. google (Gemini)');
-  console.log('  4. openrouter (Multi-provider)');
-  console.log('  5. ollama (Self-hosted)');
-  console.log('  6. lmstudio (Self-hosted)');
-  console.log('');
-
-  const providerChoice = await prompt('   Choice (1-6): ');
-  const providerMap: Record<string, string> = {
-    '1': 'openai', '2': 'anthropic', '3': 'google',
-    '4': 'openrouter', '5': 'ollama', '6': 'lmstudio',
-  };
-
-  const provider = providerMap[providerChoice];
-  if (!provider) { console.log(chalk.red('   Invalid choice')); return; }
-
-  let baseUrl: string | undefined;
-  let apiKey: string | undefined;
-
-  if (provider === 'ollama' || provider === 'lmstudio') {
-    const defaultUrl = provider === 'ollama' ? 'http://localhost:11434' : 'http://localhost:1234';
-    console.log(chalk.yellow(`\nEnter ${provider} base URL (default: ${defaultUrl}):`));
-    const urlInput = await prompt('   URL: ');
-    baseUrl = urlInput || defaultUrl;
-  }
-
-  if (provider !== 'ollama') {
-    console.log(chalk.yellow('\nEnter API key (leave empty to keep existing):'));
-    const keyInput = await prompt('   API Key: ');
-    if (keyInput) apiKey = keyInput;
-  }
-
-  console.log(chalk.yellow('\nEnter model ID:'));
-  const defaultModels: Record<string, string> = {
-    openai: 'gpt-4o', anthropic: 'claude-3-5-sonnet-20241022', google: 'gemini-1.5-pro',
-    openrouter: 'openai/gpt-4o', ollama: 'llama3.2', lmstudio: 'default',
-  };
-  console.log(chalk.gray(`   Default: ${defaultModels[provider]}`));
-  const modelInput = await prompt('   Model: ');
-  const model = modelInput || defaultModels[provider];
-
-  const { savePiSettings, loadPiAuth, savePiAuth } = await import('./config/pi-config.js');
-  await savePiSettings(workspaceDir, { ...settings, defaultProvider: provider, defaultModel: model });
-
-  if (apiKey) {
-    const auth = await loadPiAuth(workspaceDir);
-    auth[provider] = { apiKey };
-    await savePiAuth(workspaceDir, auth);
-  }
-
-  console.log(chalk.green('\nConfiguration saved!'));
-  console.log(chalk.gray(`   Provider: ${provider}`));
-  console.log(chalk.gray(`   Model: ${model}`));
-  if (baseUrl) {
-    console.log(chalk.gray(`   URL: ${baseUrl}`));
-    console.log(chalk.yellow(`\n   Note: Set base URL in .env as ${provider.toUpperCase()}_URL=${baseUrl}`));
-  }
-  console.log(chalk.yellow('\n   Restart the server to apply changes:'));
-  console.log(chalk.gray('   vargos restart'));
-}
-
 program
   .command('config')
   .description('Interactive configuration setup')
-  .option('-w, --workspace <dir>', 'Workspace directory')
-  .action(async (options) => {
-    const workspaceDir = options.workspace || await getDefaultWorkspace();
-    await interactiveConfig(workspaceDir);
+  .action(async () => {
+    await interactivePiConfig(resolveDataDir());
   });
 
 program
   .command('config:set')
   .description('Interactive LLM configuration (provider, model, API key)')
-  .option('-w, --workspace <dir>', 'Workspace directory')
-  .action(async (options) => {
-    const workspaceDir = options.workspace || await getDefaultWorkspace();
-    await interactiveLLMConfig(workspaceDir);
+  .action(async () => {
+    await interactivePiConfig(resolveDataDir());
   });
 
 program
   .command('config:get')
-  .description('Show current LLM configuration')
-  .option('-w, --workspace <dir>', 'Workspace directory')
-  .action(async (options) => {
-    const workspaceDir = options.workspace || await getDefaultWorkspace();
-    const settings = await loadPiSettings(workspaceDir);
-    const providers = await listPiProviders(workspaceDir);
+  .description('Show current configuration')
+  .action(async () => {
+    const config = await loadConfig(resolveDataDir());
 
-    console.log(chalk.blue('\nCurrent LLM Configuration'));
-    console.log(chalk.gray(''));
-    console.log('');
-    console.log(formatPiConfigDisplay({ provider: settings.defaultProvider, model: settings.defaultModel, apiKeys: providers }));
+    console.log(chalk.blue('\nCurrent Configuration'));
+    if (!config) {
+      console.log('  Not configured. Run: vargos config');
+    } else {
+      const { agent } = config;
+      console.log(`  Provider: ${agent.provider}`);
+      console.log(`  Model:    ${agent.model}`);
+      if (agent.baseUrl) console.log(`  Base URL: ${agent.baseUrl}`);
+      const envKey = process.env[`${agent.provider.toUpperCase()}_API_KEY`];
+      const hasKey = !!(envKey || agent.apiKey);
+      console.log(`  API Key:  ${hasKey ? chalk.green('ok') : chalk.gray('not set')}${envKey ? ' (env)' : ''}`);
+
+      if (config.channels && Object.keys(config.channels).length > 0) {
+        console.log('');
+        console.log(chalk.blue('  Channels'));
+        for (const [type, ch] of Object.entries(config.channels)) {
+          const status = ch.enabled !== false ? chalk.green('enabled') : chalk.gray('disabled');
+          console.log(`    ${type}: ${status}`);
+        }
+      }
+    }
     console.log('');
   });
 

@@ -13,12 +13,6 @@ export interface ChannelConfig {
   botToken?: string;
   /** Whitelist of sender IDs (phone numbers / chat IDs). Empty = accept all. */
   allowFrom?: string[];
-  /** Arbitrary extra config per channel */
-  [key: string]: unknown;
-}
-
-export interface ChannelsFile {
-  channels: ChannelConfig[];
 }
 
 export interface ChannelAdapter {

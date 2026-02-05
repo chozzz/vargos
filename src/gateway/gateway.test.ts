@@ -30,13 +30,13 @@ vi.mock('../agent/runtime.js', () => {
 });
 
 vi.mock('../config/pi-config.js', () => ({
-  loadPiSettings: vi.fn().mockResolvedValue({ defaultProvider: 'openai', defaultModel: 'gpt-4o-mini' }),
-  getPiApiKey: vi.fn().mockResolvedValue('sk-test-key'),
+  loadConfig: vi.fn().mockResolvedValue({ agent: { provider: 'openai', model: 'gpt-4o-mini', apiKey: 'sk-test-key' } }),
 }));
 
 vi.mock('../config/paths.js', () => ({
   resolveSessionFile: vi.fn((key: string) => `/tmp/sessions/${key}.jsonl`),
   resolveWorkspaceDir: vi.fn(() => '/tmp/workspace'),
+  resolveDataDir: vi.fn(() => '/tmp/data'),
   resolveMediaDir: vi.fn((key: string) => `/tmp/media/${key}`),
 }));
 

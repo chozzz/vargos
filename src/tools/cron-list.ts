@@ -14,7 +14,7 @@ export const cronListTool: Tool = {
   parameters: CronListParameters,
   execute: async (_args: unknown, context: ToolContext) => {
     try {
-      const scheduler = getCronScheduler(context.workingDir);
+      const scheduler = getCronScheduler();
       const tasks = scheduler.listTasks();
 
       if (tasks.length === 0) {
