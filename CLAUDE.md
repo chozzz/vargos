@@ -2,255 +2,132 @@
 
 Guidance for Claude Code when working in this repository.
 
+## Workflow
+
+**Every task follows this cycle:**
+
+1. **Read MDs first** — check CLAUDE.md, ARCHITECTURE.md, and any relevant docs before writing code.
+2. **Do the work** — implement with the coding philosophy below. Fewer lines wins.
+3. **Cover with tests** — behavior-level tests at service boundaries. No test = not done.
+4. **Update MDs after** — if the work changes architecture, conventions, or directory structure, update the relevant MDs before finishing.
+
+## Coding Philosophy
+
+1. **LOCs** — fewer lines of code is always better. Delete before extending.
+2. **Full RPC + events + streaming** — the gateway handles all inter-service communication. One protocol, three frame types (req/res/event). See ARCHITECTURE.md.
+3. **Compaction** — dense, layered abstractions. One concept per module. If two things do similar work, merge them.
+4. **Scalable** — services communicate over WebSocket. They can run in-process or across machines.
+5. **Maintainable** — adding a service never requires touching the gateway. Registration is declarative.
+6. **Isolated** — services share nothing. State lives in sessions. Communication goes through the gateway.
+7. **Observable** — every frame has an ID. Every event has a sequence number. Trace any message end-to-end.
+8. **Protocol-first** — define types before writing code. The TypeScript types ARE the documentation.
+9. **Test at boundaries** — mock the gateway, test each service in isolation.
+
 ## Project Overview
 
-Vargos is an MCP server with an embedded Pi agent runtime. It exposes 15 tools for AI agents and routes messages from multiple channels (WhatsApp, Telegram) through a plugin-based gateway.
+Vargos is a **service-oriented system** where independent services (agent, tools, channels, sessions, cron) communicate through a WebSocket gateway. It exposes tools via MCP protocol and routes messages from WhatsApp/Telegram channels.
 
-**Entry points:**
-- `src/index.ts` — MCP server (stdio + HTTP)
-- `src/cli.ts` — Interactive chat and task runner (commander)
-- `src/boot.ts` — Shared init sequence used by both
+**Single entry point:** `src/cli/index.ts` — interactive menu or direct commands (`vargos`, `vargos gateway start`, etc.)
 
-## Repository Structure
+## Structure
 
 ```
 src/
-├── index.ts                # MCP server entry (stdio + HTTP transport)
-├── cli.ts                  # CLI: chat, run, config, onboard, scheduler
-├── boot.ts                 # Shared boot: config → workspace → tools → services → runtime
+├── start.ts                     # Legacy entry (delegates to cli/gateway/start)
+├── cli/
+│   ├── index.ts                 # Entry: parse argv OR show interactive menu
+│   ├── tree.ts                  # Menu tree definition (single source of truth)
+│   ├── menu.ts                  # Interactive menu walker (@clack/select)
+│   ├── client.ts                # CliClient + connectToGateway()
+│   ├── boot.ts                  # loadAndValidate(): config + paths + validation
+│   ├── pid.ts                   # PID file helpers for gateway lifecycle
+│   ├── chat.ts                  # Interactive chat session
+│   ├── run.ts                   # One-shot task execution
+│   ├── health.ts                # Config + gateway connectivity check
+│   ├── config/
+│   │   ├── llm.ts              # show() + edit()
+│   │   ├── channel.ts          # show() + edit()
+│   │   └── context.ts          # show() + edit($EDITOR)
+│   └── gateway/
+│       ├── start.ts             # Full gateway boot (absorbs old start.ts)
+│       ├── stop.ts              # Stop via PID
+│       ├── restart.ts           # Restart via SIGUSR2
+│       └── status.ts            # PID check
 │
-├── agent/                  # Agent runtime + orchestration
-│   ├── runtime.ts          # PiAgentRuntime — wraps Pi SDK, message queueing
-│   ├── extension.ts        # Converts Vargos tools → Pi SDK tool format
-│   ├── lifecycle.ts        # EventEmitter for streaming run events
-│   ├── prompt.ts           # System prompt builder (full/minimal/none modes)
-│   ├── queue.ts            # Per-session message queue (serialized execution)
-│   ├── history.ts          # Session history helpers
-│   ├── session-init.ts     # Pi session file initialization
-│   └── subagent-registry.ts # Subagent tracking
+├── gateway/                     # WS gateway server
+│   ├── server.ts                # WebSocket server, connection lifecycle
+│   ├── protocol.ts              # Frame types, Zod schemas, parse/serialize
+│   ├── router.ts                # Method routing table
+│   ├── bus.ts                   # Event pub/sub with sequence counter
+│   ├── registry.ts              # Service registration tracking
+│   └── index.ts                 # Re-exports
 │
-├── tools/                  # 15 MCP tool implementations
-│   ├── registry.ts         # ToolRegistry singleton (lazy-loaded)
-│   ├── types.ts            # Tool, ToolContext, ToolResult interfaces
-│   ├── base.ts             # BaseTool abstract class
-│   ├── index.ts            # Re-exports + initializeToolRegistry()
-│   ├── read.ts             # Read files (5MB limit, image support)
-│   ├── write.ts            # Write/create files (append mode)
-│   ├── edit.ts             # Precise text replacement
-│   ├── exec.ts             # Shell commands (60s timeout, 100KB output)
-│   ├── process.ts          # Background process management
-│   ├── web-fetch.ts        # Fetch + extract readable content
-│   ├── browser.ts          # Playwright browser automation
-│   ├── memory-search.ts    # Hybrid semantic + text search
-│   ├── memory-get.ts       # Read specific memory files
-│   ├── sessions-list.ts    # List sessions
-│   ├── sessions-history.ts # Session transcript
-│   ├── sessions-send.ts    # Send message to session
-│   ├── sessions-spawn.ts   # Spawn Pi-powered subagent
-│   ├── cron-add.ts         # Add scheduled task
-│   └── cron-list.ts        # List cron jobs
+├── services/                    # Gateway services
+│   ├── client.ts                # ServiceClient base class
+│   ├── agent/                   # agent.run, agent.abort, agent.status
+│   ├── channels/                # channel.send, channel.status, channel.list
+│   ├── tools/                   # tool.execute, tool.list, tool.describe
+│   ├── sessions/                # session CRUD, history, messages
+│   └── cron/                    # cron.list, cron.add, emits cron.trigger
 │
-├── gateway/                # Message gateway (channel → agent)
-│   ├── core.ts             # Gateway + PluginRegistry
-│   ├── types.ts            # InputType, NormalizedInput, InputPlugin
-│   ├── index.ts            # Re-exports
-│   └── plugins/
-│       ├── text.ts         # Text input handler
-│       ├── image.ts        # Image input (base64 encoding)
-│       └── media.ts        # Voice, file, video input
+├── mcp/                         # MCP bridge (MCP ↔ gateway RPC)
+│   └── server.ts                # stdio + HTTP transports
 │
-├── channels/               # External messaging adapters
-│   ├── types.ts            # ChannelAdapter interface, ChannelConfig
-│   ├── factory.ts          # Creates WhatsApp/Telegram adapters from config
-│   ├── registry.ts         # Active adapter registry
-│   ├── config.ts           # ~/.vargos/channels.json management
-│   ├── onboard.ts          # Channel setup wizard (@clack/prompts)
-│   ├── reconnect.ts        # Exponential backoff reconnection
-│   ├── whatsapp/
-│   │   ├── adapter.ts      # Baileys WebSocket, QR auth, message routing
-│   │   └── session.ts      # Inbound message processing + media download
-│   └── telegram/
-│       ├── adapter.ts      # Long-polling, whitelist, bot token auth
-│       └── types.ts        # Telegram API types
+├── core/                        # Framework (registries, interfaces, runtime)
+│   ├── extensions.ts            # VargosExtension + ExtensionContext interfaces
+│   ├── config/                  # paths, validate, pi-config, onboard, workspace, identity
+│   ├── runtime/                 # PiAgentRuntime, queue, lifecycle, prompt, history
+│   ├── gateway/                 # Legacy Gateway class (input normalizer, used by adapters)
+│   ├── services/                # IMemoryService, ISessionService, ServiceFactory
+│   ├── tools/                   # ToolRegistry, Tool interface, BaseTool, types
+│   ├── channels/                # ChannelAdapter interface, factory, config, onboard
+│   └── lib/                     # errors, path, dedupe, debounce, reply-delivery, mime, media
 │
-├── config/                 # Configuration
-│   ├── paths.ts            # Centralized path resolution (~/.vargos/*)
-│   ├── validate.ts         # checkConfig() — env var validation
-│   ├── onboard.ts          # Interactive config wizard (provider, model, API key)
-│   ├── banner.ts           # Startup banner display
-│   ├── identity.ts         # First-run USER.md/SOUL.md setup
-│   ├── workspace.ts        # Workspace dir init + context file loading
-│   └── pi-config.ts        # Pi SDK settings + auth storage
-│
-├── services/               # Service layer (swappable backends)
-│   ├── factory.ts          # ServiceFactory singleton, getServices(), getMemoryContext()
-│   ├── types.ts            # IMemoryService, ISessionService, IVectorService
-│   ├── browser.ts          # Playwright browser automation
-│   ├── process.ts          # Background process management
-│   ├── memory/
-│   │   ├── context.ts      # MemoryContext — hybrid search, auto-indexing, citations
-│   │   ├── file.ts         # File-based memory (markdown, text search)
-│   │   ├── qdrant.ts       # Qdrant vector search
-│   │   └── sqlite-storage.ts # SQLite embeddings cache
-│   └── sessions/
-│       ├── file.ts         # JSONL session storage
-│       └── postgres.ts     # PostgreSQL session storage
-│
-├── cron/                   # Scheduled tasks
-│   ├── scheduler.ts        # CronScheduler singleton, spawns subagents
-│   ├── heartbeat.ts        # HEARTBEAT.md poller (30m interval)
-│   ├── index.ts            # Re-exports
-│   └── tasks/              # Task definitions
-│
-└── lib/                    # Shared utilities
-    ├── errors.ts           # formatErrorResult(), subagent tool restrictions
-    ├── mime.ts             # MIME detection from buffer signatures
-    ├── path.ts             # expandTilde()
-    ├── media.ts            # Media file persistence
-    ├── dedupe.ts           # In-memory dedup cache (TTL-based)
-    ├── debounce.ts         # Message debouncer (batches rapid messages)
-    └── reply-delivery.ts   # Channel reply delivery + message splitting
+└── extensions/                  # Built-in implementations
+    ├── tools-fs/                # read, write, edit, exec
+    ├── tools-web/               # web-fetch, browser
+    ├── tools-agent/             # sessions-*, cron-*, process
+    ├── tools-memory/            # memory-search, memory-get
+    ├── channel-whatsapp/        # adapter, session
+    ├── channel-telegram/        # adapter, types
+    ├── gateway-plugins/         # text, image, media input handlers
+    ├── service-file/            # FileMemory, FileSessions, MemoryContext, sqlite-storage
+    └── cron/                    # scheduler, vargos-analysis tasks
 ```
 
-## Module Responsibilities
+## CLI
 
-### Boot Sequence (`boot.ts`)
-
-```
-boot()
-  ├── checkConfig()           validate env vars (interactive if TTY)
-  ├── initializeWorkspace()   create dirs, scaffold context files
-  ├── checkIdentitySetup()    prompt for USER.md/SOUL.md (TTY only)
-  ├── initializeToolRegistry()  lazy-load all 15 tools
-  ├── initializeServices()    memory + session backends
-  └── initializePiAgentRuntime()
-
-startBackgroundServices()
-  ├── CronScheduler.startAll()
-  ├── startHeartbeat()        poll HEARTBEAT.md every 30m
-  └── Channel adapters        load configs → create → initialize → start
-```
-
-### MCP Server (`index.ts`)
-
-Exposes tools to external MCP clients (Claude Desktop, Cursor, etc.) via stdio or HTTP.
+Bare `vargos` shows an interactive menu. Direct commands mirror the menu tree:
 
 ```
-MCP Client (Claude Desktop)
-    │
-    ▼
-┌──────────────────────────────────┐
-│  MCP Server (index.ts)           │
-│  ┌────────────────────────────┐  │
-│  │ ListToolsRequest           │  │  → toolRegistry.list()
-│  │ CallToolRequest            │  │  → tool.execute(args, context)
-│  └────────────────────────────┘  │
-│  Transport: stdio | HTTP         │
-│  Subagent restrictions enforced  │
-│  PID lock (one instance only)    │
-└──────────────────────────────────┘
-```
-
-### Channel → Gateway → Agent Flow
-
-Messages from WhatsApp/Telegram flow through the gateway to the agent runtime.
-
-```
-WhatsApp DM / Telegram msg
-    │
-    ▼
-┌─────────────┐     ┌──────────────┐     ┌─────────────────┐
-│  Channel     │────▶│  Gateway     │────▶│  Agent Runtime   │
-│  Adapter     │     │  core.ts     │     │  (Pi SDK)        │
-│              │     │              │     │                   │
-│  dedupe      │     │  plugin      │     │  system prompt    │
-│  debounce    │     │  routing     │     │  tool execution   │
-│  reconnect   │     │  session mgmt│     │  response extract │
-└─────────────┘     └──────────────┘     └─────────────────┘
-    ▲                                            │
-    │           reply via adapter.send()         │
-    └────────────────────────────────────────────┘
-
-Detailed flow:
-1. Adapter receives message → dedup check → debounce batch
-2. Gateway.processAndDeliver() called
-3. Plugin selected by input type (text/image/voice/file)
-4. Plugin prepares input (extract text, encode images, save media)
-5. Message stored in session (role: user)
-6. PiAgentRuntime.run() executes with full tool access
-7. Agent response stored in session
-8. Reply delivered back to channel adapter
-```
-
-### Agent Runtime (`agent/runtime.ts`)
-
-Wraps `@mariozechner/pi-coding-agent` to provide a unified agent for both CLI and gateway.
-
-```
-PiAgentRuntime.run(config)
-    │
-    ├── SessionMessageQueue      serialize per-session (one run at a time)
-    ├── Pi SessionManager        open session file, auth, model registry
-    ├── createVargosCustomTools() wrap 15 MCP tools as Pi SDK tools
-    ├── buildSystemPrompt()      context injection (first message only)
-    │     ├── identity, tooling, workspace
-    │     ├── context files (AGENTS.md, SOUL.md, etc.)
-    │     └── channel context (if from messaging)
-    ├── session.prompt(task)     execute via Pi SDK
-    │     └── tool calls → Vargos tools → results back to Pi
-    └── extract response from session history
-```
-
-### Subagent Spawning
-
-```
-Parent session
-    │
-    ▼
-sessions_spawn tool called
-    │
-    ├── Create child session (parent:subagent:child-id)
-    ├── Minimal prompt (AGENTS.md + TOOLS.md only)
-    ├── Restricted tools (no session tools, no spawning)
-    └── On completion → announce result to parent session
-```
-
-### Tool Architecture
-
-Tools are shared between MCP server (direct) and agent runtime (via Pi SDK wrapper).
-
-```
-                    ┌─────────────────────┐
-                    │  ToolRegistry       │
-                    │  (15 tools)         │
-                    └────────┬────────────┘
-                             │
-              ┌──────────────┼──────────────┐
-              ▼              ▼              ▼
-         MCP Server    Pi SDK Agent    Cron Scheduler
-         (direct)      (extension.ts)  (subagent)
+vargos                         # Interactive menu
+vargos chat                    # Interactive chat (requires gateway)
+vargos run <task>              # One-shot task
+vargos config llm show         # Display LLM config
+vargos config llm edit         # Change provider/model/key
+vargos config channel show     # Display channel config
+vargos config channel edit     # Open config.json in $EDITOR
+vargos config context show     # List context files
+vargos config context edit     # Edit context file in $EDITOR
+vargos gateway start           # Start gateway + all services
+vargos gateway stop            # Stop running gateway
+vargos gateway restart         # Restart via SIGUSR2
+vargos gateway status          # PID check
+vargos health                  # Config + connectivity check
 ```
 
 ## Development Commands
 
 ```bash
 pnpm install              # Install deps
-pnpm dev                  # Start MCP server (stdio)
-pnpm chat                 # Interactive CLI chat
+pnpm start                # Start gateway + all services
+pnpm cli                  # Interactive menu
+pnpm cli chat             # Interactive chat (requires gateway running)
+pnpm cli run "task"       # One-shot task
 pnpm test                 # Tests (watch mode)
 pnpm run test:run         # Tests (CI, run once)
 pnpm lint                 # ESLint + typecheck
 pnpm run typecheck        # TypeScript only
-```
-
-CLI subcommands (via `tsx src/cli.ts`):
-```bash
-pnpm chat                          # Interactive chat (default session)
-tsx src/cli.ts chat -s myproject   # Named session
-tsx src/cli.ts run "Analyze X"     # One-shot task
-tsx src/cli.ts config              # Interactive config wizard
-tsx src/cli.ts onboard             # Channel setup (WhatsApp/Telegram)
-tsx src/cli.ts scheduler           # Standalone cron
 ```
 
 ## Coding Conventions
@@ -258,119 +135,60 @@ tsx src/cli.ts scheduler           # Standalone cron
 ### Imports
 - ESM with `.js` extensions on all internal imports
 - External packages first, then internal
-
-```typescript
-import { z } from 'zod';
-import { promises as fs } from 'node:fs';
-
-import { getServices } from '../services/factory.js';
-import type { IMemoryService } from '../services/types.js';
-```
+- Core: `../../core/tools/types.js`
+- Cross-service: `../sessions/index.js`
 
 ### Patterns
-- **Singleton**: `getX()` lazy getter + `initializeX()` for explicit creation
 - **File naming**: kebab-case (`memory-search.ts`), PascalCase classes (`MemoryContext`)
 - **Tool implementation**: Zod schema → execute(args, context) → ToolResult
+- **Service implementation**: extends `ServiceClient`, declares methods/events/subscriptions
 
-### Adding a New Tool
+### Adding a New Service
 
-1. Create `tools/<name>.ts` with Tool interface
-2. Register in `tools/index.ts` via `initializeToolRegistry()`
-3. Add tests in `tools/<name>.test.ts`
+1. Create `services/<name>/index.ts` extending `ServiceClient`
+2. Declare methods, events, and subscriptions
+3. Implement `handleMethod()` and `handleEvent()`
+4. Add to `cli/gateway/start.ts` boot sequence
+5. Add tests
 
-```typescript
-// tools/example.ts
-import { z } from 'zod';
-import type { Tool } from './types.js';
+## Configuration
 
-export const ExampleTool: Tool = {
-  name: 'example',
-  description: 'Does something',
-  parameters: z.object({ input: z.string() }),
-  async execute(args, context) {
-    return { content: [{ type: 'text', text: 'result' }] };
-  },
-};
+All infrastructure settings live in `~/.vargos/config.json`. No `VARGOS_*` env vars needed at runtime.
+
+```jsonc
+{
+  "agent": { "provider": "anthropic", "model": "claude-3-5-sonnet" },
+  "gateway": { "port": 9000, "host": "127.0.0.1" },           // optional
+  "mcp": { "transport": "http", "port": 9001, "endpoint": "/mcp" }, // optional
+  "paths": { "dataDir": "~/.vargos", "workspace": "..." },     // optional
+  "channels": { ... }                                           // optional
+}
 ```
 
-### Adding a Backend
-
-1. Implement interface from `services/types.ts`
-2. Add to `services/<type>/<name>.ts`
-3. Register in `services/factory.ts`
+**Bootstrap fallback**: `VARGOS_DATA_DIR` env var is still checked to locate config.json before it's loaded. `${PROVIDER}_API_KEY` env vars override `agent.apiKey`. All other `VARGOS_*` env vars are replaced by config fields.
 
 ## Path Resolution
 
-All paths centralized in `config/paths.ts`:
+All paths in `core/config/paths.ts`:
 
 ```typescript
-resolveDataDir()            // VARGOS_DATA_DIR || ~/.vargos
-resolveWorkspaceDir()       // VARGOS_WORKSPACE || $DATA_DIR/workspace
+initPaths(config.paths)     // called at boot — locks in resolved paths
+resolveDataDir()            // config.paths.dataDir || VARGOS_DATA_DIR || ~/.vargos
+resolveWorkspaceDir()       // config.paths.workspace || $DATA_DIR/workspace
 resolveSessionsDir()        // $DATA_DIR/sessions
 resolveSessionFile(key)     // $DATA_DIR/sessions/<key>.jsonl
-resolveChannelsDir()        // $DATA_DIR/channels
-resolveChannelConfigFile()  // $DATA_DIR/channels.json
 ```
 
-## Environment Variables
+## Key Documents
 
-```bash
-VARGOS_DATA_DIR=~/.vargos           # Root data directory
-VARGOS_WORKSPACE=$DATA_DIR/workspace # Context files
-VARGOS_MEMORY_BACKEND=file          # file | qdrant
-VARGOS_SESSIONS_BACKEND=file        # file | postgres
-VARGOS_TRANSPORT=stdio              # stdio | http
-VARGOS_HOST=127.0.0.1              # HTTP transport only
-VARGOS_PORT=3000                    # HTTP transport only
-VARGOS_ENDPOINT=/mcp               # HTTP transport only
-OPENAI_API_KEY=sk-...              # For embeddings + Pi runtime
-QDRANT_URL=http://localhost:6333   # Qdrant vector search
-POSTGRES_URL=postgresql://...      # PostgreSQL sessions
-```
+| File | Purpose |
+|------|---------|
+| `CLAUDE.md` | Coding guidance, workflow, conventions (this file) |
+| `ARCHITECTURE.md` | Protocol spec, service contracts, message flows |
 
-## Data Directory
-
-```
-~/.vargos/
-├── workspace/           # Context files
-│   ├── AGENTS.md        # Agent behavior rules
-│   ├── SOUL.md          # Agent personality
-│   ├── USER.md          # User info (name, timezone)
-│   ├── TOOLS.md         # Tool usage guidance
-│   ├── MEMORY.md        # Persistent memory notes
-│   ├── HEARTBEAT.md     # Periodic task list
-│   └── memory/          # Daily notes (YYYY-MM-DD.md)
-├── agent/               # Pi SDK config + auth
-├── channels.json        # Channel adapter configs
-├── channels/
-│   └── whatsapp/        # Baileys auth state
-├── sessions/            # Session JSONL transcripts
-├── memory.db            # SQLite embeddings cache
-└── vargos.pid           # Process lock file
-```
-
-## What's Supported
-
-| Feature | Status | Notes |
-|---------|--------|-------|
-| MCP stdio transport | Working | Default, for Claude Desktop |
-| MCP HTTP transport | Working | Set `VARGOS_TRANSPORT=http` |
-| WhatsApp channel | Working | Baileys, linked devices QR auth |
-| Telegram channel | Working | Bot token, long-polling |
-| File memory backend | Working | Zero deps, text search |
-| Qdrant memory backend | Working | Vector semantic search |
-| File session backend | Working | JSONL files |
-| PostgreSQL sessions | Working | ACID, indexable |
-| Subagent spawning | Working | Isolated sessions, restricted tools |
-| Cron scheduling | Working | Agent-executed tasks |
-| Heartbeat polling | Working | 30m interval, HEARTBEAT.md |
-| Browser automation | Working | Requires Playwright installed |
-| Hybrid memory search | Working | Vector + text weighted scoring |
-
-## Important Notes
+## Rules
 
 - **Less code is better** — remove unused code, don't extend
 - **No business logic in tools** — delegate to services
-- **Use MemoryContext for search** — not raw memory service
-- **Tools are shared** — same 15 tools serve MCP clients and Pi agent
-- **One instance only** — PID lock prevents duplicate processes
+- **Services are isolated** — communicate only through gateway protocol
+- **Docs stay current** — if code changes architecture, update the MDs

@@ -1,30 +1,23 @@
 /**
- * Gateway index - exports all gateway modules
+ * Gateway exports
  */
 
+export { GatewayServer, type GatewayServerOptions } from './server.js';
+export { Router } from './router.js';
+export { EventBus } from './bus.js';
+export { ServiceRegistry } from './registry.js';
 export {
-  Gateway,
-  PluginRegistry,
-  InputPlugin,
-  getGateway,
-  initializeGateway,
-  type InputType,
-  type InputHandler,
-  type NormalizedInput,
-  type GatewayContext,
-  type GatewayResponse,
-  type StreamingChunk,
-  type PreparedInput,
-} from './core.js';
-
-export {
-  TextInputPlugin,
-} from './plugins/text.js';
-
-export {
-  ImageInputPlugin,
-} from './plugins/image.js';
-
-export {
-  MediaInputPlugin,
-} from './plugins/media.js';
+  type RequestFrame,
+  type ResponseFrame,
+  type EventFrame,
+  type Frame,
+  type ServiceRegistration,
+  RequestFrameSchema,
+  ResponseFrameSchema,
+  EventFrameSchema,
+  FrameSchema,
+  ServiceRegistrationSchema,
+  parseFrame,
+  serializeFrame,
+  createRequestId,
+} from './protocol.js';
