@@ -69,8 +69,6 @@ On first run, you'll be prompted to set up your identity (name, timezone) and co
   Config
     Data      ~/.vargos
     Workspace ~/.vargos/workspace
-    Memory    file
-    Sessions  file
     Transport stdio
 
   Context (5 of 7 loaded)
@@ -339,12 +337,7 @@ tsx src/cli.ts scheduler               # Standalone cron
 ```bash
 VARGOS_DATA_DIR=~/.vargos        # Root data directory
 VARGOS_WORKSPACE=<dir>           # Context files directory
-VARGOS_MEMORY_BACKEND=file       # Memory backend (file | qdrant)
-VARGOS_SESSIONS_BACKEND=file     # Sessions backend (file | postgres)
 VARGOS_TRANSPORT=stdio           # MCP transport (stdio | http)
-OPENAI_API_KEY=sk-xxx            # For embeddings + Pi agent
-QDRANT_URL=http://...            # Qdrant vector search
-POSTGRES_URL=postgresql://...    # PostgreSQL sessions
 ```
 
 ---

@@ -32,13 +32,7 @@ tsx src/cli.ts onboard
 
 ### Configuration
 
-```bash
-cp .env.example .env
-```
-
-Minimal setup uses file backends with no external services. Data stored in `~/.vargos/`.
-
-For Qdrant + PostgreSQL, see `.env.example` for all options.
+All config is stored in `~/.vargos/agent/` (API keys, provider settings). Data stored in `~/.vargos/`.
 
 ## MCP Tools (15)
 
@@ -88,13 +82,11 @@ For Qdrant + PostgreSQL, see `.env.example` for all options.
          ▼                   ▼                   ▼
 ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────────────┐
 │  Agent Runtime   │ │  Services       │ │  Cron Scheduler         │
-│  (Pi SDK)        │ │  Memory (file/  │ │  Heartbeat (30m)        │
-│  prompt builder  │ │    qdrant)      │ │  Scheduled tasks        │
-│  tool execution  │ │  Sessions (file/│ │  (spawns subagents)     │
-│  subagent spawn  │ │    postgres)    │ │                         │
-└─────────────────┘ │  Browser        │ └─────────────────────────┘
-                    │  Process        │
-                    └─────────────────┘
+│  (Pi SDK)        │ │  Memory (file)  │ │  Heartbeat (30m)        │
+│  prompt builder  │ │  Sessions (file)│ │  Scheduled tasks        │
+│  tool execution  │ │  Browser        │ │  (spawns subagents)     │
+│  subagent spawn  │ │  Process        │ │                         │
+└─────────────────┘ └─────────────────┘ └─────────────────────────┘
 ```
 
 ### Message Flow
@@ -141,7 +133,7 @@ src/
 ├── gateway/          # Message gateway with input plugins (text, image, media)
 ├── channels/         # WhatsApp (Baileys) + Telegram adapters
 ├── config/           # Paths, validation, onboarding, identity, Pi config
-├── services/         # Memory (file/qdrant), sessions (file/postgres), browser, process
+├── services/         # Memory (file), sessions (file), browser, process
 ├── cron/             # Scheduler, heartbeat, task definitions
 └── lib/              # Errors, MIME, dedup, debounce, media, reply delivery
 ```
@@ -171,12 +163,7 @@ src/
 |----------|---------|-------------|
 | `VARGOS_DATA_DIR` | `~/.vargos` | Root data directory |
 | `VARGOS_WORKSPACE` | `$DATA_DIR/workspace` | Context files directory |
-| `VARGOS_MEMORY_BACKEND` | `file` | Memory: `file` or `qdrant` |
-| `VARGOS_SESSIONS_BACKEND` | `file` | Sessions: `file` or `postgres` |
 | `VARGOS_TRANSPORT` | `stdio` | MCP transport: `stdio` or `http` |
-| `OPENAI_API_KEY` | - | For embeddings + Pi agent |
-| `QDRANT_URL` | - | Qdrant server URL |
-| `POSTGRES_URL` | - | PostgreSQL connection string |
 
 ### Claude Desktop Configuration
 
@@ -203,15 +190,6 @@ pnpm test              # Watch mode
 pnpm run test:run      # CI mode
 ```
 
-## Backend Comparison
-
-| Backend | Best For |
-|---------|----------|
-| **File** | Development, small projects (zero deps) |
-| **Qdrant** | Production memory (semantic search) |
-| **Postgres** | Production sessions (ACID, indexing) |
-| **SQLite** | Embeddings cache (automatic, always on) |
-
 ## Documentation
 
 - **[docs/USAGE.md](./docs/USAGE.md)** — CLI, MCP server, cron, agents
@@ -223,10 +201,6 @@ pnpm run test:run      # CI mode
 **"Another vargos instance is already running"** — Kill existing: `rm ~/.vargos/vargos.pid`
 
 **"Cannot find module '@mariozechner/pi-coding-agent'"** — Run `pnpm install`
-
-**"Qdrant connection refused"** — Start Qdrant: `docker run -p 6333:6333 qdrant/qdrant`
-
-**"OpenAI API key required"** — Set `OPENAI_API_KEY` in `.env`
 
 ## License
 

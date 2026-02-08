@@ -1,0 +1,79 @@
+/** Interactive menu walker using @clack/prompts */
+
+import { select, intro, outro, isCancel } from '@clack/prompts';
+import { isGroup, type MenuNode } from './tree.js';
+
+type Choice = string; // node key, '__back__', or '__exit__'
+
+const BACK: Choice = '__back__';
+const EXIT: Choice = '__exit__';
+
+export async function runMenu(tree: MenuNode[]): Promise<void> {
+  intro('Vargos');
+  await runSubmenu(tree, 'What would you like to do?');
+  outro('Bye');
+}
+
+function nodeMap(nodes: MenuNode[]): Map<string, MenuNode> {
+  const map = new Map<string, MenuNode>();
+  for (const n of nodes) map.set(n.key, n);
+  return map;
+}
+
+async function runSubmenu(nodes: MenuNode[], message: string): Promise<void> {
+  const lookup = nodeMap(nodes);
+
+  while (true) {
+    const options = [
+      ...nodes.map((n) => ({
+        value: n.key,
+        label: n.label,
+        hint: isGroup(n) ? undefined : (n as { hint?: string }).hint,
+      })),
+      { value: EXIT, label: 'Exit' },
+    ];
+
+    const choice = await select({ message, options });
+    if (isCancel(choice)) return;
+
+    if (choice === EXIT) return;
+
+    const node = lookup.get(choice);
+    if (!node) continue;
+
+    if (isGroup(node)) {
+      await runGroupSubmenu(node);
+    } else {
+      await node.action();
+    }
+  }
+}
+
+async function runGroupSubmenu(group: MenuNode & { children: MenuNode[] }): Promise<void> {
+  const lookup = nodeMap(group.children);
+
+  while (true) {
+    const options = [
+      ...group.children.map((n) => ({
+        value: n.key,
+        label: n.label,
+        hint: isGroup(n) ? undefined : (n as { hint?: string }).hint,
+      })),
+      { value: BACK, label: 'Back' },
+      { value: EXIT, label: 'Exit' },
+    ];
+
+    const choice = await select({ message: group.label, options });
+    if (isCancel(choice) || choice === EXIT) process.exit(0);
+    if (choice === BACK) return;
+
+    const node = lookup.get(choice);
+    if (!node) continue;
+
+    if (isGroup(node)) {
+      await runGroupSubmenu(node);
+    } else {
+      await node.action();
+    }
+  }
+}

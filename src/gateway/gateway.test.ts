@@ -1,597 +1,367 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { Gateway, PluginRegistry, TextInputPlugin, ImageInputPlugin, MediaInputPlugin, getGateway, initializeGateway, type GatewayContext, type GatewayResponse, type NormalizedInput } from '../gateway/index.js';
-import { processAndDeliver } from '../gateway/core.js';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { WebSocket } from 'ws';
+import { GatewayServer } from './server.js';
+import {
+  parseFrame,
+  serializeFrame,
+  createRequestId,
+  type RequestFrame,
+  type ResponseFrame,
+  type EventFrame,
+  type Frame,
+  type ServiceRegistration,
+} from './protocol.js';
 
-vi.mock('../lib/media.js', () => ({
-  saveMedia: vi.fn().mockResolvedValue('/tmp/mock-saved-path.jpg'),
-}));
+// ============================================================================
+// Protocol tests
+// ============================================================================
 
-vi.mock('../services/factory.js', () => {
-  const mockSessions = {
-    get: vi.fn().mockResolvedValue({ sessionKey: 'test' }),
-    create: vi.fn().mockResolvedValue({ sessionKey: 'test' }),
-    addMessage: vi.fn().mockResolvedValue(undefined),
-  };
-  return {
-    getSessionService: vi.fn(() => mockSessions),
-    getServices: vi.fn(() => ({ sessions: mockSessions })),
-  };
+describe('protocol', () => {
+  it('roundtrips a request frame', () => {
+    const frame: RequestFrame = { type: 'req', id: 'abc', target: 'tools', method: 'tool.list', params: { foo: 1 } };
+    const parsed = parseFrame(serializeFrame(frame));
+    expect(parsed).toEqual(frame);
+  });
+
+  it('roundtrips a response frame', () => {
+    const frame: ResponseFrame = { type: 'res', id: 'abc', ok: true, payload: { tools: [] } };
+    const parsed = parseFrame(serializeFrame(frame));
+    expect(parsed).toEqual(frame);
+  });
+
+  it('roundtrips an error response frame', () => {
+    const frame: ResponseFrame = { type: 'res', id: 'abc', ok: false, error: { code: 'NOT_FOUND', message: 'nope' } };
+    const parsed = parseFrame(serializeFrame(frame));
+    expect(parsed).toEqual(frame);
+  });
+
+  it('roundtrips an event frame', () => {
+    const frame: EventFrame = { type: 'event', source: 'agent', event: 'run.delta', payload: { text: 'hi' }, seq: 1 };
+    const parsed = parseFrame(serializeFrame(frame));
+    expect(parsed).toEqual(frame);
+  });
+
+  it('rejects invalid frame', () => {
+    expect(() => parseFrame('{"type":"bad"}')).toThrow();
+    expect(() => parseFrame('not json')).toThrow();
+  });
+
+  it('creates unique request ids', () => {
+    const ids = new Set(Array.from({ length: 100 }, () => createRequestId()));
+    expect(ids.size).toBe(100);
+  });
 });
 
-vi.mock('../agent/runtime.js', () => {
-  const mockRuntime = {
-    run: vi.fn().mockResolvedValue({ success: true, response: 'agent reply' }),
-  };
-  return {
-    getPiAgentRuntime: vi.fn(() => mockRuntime),
-    initializePiAgentRuntime: vi.fn(),
-    PiAgentRuntime: vi.fn(() => mockRuntime),
-  };
-});
+// ============================================================================
+// Gateway integration tests
+// ============================================================================
 
-vi.mock('../config/pi-config.js', () => ({
-  loadConfig: vi.fn().mockResolvedValue({ agent: { provider: 'openai', model: 'gpt-4o-mini', apiKey: 'sk-test-key' } }),
-}));
+function connect(url: string): Promise<WebSocket> {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(url);
+    ws.on('open', () => resolve(ws));
+    ws.on('error', reject);
+  });
+}
 
-vi.mock('../config/paths.js', () => ({
-  resolveSessionFile: vi.fn((key: string) => `/tmp/sessions/${key}.jsonl`),
-  resolveWorkspaceDir: vi.fn(() => '/tmp/workspace'),
-  resolveDataDir: vi.fn(() => '/tmp/data'),
-  resolveMediaDir: vi.fn((key: string) => `/tmp/media/${key}`),
-}));
-
-describe('Gateway Core', () => {
-  let gateway: Gateway;
-
-  beforeEach(() => {
-    gateway = new Gateway({
-      port: 9999,
-      wsPort: 9998,
-      authRequired: false,
+function waitForMessage(ws: WebSocket): Promise<Frame> {
+  return new Promise((resolve) => {
+    ws.once('message', (raw) => {
+      resolve(parseFrame(raw.toString()));
     });
+  });
+}
+
+function sendRequest(ws: WebSocket, method: string, params?: unknown, target?: string): string {
+  const id = createRequestId();
+  const frame: RequestFrame = { type: 'req', id, target: target ?? '', method, params };
+  ws.send(serializeFrame(frame));
+  return id;
+}
+
+async function registerService(ws: WebSocket, reg: ServiceRegistration): Promise<ResponseFrame> {
+  const msgPromise = waitForMessage(ws);
+  sendRequest(ws, 'gateway.register', reg);
+  return msgPromise as Promise<ResponseFrame>;
+}
+
+describe('GatewayServer', () => {
+  let gateway: GatewayServer;
+  let clients: WebSocket[] = [];
+  const PORT = 19800; // test port
+
+  beforeEach(async () => {
+    gateway = new GatewayServer({ port: PORT, host: '127.0.0.1', requestTimeout: 2000, pingInterval: 60_000 });
+    await gateway.start();
+    clients = [];
   });
 
   afterEach(async () => {
+    for (const c of clients) {
+      if (c.readyState === WebSocket.OPEN) c.close();
+    }
     await gateway.stop();
   });
 
-  describe('Plugin System', () => {
-    it('should register text input plugin', () => {
-      const plugin = new TextInputPlugin();
-      gateway.registerPlugin(plugin);
-      
-      // Plugin should be registered without error
-      expect(plugin.type).toBe('text');
-      expect(plugin.name).toBe('text-plain');
-    });
+  async function connectClient(): Promise<WebSocket> {
+    const ws = await connect(`ws://127.0.0.1:${PORT}`);
+    clients.push(ws);
+    return ws;
+  }
 
-    it('should validate text input correctly', () => {
-      const plugin = new TextInputPlugin();
-      
-      expect(plugin.validate('hello')).toBe(true);
-      expect(plugin.validate({ text: 'hello' })).toBe(true);
-      expect(plugin.validate({})).toBe(false);
-      expect(plugin.validate(123)).toBe(false);
-    });
-
-    it('should transform text input to normalized format', async () => {
-      const plugin = new TextInputPlugin();
-      const context: GatewayContext = {
-        sessionKey: 'test-session',
-        userId: 'test-user',
-        channel: 'test',
-        permissions: ['*'],
-        metadata: {},
-      };
-
-      const result = await plugin.transform('hello world', context);
-      
-      expect(result.type).toBe('text');
-      expect(result.content).toBe('hello world');
-      expect(result.source.sessionKey).toBe('test-session');
-      expect(result.source.userId).toBe('test-user');
-      expect(result.timestamp).toBeGreaterThan(0);
-    });
+  it('accepts connections', async () => {
+    const ws = await connectClient();
+    expect(ws.readyState).toBe(WebSocket.OPEN);
   });
 
-  describe('Input Processing', () => {
-    it('should process valid text input', async () => {
-      const plugin = new TextInputPlugin();
-      gateway.registerPlugin(plugin);
-
-      const input: NormalizedInput = {
-        type: 'text',
-        content: 'test message',
-        metadata: {},
-        source: {
-          channel: 'test',
-          userId: 'user1',
-          sessionKey: 'session1',
-        },
-        timestamp: Date.now(),
-      };
-
-      const context: GatewayContext = {
-        sessionKey: 'session1',
-        userId: 'user1',
-        channel: 'test',
-        permissions: ['*'],
-        metadata: {},
-      };
-
-      const result = await gateway.processInput(input, context);
-      
-      // Should return a response (currently placeholder)
-      expect(result).toBeDefined();
-      expect(result.type).toBeDefined();
-    });
-
-    it('should reject invalid input type', async () => {
-      const input = {
-        type: 'unknown' as const,
-        content: 'test',
-        metadata: {},
-        source: {
-          channel: 'test',
-          userId: 'user1',
-          sessionKey: 'session1',
-        },
-        timestamp: Date.now(),
-      } as unknown as NormalizedInput;
-
-      const context: GatewayContext = {
-        sessionKey: 'session1',
-        userId: 'user1',
-        channel: 'test',
-        permissions: ['*'],
-        metadata: {},
-      };
-
-      const result = await gateway.processInput(input, context);
-      
-      // Should fail gracefully
-      expect(result.success).toBe(false);
-      expect(result.type).toBe('error');
-    });
-  });
-
-  describe('Gateway Lifecycle', () => {
-    it('should start and stop without errors', async () => {
-      // Gateway doesn't auto-start servers in constructor
-      // So we just verify it can be created
-      expect(gateway).toBeDefined();
-    });
-
-    it('should emit events during lifecycle', async () => {
-      const startingEvents: string[] = [];
-      
-      gateway.on('starting', () => startingEvents.push('starting'));
-      gateway.on('started', () => startingEvents.push('started'));
-      gateway.on('stopping', () => startingEvents.push('stopping'));
-      gateway.on('stopped', () => startingEvents.push('stopped'));
-
-      await gateway.start();
-      expect(startingEvents).toContain('started');
-
-      await gateway.stop();
-      expect(startingEvents).toContain('stopped');
-    });
-  });
-
-  describe('Plugin Registry', () => {
-    it('should list registered plugins', () => {
-      const registry = new PluginRegistry();
-      const plugin = new TextInputPlugin();
-      
-      registry.register(plugin);
-      
-      const list = registry.list();
-      expect(list).toHaveLength(1);
-      expect(list[0].type).toBe('text');
-      expect(list[0].name).toBe('text-plain');
-    });
-
-    it('should unregister plugins', () => {
-      const registry = new PluginRegistry();
-      const plugin = new TextInputPlugin();
-      
-      registry.register(plugin);
-      expect(registry.list()).toHaveLength(1);
-      
-      const unregistered = registry.unregister('text', 'text-plain');
-      expect(unregistered).toBe(true);
-      expect(registry.list()).toHaveLength(0);
-    });
-
-    it('should find plugin for input', () => {
-      const registry = new PluginRegistry();
-      const plugin = new TextInputPlugin();
-      
-      registry.register(plugin);
-      
-      const found = registry.findForInput('hello');
-      expect(found).toBeDefined();
-      expect(found?.type).toBe('text');
-    });
-  });
-
-  describe('Image Input Validation', () => {
-    it('should accept image type with Buffer content', async () => {
-      const input: NormalizedInput = {
-        type: 'image',
-        content: Buffer.from('fake-image'),
-        metadata: { mimeType: 'image/jpeg', caption: 'a photo' },
-        source: { channel: 'whatsapp', userId: 'u1', sessionKey: 's1' },
-        timestamp: Date.now(),
-      };
-
-      const context: GatewayContext = {
-        sessionKey: 's1',
-        userId: 'u1',
-        channel: 'whatsapp',
-        permissions: ['*'],
-        metadata: {},
-      };
-
-      const result = await gateway.processInput(input, context);
-      // Reaches execute() which will fail without services, but validation passes
-      expect(result).toBeDefined();
-      expect(result.type).toBeDefined();
-    });
-
-    it('should reject input with missing source fields', async () => {
-      const input = {
-        type: 'image',
-        content: Buffer.from('data'),
-        metadata: { mimeType: 'image/jpeg' },
-        source: { channel: 'whatsapp', userId: '', sessionKey: '' },
-        timestamp: Date.now(),
-      } as NormalizedInput;
-
-      const context: GatewayContext = {
-        sessionKey: 's1',
-        userId: 'u1',
-        channel: 'whatsapp',
-        permissions: ['*'],
-        metadata: {},
-      };
-
-      const result = await gateway.processInput(input, context);
-      expect(result.success).toBe(false);
-      expect(result.type).toBe('error');
-    });
-  });
-});
-
-describe('Plugin prepare()', () => {
-  it('TextInputPlugin returns text only', async () => {
-    const plugin = new TextInputPlugin();
-    const input: NormalizedInput = {
-      type: 'text',
-      content: 'hello',
-      metadata: {},
-      source: { channel: 'test', userId: 'u1', sessionKey: 's1' },
-      timestamp: Date.now(),
-    };
-    const result = await plugin.prepare(input);
-    expect(result).toEqual({ text: 'hello' });
-  });
-
-  it('ImageInputPlugin returns text, images, and savedPath', async () => {
-    const plugin = new ImageInputPlugin();
-    const input: NormalizedInput = {
-      type: 'image',
-      content: Buffer.from('fake-img'),
-      metadata: { mimeType: 'image/jpeg', caption: 'a photo' },
-      source: { channel: 'whatsapp', userId: 'u1', sessionKey: 's1' },
-      timestamp: Date.now(),
-    };
-    const result = await plugin.prepare(input);
-    expect(result.savedPath).toBe('/tmp/mock-saved-path.jpg');
-    expect(result.text).toContain('a photo');
-    expect(result.text).toContain('[Image saved:');
-    expect(result.images).toHaveLength(1);
-    expect(result.images![0].mimeType).toBe('image/jpeg');
-    expect(result.images![0].data).toBe(Buffer.from('fake-img').toString('base64'));
-  });
-
-  it('MediaInputPlugin (voice) returns text and savedPath, no images', async () => {
-    const plugin = new MediaInputPlugin('voice');
-    const input: NormalizedInput = {
-      type: 'voice',
-      content: Buffer.from('fake-audio'),
-      metadata: { mimeType: 'audio/ogg' },
-      source: { channel: 'telegram', userId: 'u1', sessionKey: 's1' },
-      timestamp: Date.now(),
-    };
-    const result = await plugin.prepare(input);
-    expect(result.savedPath).toBe('/tmp/mock-saved-path.jpg');
-    expect(result.text).toContain('[Voice saved:');
-    expect(result.images).toBeUndefined();
-  });
-
-  it('MediaInputPlugin (file) uses correct article', async () => {
-    const plugin = new MediaInputPlugin('file');
-    const input: NormalizedInput = {
-      type: 'file',
-      content: Buffer.from('fake-file'),
-      metadata: { mimeType: 'application/pdf' },
-      source: { channel: 'telegram', userId: 'u1', sessionKey: 's1' },
-      timestamp: Date.now(),
-    };
-    const result = await plugin.prepare(input);
-    expect(result.text).toContain('User sent a file.');
-  });
-});
-
-describe('Gateway execute flow', () => {
-  let gateway: Gateway;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    gateway = new Gateway();
-  });
-
-  afterEach(async () => {
-    await gateway.stop();
-  });
-
-  const makeContext = (sessionKey: string, channel: string): GatewayContext => ({
-    sessionKey,
-    userId: 'u1',
-    channel,
-    permissions: ['*'],
-    metadata: {},
-  });
-
-  it('text input → TextPlugin.prepare → runtime.run with text only', async () => {
-    const { getPiAgentRuntime } = await import('../agent/runtime.js');
-    const { getSessionService } = await import('../services/factory.js');
-    const runtime = getPiAgentRuntime();
-    const sessions = getSessionService();
-
-    const input: NormalizedInput = {
-      type: 'text',
-      content: 'hello from whatsapp',
-      metadata: {},
-      source: { channel: 'whatsapp', userId: 'u1', sessionKey: 'wa:123' },
-      timestamp: Date.now(),
+  it('handles service registration', async () => {
+    const ws = await connectClient();
+    const reg: ServiceRegistration = {
+      service: 'echo',
+      version: '1.0.0',
+      methods: ['echo.ping'],
+      events: ['echo.pong'],
+      subscriptions: [],
     };
 
-    const result = await gateway.processInput(input, makeContext('wa:123', 'whatsapp'));
-
-    expect(result.success).toBe(true);
-    expect(result.content).toBe('agent reply');
-
-    // Session message stored with plain text
-    expect(sessions.addMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ content: 'hello from whatsapp', role: 'user' }),
-    );
-
-    // Runtime called without images
-    expect(runtime.run).toHaveBeenCalledWith(
-      expect.objectContaining({
-        sessionKey: 'wa:123',
-        images: undefined,
-        channel: 'whatsapp',
-      }),
-    );
+    const res = await registerService(ws, reg);
+    expect(res.type).toBe('res');
+    expect(res.ok).toBe(true);
+    expect((res.payload as any).services).toContain('echo');
+    expect((res.payload as any).methods).toContain('echo.ping');
   });
 
-  it('image input → ImagePlugin.prepare → runtime.run with images array', async () => {
-    const { getPiAgentRuntime } = await import('../agent/runtime.js');
-    const { getSessionService } = await import('../services/factory.js');
-    const runtime = getPiAgentRuntime();
-    const sessions = getSessionService();
+  it('routes requests between services', async () => {
+    // Service A: provides echo.ping
+    const serviceA = await connectClient();
+    await registerService(serviceA, {
+      service: 'echo',
+      version: '1.0.0',
+      methods: ['echo.ping'],
+      events: [],
+      subscriptions: [],
+    });
 
-    const input: NormalizedInput = {
-      type: 'image',
-      content: Buffer.from('fake-jpeg'),
-      metadata: { mimeType: 'image/jpeg', caption: 'sunset photo' },
-      source: { channel: 'telegram', userId: 'u1', sessionKey: 'tg:42' },
-      timestamp: Date.now(),
+    // Service B: calls echo.ping
+    const serviceB = await connectClient();
+    await registerService(serviceB, {
+      service: 'caller',
+      version: '1.0.0',
+      methods: [],
+      events: [],
+      subscriptions: [],
+    });
+
+    // Set up A to echo back
+    serviceA.on('message', (raw) => {
+      const frame = parseFrame(raw.toString());
+      if (frame.type === 'req' && frame.method === 'echo.ping') {
+        const res: ResponseFrame = {
+          type: 'res',
+          id: frame.id,
+          ok: true,
+          payload: { echo: frame.params },
+        };
+        serviceA.send(serializeFrame(res));
+      }
+    });
+
+    // B calls echo.ping through gateway
+    const responsePromise = waitForMessage(serviceB);
+    sendRequest(serviceB, 'echo.ping', { msg: 'hello' }, 'echo');
+
+    const response = await responsePromise as ResponseFrame;
+    expect(response.type).toBe('res');
+    expect(response.ok).toBe(true);
+    expect((response.payload as any).echo).toEqual({ msg: 'hello' });
+  });
+
+  it('returns error for unknown method', async () => {
+    const ws = await connectClient();
+    await registerService(ws, {
+      service: 'test',
+      version: '1.0.0',
+      methods: [],
+      events: [],
+      subscriptions: [],
+    });
+
+    const responsePromise = waitForMessage(ws);
+    sendRequest(ws, 'nonexistent.method', {}, 'nobody');
+
+    const response = await responsePromise as ResponseFrame;
+    expect(response.ok).toBe(false);
+    expect(response.error?.code).toBe('NO_HANDLER');
+  });
+
+  it('fans out events to subscribers', async () => {
+    // Publisher
+    const publisher = await connectClient();
+    await registerService(publisher, {
+      service: 'agent',
+      version: '1.0.0',
+      methods: [],
+      events: ['run.delta'],
+      subscriptions: [],
+    });
+
+    // Subscriber
+    const subscriber = await connectClient();
+    await registerService(subscriber, {
+      service: 'ui',
+      version: '1.0.0',
+      methods: [],
+      events: [],
+      subscriptions: ['run.delta'],
+    });
+
+    // Publish event
+    const eventPromise = waitForMessage(subscriber);
+    const event: EventFrame = {
+      type: 'event',
+      source: 'agent',
+      event: 'run.delta',
+      payload: { text: 'hello' },
     };
+    publisher.send(serializeFrame(event));
 
-    const result = await gateway.processInput(input, makeContext('tg:42', 'telegram'));
-
-    expect(result.success).toBe(true);
-
-    // Session message contains caption + saved path
-    expect(sessions.addMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        content: expect.stringContaining('sunset photo'),
-        metadata: expect.objectContaining({ mediaPath: '/tmp/mock-saved-path.jpg' }),
-      }),
-    );
-
-    // Runtime receives base64 images
-    expect(runtime.run).toHaveBeenCalledWith(
-      expect.objectContaining({
-        images: [{ data: Buffer.from('fake-jpeg').toString('base64'), mimeType: 'image/jpeg' }],
-        channel: 'telegram',
-      }),
-    );
+    const received = await eventPromise as EventFrame;
+    expect(received.type).toBe('event');
+    expect(received.event).toBe('run.delta');
+    expect((received.payload as any).text).toBe('hello');
+    expect(received.seq).toBe(1);
   });
 
-  it('voice input → MediaPlugin.prepare → runtime.run without images', async () => {
-    const { getPiAgentRuntime } = await import('../agent/runtime.js');
-    const { getSessionService } = await import('../services/factory.js');
-    const runtime = getPiAgentRuntime();
-    const sessions = getSessionService();
+  it('does not deliver events to non-subscribers', async () => {
+    const publisher = await connectClient();
+    await registerService(publisher, {
+      service: 'agent',
+      version: '1.0.0',
+      methods: [],
+      events: ['run.delta'],
+      subscriptions: [],
+    });
 
-    const input: NormalizedInput = {
-      type: 'voice',
-      content: Buffer.from('fake-ogg'),
-      metadata: { mimeType: 'audio/ogg' },
-      source: { channel: 'whatsapp', userId: 'u1', sessionKey: 'wa:456' },
-      timestamp: Date.now(),
+    const nonSubscriber = await connectClient();
+    await registerService(nonSubscriber, {
+      service: 'other',
+      version: '1.0.0',
+      methods: [],
+      events: [],
+      subscriptions: ['run.completed'], // subscribes to different event
+    });
+
+    // Track messages received by non-subscriber
+    let received = false;
+    nonSubscriber.on('message', () => { received = true; });
+
+    const event: EventFrame = {
+      type: 'event',
+      source: 'agent',
+      event: 'run.delta',
+      payload: {},
     };
+    publisher.send(serializeFrame(event));
 
-    const result = await gateway.processInput(input, makeContext('wa:456', 'whatsapp'));
-
-    expect(result.success).toBe(true);
-
-    // Session message references saved path
-    expect(sessions.addMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        content: expect.stringContaining('[Voice saved:'),
-        metadata: expect.objectContaining({ mediaPath: '/tmp/mock-saved-path.jpg' }),
-      }),
-    );
-
-    // No images for voice
-    expect(runtime.run).toHaveBeenCalledWith(
-      expect.objectContaining({ images: undefined }),
-    );
+    // Wait a bit and verify nothing arrived
+    await new Promise((r) => setTimeout(r, 100));
+    expect(received).toBe(false);
   });
 
-  it('file input → MediaPlugin.prepare → runtime.run without images', async () => {
-    const { getPiAgentRuntime } = await import('../agent/runtime.js');
-    const runtime = getPiAgentRuntime();
+  it('cleans up routes on disconnect', async () => {
+    const serviceA = await connectClient();
+    await registerService(serviceA, {
+      service: 'ephemeral',
+      version: '1.0.0',
+      methods: ['ephemeral.do'],
+      events: [],
+      subscriptions: [],
+    });
 
-    const input: NormalizedInput = {
-      type: 'file',
-      content: Buffer.from('fake-pdf'),
-      metadata: { mimeType: 'application/pdf' },
-      source: { channel: 'telegram', userId: 'u1', sessionKey: 'tg:99' },
-      timestamp: Date.now(),
-    };
+    // Disconnect
+    serviceA.close();
+    await new Promise((r) => setTimeout(r, 100));
 
-    await gateway.processInput(input, makeContext('tg:99', 'telegram'));
+    // Now try to call the method
+    const caller = await connectClient();
+    await registerService(caller, {
+      service: 'caller',
+      version: '1.0.0',
+      methods: [],
+      events: [],
+      subscriptions: [],
+    });
 
-    expect(runtime.run).toHaveBeenCalledWith(
-      expect.objectContaining({ images: undefined, channel: 'telegram' }),
-    );
+    const responsePromise = waitForMessage(caller);
+    sendRequest(caller, 'ephemeral.do', {}, 'ephemeral');
+
+    const response = await responsePromise as ResponseFrame;
+    expect(response.ok).toBe(false);
+    expect(response.error?.code).toBe('NO_HANDLER');
   });
 
-  it('processAndDeliver sends reply back to channel', async () => {
-    const send = vi.fn().mockResolvedValue(undefined);
+  it('times out requests to unresponsive services', async () => {
+    // Service that never responds
+    const slow = await connectClient();
+    await registerService(slow, {
+      service: 'slow',
+      version: '1.0.0',
+      methods: ['slow.wait'],
+      events: [],
+      subscriptions: [],
+    });
+    // Deliberately do NOT set up a message handler
 
-    const input: NormalizedInput = {
-      type: 'text',
-      content: 'ping',
-      metadata: {},
-      source: { channel: 'whatsapp', userId: 'u1', sessionKey: 'wa:789' },
-      timestamp: Date.now(),
-    };
+    const caller = await connectClient();
+    await registerService(caller, {
+      service: 'caller',
+      version: '1.0.0',
+      methods: [],
+      events: [],
+      subscriptions: [],
+    });
 
-    initializeGateway();
-    const result = await processAndDeliver(input, makeContext('wa:789', 'whatsapp'), send);
+    const responsePromise = waitForMessage(caller);
+    sendRequest(caller, 'slow.wait', {}, 'slow');
 
-    expect(result.success).toBe(true);
-    expect(send).toHaveBeenCalled();
-  });
-});
+    const response = await responsePromise as ResponseFrame;
+    expect(response.ok).toBe(false);
+    expect(response.error?.code).toBe('TIMEOUT');
+  }, 5000);
 
-describe('processAndDeliver', () => {
-  const input: NormalizedInput = {
-    type: 'text',
-    content: 'hello',
-    metadata: {},
-    source: { channel: 'test', userId: 'u1', sessionKey: 's1' },
-    timestamp: Date.now(),
-  };
+  it('increments event sequence numbers', async () => {
+    const publisher = await connectClient();
+    await registerService(publisher, {
+      service: 'src',
+      version: '1.0.0',
+      methods: [],
+      events: ['tick'],
+      subscriptions: [],
+    });
 
-  const context: GatewayContext = {
-    sessionKey: 's1',
-    userId: 'u1',
-    channel: 'test',
-    permissions: ['*'],
-    metadata: {},
-  };
+    const subscriber = await connectClient();
+    await registerService(subscriber, {
+      service: 'sink',
+      version: '1.0.0',
+      methods: [],
+      events: [],
+      subscriptions: ['tick'],
+    });
 
-  const successResult: GatewayResponse = { success: true, content: 'reply', type: 'text' };
-  const errorResult: GatewayResponse = { success: false, content: 'fail', type: 'error' };
+    const events: EventFrame[] = [];
+    subscriber.on('message', (raw) => {
+      const frame = parseFrame(raw.toString());
+      if (frame.type === 'event') events.push(frame);
+    });
 
-  let processInputSpy: ReturnType<typeof vi.spyOn>;
+    for (let i = 0; i < 3; i++) {
+      publisher.send(serializeFrame({ type: 'event', source: 'src', event: 'tick', payload: { i } }));
+    }
 
-  beforeEach(() => {
-    vi.useFakeTimers();
-    initializeGateway();
-    processInputSpy = vi.spyOn(getGateway(), 'processInput');
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-    vi.restoreAllMocks();
-  });
-
-  it('should return result without sendTyping', async () => {
-    processInputSpy.mockResolvedValue(successResult);
-    const send = vi.fn();
-    const result = await processAndDeliver(input, context, send);
-    expect(result).toEqual(successResult);
-  });
-
-  it('should call send for successful results', async () => {
-    processInputSpy.mockResolvedValue(successResult);
-    const send = vi.fn().mockResolvedValue(undefined);
-    await processAndDeliver(input, context, send);
-    // deliverReply calls send with chunked content
-    expect(send).toHaveBeenCalled();
-  });
-
-  it('should not call send for failed results', async () => {
-    processInputSpy.mockResolvedValue(errorResult);
-    const send = vi.fn();
-    await processAndDeliver(input, context, send);
-    expect(send).not.toHaveBeenCalled();
-  });
-
-  it('should fire sendTyping immediately', async () => {
-    processInputSpy.mockResolvedValue(successResult);
-    const send = vi.fn();
-    const typing = vi.fn().mockResolvedValue(undefined);
-
-    await processAndDeliver(input, context, send, typing);
-    expect(typing).toHaveBeenCalledTimes(1);
-  });
-
-  it('should refresh typing on 4s interval', async () => {
-    const typing = vi.fn().mockResolvedValue(undefined);
-    const send = vi.fn();
-
-    // Make processInput hang until we resolve it
-    let resolveProcess!: (v: GatewayResponse) => void;
-    processInputSpy.mockReturnValue(new Promise((r) => { resolveProcess = r; }));
-
-    const promise = processAndDeliver(input, context, send, typing);
-
-    // Initial call
-    expect(typing).toHaveBeenCalledTimes(1);
-
-    // Advance 4s — second call
-    await vi.advanceTimersByTimeAsync(4000);
-    expect(typing).toHaveBeenCalledTimes(2);
-
-    // Advance another 4s — third call
-    await vi.advanceTimersByTimeAsync(4000);
-    expect(typing).toHaveBeenCalledTimes(3);
-
-    // Resolve and finish
-    resolveProcess(successResult);
-    await promise;
-  });
-
-  it('should clear interval after processing completes', async () => {
-    const typing = vi.fn().mockResolvedValue(undefined);
-    const send = vi.fn();
-    processInputSpy.mockResolvedValue(successResult);
-
-    await processAndDeliver(input, context, send, typing);
-    const callsAfter = typing.mock.calls.length;
-
-    // Advancing time should not fire more typing calls
-    await vi.advanceTimersByTimeAsync(8000);
-    expect(typing).toHaveBeenCalledTimes(callsAfter);
-  });
-
-  it('should not break if sendTyping rejects', async () => {
-    processInputSpy.mockResolvedValue(successResult);
-    const send = vi.fn();
-    const typing = vi.fn().mockRejectedValue(new Error('network'));
-
-    const result = await processAndDeliver(input, context, send, typing);
-    expect(result).toEqual(successResult);
+    await new Promise((r) => setTimeout(r, 100));
+    expect(events.length).toBe(3);
+    expect(events[0].seq).toBe(1);
+    expect(events[1].seq).toBe(2);
+    expect(events[2].seq).toBe(3);
   });
 });
