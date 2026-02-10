@@ -11,6 +11,7 @@ vi.mock('../../core/runtime/runtime.js', () => {
     abortRun() { return true; }
     listActiveRuns() { return []; }
     onStream() {}
+    offStream() {}
     onLifecycle() {}
   }
   return {

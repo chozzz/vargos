@@ -272,7 +272,6 @@ function buildChannelSection(channel: string): string {
  * Build time section
  */
 function buildTimeSection(timezone: string): string {
-  const now = new Date();
   return [
     '## Current Date & Time',
     '',
@@ -345,21 +344,14 @@ async function buildCodebaseContextSection(workspaceDir: string): Promise<string
         'This is the Vargos MCP server codebase.',
         '',
         'Key Components:',
-        '- src/agent/ - Agent runtime, lifecycle, queue, prompts',
-        '- src/cli/ - Command-line interface',
-        '- src/core/ - Service interfaces and tool base classes',
-        '- src/cron/ - Task scheduling',
-        '- src/gateway/ - HTTP/WebSocket transports and plugins',
-        '- src/mcp/tools/ - MCP tool implementations (read, write, exec, browser, etc.)',
-        '- src/pi/ - Pi SDK integration',
-        '- src/services/ - Service implementations:',
-        '  - memory/ - MemoryContext, file-based, SQLite storage',
-        '  - sessions/ - File-based session backend',
-        '  - browser.ts - Browser automation service',
-        '  - process.ts - Process management service',
+        '- src/cli/ - CLI entry point, interactive menu, config/gateway actions',
+        '- src/gateway/ - WebSocket gateway server, protocol, router, event bus',
+        '- src/services/ - Gateway services (agent, tools, sessions, channels, cron)',
+        '- src/mcp/ - MCP bridge (MCP protocol ↔ gateway RPC)',
+        '- src/core/ - Framework: config, runtime, tools, channels, extensions',
+        '- src/extensions/ - Built-in tools, channel adapters, file services',
         '',
-        'When describing services, check src/services/ for actual implementations,',
-        'not generic examples.',
+        'See CLAUDE.md and ARCHITECTURE.md for full structure.',
       ].join('\n');
     }
   } catch {

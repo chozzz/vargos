@@ -67,6 +67,7 @@ export class McpBridge extends ServiceClient {
     await this.mcpServer.connect(transport);
 
     this.httpServer = http.createServer(async (req, res) => {
+      // MCP clients connect from various hosts; restrict via gateway.host binding instead
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Mcp-Session-Id');

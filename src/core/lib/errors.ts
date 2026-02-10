@@ -3,21 +3,8 @@
  * Extracted to reduce code duplication
  */
 
-import type { ToolResult } from '../tools/types.js';
-
 // Re-export from runtime/prompt for consistency
 export { isSubagentSessionKey } from '../runtime/prompt.js';
-
-/**
- * Format error to standard ToolResult format
- */
-export function formatErrorResult(error: unknown): ToolResult {
-  const message = error instanceof Error ? error.message : String(error);
-  return {
-    content: [{ type: 'text', text: `Error: ${message}` }],
-    isError: true,
-  };
-}
 
 /**
  * Tools that subagents are not allowed to use

@@ -97,16 +97,6 @@ export function createTwiceDailyVargosAnalysis(scheduler: TaskAdder): void {
   });
 }
 
-export function createDailyVargosAnalysis(scheduler: TaskAdder): void {
-  scheduler.addTask({
-    name: 'Vargos Daily Deep Analysis',
-    schedule: '0 9 * * *', // Daily at 9 AM UTC
-    description: 'Deep dive analysis of Vargos with comprehensive reporting',
-    task: generateDeepAnalysisTask(),
-    enabled: false, // Disabled by default, enable when ready
-  });
-}
-
 function generateSuggestionTask(): string {
   const areas = ANALYSIS_AREAS.map(area => `
 ## ${area.name}
@@ -169,49 +159,3 @@ Do NOT implement anything without explicit user approval.
 `;
 }
 
-function generateDeepAnalysisTask(): string {
-  return `
-You are conducting a DEEP analysis of Vargos.
-
-This is a comprehensive review that should:
-1. Review git history for patterns
-2. Check all TODO/FIXME comments
-3. Analyze dependency tree for risks
-4. Review security considerations
-5. Benchmark actual performance
-6. Compare with similar agentic tool servers
-
-Output: Detailed report in memory/vargos-analysis/deep-YYYY-MM-DD.md
-
-Include:
-- Executive summary
-- Detailed findings per area
-- Risk matrix
-- Roadmap recommendations
-- Code quality metrics
-`;
-}
-
-export function spawnAreaAnalysis(area: AnalysisArea, parentSessionKey: string): string {
-  const task = `
-You are a specialist in ${area.name}.
-
-Focus: ${area.focus}
-
-Analyze the Vargos codebase and answer these questions:
-${area.questions.map(q => `- ${q}`).join('\n')}
-
-Search the codebase thoroughly:
-- Use memory_search for existing analyses
-- Read relevant source files
-- Check for performance bottlenecks
-- Identify architectural issues
-
-Output your findings to:
-memory/vargos-analysis/${area.name.toLowerCase().replace(/\s+/g, '-')}-YYYY-MM-DD-HH.md
-
-Include specific code references and line numbers where possible.
-`;
-
-  return task;
-}

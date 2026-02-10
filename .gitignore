@@ -61,3 +61,9 @@ HEARTBEAT.md
 BOOTSTRAP.md
 memory/
 memory.db*
+
+# Claude Code local settings
+.claude/
+
+# Plans (internal, not committed)
+docs/plans/
