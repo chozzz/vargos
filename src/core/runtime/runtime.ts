@@ -28,6 +28,7 @@ import { getAgentLifecycle, type AgentStreamEvent } from './lifecycle.js';
 import { getSessionMessageQueue } from './queue.js';
 import { getPiConfigPaths } from '../config/pi-config.js';
 import { loadContextFiles } from '../config/workspace.js';
+import { LOCAL_PROVIDERS } from '../config/validate.js';
 import { sanitizeHistory, limitHistoryTurns, getHistoryLimit } from './history.js';
 import { prepareSessionManager } from './session-init.js';
 
@@ -154,7 +155,6 @@ export class PiAgentRuntime {
       const provider = config.provider ?? 'openai';
 
       // Set API key — ollama/lmstudio need a dummy key for Pi SDK auth checks
-      const LOCAL_PROVIDERS = new Set(['ollama', 'lmstudio']);
       if (config.apiKey) {
         authStorage.setRuntimeApiKey(provider, config.apiKey);
       } else if (LOCAL_PROVIDERS.has(provider)) {
@@ -503,6 +503,10 @@ export class PiAgentRuntime {
    */
   onStream(callback: (event: AgentStreamEvent) => void): void {
     this.lifecycle.on('stream', callback);
+  }
+
+  offStream(callback: (event: AgentStreamEvent) => void): void {
+    this.lifecycle.removeListener('stream', callback);
   }
 
   /**

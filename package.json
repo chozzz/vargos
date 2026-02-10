@@ -1,8 +1,18 @@
 {
   "name": "vargos",
-  "version": "0.0.1",
-  "description": "Vargos - Agentic MCP server",
+  "version": "0.1.0",
+  "description": "Agentic MCP server with embedded agent runtime, tools, and channel routing",
+  "license": "SEE LICENSE IN LICENSE.md",
+  "author": "Vadi Taslim",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chozzz/vargos.git"
+  },
+  "homepage": "https://github.com/chozzz/vargos",
+  "bugs": "https://github.com/chozzz/vargos/issues",
+  "keywords": ["mcp", "agent", "ai", "tools", "whatsapp", "telegram"],
   "type": "module",
+  "files": ["dist", "README.md", "LICENSE.md", "CONTRIBUTING.md"],
   "bin": {
     "vargos": "./dist/cli/index.js"
   },

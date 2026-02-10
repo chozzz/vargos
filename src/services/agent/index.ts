@@ -18,6 +18,7 @@ import type { AgentStreamEvent } from '../../core/runtime/lifecycle.js';
 import { resolveSessionFile, resolveWorkspaceDir, resolveDataDir } from '../../core/config/paths.js';
 import { loadConfig } from '../../core/config/pi-config.js';
 import { loadContextFiles } from '../../core/config/workspace.js';
+import { LOCAL_PROVIDERS } from '../../core/config/validate.js';
 
 export interface AgentServiceConfig {
   gatewayUrl?: string;
@@ -150,7 +151,6 @@ export class AgentService extends ServiceClient {
     if (!config) throw new Error('No config.json — run: vargos config');
 
     const { provider, model } = config.agent;
-    const LOCAL_PROVIDERS = new Set(['ollama', 'lmstudio']);
     const envKey = process.env[`${provider.toUpperCase()}_API_KEY`];
     const apiKey = envKey || config.agent.apiKey || (LOCAL_PROVIDERS.has(provider) ? 'local' : undefined);
 
@@ -183,7 +183,7 @@ export class AgentService extends ServiceClient {
     this.runtime.onStream(handler);
 
     return () => {
-      // Handler filters by runId so stale listeners are harmless
+      this.runtime.offStream(handler);
     };
   }
 }

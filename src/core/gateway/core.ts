@@ -13,6 +13,7 @@ import { getPiAgentRuntime } from '../runtime/runtime.js';
 import { getSessionService } from '../services/factory.js';
 import { resolveSessionFile, resolveWorkspaceDir, resolveDataDir } from '../config/paths.js';
 import { loadConfig } from '../config/pi-config.js';
+import { LOCAL_PROVIDERS } from '../config/validate.js';
 import { deliverReply, type SendFn } from '../lib/reply-delivery.js';
 import { TextInputPlugin } from '../../extensions/gateway-plugins/text.js';
 import { ImageInputPlugin } from '../../extensions/gateway-plugins/image.js';
@@ -223,7 +224,6 @@ export class Gateway extends EventEmitter {
     }
     const provider = config.agent.provider;
     const model = config.agent.model;
-    const LOCAL_PROVIDERS = new Set(['ollama', 'lmstudio']);
     const envKey = process.env[`${provider.toUpperCase()}_API_KEY`];
     const apiKey = envKey || config.agent.apiKey || (LOCAL_PROVIDERS.has(provider) ? 'local' : undefined);
 

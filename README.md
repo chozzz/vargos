@@ -1,6 +1,6 @@
 # Vargos
 
-MCP server with an embedded agent runtime. Gives AI agents practical tools to interact with real-world systems — file ops, shell, memory, sessions, browser, and cron. Routes messages from WhatsApp and Telegram through a plugin-based gateway.
+Agentic MCP server with an embedded agent runtime. Independent services (agent, tools, sessions, channels, cron) communicate through a WebSocket gateway. Exposes tools via MCP protocol and routes messages from WhatsApp and Telegram.
 
 ## Quick Start
 
@@ -16,25 +16,54 @@ git clone https://github.com/chozzz/vargos.git
 cd vargos
 pnpm install
 
-# MCP server (stdio mode, for Claude Desktop etc.)
-# First run prompts for identity + channel setup
-pnpm dev
+# Start gateway + all services
+pnpm start
 
-# Interactive CLI chat
+# Interactive CLI menu
+pnpm cli
+
+# Chat with the agent (requires gateway running)
 pnpm chat
 
 # One-shot task
-tsx src/cli.ts run "Analyze this codebase"
-
-# Channel setup (WhatsApp/Telegram)
-tsx src/cli.ts onboard
+pnpm cli run "Analyze this codebase"
 ```
+
+First run prompts for LLM provider, model, and API key.
 
 ### Configuration
 
-All config is stored in `~/.vargos/agent/` (API keys, provider settings). Data stored in `~/.vargos/`.
+All settings live in `~/.vargos/config.json`:
 
-## MCP Tools (15)
+```jsonc
+{
+  "agent": { "provider": "anthropic", "model": "claude-3-5-sonnet" },
+  "gateway": { "port": 9000, "host": "127.0.0.1" },           // optional
+  "mcp": { "transport": "http", "port": 9001, "endpoint": "/mcp" }, // optional
+  "channels": { ... }                                           // optional
+}
+```
+
+Supports cloud providers (OpenAI, Anthropic, Google, OpenRouter) and local providers (Ollama, LM Studio).
+
+## CLI
+
+```
+vargos                         # Interactive menu
+vargos chat                    # Interactive chat (requires gateway)
+vargos run <task>              # One-shot task
+vargos config llm show         # Display LLM config
+vargos config llm edit         # Change provider/model/key
+vargos config channel show     # Display channel config
+vargos config channel edit     # Edit channel config
+vargos gateway start           # Start gateway + all services
+vargos gateway stop            # Stop running gateway
+vargos gateway restart         # Restart via SIGUSR2
+vargos gateway status          # PID check
+vargos health                  # Config + connectivity check
+```
+
+## MCP Tools
 
 | Tool | Description |
 |------|-------------|
@@ -50,150 +79,97 @@ All config is stored in `~/.vargos/agent/` (API keys, provider settings). Data s
 | `sessions_list` | List active sessions |
 | `sessions_history` | Get session transcript |
 | `sessions_send` | Send message to session |
-| `sessions_spawn` | Spawn Pi-powered subagent |
+| `sessions_spawn` | Spawn subagent |
 | `cron_add` | Add scheduled task |
 | `cron_list` | List scheduled tasks |
 
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                        Entry Points                              │
-│                                                                  │
-│  index.ts (MCP server)    cli.ts (chat/run)    boot.ts (shared)  │
-└────────────┬─────────────────────┬───────────────────────────────┘
-             │                     │
-             ▼                     ▼
-┌─────────────────────┐  ┌─────────────────────────────────────────┐
-│  MCP Protocol       │  │  Channels (WhatsApp, Telegram)          │
-│  stdio | HTTP       │  │  dedupe → debounce → gateway → agent    │
-│  ListTools          │  │                                         │
-│  CallTool           │  │  Gateway (plugin-based message routing)  │
-└────────┬────────────┘  └──────────────────┬──────────────────────┘
-         │                                  │
-         ▼                                  ▼
-┌──────────────────────────────────────────────────────────────────┐
-│  Tool Registry (15 tools)                                        │
-│  read, write, edit, exec, process, web_fetch, browser            │
-│  memory_search, memory_get, sessions_*, cron_*                   │
-└────────────────────────────┬─────────────────────────────────────┘
-                             │
-         ┌───────────────────┼───────────────────┐
-         ▼                   ▼                   ▼
-┌─────────────────┐ ┌─────────────────┐ ┌─────────────────────────┐
-│  Agent Runtime   │ │  Services       │ │  Cron Scheduler         │
-│  (Pi SDK)        │ │  Memory (file)  │ │  Heartbeat (30m)        │
-│  prompt builder  │ │  Sessions (file)│ │  Scheduled tasks        │
-│  tool execution  │ │  Browser        │ │  (spawns subagents)     │
-│  subagent spawn  │ │  Process        │ │                         │
-└─────────────────┘ └─────────────────┘ └─────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│  CLI (src/cli/)                                         │
+│  Interactive menu | Direct commands | Chat | Run        │
+└────────────┬────────────────────────────────────────────┘
+             │ WebSocket (ws://127.0.0.1:9000)
+             ▼
+┌─────────────────────────────────────────────────────────┐
+│  Gateway (src/gateway/)                                 │
+│  WebSocket server | Protocol | Router | Event Bus       │
+│  Three frame types: Request, Response, Event            │
+└────┬──────────┬──────────┬──────────┬──────────┬────────┘
+     ▼          ▼          ▼          ▼          ▼
+  Agent      Tools     Sessions   Channels     Cron
+  Service    Service   Service    Service     Service
+  (run,      (execute, (CRUD,     (send,      (schedule,
+   abort,     list,     history)   status)     trigger)
+   status)    describe)
+     │                                │
+     │                                ▼
+     │                         WhatsApp / Telegram
+     ▼                         Channel Adapters
+  MCP Bridge
+  (stdio | HTTP)
+  ← MCP Clients
 ```
 
-### Message Flow
-
-```
-                MCP Client                    WhatsApp / Telegram
-                    │                              │
-                    ▼                              ▼
-              ┌──────────┐                  ┌─────────────┐
-              │ MCP      │                  │ Channel     │
-              │ Server   │                  │ Adapter     │
-              └────┬─────┘                  └──────┬──────┘
-                   │                               │
-                   │  CallToolRequest         dedupe + debounce
-                   │                               │
-                   ▼                               ▼
-              ┌──────────┐                  ┌─────────────┐
-              │ Tool     │                  │ Gateway     │
-              │ Registry │                  │ (plugins)   │
-              └────┬─────┘                  └──────┬──────┘
-                   │                               │
-                   │  tool.execute()          processAndDeliver()
-                   │                               │
-                   ▼                               ▼
-              ┌──────────┐                  ┌─────────────┐
-              │ Services │                  │ Pi Agent    │
-              │ (memory, │                  │ Runtime     │
-              │ sessions)│                  │ (uses tools)│
-              └──────────┘                  └──────┬──────┘
-                                                   │
-                                              reply via
-                                            adapter.send()
-```
+Services are isolated — they share nothing and communicate only through the gateway.
 
 ## Project Structure
 
 ```
 src/
-├── index.ts          # MCP server (stdio + HTTP transport)
-├── cli.ts            # CLI: chat, run, config, onboard, scheduler
-├── boot.ts           # Shared boot sequence
-├── agent/            # Pi agent runtime, prompt builder, lifecycle events
-├── tools/            # 15 MCP tool implementations + registry
-├── gateway/          # Message gateway with input plugins (text, image, media)
-├── channels/         # WhatsApp (Baileys) + Telegram adapters
-├── config/           # Paths, validation, onboarding, identity, Pi config
-├── services/         # Memory (file), sessions (file), browser, process
-├── cron/             # Scheduler, heartbeat, task definitions
-└── lib/              # Errors, MIME, dedup, debounce, media, reply delivery
+├── cli/                  # Entry point, interactive menu, config/gateway actions
+├── gateway/              # WebSocket server, protocol, router, event bus
+├── services/             # Gateway services (agent, tools, sessions, channels, cron)
+├── mcp/                  # MCP bridge (MCP protocol ↔ gateway RPC)
+├── core/                 # Framework: config, runtime, tools, channels, extensions
+└── extensions/           # Built-in tools, channel adapters, file services
 ```
 
 ## Data Directory
 
 ```
 ~/.vargos/
-├── workspace/        # Context files (AGENTS.md, SOUL.md, USER.md, etc.)
-│   └── memory/       # Daily notes (YYYY-MM-DD.md)
-├── agent/            # Pi SDK config + auth
-├── channels.json     # Channel adapter configs
-├── channels/         # Channel auth state (WhatsApp linked devices)
-├── sessions/         # Session JSONL transcripts
-├── memory.db         # SQLite embeddings cache
-└── vargos.pid        # Process lock (prevents duplicate instances)
+├── config.json           # All configuration
+├── workspace/            # Context files (AGENTS.md, SOUL.md, USER.md, etc.)
+│   └── memory/           # Daily notes
+├── agent/                # Pi SDK config + auth (synced from config.json)
+├── channels/             # Channel auth state (WhatsApp linked devices)
+├── sessions/             # Session JSONL transcripts
+├── memory.db             # SQLite embeddings cache
+└── vargos.pid            # Process lock
 ```
 
-**Key distinction:**
-- **Working directory** (cwd): Where tools like `read`, `exec` operate
-- **Context directory** (`~/.vargos/workspace/`): Agent personality files
-- **Data directory** (`~/.vargos/`): Sessions, embeddings, channel state
+## Claude Desktop / MCP Client
 
-## Configuration
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `VARGOS_DATA_DIR` | `~/.vargos` | Root data directory |
-| `VARGOS_WORKSPACE` | `$DATA_DIR/workspace` | Context files directory |
-| `VARGOS_TRANSPORT` | `stdio` | MCP transport: `stdio` or `http` |
-
-### Claude Desktop Configuration
-
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+Add to your MCP client config:
 
 ```json
 {
   "mcpServers": {
     "vargos": {
       "command": "pnpm",
-      "args": ["--cwd", "/path/to/vargos", "dev"],
-      "env": {
-        "VARGOS_WORKSPACE": "/path/to/workspace"
-      }
+      "args": ["--cwd", "/path/to/vargos", "start"]
     }
   }
 }
 ```
 
-## Testing
+## Development
 
 ```bash
-pnpm test              # Watch mode
-pnpm run test:run      # CI mode
+pnpm install              # Install deps
+pnpm start                # Start gateway + all services
+pnpm test                 # Tests (watch mode)
+pnpm run test:run         # Tests (CI, run once)
+pnpm run typecheck        # TypeScript check
+pnpm lint                 # ESLint + typecheck
 ```
 
 ## Documentation
 
-- **[docs/USAGE.md](./docs/USAGE.md)** — CLI, MCP server, cron, agents
-- **[CLAUDE.md](./CLAUDE.md)** — Developer guide (architecture, modules, conventions)
+- **[CLAUDE.md](./CLAUDE.md)** — Developer guide, architecture, conventions
+- **[ARCHITECTURE.md](./ARCHITECTURE.md)** — Protocol spec, service contracts
 - **[CONTRIBUTING.md](./CONTRIBUTING.md)** — Contribution guidelines
 
 ## Troubleshooting

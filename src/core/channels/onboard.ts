@@ -103,13 +103,13 @@ async function setupWhatsApp(): Promise<void> {
       console.log(chalk.green(`Connected as ${connectedName}`));
       console.log('');
 
-      const allowFrom = await promptAllowFrom('phone numbers', '+61423222658');
+      const allowFrom = await promptAllowFrom('phone numbers', '+1234567890');
       const config: ChannelConfig = { type: 'whatsapp', enabled: true, allowFrom };
       await addChannelConfig(config);
       console.log(chalk.green('Saved to ~/.vargos/config.json'));
     } else {
       console.log('');
-      console.log(chalk.red('Connection timed out. Try again with: pnpm cli onboard'));
+      console.log(chalk.red('Connection timed out. Try again with: vargos config channel edit'));
     }
 
     try { state.sock?.end(undefined); } catch { /* ignore */ }
@@ -204,6 +204,6 @@ export async function runOnboarding(): Promise<void> {
 
   console.log('');
   console.log(chalk.gray('Start receiving messages:'));
-  console.log(chalk.gray('  pnpm cli server'));
+  console.log(chalk.gray('  vargos gateway start'));
   console.log('');
 }
