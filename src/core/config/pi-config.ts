@@ -5,6 +5,7 @@
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { LOCAL_PROVIDERS } from './validate.js';
 
 const PI_AGENT_DIR = 'agent';
 const CONFIG_FILE = 'config.json';
@@ -148,8 +149,6 @@ export async function saveConfig(dataDir: string, config: VargosConfig): Promise
 export async function syncPiSdkFiles(workspaceDir: string, agent: AgentConfig): Promise<void> {
   const { agentDir, authPath, settingsPath } = getPiConfigPaths(workspaceDir);
   await fs.mkdir(agentDir, { recursive: true });
-
-  const LOCAL_PROVIDERS = new Set(['ollama', 'lmstudio']);
 
   // auth.json — provider-keyed format Pi SDK expects
   // Local providers need a dummy key for Pi SDK auth checks

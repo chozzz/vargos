@@ -6,13 +6,7 @@
 import path from 'node:path';
 import os from 'node:os';
 import type { PathsConfig } from './pi-config.js';
-
-/** Expand leading ~ to homedir (shell doesn't expand inside .env values) */
-function expandTilde(p: string): string {
-  if (p === '~') return os.homedir();
-  if (p.startsWith('~/') || p.startsWith('~\\')) return path.join(os.homedir(), p.slice(2));
-  return p;
-}
+import { expandTilde } from '../lib/path.js';
 
 let cachedPaths: { dataDir: string; workspace: string } | null = null;
 
@@ -45,8 +39,7 @@ export function resolveDataDir(): string {
 
 export function resolveWorkspaceDir(): string {
   if (cachedPaths) return cachedPaths.workspace;
-  const env = process.env.VARGOS_WORKSPACE?.trim();
-  return env ? expandTilde(env) : path.join(resolveDataDir(), 'workspace');
+  return path.join(resolveDataDir(), 'workspace');
 }
 
 export function resolveSessionsDir(): string {

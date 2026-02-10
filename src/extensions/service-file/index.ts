@@ -2,14 +2,17 @@
  * File-based service implementations extension
  */
 
+import { createRequire } from 'node:module';
 import type { VargosExtension } from '../../core/extensions.js';
+
+const require = createRequire(import.meta.url);
 
 const extension: VargosExtension = {
   id: 'service-file',
   name: 'File-based Services',
   register(ctx) {
     ctx.registerMemoryService((config) => {
-      // Lazy import to avoid circular deps
+      // Lazy require to avoid circular deps
       const { FileMemoryService } = require('./memory-file.js');
       return new FileMemoryService(config);
     });
