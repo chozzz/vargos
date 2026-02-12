@@ -7,13 +7,6 @@ import { EventEmitter } from 'node:events';
 
 export type InputType = 'text' | 'voice' | 'image' | 'file' | 'video' | 'location' | 'custom';
 
-export interface InputHandler {
-  type: InputType;
-  name: string;
-  validate(input: unknown): boolean;
-  transform(input: unknown): Promise<NormalizedInput>;
-}
-
 export interface NormalizedInput {
   type: InputType;
   content: string | Buffer;

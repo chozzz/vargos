@@ -72,13 +72,13 @@ export class AgentService extends ServiceClient {
     switch (event) {
       case 'message.received':
         this.handleInboundMessage(p).catch((err) =>
-          console.error(`[AgentService] Error handling message: ${err}`),
+          log.error(`Error handling message: ${err}`),
         );
         break;
 
       case 'cron.trigger':
         this.handleCronTrigger(p).catch((err) =>
-          console.error(`[AgentService] Error handling cron trigger: ${err}`),
+          log.error(`Error handling cron trigger: ${err}`),
         );
         break;
     }
@@ -129,7 +129,7 @@ export class AgentService extends ServiceClient {
         userId,
         text: result.response,
       }).catch((err) =>
-        console.error(`[AgentService] Failed to send reply: ${err}`),
+        log.error(`Failed to send reply: ${err}`),
       );
     }
   }
