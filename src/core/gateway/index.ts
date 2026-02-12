@@ -9,7 +9,6 @@ export {
   getGateway,
   initializeGateway,
   type InputType,
-  type InputHandler,
   type NormalizedInput,
   type GatewayContext,
   type GatewayResponse,

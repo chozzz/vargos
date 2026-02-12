@@ -22,7 +22,6 @@ import { MediaInputPlugin } from '../../extensions/gateway-plugins/media.js';
 // Re-export all types so existing imports from './core.js' keep working
 export {
   type InputType,
-  type InputHandler,
   type NormalizedInput,
   type GatewayContext,
   type GatewayResponse,
@@ -219,7 +218,7 @@ export class Gateway extends EventEmitter {
     const workspaceDir = resolveWorkspaceDir();
     const config = await loadConfig(resolveDataDir());
     if (!config) {
-      console.error('[Gateway] No config.json — run: vargos config');
+      log.error('No config.json — run: vargos config');
       return { success: false, content: 'Not configured. Run: vargos config', type: 'error' };
     }
     const provider = config.agent.provider;
@@ -228,7 +227,7 @@ export class Gateway extends EventEmitter {
     const apiKey = envKey || config.agent.apiKey || (LOCAL_PROVIDERS.has(provider) ? 'local' : undefined);
 
     if (!apiKey) {
-      console.error(`[Gateway] No API key for provider "${provider}"`);
+      log.error(`No API key for provider "${provider}"`);
       return {
         success: false,
         content: `No API key configured for ${provider}. Run: vargos config`,
@@ -294,7 +293,7 @@ export class Gateway extends EventEmitter {
     const context = this.sessions.get(input.source.sessionKey);
     if (!context) return;
 
-    this.processInput(input, context).catch(console.error);
+    this.processInput(input, context).catch((err) => log.error(err));
   }
 }
 

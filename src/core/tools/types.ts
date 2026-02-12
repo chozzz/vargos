@@ -56,14 +56,3 @@ export function getFirstTextContent(content: ToolContent[]): string {
   const c = content[0];
   return c?.type === 'text' ? c.text : '';
 }
-
-export class ToolError extends Error {
-  constructor(
-    message: string,
-    public readonly code: string,
-    public readonly details?: Record<string, unknown>
-  ) {
-    super(message);
-    this.name = 'ToolError';
-  }
-}

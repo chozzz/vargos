@@ -309,9 +309,9 @@ export class PiAgentRuntime {
     } catch (err) {
       const duration = Date.now() - startedAt;
       const message = err instanceof Error ? err.message : String(err);
-      console.error(`[PiRuntime] Run ${runId} failed (${(duration / 1000).toFixed(1)}s): ${message}`);
+      log.error(`Run ${runId} failed (${(duration / 1000).toFixed(1)}s): ${message}`);
       if (err instanceof Error && err.stack) {
-        console.error(err.stack);
+        log.error(err.stack);
       }
 
       // Error lifecycle
