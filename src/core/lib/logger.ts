@@ -17,6 +17,9 @@ export function createLogger(scope: string) {
       const indent = '  '.repeat(depth);
       console.error(`${indent}[${scope}]`, ...args);
     },
+    error(...args: unknown[]) {
+      console.error(`[${scope}]`, ...args);
+    },
     child<T>(fn: () => T): T {
       const depth = store.getStore() ?? 0;
       return store.run(depth + 1, fn);

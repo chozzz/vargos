@@ -7,6 +7,7 @@ import { ToolsService } from '../../services/tools/index.js';
 import { SessionsService } from '../../services/sessions/index.js';
 import { CronService } from '../../services/cron/index.js';
 import { ChannelService } from '../../services/channels/index.js';
+import type { ChannelType } from '../../core/channels/types.js';
 import { AgentService } from '../../services/agent/index.js';
 import { McpBridge } from '../../mcp/server.js';
 import { toolRegistry } from '../../core/tools/registry.js';
@@ -179,7 +180,7 @@ export async function start(): Promise<void> {
 
   // Load cron tasks from extensions
   const { createTwiceDailyVargosAnalysis } = await import('../../extensions/cron/tasks/vargos-analysis.js');
-  createTwiceDailyVargosAnalysis(cron as any);
+  createTwiceDailyVargosAnalysis(cron);
 
   cron.startAll();
   log(`    Cron       ${cron.listTasks().length} task(s)`);
@@ -194,7 +195,7 @@ export async function start(): Promise<void> {
     for (const [type, chConfig] of Object.entries(config.channels)) {
       if (chConfig.enabled === false) continue;
       try {
-        const adapter = createAdapter({ type: type as any, enabled: true, ...chConfig });
+        const adapter = createAdapter({ type: type as ChannelType, enabled: true, ...chConfig });
         await channels.addAdapter(adapter);
         await adapter.initialize();
         await adapter.start();

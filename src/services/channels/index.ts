@@ -59,7 +59,11 @@ export class ChannelService extends ServiceClient {
       sessionKey,
       kind: 'main',
       metadata: { channel },
-    }).catch(() => {}); // Ignore "already exists"
+    }).catch((err: unknown) => {
+      // Suppress "already exists" — session.create throws when the key is taken
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!msg.includes('already exists')) throw err;
+    });
 
     // Store user message
     await this.call('sessions', 'session.addMessage', {
