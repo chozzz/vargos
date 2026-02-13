@@ -1,6 +1,6 @@
 # Architecture
 
-Vargos is evolving from a monolithic MCP server into a **service-oriented system** where independent services communicate through a single WebSocket gateway. This document is the north star for that migration.
+Vargos is a **service-oriented system** where independent services communicate through a single WebSocket gateway.
 
 ## Design Principles
 
@@ -17,28 +17,7 @@ Vargos is evolving from a monolithic MCP server into a **service-oriented system
 
 ---
 
-## Current State
-
-```
-src/
-├── index.ts              # MCP server entry
-├── cli.ts                # CLI entry
-├── boot.ts               # Boot + extension loading
-├── core/                 # Framework: interfaces, registries, runtime
-└── extensions/           # Implementations: tools, channels, services, cron
-```
-
-- MCP server exposes 15 tools via stdio/HTTP
-- Channel adapters (WhatsApp, Telegram) route messages through a gateway class to the agent
-- Gateway is an in-process input normalizer + agent dispatcher
-- Tool registry populated by 4 extension modules at boot
-- Extension system: `VargosExtension` interface with `register(ctx)` pattern
-
----
-
-## Target Architecture
-
-### Topology
+## Topology
 
 ```
                         ┌─────────────────────┐
@@ -60,7 +39,9 @@ src/
 
 The gateway is a **dumb router** — it knows nothing about agents, tools, or channels. It routes frames between services based on a registration table. Adding a service means connecting and registering, nothing else.
 
-### Protocol
+---
+
+## Protocol
 
 Three frame types over WebSocket:
 
@@ -97,7 +78,9 @@ interface EventFrame {
 }
 ```
 
-### Service Registration
+---
+
+## Service Registration
 
 On connect, each service identifies itself:
 
@@ -109,49 +92,24 @@ On connect, each service identifies itself:
   params: {
     service: "agent",
     version: "1.0.0",
-    methods: [                    // methods this service handles
-      "agent.run",
-      "agent.abort",
-      "agent.status"
-    ],
-    events: [                     // events this service emits
-      "run.started",
-      "run.delta",
-      "run.completed"
-    ],
-    subscriptions: [              // events this service wants to receive
-      "message.received",
-      "cron.trigger"
-    ],
+    methods: ["agent.run", "agent.abort", "agent.status"],
+    events: ["run.started", "run.delta", "run.completed"],
+    subscriptions: ["message.received", "cron.trigger"],
   }
 }
 ```
 
-Gateway responds with the full routing table so services know what's available:
+Gateway responds with the full routing table so services know what's available.
 
-```typescript
-{
-  type: "res",
-  id: "...",
-  ok: true,
-  payload: {
-    services: ["agent", "tools", "channel", "cron", "sessions"],
-    methods: ["agent.run", "tool.execute", "channel.send", ...],
-    events: ["run.delta", "message.received", ...]
-  }
-}
-```
+---
 
-### Base Service Client
+## Base Service Client
 
-Every service extends this. It handles the protocol so services only implement their domain logic:
+Every service extends `ServiceClient`. It handles the protocol so services only implement their domain logic:
 
 ```typescript
 abstract class ServiceClient {
-  private ws: WebSocket;
-  private pending = new Map<string, { resolve, reject, timeout }>();
-
-  constructor(private config: {
+  constructor(config: {
     service: string;
     methods: string[];
     events: string[];
@@ -159,13 +117,9 @@ abstract class ServiceClient {
     gatewayUrl?: string;
   }) {}
 
-  // Call another service through the gateway
   async call<T>(target: string, method: string, params?: unknown): Promise<T>;
-
-  // Emit event to all subscribers
   emit(event: string, payload: unknown): void;
 
-  // Subclass implements these
   abstract handleMethod(method: string, params: unknown): Promise<unknown>;
   abstract handleEvent(event: string, payload: unknown): void;
 }
@@ -179,7 +133,6 @@ abstract class ServiceClient {
 
 Wraps the Pi agent runtime. Handles agent execution, streaming, and subagent spawning.
 
-**Methods:**
 | Method | Params | Description |
 |--------|--------|-------------|
 | `agent.run` | `{ sessionKey, task, model?, images?, channel? }` | Execute agent on session |
@@ -187,6 +140,7 @@ Wraps the Pi agent runtime. Handles agent execution, streaming, and subagent spa
 | `agent.status` | `{ sessionKey }` | Check if agent is running |
 
 **Events emitted:**
+
 | Event | Payload | Description |
 |-------|---------|-------------|
 | `run.started` | `{ sessionKey, runId }` | Agent execution began |
@@ -199,7 +153,6 @@ Wraps the Pi agent runtime. Handles agent execution, streaming, and subagent spa
 
 Manages external messaging adapters. Each channel type (WhatsApp, Telegram) runs as an adapter within this service.
 
-**Methods:**
 | Method | Params | Description |
 |--------|--------|-------------|
 | `channel.send` | `{ channel, userId, text }` | Send message to user |
@@ -207,6 +160,7 @@ Manages external messaging adapters. Each channel type (WhatsApp, Telegram) runs
 | `channel.list` | — | List active channels |
 
 **Events emitted:**
+
 | Event | Payload | Description |
 |-------|---------|-------------|
 | `message.received` | `{ channel, userId, sessionKey, type, content, metadata }` | Inbound message |
@@ -215,22 +169,18 @@ Manages external messaging adapters. Each channel type (WhatsApp, Telegram) runs
 
 ### Tools Service
 
-Exposes the 15 MCP tools as gateway-callable methods. Also serves MCP clients directly.
+Exposes MCP tools as gateway-callable methods. Also serves MCP clients directly.
 
-**Methods:**
 | Method | Params | Description |
 |--------|--------|-------------|
 | `tool.execute` | `{ name, args, context }` | Execute a tool |
 | `tool.list` | — | List available tools |
 | `tool.describe` | `{ name }` | Get tool schema |
 
-**Events emitted:** None (tools are synchronous request/response).
-
 ### Sessions Service
 
 Manages session state, history, and lifecycle.
 
-**Methods:**
 | Method | Params | Description |
 |--------|--------|-------------|
 | `session.list` | `{ kind?, limit? }` | List sessions |
@@ -240,6 +190,7 @@ Manages session state, history, and lifecycle.
 | `session.delete` | `{ sessionKey }` | Delete session |
 
 **Events emitted:**
+
 | Event | Payload | Description |
 |-------|---------|-------------|
 | `session.created` | `{ sessionKey, kind }` | New session |
@@ -249,7 +200,6 @@ Manages session state, history, and lifecycle.
 
 Scheduled task execution. Fires events that the agent service subscribes to.
 
-**Methods:**
 | Method | Params | Description |
 |--------|--------|-------------|
 | `cron.list` | — | List scheduled tasks |
@@ -258,17 +208,10 @@ Scheduled task execution. Fires events that the agent service subscribes to.
 | `cron.run` | `{ id }` | Trigger task immediately |
 
 **Events emitted:**
+
 | Event | Payload | Description |
 |-------|---------|-------------|
 | `cron.trigger` | `{ taskId, task, sessionKey }` | Task fired |
-
-### UI Client (Browser)
-
-Not a service — a consumer. Connects to gateway, subscribes to events, calls methods.
-
-**Subscribes to:** `run.delta`, `run.completed`, `session.message`, `channel.connected`
-
-**Calls:** `agent.run`, `agent.abort`, `session.list`, `session.history`, `tool.list`
 
 ---
 
@@ -276,42 +219,11 @@ Not a service — a consumer. Connects to gateway, subscribes to events, calls m
 
 ### Router
 
-Maintains a routing table: `method → serviceConnection`. When a request arrives, look up the target service and forward the frame. If no handler is registered, respond with error immediately.
-
-```typescript
-class Router {
-  private routes = new Map<string, WebSocket>();  // method → connection
-
-  register(service: string, methods: string[], conn: WebSocket): void;
-  route(frame: RequestFrame): WebSocket | null;
-  unregister(conn: WebSocket): void;  // remove all routes for this connection
-}
-```
+Maintains a routing table: `method → serviceConnection`. When a request arrives, look up the target service and forward the frame.
 
 ### Event Bus
 
-Topic-based pub/sub. Services declare subscriptions at registration. Events are fan-out to all matching subscribers.
-
-```typescript
-class EventBus {
-  private subscriptions = new Map<string, Set<WebSocket>>();  // event → connections
-  private seq = 0;
-
-  subscribe(event: string, conn: WebSocket): void;
-  unsubscribe(conn: WebSocket): void;  // remove from all topics
-  publish(source: string, event: string, payload: unknown): void;
-}
-```
-
-### Auth
-
-Challenge-response on connect. Services authenticate with tokens. Scopes control which methods/events are accessible.
-
-### Backpressure
-
-Monitor `ws.bufferedAmount` per connection. If a connection falls behind:
-1. Drop non-critical events (`dropIfSlow` flag)
-2. If still behind, close with code 1008
+Topic-based pub/sub. Services declare subscriptions at registration. Events are fan-out to all matching subscribers. Each event gets a global sequence number for gap detection.
 
 ### Service Health
 
@@ -369,125 +281,3 @@ Gateway pings services periodically. If a service disconnects, its routes and su
 4. Agent streams deltas back as events (UI receives them in real-time)
 5. Agent completes, UI receives run.completed
 ```
-
----
-
-## Target Directory Structure
-
-```
-src/
-├── gateway/
-│   ├── server.ts                # WS server, connection lifecycle
-│   ├── router.ts                # method → service routing
-│   ├── registry.ts              # service registration + discovery
-│   ├── bus.ts                   # event pub/sub with topic filtering
-│   ├── auth.ts                  # challenge-response, scopes
-│   ├── protocol.ts              # frame types, serialize/deserialize
-│   └── backpressure.ts          # slow consumer detection
-│
-├── services/
-│   ├── client.ts                # base ServiceClient class
-│   │
-│   ├── agent/
-│   │   ├── index.ts             # registers: agent.run, agent.abort, agent.status
-│   │   ├── runner.ts            # Pi agent execution
-│   │   └── streaming.ts         # emits: run.delta events
-│   │
-│   ├── channels/
-│   │   ├── index.ts             # registers: channel.send, channel.status
-│   │   ├── whatsapp.ts          # WhatsApp adapter
-│   │   └── telegram.ts          # Telegram adapter
-│   │
-│   ├── tools/
-│   │   ├── index.ts             # registers: tool.execute, tool.list
-│   │   ├── fs/                  # read, write, edit, exec
-│   │   ├── web/                 # fetch, browser
-│   │   └── memory/              # search, get
-│   │
-│   ├── sessions/
-│   │   └── index.ts             # registers: session.list, session.history, session.send
-│   │
-│   └── cron/
-│       ├── index.ts             # registers: cron.add, cron.list
-│       └── scheduler.ts         # emits: cron.trigger events
-│
-├── mcp/
-│   └── server.ts                # MCP bridge: translates MCP calls to gateway RPC
-│
-└── ui/
-    └── client.ts                # browser WS client
-```
-
----
-
-## Migration Path
-
-### Phase 1: Gateway Core
-Build the gateway server, router, event bus, and protocol types. No services yet — just the infrastructure with tests.
-
-### Phase 2: Base Service Client
-Implement `ServiceClient` base class. Test with a mock echo service that registers, handles methods, emits events.
-
-### Phase 3: Tools Service
-Extract current tools into a service. This is the simplest service (stateless request/response). Verify MCP server still works by bridging through the gateway.
-
-### Phase 4: Sessions Service
-Extract session management into a service. Agent and tools call it through the gateway instead of importing `getSessionService()` directly.
-
-### Phase 5: Agent Service
-Extract the Pi agent runtime into a service. It subscribes to `message.received` and `cron.trigger`, calls tools and sessions through the gateway.
-
-### Phase 6: Channel Service
-Extract WhatsApp/Telegram adapters into a channel service. They emit `message.received` events and handle `channel.send` calls.
-
-### Phase 7: Cron Service
-Extract scheduler into a service. Emits `cron.trigger` events on schedule.
-
-### Phase 8: MCP Bridge
-The existing MCP server becomes a thin bridge: MCP `CallToolRequest` → `tool.execute` RPC through gateway. MCP `ListToolsRequest` → `tool.list` RPC.
-
-### Phase 9: UI Client
-Browser WebSocket client that connects to gateway for live agent streaming and session management.
-
----
-
-## Requirements Checklist
-
-### Gateway
-- [ ] WebSocket server with connection lifecycle
-- [ ] Frame parsing and validation (req/res/event)
-- [ ] Service registration handshake
-- [ ] Method routing (req → target service)
-- [ ] Event pub/sub (event → subscribers)
-- [ ] Response correlation (req.id → res.id)
-- [ ] Request timeout (dead service detection)
-- [ ] Backpressure (slow consumer detection + drop)
-- [ ] Auth (challenge-response, service tokens, scopes)
-- [ ] Health ping/pong
-- [ ] Graceful shutdown (drain connections)
-- [ ] Event sequencing (gap detection)
-
-### Service Client
-- [ ] Base class with connect/register/call/emit
-- [ ] Auto-reconnect with exponential backoff
-- [ ] Pending request timeout
-- [ ] Event handler registration
-- [ ] Method handler dispatch
-
-### Services
-- [ ] Agent: run, abort, status, streaming deltas
-- [ ] Tools: execute, list, describe (+ MCP bridge)
-- [ ] Sessions: CRUD, history, message injection
-- [ ] Channels: send, status, adapter lifecycle
-- [ ] Cron: add, list, remove, trigger events
-
-### Protocol
-- [ ] TypeScript types for all frames
-- [ ] Zod schemas for validation
-- [ ] Serialization helpers (JSON, future: msgpack)
-
-### Observability
-- [ ] Frame logging (configurable verbosity)
-- [ ] Service connection/disconnection events
-- [ ] Method call latency tracking
-- [ ] Event delivery confirmation

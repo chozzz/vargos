@@ -342,4 +342,4 @@ VARGOS_TRANSPORT=stdio           # MCP transport (stdio | http)
 
 ---
 
-*For architecture details, see [CLAUDE.md](../CLAUDE.md). For contribution guidelines, see [CONTRIBUTING.md](../CONTRIBUTING.md).*
+*For architecture details, see [architecture.md](./architecture.md). For contribution guidelines, see [CONTRIBUTING.md](../CONTRIBUTING.md).*

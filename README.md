@@ -168,9 +168,9 @@ pnpm lint                 # ESLint + typecheck
 
 ## Documentation
 
-- **[CLAUDE.md](./CLAUDE.md)** — Developer guide, architecture, conventions
-- **[ARCHITECTURE.md](./ARCHITECTURE.md)** — Protocol spec, service contracts
-- **[CONTRIBUTING.md](./CONTRIBUTING.md)** — Contribution guidelines
+- **[Architecture](./docs/architecture.md)** — Protocol spec, service contracts, message flows
+- **[Usage Guide](./docs/USAGE.md)** — Detailed CLI usage, MCP setup, channels
+- **[Contributing](./CONTRIBUTING.md)** — Contribution guidelines
 
 ## Troubleshooting
 
