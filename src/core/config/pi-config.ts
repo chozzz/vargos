@@ -43,12 +43,18 @@ export interface PathsConfig {
   workspace?: string;
 }
 
+export interface StorageConfig {
+  type: 'postgres' | 'sqlite';
+  url?: string;  // required when type=postgres
+}
+
 export interface VargosConfig {
   agent: AgentConfig;
   channels?: Record<string, ChannelEntry>;
   gateway?: GatewayConfig;
   mcp?: McpConfig;
   paths?: PathsConfig;
+  storage?: StorageConfig;
 }
 
 export function getConfigPath(dataDir: string): string {

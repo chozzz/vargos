@@ -58,3 +58,13 @@ export function resolveMediaDir(sessionKey?: string): string {
 export function resolveChannelsDir(): string {
   return path.join(resolveDataDir(), 'channels');
 }
+
+/**
+ * Local cache dir for files that must live on a real filesystem (e.g. SQLite).
+ * Separate from dataDir which may be on a network mount (NFS/CIFS).
+ */
+export function resolveCacheDir(): string {
+  const xdg = process.env.XDG_CACHE_HOME?.trim();
+  const base = xdg ? expandTilde(xdg) : path.join(os.homedir(), '.cache');
+  return path.join(base, 'vargos');
+}
