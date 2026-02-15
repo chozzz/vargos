@@ -1,23 +1,21 @@
 /**
- * Interactive configuration prompts
+ * First-run setup wizard — Identity → LLM → Channels
+ * Uses @clack/prompts for consistent CLI experience
  */
 
-import readline from 'node:readline';
-import { loadConfig, saveConfig, type AgentConfig, type GatewayConfig, type McpConfig, type VargosConfig } from './pi-config.js';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+import { intro, outro, text, select, confirm, log, isCancel } from '@clack/prompts';
+import { loadConfig, saveConfig, type AgentConfig, type VargosConfig } from './pi-config.js';
+import { LOCAL_PROVIDERS } from './validate.js';
 
-function prompt(question: string): Promise<string> {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
+const PLACEHOLDERS = ['[Your name]', '[Preferred name]', '[they/them, he/him, she/her, etc.]', '[e.g., UTC, EST, PST]'];
 
-  return new Promise((resolve) => {
-    rl.question(question, (answer) => {
-      rl.close();
-      resolve(answer.trim());
-    });
-  });
-}
+const DEFAULT_MODELS: Record<string, string> = {
+  openai: 'gpt-4o', anthropic: 'claude-3-5-sonnet-20241022',
+  google: 'gemini-1.5-pro', openrouter: 'openai/gpt-4o',
+  ollama: 'llama3.2', lmstudio: 'default',
+};
 
 function getProviderLink(provider: string): string {
   const links: Record<string, string> = {
@@ -26,120 +24,153 @@ function getProviderLink(provider: string): string {
     google: 'https://ai.google.dev/',
     openrouter: 'https://openrouter.ai/keys',
   };
-  return links[provider] ?? '#';
+  return links[provider] ?? '';
 }
 
-const DEFAULT_MODELS: Record<string, string> = {
-  openai: 'gpt-4o', anthropic: 'claude-3-5-sonnet-20241022',
-  google: 'gemini-1.5-pro', openrouter: 'openai/gpt-4o',
-  ollama: 'llama3.2', lmstudio: 'default',
-};
+async function hasPlaceholderIdentity(workspaceDir: string): Promise<boolean> {
+  try {
+    const content = await fs.readFile(path.join(workspaceDir, 'USER.md'), 'utf-8');
+    return PLACEHOLDERS.some((p) => content.includes(p));
+  } catch {
+    return false;
+  }
+}
 
-export async function interactivePiConfig(dataDir: string): Promise<void> {
-  console.log('');
-  console.log('  Agent Configuration');
-  console.log('  ──────────────────────────');
-  console.log('');
+// ── Step 1: Identity ──────────────────────────────────────────────────────────
+
+async function setupIdentity(workspaceDir: string): Promise<void> {
+  if (!(await hasPlaceholderIdentity(workspaceDir))) return;
+
+  log.step('Identity');
+
+  const name = await text({ message: 'Your name', placeholder: 'Jane Doe' });
+  if (isCancel(name)) return;
+
+  const preferred = await text({ message: 'What should the agent call you?', placeholder: name || 'Jane' });
+  if (isCancel(preferred)) return;
+
+  const pronouns = await text({ message: 'Pronouns', placeholder: 'he/him' });
+  if (isCancel(pronouns)) return;
+
+  const timezone = await text({ message: 'Timezone', placeholder: 'UTC' });
+  if (isCancel(timezone)) return;
+
+  const agentName = await text({ message: 'Agent name', placeholder: 'Vargos', defaultValue: 'Vargos' });
+  if (isCancel(agentName)) return;
+
+  const agentVibe = await text({ message: 'Agent vibe', placeholder: 'chill, professional' });
+  if (isCancel(agentVibe)) return;
+
+  // Patch USER.md
+  const userPath = path.join(workspaceDir, 'USER.md');
+  let userContent = await fs.readFile(userPath, 'utf-8');
+  if (name) userContent = userContent.replace('[Your name]', name);
+  if (preferred) userContent = userContent.replace('[Preferred name]', preferred);
+  if (pronouns) userContent = userContent.replace('[they/them, he/him, she/her, etc.]', pronouns);
+  if (timezone) userContent = userContent.replace('[e.g., UTC, EST, PST]', timezone);
+  await fs.writeFile(userPath, userContent, 'utf-8');
+  log.success('Updated USER.md');
+
+  // Patch SOUL.md
+  if (agentName || agentVibe) {
+    const soulPath = path.join(workspaceDir, 'SOUL.md');
+    try {
+      let soulContent = await fs.readFile(soulPath, 'utf-8');
+      const vibeLines: string[] = [];
+      if (agentName) vibeLines.push(`Your name is ${agentName}.`);
+      if (agentVibe) vibeLines.push(`Your vibe: ${agentVibe}.`);
+      soulContent = soulContent.replace(/## Vibe\n\n/, `## Vibe\n\n${vibeLines.join('\n')}\n\n`);
+      await fs.writeFile(soulPath, soulContent, 'utf-8');
+      log.success('Updated SOUL.md');
+    } catch { /* SOUL.md missing — skip */ }
+  }
+}
+
+// ── Step 2: LLM config ───────────────────────────────────────────────────────
+
+async function setupLlm(dataDir: string): Promise<void> {
+  log.step('LLM Configuration');
+
+  const provider = await select({
+    message: 'Provider',
+    options: [
+      { value: 'openai', label: 'OpenAI' },
+      { value: 'anthropic', label: 'Anthropic' },
+      { value: 'google', label: 'Google' },
+      { value: 'openrouter', label: 'OpenRouter' },
+      { value: 'ollama', label: 'Ollama (local)' },
+      { value: 'lmstudio', label: 'LM Studio (local)' },
+    ],
+  });
+  if (isCancel(provider)) return;
+
+  const model = await text({
+    message: 'Model',
+    defaultValue: DEFAULT_MODELS[provider],
+    placeholder: DEFAULT_MODELS[provider],
+  });
+  if (isCancel(model)) return;
+
+  const agent: AgentConfig = { provider, model };
+
+  if (LOCAL_PROVIDERS.has(provider)) {
+    const defaultUrl = provider === 'ollama' ? 'http://localhost:11434' : 'http://localhost:1234';
+    const baseUrl = await text({
+      message: 'Base URL',
+      defaultValue: defaultUrl,
+      placeholder: defaultUrl,
+    });
+    if (isCancel(baseUrl)) return;
+    agent.baseUrl = baseUrl;
+  } else {
+    const link = getProviderLink(provider);
+    const apiKey = await text({
+      message: `API Key${link ? ` (get one at ${link})` : ''}`,
+      placeholder: 'sk-...',
+    });
+    if (isCancel(apiKey)) return;
+    if (apiKey) agent.apiKey = apiKey;
+  }
 
   const existing = await loadConfig(dataDir);
-
-  if (existing) {
-    console.log(`  Current: ${existing.agent.provider}/${existing.agent.model}`);
-    const answer = await prompt('  Change? (y/n): ');
-    if (answer.toLowerCase() !== 'y') return;
-    console.log('');
-  }
-
-  console.log('  Select a provider:');
-  console.log('    1. openai (GPT-4o, GPT-4o-mini)');
-  console.log('    2. anthropic (Claude)');
-  console.log('    3. google (Gemini)');
-  console.log('    4. openrouter (Multi-provider)');
-  console.log('    5. ollama (Self-hosted)');
-  console.log('    6. lmstudio (Self-hosted)');
-  console.log('');
-
-  const choice = await prompt('    Choice (1-6): ');
-  const providerMap: Record<string, string> = {
-    '1': 'openai', '2': 'anthropic', '3': 'google',
-    '4': 'openrouter', '5': 'ollama', '6': 'lmstudio',
-  };
-
-  const provider = providerMap[choice];
-  if (!provider) {
-    console.log('    Invalid choice, skipping agent config\n');
-    return;
-  }
-
-  const agent: AgentConfig = { provider, model: '' };
-
-  // Base URL for local providers
-  if (provider === 'ollama' || provider === 'lmstudio') {
-    const defaultUrl = provider === 'ollama' ? 'http://localhost:11434' : 'http://localhost:1234';
-    console.log(`\n    Base URL (default: ${defaultUrl}):`);
-    const urlInput = await prompt('    URL: ');
-    agent.baseUrl = urlInput || defaultUrl;
-  }
-
-  // API key (skip for ollama)
-  if (provider !== 'ollama') {
-    console.log(`\n    Enter ${provider} API key:`);
-    console.log(`    Get one at: ${getProviderLink(provider)}`);
-    console.log('');
-
-    const apiKey = await prompt(`    ${provider.toUpperCase()}_API_KEY: `);
-    if (apiKey) {
-      agent.apiKey = apiKey;
-      console.log('    API key saved\n');
-    }
-  }
-
-  console.log(`\n    Model ID (default: ${DEFAULT_MODELS[provider]}):`);
-  const modelInput = await prompt('    Model: ');
-  agent.model = modelInput || DEFAULT_MODELS[provider];
-
-  const config: VargosConfig = {
-    agent,
-    channels: existing?.channels,
-    gateway: existing?.gateway,
-    mcp: existing?.mcp,
-    paths: existing?.paths,
-  };
-
-  // Advanced settings
-  console.log('');
-  const advAnswer = await prompt('  Configure advanced settings? (y/n): ');
-  if (advAnswer.toLowerCase() === 'y') {
-    // Gateway
-    console.log('');
-    console.log('  Gateway');
-    console.log('  ──────────────────────────');
-    const gwPort = await prompt('    Port (default: 9000): ');
-    const gwHost = await prompt('    Host (default: 127.0.0.1): ');
-    const gw: GatewayConfig = {};
-    if (gwPort) gw.port = parseInt(gwPort, 10);
-    if (gwHost) gw.host = gwHost;
-    if (Object.keys(gw).length > 0) config.gateway = gw;
-
-    // MCP
-    console.log('');
-    console.log('  MCP');
-    console.log('  ──────────────────────────');
-    const mcpTransport = await prompt('    Transport (stdio/http, default: http): ');
-    const mcp: McpConfig = {};
-    if (mcpTransport === 'stdio' || mcpTransport === 'http') mcp.transport = mcpTransport;
-
-    if (mcpTransport !== 'stdio') {
-      const mcpHost = await prompt('    Host (default: 127.0.0.1): ');
-      const mcpPort = await prompt('    Port (default: 9001): ');
-      const mcpEndpoint = await prompt('    Endpoint (default: /mcp): ');
-      if (mcpHost) mcp.host = mcpHost;
-      if (mcpPort) mcp.port = parseInt(mcpPort, 10);
-      if (mcpEndpoint) mcp.endpoint = mcpEndpoint;
-    }
-    if (Object.keys(mcp).length > 0) config.mcp = mcp;
-  }
-
+  const config: VargosConfig = existing ? { ...existing, agent } : { agent };
   await saveConfig(dataDir, config);
-  console.log(`    Set: ${provider}/${agent.model}\n`);
+  log.success(`Configured ${provider}/${agent.model}`);
+}
+
+// ── Step 3: Channels (optional) ──────────────────────────────────────────────
+
+async function setupChannels(): Promise<void> {
+  const wantChannel = await confirm({ message: 'Set up a messaging channel?' });
+  if (isCancel(wantChannel) || !wantChannel) return;
+
+  const channel = await select({
+    message: 'Channel',
+    options: [
+      { value: 'whatsapp', label: 'WhatsApp (scan QR code)' },
+      { value: 'telegram', label: 'Telegram (paste bot token)' },
+    ],
+  });
+  if (isCancel(channel)) return;
+
+  const { setupWhatsApp, setupTelegram } = await import('../channels/onboard.js');
+  if (channel === 'whatsapp') await setupWhatsApp();
+  else await setupTelegram();
+}
+
+// ── Public API ────────────────────────────────────────────────────────────────
+
+export async function runFirstRunSetup(dataDir: string, workspaceDir: string): Promise<void> {
+  intro('Vargos — First Run Setup');
+
+  await setupIdentity(workspaceDir);
+  await setupLlm(dataDir);
+  await setupChannels();
+
+  outro('Setup complete — starting gateway...');
+}
+
+/** Backward-compat wrapper — LLM step only (used by start.ts fallback) */
+export async function interactivePiConfig(dataDir: string): Promise<void> {
+  await setupLlm(dataDir);
 }
