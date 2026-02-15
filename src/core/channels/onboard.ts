@@ -9,7 +9,7 @@ import chalk from 'chalk';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { loadChannelConfigs, addChannelConfig } from './config.js';
-import { resolveChannelsDir } from '../config/paths.js';
+import { resolveChannelsDir, resolveDataDir } from '../config/paths.js';
 import { createWhatsAppSocket } from '../../extensions/channel-whatsapp/session.js';
 import { TelegramAdapter } from '../../extensions/channel-telegram/adapter.js';
 import type { ChannelConfig } from './types.js';
@@ -106,7 +106,7 @@ async function setupWhatsApp(): Promise<void> {
       const allowFrom = await promptAllowFrom('phone numbers', '+1234567890');
       const config: ChannelConfig = { type: 'whatsapp', enabled: true, allowFrom };
       await addChannelConfig(config);
-      console.log(chalk.green('Saved to ~/.vargos/config.json'));
+      console.log(chalk.green(`Saved to ${resolveDataDir()}/config.json`));
     } else {
       console.log('');
       console.log(chalk.red('Connection timed out. Try again with: vargos config channel edit'));
@@ -146,7 +146,7 @@ async function setupTelegram(): Promise<void> {
     const allowFrom = await promptAllowFrom('chat IDs', '12345678');
     const config: ChannelConfig = { type: 'telegram', enabled: true, botToken: token, allowFrom };
     await addChannelConfig(config);
-    console.log(chalk.green('Saved to ~/.vargos/config.json'));
+    console.log(chalk.green(`Saved to ${resolveDataDir()}/config.json`));
   } catch (err) {
     console.error(chalk.red(`Validation failed: ${err instanceof Error ? err.message : String(err)}`));
     console.log(chalk.gray('Check your bot token and try again.'));
