@@ -4,7 +4,7 @@
 
 import { loadConfig, saveConfig, type ChannelEntry } from '../config/pi-config.js';
 import { resolveDataDir } from '../config/paths.js';
-import type { ChannelConfig, ChannelType } from './types.js';
+import type { ChannelConfig, ChannelType } from '../contracts/channel.js';
 
 /** Load channel configs from main config.json, converting record → array */
 export async function loadChannelConfigs(): Promise<ChannelConfig[]> {

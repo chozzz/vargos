@@ -11,7 +11,7 @@ import { AgentService } from '../../services/agent/index.js';
 import { McpBridge } from '../../mcp/server.js';
 import { toolRegistry } from '../../tools/registry.js';
 import { FileSessionService } from '../../extensions/service-file/sessions-file.js';
-import { setSessionService } from '../../core/services/factory.js';
+import { PiAgentRuntime } from '../../runtime/runtime.js';
 import { initializeMemoryContext, getMemoryContext } from '../../extensions/service-file/memory-context.js';
 import { resolveDataDir, resolveWorkspaceDir, resolveCacheDir, initPaths } from '../../config/paths.js';
 import type { MemoryStorage } from '../../extensions/service-file/storage.js';
@@ -19,7 +19,7 @@ import { loadConfig } from '../../config/pi-config.js';
 import { validateConfig, checkLocalProvider } from '../../config/validate.js';
 import { initializeWorkspace, isWorkspaceInitialized } from '../../config/workspace.js';
 import type { ExtensionContext } from '../../contracts/extension.js';
-import { setGatewayCall } from '../../core/runtime/extension.js';
+import { setGatewayCall } from '../../runtime/extension.js';
 import { acquireLock, releaseLock } from '../lock.js';
 import {
   renderBanner,
@@ -115,7 +115,6 @@ export async function start(): Promise<void> {
 
   // ── Sessions service ──────────────────────────────────────────────────────
   const fileSessionService = new FileSessionService({ baseDir: dataDir });
-  setSessionService(fileSessionService);
   const sessions = new SessionsService({ sessionService: fileSessionService, gatewayUrl });
   await sessions.initialize();
   await sessions.connect();
@@ -201,7 +200,7 @@ export async function start(): Promise<void> {
   await channels.connect();
 
   if (config.channels) {
-    const { createAdapter } = await import('../../core/channels/factory.js');
+    const { createAdapter } = await import('../../channels/factory.js');
     const gatewayCall = <T = unknown>(target: string, method: string, params?: unknown) =>
       tools.call<T>(target, method, params);
     for (const [type, chConfig] of Object.entries(config.channels)) {
@@ -228,7 +227,8 @@ export async function start(): Promise<void> {
   }
 
   // ── Agent service ─────────────────────────────────────────────────────────
-  const agent = new AgentService({ gatewayUrl, workspaceDir, dataDir });
+  const runtime = new PiAgentRuntime({ sessionService: fileSessionService });
+  const agent = new AgentService({ gatewayUrl, workspaceDir, dataDir, runtime });
   await agent.connect();
   services.push({ name: 'Agent', ok: true });
 

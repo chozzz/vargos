@@ -35,7 +35,7 @@ export async function edit(): Promise<void> {
   });
   if (isCancel(channel)) return;
 
-  const { setupWhatsApp, setupTelegram } = await import('../../core/channels/onboard.js');
+  const { setupWhatsApp, setupTelegram } = await import('../../channels/onboard.js');
   if (channel === 'whatsapp') await setupWhatsApp();
   else await setupTelegram();
 }
