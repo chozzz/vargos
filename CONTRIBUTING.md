@@ -1,35 +1,33 @@
 # Contributing to Vargos
 
-Hey there! 👋
+Thanks for your interest in Vargos.
 
-First off, thanks for your interest in Vargos. We love that you want to help make this project better!
+## Issues First
 
-## 🛤️ Our Contribution Philosophy
+Before opening a PR, start with an issue:
 
-While we prefer issues, ideas, and feedback, we do accept code contributions - just with a few extra steps to keep things tidy.
+- **Bug reports** — what happened, what you expected, steps to reproduce
+- **Feature requests** — describe the use case, not just the solution
+- **Questions** — anything unclear about the project
 
-## ✅ We Love Issues!
+[Open an issue](https://github.com/chozzz/vargos/issues)
 
-- **Bug Reports** 🐛  
-- **Feature Requests** 💡  
-- **Ideas & Feedback** 🧠  
-- **Questions** ❓  
+## Pull Requests
 
-If you spot a bug, have a cool idea, or just want to chat about the project, please [open an issue](https://github.com/chozzz/vargos/issues)!
+1. **Open an issue first** — propose your idea or bugfix before writing code
+2. **Wait for feedback** — we'll discuss scope and approach
+3. **Keep it focused** — small, single-purpose PRs are easier to review
+4. **Test your changes** — run `pnpm run test:run` and `pnpm run typecheck`
 
-## 🛑 Before You Submit a PR
+Not every PR will be merged. We review carefully to keep the project focused.
 
-1. **Open an Issue or Discussion First:**  
-   Please propose your idea or bugfix in an issue before opening a pull request. This helps us keep the project focused and avoid duplicate work.
-2. **Wait for Feedback:**  
-   We'll discuss your idea and let you know if a PR would be welcome.
-3. **Follow the Style Guide:**  
-   Keep your code clean, documented, and tested.
+## Code Style
 
-## 🚦 PRs May Not Always Be Merged
+- TypeScript with ESM (`.js` extensions on imports)
+- Fewer lines is better — delete before extending
+- Test at service boundaries, not implementation details
+- Follow existing patterns before introducing new ones
 
-We review all contributions carefully, but we may not merge every PR. Please don't take it personally—we're just keeping the project on track!
+## License
 
----
-
-Thanks for being part of the Vargos community! 🚀
+By contributing, you agree that your contributions will be licensed under the [Apache-2.0 License](./LICENSE.md).
