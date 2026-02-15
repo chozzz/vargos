@@ -20,4 +20,4 @@ export {
   parseFrame,
   serializeFrame,
   createRequestId,
-} from './protocol.js';
+} from '../protocol/index.js';

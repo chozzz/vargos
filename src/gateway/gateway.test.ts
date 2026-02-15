@@ -10,7 +10,7 @@ import {
   type EventFrame,
   type Frame,
   type ServiceRegistration,
-} from './protocol.js';
+} from '../protocol/index.js';
 
 // ============================================================================
 // Protocol tests

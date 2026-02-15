@@ -2,7 +2,7 @@
  * Agent tools extension (sessions, cron, process)
  */
 
-import type { VargosExtension } from '../../core/extensions.js';
+import type { VargosExtension } from '../../contracts/extension.js';
 import { sessionsListTool } from './sessions-list.js';
 import { sessionsHistoryTool } from './sessions-history.js';
 import { sessionsSendTool } from './sessions-send.js';

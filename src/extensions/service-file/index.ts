@@ -3,7 +3,7 @@
  */
 
 import { createRequire } from 'node:module';
-import type { VargosExtension } from '../../core/extensions.js';
+import type { VargosExtension } from '../../contracts/extension.js';
 
 const require = createRequire(import.meta.url);
 
