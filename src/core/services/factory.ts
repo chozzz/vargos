@@ -14,7 +14,8 @@ export type { ServiceConfig };
 import { FileMemoryService } from '../../extensions/service-file/memory-file.js';
 import { FileSessionService } from '../../extensions/service-file/sessions-file.js';
 import { MemoryContext, initializeMemoryContext } from '../../extensions/service-file/memory-context.js';
-import { resolveDataDir } from '../config/paths.js';
+import { resolveDataDir, resolveCacheDir } from '../config/paths.js';
+import { MemorySQLiteStorage } from '../../extensions/service-file/sqlite-storage.js';
 
 export class ServiceFactory {
   private config: ServiceConfig;
@@ -51,10 +52,7 @@ export class ServiceFactory {
       chunkSize: 400,
       chunkOverlap: 80,
       hybridWeight: { vector: 0.7, text: 0.3 },
-      // Enable SQLite persistence for embeddings (stored in data dir, not workspace)
-      sqlite: {
-        dbPath: path.join(dataDir, 'memory.db'),
-      },
+      storage: new MemorySQLiteStorage({ dbPath: path.join(resolveCacheDir(), 'memory.db') }),
       // Index session transcripts if using file-based sessions
       sessionsDir,
       // Enable file watcher for auto-reindex in dev mode

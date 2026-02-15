@@ -14,7 +14,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { glob } from 'tinyglobby';
 import { fileURLToPath } from 'node:url';
-import { MemorySQLiteStorage, SQLiteStorageConfig } from './sqlite-storage.js';
+import type { MemoryStorage } from './storage.js';
 import { FSWatcher, watch } from 'node:fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -50,7 +50,7 @@ export interface MemoryContextConfig {
     vector: number;
     text: number;
   };
-  sqlite?: SQLiteStorageConfig;  // Enable SQLite persistence
+  storage?: MemoryStorage;
   sessionsDir?: string;          // Session transcripts for indexing
   enableFileWatcher?: boolean;   // Auto-reindex on file changes
 }
@@ -68,7 +68,7 @@ export class MemoryContext {
   private config: ResolvedMemoryContextConfig;
   private chunks: Map<string, MemoryChunk> = new Map();
   private lastSync: number = 0;
-  private sqliteStorage: MemorySQLiteStorage | null = null;
+  private storage: MemoryStorage | null = null;
   private fileWatcher: FSWatcher | null = null;
   private watcherDebounce: Map<string, NodeJS.Timeout> = new Map();
 
@@ -86,13 +86,13 @@ export class MemoryContext {
   async initialize(): Promise<void> {
     await fs.mkdir(this.config.cacheDir, { recursive: true });
 
-    // Initialize SQLite if configured
-    if (this.config.sqlite) {
-      this.sqliteStorage = new MemorySQLiteStorage(this.config.sqlite);
-      await this.sqliteStorage.initialize();
+    // Initialize storage if provided
+    if (this.config.storage) {
+      this.storage = this.config.storage;
+      await this.storage.initialize();
 
-      // Load cached chunks from SQLite
-      const cachedChunks = await this.sqliteStorage.getAllChunks();
+      // Load cached chunks into memory for text search
+      const cachedChunks = await this.storage.getAllChunks();
       for (const chunk of cachedChunks) {
         this.chunks.set(chunk.id, chunk);
       }
@@ -108,8 +108,8 @@ export class MemoryContext {
 
   async close(): Promise<void> {
     this.stopFileWatcher();
-    await this.sqliteStorage?.close();
-    this.sqliteStorage = null;
+    await this.storage?.close();
+    this.storage = null;
   }
 
   // ========================================================================
@@ -200,12 +200,12 @@ export class MemoryContext {
   }
 
   private async checkNeedsReindex(relPath: string, fullPath: string): Promise<boolean> {
-    if (!this.sqliteStorage) return true;
+    if (!this.storage) return true;
 
     const stat = await fs.stat(fullPath).catch(() => null);
     if (!stat) return true;
 
-    const status = await this.sqliteStorage.getFileStatus(relPath);
+    const status = await this.storage.getFileStatus(relPath);
     if (!status) return true;
 
     return status.mtime !== stat.mtime.getTime() || status.size !== stat.size;
@@ -220,7 +220,7 @@ export class MemoryContext {
 
       // Remove old chunks for this file
       this.removeFileChunks(relPath);
-      await this.sqliteStorage?.deleteChunksByPath(relPath);
+      await this.storage?.deleteChunksByPath(relPath);
 
       // Create new chunks
       const chunks = this.createChunks(relPath, content, stat.mtime);
@@ -235,11 +235,11 @@ export class MemoryContext {
       // Store chunks in memory and SQLite
       for (const chunk of chunks) {
         this.chunks.set(chunk.id, chunk);
-        await this.sqliteStorage?.saveChunk(chunk);
+        await this.storage?.saveChunk(chunk);
       }
 
       // Update file status in SQLite
-      await this.sqliteStorage?.updateFileStatus(relPath, stat.mtime.getTime(), stat.size);
+      await this.storage?.updateFileStatus(relPath, stat.mtime.getTime(), stat.size);
 
       options?.progress?.(`Indexed ${relPath}: ${chunks.length} chunks`);
     } catch (err) {
@@ -289,7 +289,7 @@ export class MemoryContext {
       // Remove old session chunks
       const sessionPath = `sessions/${fileName}.jsonl`;
       this.removeFileChunks(sessionPath);
-      await this.sqliteStorage?.deleteChunksByPath(sessionPath);
+      await this.storage?.deleteChunksByPath(sessionPath);
 
       // Index messages (skip header line)
       let chunks: MemoryChunk[] = [];
@@ -327,11 +327,11 @@ export class MemoryContext {
       // Store chunks
       for (const chunk of chunks) {
         this.chunks.set(chunk.id, chunk);
-        await this.sqliteStorage?.saveChunk(chunk);
+        await this.storage?.saveChunk(chunk);
       }
 
       // Update file status
-      await this.sqliteStorage?.updateFileStatus(sessionPath, stat.mtime.getTime(), stat.size);
+      await this.storage?.updateFileStatus(sessionPath, stat.mtime.getTime(), stat.size);
 
       return chunks.length;
     } catch (err) {
@@ -487,33 +487,40 @@ export class MemoryContext {
     const maxResults = options.maxResults ?? 6;
     const minScore = options.minScore ?? 0.3;
     
-    // Generate query embedding if using vector search
     const queryEmbedding = await this.generateEmbedding(query);
-    
-    // Score all chunks
-    const scores: Array<{ chunk: MemoryChunk; score: number }> = [];
-    
-    for (const chunk of this.chunks.values()) {
-      let score = 0;
-      
-      // Vector similarity (cosine)
-      if (queryEmbedding && chunk.embedding) {
-        const vectorScore = this.cosineSimilarity(queryEmbedding, chunk.embedding);
-        score += vectorScore * this.config.hybridWeight.vector;
+
+    // Vector search: delegate to storage when it supports native similarity
+    let vectorResults: Map<string, number> = new Map();
+    if (queryEmbedding && this.storage?.searchSimilar) {
+      const hits = await this.storage.searchSimilar(queryEmbedding, maxResults * 2, minScore);
+      for (const { chunk, score } of hits) {
+        vectorResults.set(chunk.id, score * this.config.hybridWeight.vector);
+        // Ensure chunk is available for text scoring
+        if (!this.chunks.has(chunk.id)) this.chunks.set(chunk.id, chunk);
       }
-      
+    }
+
+    // Score all in-memory chunks (text + optional JS-side vector)
+    const scores: Array<{ chunk: MemoryChunk; score: number }> = [];
+
+    for (const chunk of this.chunks.values()) {
+      let score = vectorResults.get(chunk.id) ?? 0;
+
+      // JS-side cosine fallback when storage lacks searchSimilar
+      if (!this.storage?.searchSimilar && queryEmbedding && chunk.embedding) {
+        score += this.cosineSimilarity(queryEmbedding, chunk.embedding) * this.config.hybridWeight.vector;
+      }
+
       // Text match (BM25-ish)
-      const textScore = this.textScore(query, chunk.content);
-      score += textScore * this.config.hybridWeight.text;
-      
+      score += this.textScore(query, chunk.content) * this.config.hybridWeight.text;
+
       if (score >= minScore) {
         scores.push({ chunk, score });
       }
     }
-    
-    // Sort by score and return top results
+
     scores.sort((a, b) => b.score - a.score);
-    
+
     return scores.slice(0, maxResults).map(({ chunk, score }) => ({
       chunk,
       score,

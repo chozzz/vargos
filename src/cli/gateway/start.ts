@@ -13,7 +13,8 @@ import { toolRegistry } from '../../core/tools/registry.js';
 import { FileSessionService } from '../../extensions/service-file/sessions-file.js';
 import { setSessionService } from '../../core/services/factory.js';
 import { initializeMemoryContext, getMemoryContext } from '../../extensions/service-file/memory-context.js';
-import { resolveDataDir, resolveWorkspaceDir, initPaths } from '../../core/config/paths.js';
+import { resolveDataDir, resolveWorkspaceDir, resolveCacheDir, initPaths } from '../../core/config/paths.js';
+import type { MemoryStorage } from '../../extensions/service-file/storage.js';
 import { loadConfig } from '../../core/config/pi-config.js';
 import { validateConfig, checkLocalProvider } from '../../core/config/validate.js';
 import { initializeWorkspace, isWorkspaceInitialized } from '../../core/config/workspace.js';
@@ -69,6 +70,11 @@ export async function start(): Promise<void> {
     await runFirstRunSetup(dataDir, workspaceDir);
     config = await loadConfig(dataDir);
   }
+  if (config && !config.storage && process.stdin.isTTY) {
+    const { setupStorage } = await import('../../core/config/onboard.js');
+    await setupStorage(dataDir);
+    config = await loadConfig(dataDir);
+  }
   if (!config) {
     log('  No config found. Run: vargos config');
     process.exit(1);
@@ -118,6 +124,17 @@ export async function start(): Promise<void> {
   // ── Memory context ────────────────────────────────────────────────────────
   const envKey = process.env[`${config.agent.provider.toUpperCase()}_API_KEY`];
   const apiKey = envKey || config.agent.apiKey;
+
+  let memoryStorage: MemoryStorage;
+  const storageType = config.storage?.type ?? 'postgres';
+  if (storageType === 'postgres' && config.storage?.url) {
+    const { MemoryPostgresStorage } = await import('../../extensions/service-file/postgres-storage.js');
+    memoryStorage = new MemoryPostgresStorage({ url: config.storage.url });
+  } else {
+    const { MemorySQLiteStorage } = await import('../../extensions/service-file/sqlite-storage.js');
+    memoryStorage = new MemorySQLiteStorage({ dbPath: path.join(resolveCacheDir(), 'memory.db') });
+  }
+
   await initializeMemoryContext({
     memoryDir: workspaceDir,
     cacheDir: path.join(dataDir, 'cache'),
@@ -126,7 +143,7 @@ export async function start(): Promise<void> {
     chunkSize: 400,
     chunkOverlap: 80,
     hybridWeight: { vector: 0.7, text: 0.3 },
-    sqlite: { dbPath: path.join(dataDir, 'memory.db') },
+    storage: memoryStorage,
     sessionsDir: path.join(dataDir, 'sessions'),
     enableFileWatcher: process.env.NODE_ENV === 'development',
   });

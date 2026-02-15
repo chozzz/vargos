@@ -6,7 +6,8 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { intro, outro, text, select, confirm, log, isCancel } from '@clack/prompts';
-import { loadConfig, saveConfig, type AgentConfig, type VargosConfig } from './pi-config.js';
+import pg from 'pg';
+import { loadConfig, saveConfig, type AgentConfig, type StorageConfig, type VargosConfig } from './pi-config.js';
 import { LOCAL_PROVIDERS } from './validate.js';
 
 const PLACEHOLDERS = ['[Your name]', '[Preferred name]', '[they/them, he/him, she/her, etc.]', '[e.g., UTC, EST, PST]'];
@@ -138,7 +139,109 @@ async function setupLlm(dataDir: string): Promise<void> {
   log.success(`Configured ${provider}/${agent.model}`);
 }
 
-// ── Step 3: Channels (optional) ──────────────────────────────────────────────
+// ── Step 3: Storage ──────────────────────────────────────────────────────────
+
+async function testPostgresConnection(url: string): Promise<string | null> {
+  const dbName = new URL(url).pathname.slice(1);
+  let pool = new pg.Pool({ connectionString: url });
+  try {
+    await pool.query('SELECT 1');
+  } catch (err: unknown) {
+    const pgErr = err as { code?: string; message?: string };
+    if (pgErr.code === '3D000') {
+      // DB doesn't exist — try creating it
+      await pool.end();
+      const baseUrl = new URL(url);
+      baseUrl.pathname = '/postgres';
+      const bootstrap = new pg.Pool({ connectionString: baseUrl.toString() });
+      try {
+        if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(dbName)) return `Invalid database name: ${dbName}`;
+        await bootstrap.query(`CREATE DATABASE ${dbName}`);
+      } catch (createErr: unknown) {
+        return (createErr as Error).message;
+      } finally {
+        await bootstrap.end();
+      }
+      // Reconnect to the newly created database
+      pool = new pg.Pool({ connectionString: url });
+    } else {
+      return pgErr.message ?? 'Connection failed';
+    }
+  }
+
+  // Verify pgvector extension is available
+  try {
+    await pool.query('CREATE EXTENSION IF NOT EXISTS vector');
+  } catch (err: unknown) {
+    const pgErr = err as { code?: string };
+    if (pgErr.code === '42501') {
+      // Check if already installed by a superuser
+      const { rows } = await pool.query("SELECT 1 FROM pg_extension WHERE extname = 'vector'");
+      if (rows.length === 0) {
+        await pool.end();
+        return 'pgvector not installed — run as superuser: CREATE EXTENSION vector;';
+      }
+    } else {
+      await pool.end();
+      return `pgvector setup failed: ${(err as Error).message}`;
+    }
+  }
+
+  await pool.end();
+  return null;
+}
+
+export async function setupStorage(dataDir: string): Promise<void> {
+  log.step('Storage');
+
+  const storageType = await select({
+    message: 'Storage backend',
+    options: [
+      { value: 'postgres', label: 'PostgreSQL (recommended)' },
+      { value: 'sqlite', label: 'SQLite (local only)' },
+    ],
+  });
+  if (isCancel(storageType)) return;
+
+  const storage: StorageConfig = { type: storageType as 'postgres' | 'sqlite' };
+
+  if (storageType === 'postgres') {
+    let connected = false;
+    while (!connected) {
+      const url = await text({
+        message: 'PostgreSQL URL',
+        defaultValue: 'postgresql://localhost:5432/vargos',
+        placeholder: 'postgresql://localhost:5432/vargos',
+      });
+      if (isCancel(url)) return;
+
+      log.info('Testing connection...');
+      const err = await testPostgresConnection(url);
+      if (err) {
+        log.error(`Connection failed: ${err}`);
+        const fallback = await confirm({ message: 'Use SQLite instead?' });
+        if (isCancel(fallback)) return;
+        if (fallback) {
+          storage.type = 'sqlite';
+          connected = true;
+        }
+        // else: loop and retry
+      } else {
+        storage.url = url;
+        connected = true;
+        log.success('Connected to PostgreSQL');
+      }
+    }
+  }
+
+  const existing = await loadConfig(dataDir);
+  if (existing) {
+    existing.storage = storage;
+    await saveConfig(dataDir, existing);
+  }
+}
+
+// ── Step 4: Channels (optional) ──────────────────────────────────────────────
 
 async function setupChannels(): Promise<void> {
   const wantChannel = await confirm({ message: 'Set up a messaging channel?' });
@@ -165,6 +268,7 @@ export async function runFirstRunSetup(dataDir: string, workspaceDir: string): P
 
   await setupIdentity(workspaceDir);
   await setupLlm(dataDir);
+  await setupStorage(dataDir);
   await setupChannels();
 
   outro('Setup complete — starting gateway...');
