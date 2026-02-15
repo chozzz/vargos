@@ -292,13 +292,4 @@ export class AgentLifecycle extends EventEmitter {
   }
 }
 
-// Global lifecycle instance
-let globalLifecycle: AgentLifecycle | null = null;
-
-export function getAgentLifecycle(): AgentLifecycle {
-  if (!globalLifecycle) {
-    globalLifecycle = new AgentLifecycle();
-  }
-  return globalLifecycle;
-}
 

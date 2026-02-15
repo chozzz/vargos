@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { GatewayServer } from '../../gateway/server.js';
-import { ServiceClient } from '../client.js';
+import { ServiceClient, type ServiceClientConfig } from '../client.js';
 
 // Mock the Pi runtime dependencies so we can test the service shell
-vi.mock('../../core/runtime/runtime.js', () => {
+vi.mock('../../runtime/runtime.js', () => {
   class MockRuntime {
     async run(config: any) {
       return { success: true, response: `Executed: ${config.sessionKey}`, duration: 100 };
@@ -14,25 +14,32 @@ vi.mock('../../core/runtime/runtime.js', () => {
     offStream() {}
     onLifecycle() {}
   }
-  return {
-    PiAgentRuntime: MockRuntime,
-    getPiAgentRuntime: () => new MockRuntime(),
-    initializePiAgentRuntime: () => new MockRuntime(),
-  };
+  return { PiAgentRuntime: MockRuntime };
 });
 
-vi.mock('../../core/config/pi-config.js', () => ({
+function createMockRuntime() {
+  return {
+    run: async (config: any) => ({ success: true, response: `Executed: ${config.sessionKey}`, duration: 100 }),
+    abortRun: () => true,
+    listActiveRuns: () => [],
+    onStream: () => {},
+    offStream: () => {},
+    onLifecycle: () => {},
+  } as any;
+}
+
+vi.mock('../../config/pi-config.js', () => ({
   loadConfig: async () => ({
     agent: { provider: 'test', model: 'test-model', apiKey: 'test-key' },
   }),
   getPiConfigPaths: () => ({ agentDir: '/tmp', authPath: '/tmp/auth.json', modelsPath: '/tmp/models.json' }),
 }));
 
-vi.mock('../../core/config/workspace.js', () => ({
+vi.mock('../../config/workspace.js', () => ({
   loadContextFiles: async () => [],
 }));
 
-vi.mock('../../core/config/paths.js', () => ({
+vi.mock('../../config/paths.js', () => ({
   resolveSessionFile: (key: string) => `/tmp/sessions/${key}.jsonl`,
   resolveWorkspaceDir: () => '/tmp/workspace',
   resolveDataDir: () => '/tmp/data',
@@ -46,7 +53,7 @@ const GATEWAY_URL = `ws://127.0.0.1:${PORT}`;
 class TestCaller extends ServiceClient {
   events: Array<{ event: string; payload: unknown }> = [];
 
-  constructor(subs: string[] = []) {
+  constructor(subs: ServiceClientConfig['subscriptions'] = []) {
     super({
       service: 'test-caller',
       methods: [],
@@ -70,7 +77,7 @@ describe('AgentService', () => {
     gateway = new GatewayServer({ port: PORT, host: '127.0.0.1', requestTimeout: 5000, pingInterval: 60_000 });
     await gateway.start();
 
-    agent = new AgentService({ gatewayUrl: GATEWAY_URL, workspaceDir: '/tmp/workspace', dataDir: '/tmp/data' });
+    agent = new AgentService({ gatewayUrl: GATEWAY_URL, workspaceDir: '/tmp/workspace', dataDir: '/tmp/data', runtime: createMockRuntime() });
     await agent.connect();
 
     caller = new TestCaller(['run.started', 'run.completed']);

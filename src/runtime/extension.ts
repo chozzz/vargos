@@ -8,7 +8,7 @@ import type { ToolDefinition } from '@mariozechner/pi-coding-agent';
 import type { AgentToolResult, AgentToolUpdateCallback } from '@mariozechner/pi-agent-core';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { toolRegistry } from '../tools/registry.js';
-import type { Tool, ToolContext } from '../tools/types.js';
+import type { Tool, ToolContext } from '../contracts/tool.js';
 import { createLogger } from '../lib/logger.js';
 
 const log = createLogger('tools');
@@ -24,15 +24,14 @@ export function setGatewayCall(fn: GatewayCallFn): void {
 /**
  * Convert Zod schema to JSON Schema for Pi SDK
  */
-function createParamsSchema(zodSchema: import('zod').ZodSchema): any {
-  // Convert Zod to JSON Schema
+function createParamsSchema(zodSchema: import('zod').ZodSchema): ToolDefinition['parameters'] {
   const jsonSchema = zodToJsonSchema(zodSchema, {
     name: 'parameters',
     $refStrategy: 'none',
   });
 
-  // Return the schema object (not the full wrapper)
-  return jsonSchema.definitions?.parameters || jsonSchema;
+  // zodToJsonSchema produces a JSON Schema object compatible with TypeBox at runtime
+  return (jsonSchema.definitions?.parameters || jsonSchema) as ToolDefinition['parameters'];
 }
 
 /**

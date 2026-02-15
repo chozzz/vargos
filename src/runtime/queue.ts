@@ -144,13 +144,4 @@ export class SessionMessageQueue extends EventEmitter {
 
 }
 
-// Global queue instance
-let globalQueue: SessionMessageQueue | null = null;
-
-export function getSessionMessageQueue(): SessionMessageQueue {
-  if (!globalQueue) {
-    globalQueue = new SessionMessageQueue();
-  }
-  return globalQueue;
-}
 

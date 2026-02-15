@@ -10,20 +10,21 @@
  */
 
 import { ServiceClient } from '../client.js';
-import { createLogger } from '../../core/lib/logger.js';
-import { getPiAgentRuntime, type PiAgentRuntime, type PiAgentConfig, type PiAgentRunResult } from '../../core/runtime/runtime.js';
+import { createLogger } from '../../lib/logger.js';
+import { type PiAgentRuntime, type PiAgentConfig, type PiAgentRunResult } from '../../runtime/runtime.js';
 
 const log = createLogger('agent');
-import type { AgentStreamEvent } from '../../core/runtime/lifecycle.js';
-import { resolveSessionFile, resolveWorkspaceDir, resolveDataDir } from '../../core/config/paths.js';
-import { loadConfig } from '../../core/config/pi-config.js';
-import { loadContextFiles } from '../../core/config/workspace.js';
-import { LOCAL_PROVIDERS } from '../../core/config/validate.js';
+import type { AgentStreamEvent } from '../../runtime/lifecycle.js';
+import { resolveSessionFile, resolveWorkspaceDir, resolveDataDir } from '../../config/paths.js';
+import { loadConfig } from '../../config/pi-config.js';
+import { loadContextFiles } from '../../config/workspace.js';
+import { LOCAL_PROVIDERS } from '../../config/validate.js';
 
 export interface AgentServiceConfig {
   gatewayUrl?: string;
   workspaceDir?: string;
   dataDir?: string;
+  runtime: PiAgentRuntime;
 }
 
 export class AgentService extends ServiceClient {
@@ -31,7 +32,7 @@ export class AgentService extends ServiceClient {
   private workspaceDir: string;
   private dataDir: string;
 
-  constructor(config: AgentServiceConfig = {}) {
+  constructor(config: AgentServiceConfig) {
     super({
       service: 'agent',
       methods: ['agent.run', 'agent.abort', 'agent.status'],
@@ -39,7 +40,7 @@ export class AgentService extends ServiceClient {
       subscriptions: ['message.received', 'cron.trigger'],
       gatewayUrl: config.gatewayUrl,
     });
-    this.runtime = getPiAgentRuntime();
+    this.runtime = config.runtime;
     this.workspaceDir = config.workspaceDir ?? resolveWorkspaceDir();
     this.dataDir = config.dataDir ?? resolveDataDir();
   }
