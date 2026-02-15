@@ -190,7 +190,7 @@ export class Gateway extends EventEmitter {
     const sessions = getSessionService();
     const sessionKey = context.sessionKey;
 
-    log.debug(`execute: sessionKey=${sessionKey} channel=${context.channel}`);
+    log.info(`execute: sessionKey=${sessionKey} channel=${context.channel}`);
 
     let session = await sessions.get(sessionKey);
     if (!session) {
@@ -235,7 +235,7 @@ export class Gateway extends EventEmitter {
       };
     }
 
-    log.debug(`running agent: provider=${provider} model=${model}`);
+    log.info(`running agent: provider=${provider} model=${model}`);
 
     const runtime = getPiAgentRuntime();
     const result = await log.child(() => runtime.run({
@@ -250,7 +250,7 @@ export class Gateway extends EventEmitter {
       channel: context.channel,
     }));
 
-    log.debug(`result: success=${result.success} response=${(result.response || result.error || '').slice(0, 100)}`);
+    log.info(`result: success=${result.success} response=${(result.response || result.error || '').slice(0, 100)}`);
 
     if (result.success) {
       return {
@@ -336,6 +336,8 @@ export async function processAndDeliver(
         ? result.content
         : result.content.toString('utf-8');
       await deliverReply(send, text);
+    } else if (!result.success && result.content) {
+      await send(`[error] ${result.content}`).catch(() => {});
     }
     return result;
   } finally {
