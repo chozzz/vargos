@@ -40,7 +40,8 @@
     "test": "vitest",
     "test:run": "vitest run",
     "lint": "eslint src/**/*.ts && tsc --noEmit",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "postinstall": "pnpm rebuild better-sqlite3"
   },
   "dependencies": {
     "@clack/prompts": "^1.0.0",

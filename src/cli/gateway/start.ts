@@ -19,6 +19,7 @@ import { validateConfig, checkLocalProvider } from '../../core/config/validate.j
 import { initializeWorkspace, isWorkspaceInitialized } from '../../core/config/workspace.js';
 import type { ExtensionContext } from '../../core/extensions.js';
 import { setGatewayCall } from '../../core/runtime/extension.js';
+import { acquireLock, releaseLock } from '../lock.js';
 import {
   renderBanner,
   renderServices,
@@ -31,23 +32,13 @@ import {
 const require = createRequire(import.meta.url);
 const { version: VERSION } = require('../../../package.json');
 
-async function acquireProcessLock(): Promise<boolean> {
-  const pidFile = path.join(resolveDataDir(), 'vargos.pid');
-  try { await fs.mkdir(path.dirname(pidFile), { recursive: true }); } catch { /* exists */ }
-
-  try {
-    const existing = parseInt(await fs.readFile(pidFile, 'utf-8'), 10);
-    if (existing && existing !== process.pid) {
-      try { process.kill(existing, 0); return false; } catch { /* stale lock */ }
-    }
-  } catch { /* no lock file */ }
-
-  await fs.writeFile(pidFile, String(process.pid));
-  return true;
+/** Local PID file for stop/restart commands on the same machine */
+async function writePidFile(dataDir: string): Promise<void> {
+  await fs.writeFile(path.join(dataDir, 'vargos.pid'), String(process.pid));
 }
 
-async function releaseProcessLock(): Promise<void> {
-  try { await fs.unlink(path.join(resolveDataDir(), 'vargos.pid')); } catch { /* gone */ }
+async function removePidFile(dataDir: string): Promise<void> {
+  try { await fs.unlink(path.join(dataDir, 'vargos.pid')); } catch { /* gone */ }
 }
 
 // Tool groups for display — maps extension module to label
@@ -59,13 +50,13 @@ export async function start(): Promise<void> {
   const dataDir = resolveDataDir();
   const workspaceDir = resolveWorkspaceDir();
 
-  // ── PID lock ──────────────────────────────────────────────────────────────
-  if (!(await acquireProcessLock())) {
-    const pidFile = path.join(dataDir, 'vargos.pid');
-    const pid = await fs.readFile(pidFile, 'utf-8').catch(() => '?');
-    log(`\n  Another instance running (PID: ${pid}) — exiting.\n`);
+  // ── Gateway lock ─────────────────────────────────────────────────────────
+  const lockHolder = await acquireLock(dataDir);
+  if (lockHolder) {
+    log(`\n  Another instance running (host: ${lockHolder.host}, PID: ${lockHolder.pid}) — exiting.\n`);
     process.exit(1);
   }
+  await writePidFile(dataDir);
 
   // ── Config ────────────────────────────────────────────────────────────────
   if (!(await isWorkspaceInitialized(workspaceDir))) {
@@ -259,7 +250,8 @@ export async function start(): Promise<void> {
   const shutdown = async () => {
     log('\n  Shutting down...');
     await teardown();
-    await releaseProcessLock();
+    await removePidFile(dataDir);
+    await releaseLock();
     process.exit(0);
   };
 
@@ -269,7 +261,8 @@ export async function start(): Promise<void> {
   process.on('SIGUSR2', async () => {
     log('\n  Restarting...');
     await teardown();
-    await releaseProcessLock();
+    await removePidFile(dataDir);
+    await releaseLock();
     const { spawn } = await import('node:child_process');
     spawn(process.argv[0], process.argv.slice(1), {
       detached: true,
