@@ -1,16 +1,17 @@
 /**
  * WhatsApp channel adapter
- * Receives text DMs via Baileys, processes through gateway, delivers replies
+ * Receives text DMs via Baileys, processes through gateway RPC, delivers replies
  */
 
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { WASocket } from '@whiskeysockets/baileys';
-import type { ChannelAdapter, ChannelStatus } from '../../contracts/channel.js';
+import type { ChannelAdapter, ChannelStatus, GatewayCallFn } from '../../contracts/channel.js';
 import { createWhatsAppSocket, type WhatsAppInboundMessage } from './session.js';
 import { createDedupeCache } from '../../lib/dedupe.js';
 import { createMessageDebouncer } from '../../lib/debounce.js';
-import { processAndDeliver, type InputType, type NormalizedInput, type GatewayContext } from '../../core/gateway/core.js';
+import { saveMedia } from '../../lib/media.js';
+import { deliverReply } from '../../lib/reply-delivery.js';
 import { resolveChannelsDir } from '../../config/paths.js';
 import { Reconnector } from '../../lib/reconnect.js';
 import { createLogger } from '../../lib/logger.js';
@@ -29,11 +30,13 @@ export class WhatsAppAdapter implements ChannelAdapter {
   private allowFrom: Set<string> | null;
   private authDir = '';
   private lidCache = new Map<string, string>();
+  private gatewayCall?: GatewayCallFn;
 
-  constructor(allowFrom?: string[]) {
+  constructor(allowFrom?: string[], gatewayCall?: GatewayCallFn) {
     this.allowFrom = allowFrom?.length
       ? new Set(allowFrom.flatMap(p => [p, p.replace(/^\+/, '')]))
       : null;
+    this.gatewayCall = gatewayCall;
     this.debouncer = createMessageDebouncer(
       (jid, messages) => {
         this.handleBatch(jid, messages).catch((err) => {
@@ -107,7 +110,7 @@ export class WhatsAppAdapter implements ChannelAdapter {
   /**
    * Resolve a JID to a phone number.
    * Baileys v7 uses LID format (opaque@lid) instead of phone@s.whatsapp.net.
-   * LID→phone mappings are stored in the auth dir by Baileys.
+   * LID->phone mappings are stored in the auth dir by Baileys.
    */
   private resolvePhone(jid: string): string {
     if (jid.endsWith('@s.whatsapp.net')) {
@@ -163,84 +166,111 @@ export class WhatsAppAdapter implements ChannelAdapter {
     return `whatsapp:${this.resolvePhone(jid)}`;
   }
 
+  private async runViaGateway(params: {
+    sessionKey: string;
+    jid: string;
+    content: string;
+    channel: string;
+    images?: Array<{ data: string; mimeType: string }>;
+  }): Promise<void> {
+    if (!this.gatewayCall) {
+      log.error('No gateway connection — cannot process message');
+      return;
+    }
+
+    // Create session (idempotent)
+    await this.gatewayCall('sessions', 'session.create', {
+      sessionKey: params.sessionKey,
+      kind: 'main',
+      metadata: { channel: params.channel },
+    }).catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!msg.includes('already exists')) throw err;
+    });
+
+    // Store user message
+    await this.gatewayCall('sessions', 'session.addMessage', {
+      sessionKey: params.sessionKey,
+      content: params.content,
+      role: 'user',
+      metadata: { type: 'task', channel: params.channel },
+    });
+
+    // Typing indicator
+    let typingInterval: ReturnType<typeof setInterval> | undefined;
+    if (this.sock) {
+      const typing = () => this.sock!.sendPresenceUpdate('composing', params.jid);
+      typing().catch(() => {});
+      typingInterval = setInterval(() => typing().catch(() => {}), 4000);
+    }
+
+    try {
+      const result = await this.gatewayCall<{ success: boolean; response?: string; error?: string }>(
+        'agent', 'agent.run', {
+          sessionKey: params.sessionKey,
+          task: params.content,
+          channel: params.channel,
+          images: params.images,
+        },
+      );
+
+      if (result.success && result.response) {
+        await deliverReply((chunk) => this.send(params.jid, chunk), result.response);
+      } else if (!result.success) {
+        await this.send(params.jid, `[error] ${result.error || 'Agent run failed'}`).catch(() => {});
+      }
+    } finally {
+      if (typingInterval) clearInterval(typingInterval);
+    }
+  }
+
   private async handleMedia(msg: WhatsAppInboundMessage): Promise<void> {
     const jid = msg.jid;
     const sessionKey = this.buildSessionKey(jid);
 
-    const context: GatewayContext = {
-      sessionKey,
-      userId: jid,
-      channel: 'whatsapp',
-      permissions: ['*'],
-      metadata: {},
-    };
-
-    const send = (chunk: string) => this.send(jid, chunk);
-
-    const typeMap: Record<string, InputType> = {
-      image: 'image', audio: 'voice', video: 'video', document: 'file', sticker: 'file',
-    };
-    const inputType: InputType = typeMap[msg.mediaType!] || 'file';
-
-    if (msg.mediaBuffer) {
-      const input: NormalizedInput = {
-        type: inputType,
-        content: msg.mediaBuffer,
-        metadata: {
-          mimeType: msg.mimeType || (inputType === 'image' ? 'image/jpeg' : undefined),
-          caption: msg.caption,
-        },
-        source: { channel: 'whatsapp', userId: jid, sessionKey },
-        timestamp: Date.now(),
-      };
-      const typing = () => this.sock!.sendPresenceUpdate('composing', jid);
-      await processAndDeliver(input, context, send, typing);
-      return;
-    }
-
-    const descriptions: Record<string, string> = {
+    const typeLabels: Record<string, string> = {
       audio: 'Voice message', video: 'Video message',
       document: 'Document', sticker: 'Sticker',
     };
-    const label = descriptions[msg.mediaType!] || 'Media';
-    const input: NormalizedInput = {
-      type: 'text',
+
+    if (msg.mediaBuffer) {
+      const isImage = msg.mediaType === 'image';
+      const mimeType = msg.mimeType || (isImage ? 'image/jpeg' : 'application/octet-stream');
+      const savedPath = await saveMedia({ buffer: msg.mediaBuffer, sessionKey, mimeType });
+
+      if (isImage) {
+        const caption = msg.caption || 'User sent an image.';
+        const images = [{ data: msg.mediaBuffer.toString('base64'), mimeType }];
+        await this.runViaGateway({
+          sessionKey, jid,
+          content: `${caption}\n\n[Image saved: ${savedPath}]`,
+          channel: 'whatsapp', images,
+        });
+      } else {
+        const label = typeLabels[msg.mediaType!] || 'Media';
+        await this.runViaGateway({
+          sessionKey, jid,
+          content: `${msg.caption || `${label} received`}\n\n[${label} saved: ${savedPath}]`,
+          channel: 'whatsapp',
+        });
+      }
+      return;
+    }
+
+    // Media without buffer — fallback text
+    const label = typeLabels[msg.mediaType!] || 'Media';
+    await this.runViaGateway({
+      sessionKey, jid,
       content: msg.caption ? `[${label}] ${msg.caption}` : `[${label} received]`,
-      metadata: { encoding: 'utf-8' },
-      source: { channel: 'whatsapp', userId: jid, sessionKey },
-      timestamp: Date.now(),
-    };
-    const typing = () => this.sock!.sendPresenceUpdate('composing', jid);
-    await processAndDeliver(input, context, send, typing);
+      channel: 'whatsapp',
+    });
   }
 
   private async handleBatch(jid: string, messages: string[]): Promise<void> {
     const text = messages.join('\n');
     const sessionKey = this.buildSessionKey(jid);
-
     log.info(`batch for ${sessionKey}: "${text.slice(0, 80)}"`);
-
-    const input: NormalizedInput = {
-      type: 'text',
-      content: text,
-      metadata: { encoding: 'utf-8' },
-      source: { channel: 'whatsapp', userId: jid, sessionKey },
-      timestamp: Date.now(),
-    };
-
-    const context: GatewayContext = {
-      sessionKey,
-      userId: jid,
-      channel: 'whatsapp',
-      permissions: ['*'],
-      metadata: {},
-    };
-
-    const typing = () => this.sock!.sendPresenceUpdate('composing', jid);
-    const result = await processAndDeliver(input, context, (chunk) => this.send(jid, chunk), typing);
-    if (!result.success) {
-      log.error(`gateway error for ${sessionKey}: ${result.content}`);
-    }
+    await this.runViaGateway({ sessionKey, jid, content: text, channel: 'whatsapp' });
   }
 
   private scheduleReconnect(): void {

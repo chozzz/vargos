@@ -1,15 +1,26 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { TelegramUpdate } from './types.js';
-import type { NormalizedInput } from '../../core/gateway/core.js';
+import type { GatewayCallFn } from '../../contracts/channel.js';
 
-// Track what the gateway receives
-const processInputCalls: Array<{ input: NormalizedInput; hasTyping: boolean }> = [];
+// Track gateway RPC calls
+const gatewayCalls: Array<{ target: string; method: string; params: unknown }> = [];
 
-vi.mock('../../core/gateway/core.js', () => ({
-  processAndDeliver: vi.fn(async (input: NormalizedInput, _ctx: unknown, _send: unknown, sendTyping?: unknown) => {
-    processInputCalls.push({ input, hasTyping: typeof sendTyping === 'function' });
-    return { success: true, content: 'ok', type: 'text' as const };
-  }),
+const mockGatewayCall = vi.fn(async (target: string, method: string, params?: unknown) => {
+  gatewayCalls.push({ target, method, params });
+  if (method === 'agent.run') {
+    return { success: true, response: 'ok' };
+  }
+  return {};
+}) as unknown as GatewayCallFn;
+
+// Mock saveMedia
+vi.mock('../../lib/media.js', () => ({
+  saveMedia: vi.fn(async () => '/tmp/saved-media.jpg'),
+}));
+
+// Mock deliverReply
+vi.mock('../../lib/reply-delivery.js', () => ({
+  deliverReply: vi.fn(async () => {}),
 }));
 
 // Mock fetch globally for apiCall + downloadFile
@@ -31,14 +42,14 @@ describe('TelegramAdapter media handling', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    processInputCalls.length = 0;
+    gatewayCalls.length = 0;
 
     // Mock getMe for initialize()
     mockFetch.mockResolvedValueOnce(
       telegramResponse({ id: 1, is_bot: true, first_name: 'Bot', username: 'testbot' }),
     );
 
-    adapter = new TelegramAdapter('test-token');
+    adapter = new TelegramAdapter('test-token', undefined, mockGatewayCall);
   });
 
   afterEach(async () => {
@@ -60,12 +71,8 @@ describe('TelegramAdapter media handling', () => {
       },
     };
 
-    // Access handleUpdate via the poll mechanism would be complex,
-    // so we test via the adapter's internal state by triggering directly.
-    // Instead, verify the adapter processes text updates correctly by
-    // checking that no immediate gateway call is made (debounced).
-    // Gateway calls happen only after debounce delay.
-    expect(processInputCalls).toHaveLength(0);
+    // Text messages are debounced — no immediate gateway call
+    expect(gatewayCalls).toHaveLength(0);
   });
 
   it('should handle photo updates with file download', async () => {
@@ -82,9 +89,9 @@ describe('TelegramAdapter media handling', () => {
       ok: true,
       arrayBuffer: async () => fakeImageData,
     });
+    // Mock typing sendChatAction
+    mockFetch.mockResolvedValue(telegramResponse(true));
 
-    // Directly call the private handleMedia via handleUpdate
-    // We need to use the adapter's internal method — access through prototype
     const handleUpdate = (adapter as any).handleUpdate.bind(adapter);
     handleUpdate({
       update_id: 2,
@@ -101,18 +108,22 @@ describe('TelegramAdapter media handling', () => {
       },
     } satisfies TelegramUpdate);
 
-    // Wait for async handleMedia to complete
     await vi.waitFor(() => {
-      expect(processInputCalls.length).toBeGreaterThanOrEqual(1);
+      expect(gatewayCalls.length).toBeGreaterThanOrEqual(3);
     });
 
-    const call = processInputCalls[0];
-    expect(call.input.type).toBe('image');
-    expect(Buffer.isBuffer(call.input.content)).toBe(true);
-    expect(call.input.metadata.mimeType).toBe('image/jpeg');
-    expect(call.input.metadata.caption).toBe('Look at this');
-    expect(call.input.source.channel).toBe('telegram');
-    expect(call.hasTyping).toBe(true);
+    // session.create, session.addMessage, agent.run
+    expect(gatewayCalls[0].method).toBe('session.create');
+    expect(gatewayCalls[0].target).toBe('sessions');
+    expect(gatewayCalls[1].method).toBe('session.addMessage');
+    expect(gatewayCalls[1].target).toBe('sessions');
+    expect(gatewayCalls[2].method).toBe('agent.run');
+    expect(gatewayCalls[2].target).toBe('agent');
+
+    const runParams = gatewayCalls[2].params as any;
+    expect(runParams.channel).toBe('telegram');
+    expect(runParams.images).toHaveLength(1);
+    expect(runParams.images[0].mimeType).toBe('image/jpeg');
   });
 
   it('should handle voice updates with file download', async () => {
@@ -125,6 +136,8 @@ describe('TelegramAdapter media handling', () => {
     );
     const fakeAudio = new Uint8Array([0x4F, 0x67, 0x67, 0x53]).buffer;
     mockFetch.mockResolvedValueOnce({ ok: true, arrayBuffer: async () => fakeAudio });
+    // Mock typing sendChatAction
+    mockFetch.mockResolvedValue(telegramResponse(true));
 
     const handleUpdate = (adapter as any).handleUpdate.bind(adapter);
     handleUpdate({
@@ -144,15 +157,17 @@ describe('TelegramAdapter media handling', () => {
     } satisfies TelegramUpdate);
 
     await vi.waitFor(() => {
-      expect(processInputCalls.length).toBeGreaterThanOrEqual(1);
+      expect(gatewayCalls.length).toBeGreaterThanOrEqual(3);
     });
 
-    const call = processInputCalls[0];
-    expect(call.input.type).toBe('voice');
-    expect(Buffer.isBuffer(call.input.content)).toBe(true);
-    expect(call.input.metadata.mimeType).toBe('audio/ogg');
-    expect(call.input.source.channel).toBe('telegram');
-    expect(call.hasTyping).toBe(true);
+    expect(gatewayCalls[0].method).toBe('session.create');
+    expect(gatewayCalls[1].method).toBe('session.addMessage');
+    expect(gatewayCalls[2].method).toBe('agent.run');
+
+    const runParams = gatewayCalls[2].params as any;
+    expect(runParams.channel).toBe('telegram');
+    // Voice messages don't pass images array
+    expect(runParams.images).toBeUndefined();
   });
 
   it('should handle audio updates with file download and caption', async () => {
@@ -165,6 +180,8 @@ describe('TelegramAdapter media handling', () => {
     );
     const fakeAudio = new Uint8Array([0xFF, 0xFB, 0x90, 0x00]).buffer;
     mockFetch.mockResolvedValueOnce({ ok: true, arrayBuffer: async () => fakeAudio });
+    // Mock typing sendChatAction
+    mockFetch.mockResolvedValue(telegramResponse(true));
 
     const handleUpdate = (adapter as any).handleUpdate.bind(adapter);
     handleUpdate({
@@ -186,15 +203,12 @@ describe('TelegramAdapter media handling', () => {
     } satisfies TelegramUpdate);
 
     await vi.waitFor(() => {
-      expect(processInputCalls.length).toBeGreaterThanOrEqual(1);
+      expect(gatewayCalls.length).toBeGreaterThanOrEqual(3);
     });
 
-    const call = processInputCalls[0];
-    expect(call.input.type).toBe('voice');
-    expect(Buffer.isBuffer(call.input.content)).toBe(true);
-    expect(call.input.metadata.mimeType).toBe('audio/mpeg');
-    expect(call.input.metadata.caption).toBe('Listen to this song');
-    expect(call.hasTyping).toBe(true);
+    expect(gatewayCalls[2].method).toBe('agent.run');
+    const runParams = gatewayCalls[2].params as any;
+    expect(runParams.channel).toBe('telegram');
   });
 
   it('should skip non-private chats', async () => {
@@ -213,9 +227,8 @@ describe('TelegramAdapter media handling', () => {
       },
     } satisfies TelegramUpdate);
 
-    // No gateway call expected
     await new Promise((r) => setTimeout(r, 50));
-    expect(processInputCalls).toHaveLength(0);
+    expect(gatewayCalls).toHaveLength(0);
   });
 
   it('should pick largest photo from array', async () => {
@@ -230,6 +243,8 @@ describe('TelegramAdapter media handling', () => {
       ok: true,
       arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
     });
+    // Mock typing sendChatAction
+    mockFetch.mockResolvedValue(telegramResponse(true));
 
     const handleUpdate = (adapter as any).handleUpdate.bind(adapter);
     handleUpdate({
@@ -248,7 +263,7 @@ describe('TelegramAdapter media handling', () => {
     } satisfies TelegramUpdate);
 
     await vi.waitFor(() => {
-      expect(processInputCalls.length).toBeGreaterThanOrEqual(1);
+      expect(gatewayCalls.length).toBeGreaterThanOrEqual(3);
     });
 
     // Verify getFile was called with the largest photo's file_id
