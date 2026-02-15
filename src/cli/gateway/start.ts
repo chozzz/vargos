@@ -1,4 +1,3 @@
-import os from 'node:os';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -17,18 +16,21 @@ import { initializeMemoryContext, getMemoryContext } from '../../extensions/serv
 import { resolveDataDir, resolveWorkspaceDir, initPaths } from '../../core/config/paths.js';
 import { loadConfig, syncPiSdkFiles } from '../../core/config/pi-config.js';
 import { validateConfig, checkLocalProvider } from '../../core/config/validate.js';
-import { initializeWorkspace, isWorkspaceInitialized, loadContextFiles } from '../../core/config/workspace.js';
+import { initializeWorkspace, isWorkspaceInitialized } from '../../core/config/workspace.js';
 import { checkIdentitySetup } from '../../core/config/identity.js';
 import type { ExtensionContext } from '../../core/extensions.js';
 import { setGatewayCall } from '../../core/runtime/extension.js';
+import {
+  renderBanner,
+  renderServices,
+  renderMcp,
+  renderReady,
+  renderNextSteps,
+  type ServiceStatus,
+} from '../banner.js';
 
 const require = createRequire(import.meta.url);
 const { version: VERSION } = require('../../../package.json');
-
-function shortenHome(p: string): string {
-  const home = os.homedir();
-  return p.startsWith(home) ? '~' + p.slice(home.length) : p;
-}
 
 async function acquireProcessLock(): Promise<boolean> {
   const pidFile = path.join(resolveDataDir(), 'vargos.pid');
@@ -49,29 +51,24 @@ async function releaseProcessLock(): Promise<void> {
   try { await fs.unlink(path.join(resolveDataDir(), 'vargos.pid')); } catch { /* gone */ }
 }
 
+// Tool groups for display — maps extension module to label
+const TOOL_GROUPS = ['fs', 'web', 'agent', 'memory'] as const;
+
 export async function start(): Promise<void> {
+  const bootStart = Date.now();
   const log = (s: string) => console.error(s);
   const dataDir = resolveDataDir();
   const workspaceDir = resolveWorkspaceDir();
-
-  log('');
-  log(`  Vargos v${VERSION}`);
-  log('');
 
   // ── PID lock ──────────────────────────────────────────────────────────────
   if (!(await acquireProcessLock())) {
     const pidFile = path.join(dataDir, 'vargos.pid');
     const pid = await fs.readFile(pidFile, 'utf-8').catch(() => '?');
-    log(`  Another instance running (PID: ${pid}) — exiting.`);
+    log(`\n  Another instance running (PID: ${pid}) — exiting.\n`);
     process.exit(1);
   }
 
   // ── Config ────────────────────────────────────────────────────────────────
-  log('  Config');
-  log(`    Data       ${shortenHome(dataDir)}`);
-  log(`    Workspace  ${shortenHome(workspaceDir)}`);
-  log('');
-
   if (!(await isWorkspaceInitialized(workspaceDir))) {
     await initializeWorkspace({ workspaceDir });
   }
@@ -85,7 +82,7 @@ export async function start(): Promise<void> {
       config = await loadConfig(dataDir);
     }
     if (!config) {
-      log('    No config found. Run: vargos config');
+      log('  No config found. Run: vargos config');
       process.exit(1);
     }
   }
@@ -103,35 +100,36 @@ export async function start(): Promise<void> {
     process.exit(1);
   }
 
-  // Lock paths from config before anything reads them
   initPaths(config.paths);
-
   await syncPiSdkFiles(workspaceDir, config.agent);
-  const { provider, model } = config.agent;
-  log(`    Agent      ${provider} / ${model}`);
+
+  // ── Banner ────────────────────────────────────────────────────────────────
+  renderBanner({
+    version: VERSION,
+    agent: config.agent,
+    dataDir,
+  });
 
   // ── Gateway ───────────────────────────────────────────────────────────────
-  log('');
-  log('  Boot');
-
   const gatewayPort = config.gateway?.port ?? 9000;
   const gatewayHost = config.gateway?.host ?? '127.0.0.1';
   const gatewayUrl = `ws://${gatewayHost}:${gatewayPort}`;
 
   const gateway = new GatewayServer({ port: gatewayPort, host: gatewayHost });
   await gateway.start();
-  log(`    Gateway    ${gatewayUrl}`);
+
+  const services: ServiceStatus[] = [];
+  services.push({ name: 'Gateway', ok: true, detail: gatewayUrl });
 
   // ── Sessions service ──────────────────────────────────────────────────────
   const fileSessionService = new FileSessionService({ baseDir: dataDir });
-  // Populate legacy singleton so PiAgentRuntime + gateway/core.ts can access sessions
   setSessionService(fileSessionService);
   const sessions = new SessionsService({ sessionService: fileSessionService, gatewayUrl });
   await sessions.initialize();
   await sessions.connect();
-  log('    Sessions   ok');
+  services.push({ name: 'Sessions', ok: true });
 
-  // ── Memory context ──────────────────────────────────────────────────────
+  // ── Memory context ────────────────────────────────────────────────────────
   const envKey = process.env[`${config.agent.provider.toUpperCase()}_API_KEY`];
   const apiKey = envKey || config.agent.apiKey;
   await initializeMemoryContext({
@@ -146,7 +144,7 @@ export async function start(): Promise<void> {
     sessionsDir: path.join(dataDir, 'sessions'),
     enableFileWatcher: process.env.NODE_ENV === 'development',
   });
-  log('    Memory     ok');
+  services.push({ name: 'Memory', ok: true });
 
   // ── Tools service ─────────────────────────────────────────────────────────
   const extensionCtx: ExtensionContext = {
@@ -161,35 +159,44 @@ export async function start(): Promise<void> {
     paths: { dataDir, workspaceDir },
   };
 
-  const builtins = await Promise.all([
+  // Track tool count per extension group
+  const toolCounts: Record<string, number> = {};
+  const extensionModules = await Promise.all([
     import('../../extensions/tools-fs/index.js'),
     import('../../extensions/tools-web/index.js'),
     import('../../extensions/tools-agent/index.js'),
     import('../../extensions/tools-memory/index.js'),
   ]);
-  for (const mod of builtins) await mod.default.register(extensionCtx);
+  for (let i = 0; i < extensionModules.length; i++) {
+    const before = toolRegistry.list().length;
+    await extensionModules[i].default.register(extensionCtx);
+    toolCounts[TOOL_GROUPS[i]] = toolRegistry.list().length - before;
+  }
+
   const tools = new ToolsService({ registry: toolRegistry, gatewayUrl });
   await tools.connect();
-  // Bridge: let old runtime extension.ts route tool calls through gateway
   setGatewayCall((target, method, params) => tools.call(target, method, params));
-  log(`    Tools      ${toolRegistry.list().length} registered`);
+
+  const totalTools = toolRegistry.list().length;
+  const groupSummary = TOOL_GROUPS
+    .filter(g => toolCounts[g] > 0)
+    .map(g => `${g}: ${toolCounts[g]}`)
+    .join(', ');
+  services.push({ name: 'Tools', ok: true, detail: `${totalTools} (${groupSummary})` });
 
   // ── Cron service ──────────────────────────────────────────────────────────
   const cron = new CronService({ gatewayUrl });
   await cron.connect();
-
-  // Load cron tasks from extensions
   const { createTwiceDailyVargosAnalysis } = await import('../../extensions/cron/tasks/vargos-analysis.js');
   createTwiceDailyVargosAnalysis(cron);
-
   cron.startAll();
-  log(`    Cron       ${cron.listTasks().length} task(s)`);
+  const cronCount = cron.listTasks().length;
+  services.push({ name: 'Cron', ok: true, detail: `${cronCount} task${cronCount !== 1 ? 's' : ''}` });
 
   // ── Channel service ───────────────────────────────────────────────────────
   const channels = new ChannelService({ gatewayUrl });
   await channels.connect();
 
-  // Load channel adapters from config
   if (config.channels) {
     const { createAdapter } = await import('../../core/channels/factory.js');
     for (const [type, chConfig] of Object.entries(config.channels)) {
@@ -199,9 +206,9 @@ export async function start(): Promise<void> {
         await channels.addAdapter(adapter);
         await adapter.initialize();
         await adapter.start();
-        log(`    Channel    ${type} ${adapter.status}`);
+        services.push({ name: 'Channel', ok: true, detail: `${type} ${adapter.status}` });
       } catch (err) {
-        log(`    Channel    ${type} failed (${err instanceof Error ? err.message : String(err)})`);
+        services.push({ name: 'Channel', ok: false, detail: `${type} (${err instanceof Error ? err.message : String(err)})` });
       }
     }
   }
@@ -209,37 +216,33 @@ export async function start(): Promise<void> {
   // ── Agent service ─────────────────────────────────────────────────────────
   const agent = new AgentService({ gatewayUrl, workspaceDir, dataDir });
   await agent.connect();
-  log('    Agent      ok');
+  services.push({ name: 'Agent', ok: true });
 
   // ── MCP bridge ────────────────────────────────────────────────────────────
   const mcpBridge = new McpBridge({ gatewayUrl, version: VERSION });
   await mcpBridge.connect();
 
+  let mcpUrl = 'stdio';
   const mcpTransport = config.mcp?.transport ?? 'http';
   if (mcpTransport === 'http') {
     const mcpHost = config.mcp?.host ?? '127.0.0.1';
     const mcpPort = config.mcp?.port ?? 9001;
     const mcpEndpoint = config.mcp?.endpoint ?? '/mcp';
     await mcpBridge.startHttp({ host: mcpHost, port: mcpPort, endpoint: mcpEndpoint });
-    log(`    MCP        http://${mcpHost}:${mcpPort}${mcpEndpoint}`);
+    mcpUrl = `http://${mcpHost}:${mcpPort}${mcpEndpoint}`;
   } else {
     await mcpBridge.startStdio();
-    log('    MCP        stdio');
   }
 
-  // ── Context files ─────────────────────────────────────────────────────────
-  const contextFiles = await loadContextFiles(workspaceDir);
-  log('');
-  const EXPECTED = ['AGENTS.md', 'SOUL.md', 'USER.md', 'TOOLS.md', 'MEMORY.md', 'HEARTBEAT.md', 'BOOTSTRAP.md'];
-  log(`  Context (${contextFiles.length} of ${EXPECTED.length})`);
-  if (contextFiles.length > 0) {
-    log(`    ${contextFiles.map((f) => f.name).join('  ')}`);
-  }
-
-  // ── Ready ─────────────────────────────────────────────────────────────────
-  log('');
-  log(`  Ready — ${gateway.registry.list().length} services connected`);
-  log('');
+  // ── Render ────────────────────────────────────────────────────────────────
+  renderServices(services);
+  renderMcp(mcpUrl);
+  renderReady({
+    services: gateway.registry.list().length,
+    tools: totalTools,
+    bootMs: Date.now() - bootStart,
+  });
+  renderNextSteps();
 
   // ── Shutdown ──────────────────────────────────────────────────────────────
   const teardown = async () => {
