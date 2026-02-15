@@ -11,7 +11,7 @@
 
 import { ServiceClient } from '../client.js';
 import { createLogger } from '../../core/lib/logger.js';
-import { PiAgentRuntime, type PiAgentConfig, type PiAgentRunResult } from '../../core/runtime/runtime.js';
+import { getPiAgentRuntime, type PiAgentRuntime, type PiAgentConfig, type PiAgentRunResult } from '../../core/runtime/runtime.js';
 
 const log = createLogger('agent');
 import type { AgentStreamEvent } from '../../core/runtime/lifecycle.js';
@@ -39,7 +39,7 @@ export class AgentService extends ServiceClient {
       subscriptions: ['message.received', 'cron.trigger'],
       gatewayUrl: config.gatewayUrl,
     });
-    this.runtime = new PiAgentRuntime();
+    this.runtime = getPiAgentRuntime();
     this.workspaceDir = config.workspaceDir ?? resolveWorkspaceDir();
     this.dataDir = config.dataDir ?? resolveDataDir();
   }
