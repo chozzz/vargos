@@ -17,7 +17,6 @@ import { resolveDataDir, resolveWorkspaceDir, initPaths } from '../../core/confi
 import { loadConfig, syncPiSdkFiles } from '../../core/config/pi-config.js';
 import { validateConfig, checkLocalProvider } from '../../core/config/validate.js';
 import { initializeWorkspace, isWorkspaceInitialized } from '../../core/config/workspace.js';
-import { checkIdentitySetup } from '../../core/config/identity.js';
 import type { ExtensionContext } from '../../core/extensions.js';
 import { setGatewayCall } from '../../core/runtime/extension.js';
 import {
@@ -72,19 +71,16 @@ export async function start(): Promise<void> {
   if (!(await isWorkspaceInitialized(workspaceDir))) {
     await initializeWorkspace({ workspaceDir });
   }
-  await checkIdentitySetup(workspaceDir);
 
   let config = await loadConfig(dataDir);
+  if (!config && process.stdin.isTTY) {
+    const { runFirstRunSetup } = await import('../../core/config/onboard.js');
+    await runFirstRunSetup(dataDir, workspaceDir);
+    config = await loadConfig(dataDir);
+  }
   if (!config) {
-    if (process.stdin.isTTY) {
-      const { interactivePiConfig } = await import('../../core/config/onboard.js');
-      await interactivePiConfig(dataDir);
-      config = await loadConfig(dataDir);
-    }
-    if (!config) {
-      log('  No config found. Run: vargos config');
-      process.exit(1);
-    }
+    log('  No config found. Run: vargos config');
+    process.exit(1);
   }
 
   const validation = validateConfig(config);

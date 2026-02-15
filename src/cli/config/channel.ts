@@ -1,8 +1,6 @@
+import { select, isCancel } from '@clack/prompts';
 import chalk from 'chalk';
-import { spawn } from 'node:child_process';
 import { loadAndValidate } from '../boot.js';
-import { resolveDataDir } from '../../core/config/paths.js';
-import { getConfigPath } from '../../core/config/pi-config.js';
 
 function maskToken(token: string): string {
   return token.length > 3 ? '****' + token.slice(-3) : '****';
@@ -28,15 +26,16 @@ export async function show(): Promise<void> {
 }
 
 export async function edit(): Promise<void> {
-  const dataDir = resolveDataDir();
-  const configPath = getConfigPath(dataDir);
-  const editor = process.env.EDITOR || 'vi';
-
-  console.log(`\n  Opening ${chalk.gray(configPath)} in ${editor}...\n`);
-
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn(editor, [configPath], { stdio: 'inherit' });
-    child.on('close', (code) => code === 0 ? resolve() : reject(new Error(`Editor exited with code ${code}`)));
-    child.on('error', reject);
+  const channel = await select({
+    message: 'Channel to set up',
+    options: [
+      { value: 'whatsapp', label: 'WhatsApp (scan QR code)' },
+      { value: 'telegram', label: 'Telegram (paste bot token)' },
+    ],
   });
+  if (isCancel(channel)) return;
+
+  const { setupWhatsApp, setupTelegram } = await import('../../core/channels/onboard.js');
+  if (channel === 'whatsapp') await setupWhatsApp();
+  else await setupTelegram();
 }
