@@ -223,6 +223,7 @@ export async function start(): Promise<void> {
   await mcpBridge.connect();
 
   let mcpUrl = 'stdio';
+  let openapiUrl: string | undefined;
   const mcpTransport = config.mcp?.transport ?? 'http';
   if (mcpTransport === 'http') {
     const mcpHost = config.mcp?.host ?? '127.0.0.1';
@@ -230,13 +231,14 @@ export async function start(): Promise<void> {
     const mcpEndpoint = config.mcp?.endpoint ?? '/mcp';
     await mcpBridge.startHttp({ host: mcpHost, port: mcpPort, endpoint: mcpEndpoint });
     mcpUrl = `http://${mcpHost}:${mcpPort}${mcpEndpoint}`;
+    openapiUrl = `http://${mcpHost}:${mcpPort}/openapi.json`;
   } else {
     await mcpBridge.startStdio();
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
   renderServices(services);
-  renderMcp(mcpUrl);
+  renderMcp(mcpUrl, openapiUrl);
   renderReady({
     services: gateway.registry.list().length,
     tools: totalTools,

@@ -20,6 +20,71 @@ import { ServiceClient } from '../services/client.js';
 import { resolveWorkspaceDir } from '../core/config/paths.js';
 import type { ToolResult } from '../core/tools/types.js';
 
+interface ToolSchema { name: string; description: string; parameters: Record<string, unknown> }
+
+export function buildOpenApiSpec(tools: ToolSchema[], version: string): Record<string, unknown> {
+  const paths: Record<string, unknown> = {};
+  for (const t of tools) {
+    paths[`/tools/${t.name}`] = {
+      post: {
+        operationId: t.name,
+        summary: t.description,
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: t.parameters } },
+        },
+        responses: {
+          '200': {
+            description: 'Tool result',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ToolResult' },
+              },
+            },
+          },
+        },
+      },
+    };
+  }
+  return {
+    openapi: '3.1.0',
+    info: { title: 'Vargos', version, description: 'MCP runtime tool API' },
+    paths,
+    components: {
+      schemas: {
+        ToolResult: {
+          type: 'object',
+          required: ['content'],
+          properties: {
+            content: {
+              type: 'array',
+              items: {
+                oneOf: [
+                  {
+                    type: 'object',
+                    required: ['type', 'text'],
+                    properties: { type: { const: 'text' }, text: { type: 'string' } },
+                  },
+                  {
+                    type: 'object',
+                    required: ['type', 'data', 'mimeType'],
+                    properties: {
+                      type: { const: 'image' },
+                      data: { type: 'string', description: 'Base64-encoded image' },
+                      mimeType: { type: 'string' },
+                    },
+                  },
+                ],
+              },
+            },
+            isError: { type: 'boolean' },
+          },
+        },
+      },
+    },
+  };
+}
+
 export interface McpBridgeConfig {
   gatewayUrl?: string;
   version?: string;
@@ -75,6 +140,19 @@ export class McpBridge extends ServiceClient {
       if (req.method === 'OPTIONS') {
         res.writeHead(200);
         res.end();
+        return;
+      }
+
+      if (req.url === '/openapi.json' && req.method === 'GET') {
+        try {
+          const tools = await this.call<ToolSchema[]>('tools', 'tool.list');
+          const spec = buildOpenApiSpec(tools, this.mcpVersion);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(spec, null, 2));
+        } catch {
+          res.writeHead(503);
+          res.end(JSON.stringify({ error: 'Tools service unavailable' }));
+        }
         return;
       }
 
