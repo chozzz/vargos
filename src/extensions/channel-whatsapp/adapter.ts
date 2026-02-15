@@ -139,7 +139,7 @@ export class WhatsAppAdapter implements ChannelAdapter {
     if (this.allowFrom) {
       const phone = this.resolvePhone(msg.jid);
       if (!this.allowFrom.has(phone)) {
-        log.debug(`blocked: ${msg.jid} (phone=${phone})`);
+        log.info(`blocked: ${msg.jid} (phone=${phone})`);
         return;
       }
     }
@@ -148,14 +148,14 @@ export class WhatsAppAdapter implements ChannelAdapter {
     if (!this.dedupe.add(msg.messageId)) return;
 
     if (msg.mediaType) {
-      log.debug(`received ${msg.mediaType} from ${msg.jid}`);
+      log.info(`received ${msg.mediaType} from ${msg.jid}`);
       this.handleMedia(msg).catch((err) => {
         log.error(`handleMedia error for ${msg.jid}: ${err}`);
       });
       return;
     }
 
-    log.debug(`received from ${msg.jid}: ${msg.text.slice(0, 80)}`);
+    log.info(`received from ${msg.jid}: ${msg.text.slice(0, 80)}`);
     this.debouncer.push(msg.jid, msg.text);
   }
 
@@ -218,7 +218,7 @@ export class WhatsAppAdapter implements ChannelAdapter {
     const text = messages.join('\n');
     const sessionKey = this.buildSessionKey(jid);
 
-    log.debug(`batch for ${sessionKey}: "${text.slice(0, 80)}"`);
+    log.info(`batch for ${sessionKey}: "${text.slice(0, 80)}"`);
 
     const input: NormalizedInput = {
       type: 'text',
