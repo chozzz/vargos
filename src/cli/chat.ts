@@ -29,8 +29,11 @@ export async function chat(): Promise<void> {
     rl.prompt();
   });
 
-  rl.on('close', async () => {
-    await client.disconnect();
-    process.exit(0);
+  // Keep alive until readline closes (Ctrl+C / Ctrl+D)
+  await new Promise<void>((resolve) => {
+    rl.on('close', async () => {
+      await client.disconnect();
+      resolve();
+    });
   });
 }

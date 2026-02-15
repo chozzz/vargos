@@ -192,6 +192,15 @@ export async function start(): Promise<void> {
         await channels.addAdapter(adapter);
         await adapter.initialize();
         await adapter.start();
+        // Wait for adapter to leave 'connecting' (up to 3s)
+        if (adapter.status === 'connecting') {
+          await new Promise<void>((resolve) => {
+            let done = false;
+            const finish = () => { if (done) return; done = true; clearInterval(poll); clearTimeout(deadline); resolve(); };
+            const poll = setInterval(() => { if (adapter.status !== 'connecting') finish(); }, 200);
+            const deadline = setTimeout(finish, 3000);
+          });
+        }
         services.push({ name: 'Channel', ok: true, detail: `${type} ${adapter.status}` });
       } catch (err) {
         services.push({ name: 'Channel', ok: false, detail: `${type} (${err instanceof Error ? err.message : String(err)})` });
