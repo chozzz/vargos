@@ -3,6 +3,8 @@
  * Receives text DMs via Baileys, processes through gateway, delivers replies
  */
 
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import type { WASocket } from '@whiskeysockets/baileys';
 import type { ChannelAdapter, ChannelStatus } from '../../core/channels/types.js';
 import { createWhatsAppSocket, type WhatsAppInboundMessage } from './session.js';
@@ -12,7 +14,6 @@ import { processAndDeliver, type InputType, type NormalizedInput, type GatewayCo
 import { resolveChannelsDir } from '../../core/config/paths.js';
 import { Reconnector } from '../../core/channels/reconnect.js';
 import { createLogger } from '../../core/lib/logger.js';
-import path from 'node:path';
 
 const log = createLogger('whatsapp');
 
@@ -26,13 +27,17 @@ export class WhatsAppAdapter implements ChannelAdapter {
   private reconnector = new Reconnector();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private allowFrom: Set<string> | null;
+  private authDir = '';
+  private lidCache = new Map<string, string>();
 
   constructor(allowFrom?: string[]) {
-    this.allowFrom = allowFrom?.length ? new Set(allowFrom) : null;
+    this.allowFrom = allowFrom?.length
+      ? new Set(allowFrom.flatMap(p => [p, p.replace(/^\+/, '')]))
+      : null;
     this.debouncer = createMessageDebouncer(
       (jid, messages) => {
         this.handleBatch(jid, messages).catch((err) => {
-          log.debug(`handleBatch error for ${jid}: ${err}`);
+          log.error(`handleBatch error for ${jid}: ${err}`);
         });
       },
       { delayMs: 1500 },
@@ -44,17 +49,16 @@ export class WhatsAppAdapter implements ChannelAdapter {
   }
 
   async start(): Promise<void> {
-    // Clean up previous socket before reconnecting
     if (this.sock) {
       try { this.sock.end(undefined); } catch { /* already closed */ }
       this.sock = null;
     }
 
     this.status = 'connecting';
-    const authDir = path.join(resolveChannelsDir(), 'whatsapp');
+    this.authDir = path.join(resolveChannelsDir(), 'whatsapp');
 
     try {
-      this.sock = await createWhatsAppSocket(authDir, {
+      this.sock = await createWhatsAppSocket(this.authDir, {
         onQR: () => {
           log.debug('scan the QR code above with WhatsApp > Linked Devices');
         },
@@ -77,7 +81,7 @@ export class WhatsAppAdapter implements ChannelAdapter {
       });
     } catch (err) {
       this.status = 'error';
-      log.debug(`failed to start: ${err}`);
+      log.error(`failed to start: ${err}`);
       this.scheduleReconnect();
     }
   }
@@ -100,27 +104,53 @@ export class WhatsAppAdapter implements ChannelAdapter {
     await this.sock.sendMessage(jid, { text });
   }
 
+  /**
+   * Resolve a JID to a phone number.
+   * Baileys v7 uses LID format (opaque@lid) instead of phone@s.whatsapp.net.
+   * LID→phone mappings are stored in the auth dir by Baileys.
+   */
+  private resolvePhone(jid: string): string {
+    if (jid.endsWith('@s.whatsapp.net')) {
+      return jid.replace('@s.whatsapp.net', '');
+    }
+    if (jid.endsWith('@lid')) {
+      const lid = jid.replace('@lid', '');
+      return this.lidToPhone(lid);
+    }
+    return jid;
+  }
+
+  private lidToPhone(lid: string): string {
+    const cached = this.lidCache.get(lid);
+    if (cached) return cached;
+    try {
+      const file = path.join(this.authDir, `lid-mapping-${lid}_reverse.json`);
+      const phone = JSON.parse(readFileSync(file, 'utf-8')) as string;
+      this.lidCache.set(lid, phone);
+      return phone;
+    } catch {
+      return lid;
+    }
+  }
+
   private handleInbound(msg: WhatsAppInboundMessage): void {
-    // Skip self messages and groups
     if (msg.fromMe || msg.isGroup) return;
 
-    // Whitelist filter
     if (this.allowFrom) {
-      const phone = msg.jid.replace('@s.whatsapp.net', '');
-      if (!this.allowFrom.has(phone)) return;
+      const phone = this.resolvePhone(msg.jid);
+      if (!this.allowFrom.has(phone)) {
+        log.debug(`blocked: ${msg.jid} (phone=${phone})`);
+        return;
+      }
     }
 
-    // Skip messages with no text and no media
     if (!msg.text && !msg.mediaType) return;
-
-    // Deduplicate
     if (!this.dedupe.add(msg.messageId)) return;
 
-    // Media messages bypass debouncer — send directly to gateway
     if (msg.mediaType) {
       log.debug(`received ${msg.mediaType} from ${msg.jid}`);
       this.handleMedia(msg).catch((err) => {
-        log.debug(`handleMedia error for ${msg.jid}: ${err}`);
+        log.error(`handleMedia error for ${msg.jid}: ${err}`);
       });
       return;
     }
@@ -129,9 +159,13 @@ export class WhatsAppAdapter implements ChannelAdapter {
     this.debouncer.push(msg.jid, msg.text);
   }
 
+  private buildSessionKey(jid: string): string {
+    return `whatsapp:${this.resolvePhone(jid)}`;
+  }
+
   private async handleMedia(msg: WhatsAppInboundMessage): Promise<void> {
     const jid = msg.jid;
-    const sessionKey = `whatsapp:${jid.replace('@s.whatsapp.net', '')}`;
+    const sessionKey = this.buildSessionKey(jid);
 
     const context: GatewayContext = {
       sessionKey,
@@ -148,7 +182,6 @@ export class WhatsAppAdapter implements ChannelAdapter {
     };
     const inputType: InputType = typeMap[msg.mediaType!] || 'file';
 
-    // Media with downloaded buffer
     if (msg.mediaBuffer) {
       const input: NormalizedInput = {
         type: inputType,
@@ -165,7 +198,6 @@ export class WhatsAppAdapter implements ChannelAdapter {
       return;
     }
 
-    // No buffer (download failed) — send text description
     const descriptions: Record<string, string> = {
       audio: 'Voice message', video: 'Video message',
       document: 'Document', sticker: 'Sticker',
@@ -184,7 +216,7 @@ export class WhatsAppAdapter implements ChannelAdapter {
 
   private async handleBatch(jid: string, messages: string[]): Promise<void> {
     const text = messages.join('\n');
-    const sessionKey = `whatsapp:${jid.replace('@s.whatsapp.net', '')}`;
+    const sessionKey = this.buildSessionKey(jid);
 
     log.debug(`batch for ${sessionKey}: "${text.slice(0, 80)}"`);
 
@@ -207,7 +239,7 @@ export class WhatsAppAdapter implements ChannelAdapter {
     const typing = () => this.sock!.sendPresenceUpdate('composing', jid);
     const result = await processAndDeliver(input, context, (chunk) => this.send(jid, chunk), typing);
     if (!result.success) {
-      log.debug(`gateway error for ${sessionKey}: ${result.content}`);
+      log.error(`gateway error for ${sessionKey}: ${result.content}`);
     }
   }
 

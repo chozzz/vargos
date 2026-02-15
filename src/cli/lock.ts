@@ -1,11 +1,11 @@
 /**
- * Cross-machine gateway lock using SQLite heartbeat
- * Works over shared filesystems (NFS, CIFS, SSHFS) where PID checks fail
+ * Cross-machine gateway lock using a plain JSON file + heartbeat
+ * Works over shared filesystems (NFS, CIFS, SSHFS) where SQLite and PID checks fail
  */
 
-import Database from 'better-sqlite3';
 import path from 'node:path';
 import os from 'node:os';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
 
 const LOCK_FILE = 'gateway.lock';
@@ -19,65 +19,68 @@ export interface LockInfo {
   heartbeat: number;
 }
 
-let db: InstanceType<typeof Database> | null = null;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+let lockPath = '';
 
-function openLockDb(dataDir: string): InstanceType<typeof Database> {
-  const lockPath = path.join(dataDir, LOCK_FILE);
-  const conn = new Database(lockPath);
-  // DELETE mode — WAL requires mmap which breaks on network filesystems (NFS/CIFS)
-  conn.pragma('journal_mode = DELETE');
-  conn.exec(`
-    CREATE TABLE IF NOT EXISTS lock (
-      id INTEGER PRIMARY KEY CHECK (id = 1),
-      host TEXT NOT NULL,
-      pid INTEGER NOT NULL,
-      started_at INTEGER NOT NULL,
-      heartbeat INTEGER NOT NULL
-    )
-  `);
-  return conn;
+function readLock(filePath: string): LockInfo | null {
+  try {
+    return JSON.parse(readFileSync(filePath, 'utf-8')) as LockInfo;
+  } catch {
+    return null;
+  }
+}
+
+function writeLock(filePath: string, info: LockInfo): void {
+  writeFileSync(filePath, JSON.stringify(info));
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function acquireLock(dataDir: string): Promise<LockInfo | null> {
   await fs.mkdir(dataDir, { recursive: true });
-  db = openLockDb(dataDir);
+  lockPath = path.join(dataDir, LOCK_FILE);
 
-  const row = db.prepare('SELECT host, pid, started_at, heartbeat FROM lock WHERE id = 1').get() as
-    | { host: string; pid: number; started_at: number; heartbeat: number }
-    | undefined;
+  const existing = readLock(lockPath);
 
-  if (row) {
-    const age = Date.now() - row.heartbeat;
-    const sameHost = row.host === os.hostname();
-    const localAlive = sameHost && isProcessAlive(row.pid);
+  if (existing) {
+    const age = Date.now() - existing.heartbeat;
+    const sameHost = existing.host === os.hostname();
+    const localAlive = sameHost && isProcessAlive(existing.pid);
 
     if (age < STALE_THRESHOLD_MS && !sameHost) {
       // Another host has an active lock
-      db.close();
-      db = null;
-      return { host: row.host, pid: row.pid, startedAt: row.started_at, heartbeat: row.heartbeat };
+      return existing;
     }
 
-    if (localAlive && row.pid !== process.pid) {
+    if (localAlive && existing.pid !== process.pid) {
       // Same host, different live process
-      db.close();
-      db = null;
-      return { host: row.host, pid: row.pid, startedAt: row.started_at, heartbeat: row.heartbeat };
+      return existing;
     }
+    // Otherwise stale — we can take over
   }
 
-  // Acquire: upsert our lock
+  // Acquire
   const now = Date.now();
-  db.prepare(
-    'INSERT OR REPLACE INTO lock (id, host, pid, started_at, heartbeat) VALUES (1, ?, ?, ?, ?)',
-  ).run(os.hostname(), process.pid, now, now);
+  const info: LockInfo = {
+    host: os.hostname(),
+    pid: process.pid,
+    startedAt: now,
+    heartbeat: now,
+  };
+  writeLock(lockPath, info);
 
   // Start heartbeat
   heartbeatTimer = setInterval(() => {
     try {
-      db?.prepare('UPDATE lock SET heartbeat = ? WHERE id = 1').run(Date.now());
-    } catch { /* db closed during shutdown */ }
+      writeLock(lockPath, { ...info, heartbeat: Date.now() });
+    } catch { /* file gone during shutdown */ }
   }, HEARTBEAT_INTERVAL_MS);
   heartbeatTimer.unref();
 
@@ -90,17 +93,6 @@ export async function releaseLock(): Promise<void> {
     heartbeatTimer = null;
   }
   try {
-    db?.prepare('DELETE FROM lock WHERE id = 1').run();
-    db?.close();
+    await fs.unlink(lockPath);
   } catch { /* already gone */ }
-  db = null;
-}
-
-function isProcessAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
 }
