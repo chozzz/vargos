@@ -202,10 +202,12 @@ export async function start(): Promise<void> {
 
   if (config.channels) {
     const { createAdapter } = await import('../../core/channels/factory.js');
+    const gatewayCall = <T = unknown>(target: string, method: string, params?: unknown) =>
+      tools.call<T>(target, method, params);
     for (const [type, chConfig] of Object.entries(config.channels)) {
       if (chConfig.enabled === false) continue;
       try {
-        const adapter = createAdapter({ type: type as ChannelType, enabled: true, ...chConfig });
+        const adapter = createAdapter({ type: type as ChannelType, enabled: true, ...chConfig }, gatewayCall);
         await channels.addAdapter(adapter);
         await adapter.initialize();
         await adapter.start();
