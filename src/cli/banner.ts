@@ -77,9 +77,10 @@ export function renderServices(services: ServiceStatus[]): void {
   }
 }
 
-export function renderMcp(url: string): void {
+export function renderMcp(url: string, openapiUrl?: string): void {
   out('');
   out(`  ${LABEL(pad('MCP'))}${URL(url)}`);
+  if (openapiUrl) out(`  ${LABEL(pad('OpenAPI'))}${URL(openapiUrl)}`);
 }
 
 export function renderReady(data: {

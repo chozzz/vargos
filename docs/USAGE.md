@@ -1,98 +1,132 @@
 # Vargos Usage Guide
 
-Complete guide to using Vargos: CLI, MCP server, cron scheduler, and background agents.
-
 ---
 
 ## Table of Contents
 
-1. [CLI Mode](#cli-mode)
-2. [MCP Server Mode](#mcp-server-mode)
-3. [Cron Scheduler](#cron-scheduler)
-4. [Background Agents](#background-agents)
-5. [Session Management](#session-management)
-6. [Channels](#channels)
+1. [Getting Started](#getting-started)
+2. [Configuration](#configuration)
+3. [CLI](#cli)
+4. [MCP Server](#mcp-server)
+5. [Channels](#channels)
+6. [Session Management](#session-management)
+7. [Cron Scheduler](#cron-scheduler)
 
 ---
 
-## CLI Mode
-
-Interactive command-line interface for chatting with the Vargos agent.
-
-### Start Interactive Chat
+## Getting Started
 
 ```bash
-# Default session
-pnpm chat
-
-# Named session (for continuity)
-tsx src/cli.ts chat -s myproject
-
-# With specific model
-tsx src/cli.ts chat -m gpt-4o -p openai
-
-# With custom workspace directory
-tsx src/cli.ts chat -w ./my-project
+git clone https://github.com/chozzz/vargos.git
+cd vargos
+pnpm install
+pnpm start
 ```
 
-### Run One-Shot Task
+First run prompts for LLM provider, model, and API key. Settings are saved to `~/.vargos/config.json`.
 
-Execute a single task and exit:
+---
+
+## Configuration
+
+All settings live in a single `config.json` file.
+
+### Location
+
+By default, Vargos stores data in `~/.vargos/`. To change this:
 
 ```bash
-tsx src/cli.ts run "Analyze this codebase for security issues"
-tsx src/cli.ts run "Refactor src/auth.ts to use DI" -w ./src
+# Option 1: Set in config.json (highest priority)
+{
+  "paths": { "dataDir": "/your/custom/path" }
+}
+
+# Option 2: Environment variable (bootstrap fallback)
+export VARGOS_DATA_DIR=/your/custom/path
+```
+
+Priority: `config.paths.dataDir` > `VARGOS_DATA_DIR` env > `~/.vargos`
+
+### Full config.json reference
+
+```jsonc
+{
+  // Required
+  "agent": {
+    "provider": "anthropic",      // anthropic, openai, google, openrouter, ollama, lmstudio
+    "model": "claude-sonnet-4-20250514",
+    "apiKey": "sk-..."            // or use ${PROVIDER}_API_KEY env var
+  },
+
+  // Optional — all fields have sensible defaults
+  "gateway": {
+    "port": 9000,                 // default: 9000
+    "host": "127.0.0.1"          // default: 127.0.0.1
+  },
+  "mcp": {
+    "transport": "http",          // http | stdio, default: http
+    "host": "127.0.0.1",         // default: 127.0.0.1
+    "port": 9001,                 // default: 9001
+    "endpoint": "/mcp"            // default: /mcp
+  },
+  "paths": {
+    "dataDir": "~/.vargos",       // default: ~/.vargos
+    "workspace": "~/.vargos/workspace"
+  },
+  "channels": { ... }            // see Channels section
+}
+```
+
+### API key precedence
+
+`${PROVIDER}_API_KEY` env var takes priority over `agent.apiKey` in config. For example, `ANTHROPIC_API_KEY` overrides the config value when `provider` is `anthropic`.
+
+### Local providers
+
+Ollama and LM Studio need a dummy API key for the Pi SDK. Set `apiKey` to `"local"` in config.
+
+### Edit config
+
+```bash
+vargos config llm show           # Display current LLM config
+vargos config llm edit           # Change provider/model/key
+vargos config channel show       # Display channel config
+vargos config channel edit       # Open config.json in $EDITOR
+vargos config context show       # List context files
+vargos config context edit       # Edit context in $EDITOR
 ```
 
 ---
 
-## MCP Server Mode
+## CLI
 
-Run Vargos as an MCP server for Claude Desktop, Cursor, or other MCP clients.
-
-### Start MCP Server
+Bare `vargos` shows an interactive menu. Direct commands:
 
 ```bash
-# Stdio mode (default, for Claude Desktop)
-pnpm dev
-
-# HTTP mode
-VARGOS_TRANSPORT=http VARGOS_PORT=3000 pnpm dev
+vargos                           # Interactive menu
+vargos chat                      # Chat session (requires running gateway)
+vargos run "Analyze this code"   # One-shot task
+vargos gateway start             # Start the runtime
+vargos gateway stop              # Stop
+vargos gateway restart           # Restart
+vargos gateway status            # Check if running
+vargos health                    # Config + connectivity check
 ```
 
-On first run, you'll be prompted to set up your identity (name, timezone) and configure a communication channel (WhatsApp or Telegram). Subsequent runs skip these prompts.
+---
 
-**Startup output:**
-```
-  Vargos v0.0.1
+## MCP Server
 
-  Config
-    Data      ~/.vargos
-    Workspace ~/.vargos/workspace
-    Transport stdio
+When the gateway starts, it exposes tools via MCP protocol. The HTTP transport is the default.
 
-  Context (5 of 7 loaded)
-    AGENTS.md  SOUL.md  USER.md  TOOLS.md  HEARTBEAT.md
+### Endpoints
 
-  Tools (15)
-    File      read, write, edit
-    Shell     exec, process
-    Web       web_fetch, browser
-    Memory    memory_search, memory_get
-    Session   sessions_list, sessions_history, sessions_send, sessions_spawn
-    Cron      cron_add, cron_list
+| URL | Description |
+|-----|-------------|
+| `http://127.0.0.1:9001/mcp` | MCP protocol (Streamable HTTP) |
+| `http://127.0.0.1:9001/openapi.json` | OpenAPI 3.1 spec for all tools |
 
-  Services     ok
-    Scheduler  0 task(s)
-    Heartbeat  off (empty)
-
-  Channels
-    whatsapp  connected
-
-  Listening on stdio
-```
-
-### Claude Desktop Configuration
+### Claude Desktop
 
 Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
@@ -101,245 +135,198 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
   "mcpServers": {
     "vargos": {
       "command": "pnpm",
-      "args": ["--cwd", "/path/to/vargos", "dev"],
-      "env": {
-        "VARGOS_WORKSPACE": "/path/to/workspace"
-      }
+      "args": ["--cwd", "/path/to/vargos", "start"]
     }
   }
 }
 ```
 
-### How MCP Tools Work
+### Stdio mode
 
-MCP clients send `CallToolRequest` → Vargos looks up the tool in the registry → executes with context (sessionKey, workingDir) → returns `CallToolResult`.
+For MCP clients that expect stdio transport:
 
-```
-MCP Client → CallToolRequest("read", {path: "README.md"})
-           → ToolRegistry.get("read")
-           → ReadTool.execute({path: "README.md"}, context)
-           → { content: [{ type: "text", text: "# Vargos..." }] }
-```
-
----
-
-## Cron Scheduler
-
-Automate periodic tasks with scheduled background agents.
-
-### How It Works
-
-The cron scheduler starts automatically with `pnpm dev`. Tasks are added via the `cron_add` MCP tool at runtime.
-
-For standalone testing:
-
-```bash
-tsx src/cli.ts scheduler
+```jsonc
+{
+  "mcp": { "transport": "stdio" }
+}
 ```
 
-**Execution flow:**
+### OpenAPI
 
-```
-Cron trigger
-    ↓
-Create session (cron:task-id:timestamp)
-    ↓
-Spawn subagent with task
-    ↓
-Agent executes (full tool access)
-    ↓
-Results stored in session transcript
-```
-
-### Heartbeat
-
-The heartbeat runner checks `HEARTBEAT.md` every 30 minutes. If the file has actionable content (not just headers/comments), it sends the content to the agent. If nothing needs attention, the agent replies `HEARTBEAT_OK` and the cycle is silent.
-
-Add tasks to `~/.vargos/workspace/HEARTBEAT.md` when you want periodic agent attention. Leave it empty to save API cost.
-
----
-
-## Background Agents
-
-Spawn agents that run independently and report back.
-
-### Spawning
-
-```bash
-# In CLI chat
-pnpm chat
-
-You: Spawn an agent to analyze test coverage and write results to memory/results/coverage.md
-```
-
-### How It Works
-
-```
-Parent Session
-    ↓
-sessions_spawn tool called
-    ↓
-Create child session (parent:subagent:child-id)
-    ↓
-Start Pi Runtime with minimal context (AGENTS.md + TOOLS.md)
-    ↓
-Agent executes task independently
-    ↓
-On completion → announce result to parent session
-```
-
-**Subagent restrictions:**
-- Cannot spawn other subagents
-- Minimal context (AGENTS.md + TOOLS.md only)
-- Cannot use session tools (sessions_list, sessions_send, etc.)
-
----
-
-## Session Management
-
-Sessions persist conversation history as JSONL files.
-
-### Session Types
-
-| Type | Prefix | Use Case |
-|------|--------|----------|
-| CLI | `cli:` | Interactive terminal sessions |
-| MCP | `default` | MCP client connections |
-| Subagent | `*:subagent:*` | Background tasks |
-| Cron | `cron:*` | Scheduled tasks |
-| Channel | `wa:*`, `tg:*` | WhatsApp/Telegram conversations |
-
-### Session Continuity
-
-Sessions persist across restarts:
-
-```bash
-# Monday
-pnpm chat
-# ... work on project ...
-# Ctrl+C
-
-# Tuesday — resume same session
-pnpm chat
-# Context preserved, can continue conversation
-```
-
-Named sessions for project separation:
-
-```bash
-tsx src/cli.ts chat -s backend-api
-tsx src/cli.ts chat -s frontend-ui
-```
-
-### Storage
-
-Session transcripts stored as JSONL in `~/.vargos/sessions/`.
-
-```bash
-# View raw transcript
-jq . ~/.vargos/sessions/cli-main.jsonl
-```
+`GET /openapi.json` returns an OpenAPI 3.1 spec generated from the tool registry. Each tool maps to a `POST /tools/{name}` operation with its JSON Schema input. Useful for documentation, code generation, or REST-based integrations.
 
 ---
 
 ## Channels
 
-Vargos routes messages from WhatsApp and Telegram through the gateway to the agent runtime.
-
-### Setup
-
-```bash
-tsx src/cli.ts onboard
-```
-
-Or channels are auto-configured on first `pnpm dev` run (TTY only).
+Vargos routes messages from WhatsApp and Telegram to the agent runtime. Each channel runs as an adapter inside the gateway process.
 
 ### WhatsApp
 
-- Uses Baileys library (linked devices protocol)
-- QR code displayed in terminal for pairing
-- Messages deduplicated (120s TTL) and debounced (1.5s batch)
-- Auto-reconnects with exponential backoff
-- Auth state persisted in `~/.vargos/channels/whatsapp/`
+Uses the Baileys library (linked devices protocol). Your phone stays the primary device — Vargos connects as a linked device.
+
+**Prerequisites:** A WhatsApp account on your phone.
+
+**Setup:**
+
+```bash
+vargos config channel            # Select WhatsApp
+```
+
+1. A QR code appears in your terminal
+2. Open WhatsApp on your phone > Settings > Linked Devices > Link a Device
+3. Scan the QR code
+4. Optionally enter allowed phone numbers (whitelist)
+
+Auth state is saved to `~/.vargos/channels/whatsapp/` and persists across restarts.
+
+**Config:**
+
+```jsonc
+{
+  "channels": {
+    "whatsapp": {
+      "enabled": true,
+      "allowFrom": ["+1234567890"]  // optional, empty = accept all
+    }
+  }
+}
+```
+
+**Re-link (new QR code):**
+
+```bash
+rm -rf ~/.vargos/channels/whatsapp/
+vargos gateway restart
+```
 
 ### Telegram
 
-- Bot token authentication
-- Long-polling for updates
-- Sender whitelist support (`allowFrom` in config)
-- Supports text, photos, voice, audio, documents
+Uses the official Bot API with long-polling. No webhook setup required.
 
-### Message Flow
+**Prerequisites:** A Telegram account to create a bot.
+
+**Setup:**
+
+1. Open Telegram and message [@BotFather](https://t.me/BotFather)
+2. Send `/newbot`, follow the prompts, copy the bot token
+3. Run the setup:
+
+```bash
+vargos config channel            # Select Telegram, paste token
+```
+
+**Config:**
+
+```jsonc
+{
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "botToken": "123456789:ABCdef...",
+      "allowFrom": ["987654321"]   // optional, chat IDs (not usernames)
+    }
+  }
+}
+```
+
+**Finding your chat ID:**
+
+Message your bot, then:
+
+```bash
+curl https://api.telegram.org/bot<TOKEN>/getUpdates | jq '.result[0].message.chat.id'
+```
+
+### Both channels
+
+```jsonc
+{
+  "channels": {
+    "whatsapp": {
+      "enabled": true,
+      "allowFrom": ["+1234567890"]
+    },
+    "telegram": {
+      "enabled": true,
+      "botToken": "123456789:ABCdef...",
+      "allowFrom": ["987654321"]
+    }
+  }
+}
+```
+
+### Message flow
 
 ```
 Incoming message (WhatsApp/Telegram)
-    ↓
-Channel adapter receives
-    ↓
-Dedup cache (skip if seen in last 120s)
-    ↓
-Debouncer (batch rapid messages, 1.5s delay)
-    ↓
-Gateway.processAndDeliver()
-    ↓
-Plugin selected by type (text/image/voice/file)
-    ↓
-Plugin prepares input (extract text, encode images, save media)
-    ↓
-Store in session (role: user)
-    ↓
-PiAgentRuntime.run() — agent executes with full tool access
-    ↓
-Store response in session
-    ↓
-Reply delivered via adapter.send()
+    |
+    v
+Sender filter (allowFrom whitelist)
+    |
+    v
+Dedup (skip if seen in last 120s)
+    |
+    v
+Debounce (batch rapid messages, 1.5s)
+    |
+    v
+Gateway > Agent runtime > Tools
+    |
+    v
+Reply sent back through the channel
 ```
 
-### Configuration
+Both channels support text and media (images, audio, video, documents). Only private/direct messages are processed — group messages are ignored.
 
-Channel configs stored in `~/.vargos/channels.json`:
+### Comparison
 
-```json
-[
-  {
-    "type": "whatsapp",
-    "enabled": true
-  },
-  {
-    "type": "telegram",
-    "enabled": true,
-    "botToken": "123456:ABC...",
-    "allowFrom": ["user_id_1"]
-  }
-]
+| | WhatsApp | Telegram |
+|---|---|---|
+| Auth | QR code (linked device) | Bot token from @BotFather |
+| Protocol | Baileys (WebSocket) | Bot API (HTTP polling) |
+| Storage | Auth state on disk (~10MB) | Stateless |
+| Dependency | `@whiskeysockets/baileys` | None (raw fetch) |
+| Reconnect | Automatic with backoff | Automatic retry after 5s |
+
+---
+
+## Session Management
+
+Sessions persist conversation history as JSONL files in `~/.vargos/sessions/`.
+
+### Session types
+
+| Prefix | Source |
+|--------|--------|
+| `cli:` | Terminal chat sessions |
+| `mcp:` | MCP client connections |
+| `wa:` | WhatsApp conversations |
+| `tg:` | Telegram conversations |
+| `*:subagent:*` | Background agent tasks |
+| `cron:*` | Scheduled tasks |
+
+Sessions persist across restarts. Run `vargos chat` again to resume where you left off.
+
+---
+
+## Cron Scheduler
+
+The cron service starts automatically with the gateway. Tasks are added at runtime via the `cron_add` tool.
+
+```
+Cron trigger
+    |
+    v
+Create session (cron:task-id:timestamp)
+    |
+    v
+Agent executes with full tool access
+    |
+    v
+Results stored in session transcript
 ```
 
 ---
 
-## Quick Reference
-
-### Commands
-
-```bash
-pnpm dev                               # MCP server (stdio)
-pnpm chat                              # Interactive CLI chat
-tsx src/cli.ts chat -s <name>          # Named session
-tsx src/cli.ts run "<task>"            # One-shot task
-tsx src/cli.ts config                  # Interactive config wizard
-tsx src/cli.ts config:get              # Show current config
-tsx src/cli.ts config:set              # Set LLM provider/model
-tsx src/cli.ts onboard                 # Channel setup
-tsx src/cli.ts scheduler               # Standalone cron
-```
-
-### Environment Variables
-
-```bash
-VARGOS_DATA_DIR=~/.vargos        # Root data directory
-VARGOS_WORKSPACE=<dir>           # Context files directory
-VARGOS_TRANSPORT=stdio           # MCP transport (stdio | http)
-```
-
----
-
-*For architecture details, see [architecture.md](./architecture.md). For contribution guidelines, see [CONTRIBUTING.md](../CONTRIBUTING.md).*
+*For protocol details and service contracts, see [architecture.md](./architecture.md).*
