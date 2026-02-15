@@ -14,8 +14,10 @@ import {
   type ResponseFrame,
   type Frame,
   type ServiceRegistration,
-} from '../gateway/protocol.js';
-import { Reconnector } from '../core/channels/reconnect.js';
+} from '../protocol/index.js';
+import { Reconnector } from '../lib/reconnect.js';
+import type { ServiceMethod } from '../contracts/methods.js';
+import type { ServiceEvent } from '../contracts/events.js';
 
 const DEFAULT_GATEWAY_URL = 'ws://127.0.0.1:9000';
 const DEFAULT_REQUEST_TIMEOUT = 30_000;
@@ -23,9 +25,9 @@ const DEFAULT_REQUEST_TIMEOUT = 30_000;
 export interface ServiceClientConfig {
   service: string;
   version?: string;
-  methods: string[];
-  events: string[];
-  subscriptions: string[];
+  methods: ServiceMethod[];
+  events: ServiceEvent[];
+  subscriptions: ServiceEvent[];
   gatewayUrl?: string;
   requestTimeout?: number;
 }
@@ -76,13 +78,13 @@ export abstract class ServiceClient {
   // RPC
   // --------------------------------------------------------------------------
 
-  async call<T = unknown>(target: string, method: string, params?: unknown): Promise<T> {
+  async call<T = unknown>(target: string, method: string, params?: unknown, callTimeout?: number): Promise<T> {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       throw new Error(`ServiceClient[${this.config.service}] not connected`);
     }
 
     const id = createRequestId();
-    const timeout = this.config.requestTimeout ?? DEFAULT_REQUEST_TIMEOUT;
+    const timeout = callTimeout ?? this.config.requestTimeout ?? DEFAULT_REQUEST_TIMEOUT;
 
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {

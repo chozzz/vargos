@@ -1,9 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { GatewayServer } from '../gateway/server.js';
 import { ServiceClient, type ServiceClientConfig } from './client.js';
+import type { ServiceMethod } from '../contracts/methods.js';
+import type { ServiceEvent } from '../contracts/events.js';
 
 const PORT = 19801;
 const GATEWAY_URL = `ws://127.0.0.1:${PORT}`;
+
+// Test-only method/event literals — cast to satisfy typed config
+const TEST_METHODS = ['echo.ping', 'echo.fail'] as unknown as ServiceMethod[];
+const TEST_EVENT = ['test.event'] as unknown as ServiceEvent[];
 
 // Concrete test service that echoes method calls
 class EchoService extends ServiceClient {
@@ -13,7 +19,7 @@ class EchoService extends ServiceClient {
   constructor(config: Partial<ServiceClientConfig> = {}) {
     super({
       service: config.service ?? 'echo',
-      methods: config.methods ?? ['echo.ping', 'echo.fail'],
+      methods: config.methods ?? TEST_METHODS,
       events: config.events ?? [],
       subscriptions: config.subscriptions ?? [],
       gatewayUrl: GATEWAY_URL,
@@ -42,7 +48,7 @@ class EchoService extends ServiceClient {
 class CallerService extends ServiceClient {
   events: Array<{ event: string; payload: unknown }> = [];
 
-  constructor(subs: string[] = []) {
+  constructor(subs: ServiceEvent[] = []) {
     super({
       service: 'caller',
       methods: [],
@@ -86,7 +92,7 @@ describe('ServiceClient', () => {
     return s;
   }
 
-  async function createCaller(subs?: string[]): Promise<CallerService> {
+  async function createCaller(subs: ServiceEvent[] = []): Promise<CallerService> {
     const s = new CallerService(subs);
     await s.connect();
     services.push(s);
@@ -114,8 +120,6 @@ describe('ServiceClient', () => {
   });
 
   it('times out on unresponsive services', async () => {
-    // Register a service that handles a method but never responds
-    // We can't easily simulate this with EchoService, so test the error case
     const caller = await createCaller();
 
     await expect(caller.call('nobody', 'no.method')).rejects.toThrow();
@@ -125,13 +129,13 @@ describe('ServiceClient', () => {
     const echo = new EchoService({
       service: 'publisher',
       methods: [],
-      events: ['test.event'],
+      events: TEST_EVENT,
       subscriptions: [],
     });
     await echo.connect();
     services.push(echo);
 
-    const subscriber = await createCaller(['test.event']);
+    const subscriber = await createCaller(TEST_EVENT);
 
     echo.emit('test.event', { data: 42 });
 
@@ -140,7 +144,7 @@ describe('ServiceClient', () => {
 
     expect(subscriber.events.length).toBe(1);
     expect(subscriber.events[0].event).toBe('test.event');
-    expect((subscriber.events[0].payload as any).data).toBe(42);
+    expect((subscriber.events[0].payload as Record<string, unknown>).data).toBe(42);
   });
 
   it('reports not connected when calling before connect', async () => {
@@ -159,7 +163,7 @@ describe('ServiceClient', () => {
       caller.call<{ pong: unknown }>('echo', 'echo.ping', { n: 3 }),
     ]);
 
-    expect(results.map((r) => (r.pong as any).n).sort()).toEqual([1, 2, 3]);
+    expect(results.map((r) => (r.pong as Record<string, unknown>).n).sort()).toEqual([1, 2, 3]);
   });
 
   it('cleans up on disconnect', async () => {

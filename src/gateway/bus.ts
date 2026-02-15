@@ -3,7 +3,7 @@
  */
 
 import type { WebSocket } from 'ws';
-import { serializeFrame, type EventFrame } from './protocol.js';
+import { serializeFrame, type EventFrame } from '../protocol/index.js';
 
 export class EventBus {
   private subs = new Map<string, Set<WebSocket>>();
