@@ -2,7 +2,7 @@
  * Web tools extension
  */
 
-import type { VargosExtension } from '../../core/extensions.js';
+import type { VargosExtension } from '../../contracts/extension.js';
 import { webFetchTool } from './web-fetch.js';
 import { createBrowserTool } from './browser.js';
 

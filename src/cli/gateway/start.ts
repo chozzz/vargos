@@ -6,19 +6,19 @@ import { ToolsService } from '../../services/tools/index.js';
 import { SessionsService } from '../../services/sessions/index.js';
 import { CronService } from '../../services/cron/index.js';
 import { ChannelService } from '../../services/channels/index.js';
-import type { ChannelType } from '../../core/channels/types.js';
+import type { ChannelType } from '../../contracts/channel.js';
 import { AgentService } from '../../services/agent/index.js';
 import { McpBridge } from '../../mcp/server.js';
-import { toolRegistry } from '../../core/tools/registry.js';
+import { toolRegistry } from '../../tools/registry.js';
 import { FileSessionService } from '../../extensions/service-file/sessions-file.js';
 import { setSessionService } from '../../core/services/factory.js';
 import { initializeMemoryContext, getMemoryContext } from '../../extensions/service-file/memory-context.js';
-import { resolveDataDir, resolveWorkspaceDir, resolveCacheDir, initPaths } from '../../core/config/paths.js';
+import { resolveDataDir, resolveWorkspaceDir, resolveCacheDir, initPaths } from '../../config/paths.js';
 import type { MemoryStorage } from '../../extensions/service-file/storage.js';
-import { loadConfig } from '../../core/config/pi-config.js';
-import { validateConfig, checkLocalProvider } from '../../core/config/validate.js';
-import { initializeWorkspace, isWorkspaceInitialized } from '../../core/config/workspace.js';
-import type { ExtensionContext } from '../../core/extensions.js';
+import { loadConfig } from '../../config/pi-config.js';
+import { validateConfig, checkLocalProvider } from '../../config/validate.js';
+import { initializeWorkspace, isWorkspaceInitialized } from '../../config/workspace.js';
+import type { ExtensionContext } from '../../contracts/extension.js';
 import { setGatewayCall } from '../../core/runtime/extension.js';
 import { acquireLock, releaseLock } from '../lock.js';
 import {
@@ -66,12 +66,12 @@ export async function start(): Promise<void> {
 
   let config = await loadConfig(dataDir);
   if (!config && process.stdin.isTTY) {
-    const { runFirstRunSetup } = await import('../../core/config/onboard.js');
+    const { runFirstRunSetup } = await import('../../config/onboard.js');
     await runFirstRunSetup(dataDir, workspaceDir);
     config = await loadConfig(dataDir);
   }
   if (config && !config.storage && process.stdin.isTTY) {
-    const { setupStorage } = await import('../../core/config/onboard.js');
+    const { setupStorage } = await import('../../config/onboard.js');
     await setupStorage(dataDir);
     config = await loadConfig(dataDir);
   }

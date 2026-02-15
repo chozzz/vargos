@@ -2,7 +2,7 @@
  * Memory tools extension
  */
 
-import type { VargosExtension } from '../../core/extensions.js';
+import type { VargosExtension } from '../../contracts/extension.js';
 import { memorySearchTool } from './memory-search.js';
 import { memoryGetTool } from './memory-get.js';
 

@@ -6,14 +6,14 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { WASocket } from '@whiskeysockets/baileys';
-import type { ChannelAdapter, ChannelStatus } from '../../core/channels/types.js';
+import type { ChannelAdapter, ChannelStatus } from '../../contracts/channel.js';
 import { createWhatsAppSocket, type WhatsAppInboundMessage } from './session.js';
-import { createDedupeCache } from '../../core/lib/dedupe.js';
-import { createMessageDebouncer } from '../../core/lib/debounce.js';
+import { createDedupeCache } from '../../lib/dedupe.js';
+import { createMessageDebouncer } from '../../lib/debounce.js';
 import { processAndDeliver, type InputType, type NormalizedInput, type GatewayContext } from '../../core/gateway/core.js';
-import { resolveChannelsDir } from '../../core/config/paths.js';
-import { Reconnector } from '../../core/channels/reconnect.js';
-import { createLogger } from '../../core/lib/logger.js';
+import { resolveChannelsDir } from '../../config/paths.js';
+import { Reconnector } from '../../lib/reconnect.js';
+import { createLogger } from '../../lib/logger.js';
 
 const log = createLogger('whatsapp');
 
