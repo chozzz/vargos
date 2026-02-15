@@ -1,16 +1,14 @@
 /**
  * Vargos configuration — single ~/.vargos/config.json as source of truth
- * Syncs agent section to Pi SDK's auth.json + settings.json at boot
  */
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { LOCAL_PROVIDERS } from './validate.js';
 
 const PI_AGENT_DIR = 'agent';
 const CONFIG_FILE = 'config.json';
 
-// Legacy files (Pi SDK still reads these)
+// Pi SDK path conventions (used by runtime + legacy migration)
 const AUTH_FILE = 'auth.json';
 const SETTINGS_FILE = 'settings.json';
 const MODELS_FILE = 'models.json';
@@ -51,14 +49,6 @@ export interface VargosConfig {
   gateway?: GatewayConfig;
   mcp?: McpConfig;
   paths?: PathsConfig;
-}
-
-/** Pi SDK settings format — sync target, not source of truth */
-export interface PiSettings {
-  defaultProvider?: string;
-  defaultModel?: string;
-  defaultThinkingLevel?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
-  compactionEnabled?: boolean;
 }
 
 export function getConfigPath(dataDir: string): string {
@@ -142,32 +132,6 @@ export async function saveConfig(dataDir: string, config: VargosConfig): Promise
   );
 }
 
-/**
- * Sync agent config → Pi SDK files (auth.json + settings.json)
- * Pi SDK reads these at runtime, so we keep them in sync.
- */
-export async function syncPiSdkFiles(workspaceDir: string, agent: AgentConfig): Promise<void> {
-  const { agentDir, authPath, settingsPath } = getPiConfigPaths(workspaceDir);
-  await fs.mkdir(agentDir, { recursive: true });
-
-  // auth.json — provider-keyed format Pi SDK expects
-  // Local providers need a dummy key for Pi SDK auth checks
-  const apiKey = agent.apiKey ?? (LOCAL_PROVIDERS.has(agent.provider) ? 'local' : undefined);
-  if (apiKey) {
-    const auth: Record<string, { apiKey: string }> = {
-      [agent.provider]: { apiKey },
-    };
-    await fs.writeFile(authPath, JSON.stringify(auth, null, 2), 'utf-8');
-  }
-
-  // settings.json
-  const settings: PiSettings = {
-    defaultProvider: agent.provider,
-    defaultModel: agent.model,
-  };
-  await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
-}
-
 // -- Migration helpers --
 
 /** Read old flat config.json from workspace dir */
@@ -194,7 +158,7 @@ async function migrateLegacyPiSdk(workspaceDir: string): Promise<AgentConfig | n
   let apiKey: string | undefined;
 
   try {
-    const settings = JSON.parse(await fs.readFile(settingsPath, 'utf-8')) as PiSettings;
+    const settings = JSON.parse(await fs.readFile(settingsPath, 'utf-8')) as { defaultProvider?: string; defaultModel?: string };
     provider = settings.defaultProvider;
     model = settings.defaultModel;
   } catch { /* missing */ }

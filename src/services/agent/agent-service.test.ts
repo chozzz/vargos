@@ -26,7 +26,6 @@ vi.mock('../../core/config/pi-config.js', () => ({
     agent: { provider: 'test', model: 'test-model', apiKey: 'test-key' },
   }),
   getPiConfigPaths: () => ({ agentDir: '/tmp', authPath: '/tmp/auth.json', modelsPath: '/tmp/models.json' }),
-  syncPiSdkFiles: async () => {},
 }));
 
 vi.mock('../../core/config/workspace.js', () => ({

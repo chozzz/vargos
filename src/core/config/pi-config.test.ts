@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { loadConfig, saveConfig, syncPiSdkFiles, type VargosConfig } from './pi-config.js';
+import { loadConfig, saveConfig, type VargosConfig } from './pi-config.js';
 
 let tmpDir: string;
 
@@ -128,51 +128,3 @@ describe('saveConfig', () => {
   });
 });
 
-describe('syncPiSdkFiles', () => {
-  const wsDir = () => path.join(tmpDir, 'workspace');
-
-  it('writes auth.json with provider-keyed apiKey', async () => {
-    await syncPiSdkFiles(wsDir(), { provider: 'openai', model: 'gpt-4o', apiKey: 'sk-test' });
-
-    const auth = JSON.parse(await fs.readFile(path.join(wsDir(), 'agent', 'auth.json'), 'utf-8'));
-    expect(auth).toEqual({ openai: { apiKey: 'sk-test' } });
-  });
-
-  it('writes settings.json with provider and model', async () => {
-    await syncPiSdkFiles(wsDir(), { provider: 'anthropic', model: 'claude-3' });
-
-    const settings = JSON.parse(await fs.readFile(path.join(wsDir(), 'settings.json'), 'utf-8'));
-    expect(settings.defaultProvider).toBe('anthropic');
-    expect(settings.defaultModel).toBe('claude-3');
-  });
-
-  it('creates agent dir if missing', async () => {
-    await fs.rm(path.join(wsDir(), 'agent'), { recursive: true });
-    await syncPiSdkFiles(wsDir(), { provider: 'openai', model: 'gpt-4o', apiKey: 'sk-x' });
-
-    const stat = await fs.stat(path.join(wsDir(), 'agent'));
-    expect(stat.isDirectory()).toBe(true);
-  });
-
-  it('skips auth.json when no apiKey', async () => {
-    await syncPiSdkFiles(wsDir(), { provider: 'ollama', model: 'llama3' });
-
-    try {
-      await fs.access(path.join(wsDir(), 'agent', 'auth.json'));
-      expect.fail('auth.json should not exist');
-    } catch {
-      // expected
-    }
-  });
-
-  it('writes dummy auth key for local providers without apiKey', async () => {
-    await syncPiSdkFiles(wsDir(), {
-      provider: 'ollama',
-      model: 'llama3',
-      baseUrl: 'http://192.168.1.1:11434',
-    });
-
-    const auth = JSON.parse(await fs.readFile(path.join(wsDir(), 'agent', 'auth.json'), 'utf-8'));
-    expect(auth.ollama.apiKey).toBe('local');
-  });
-});
