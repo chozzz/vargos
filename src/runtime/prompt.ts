@@ -317,7 +317,7 @@ function buildIdentitySection(): string {
   return [
     '## Identity',
     '',
-    'You are Vargos, an agentic MCP (Model Context Protocol) server.',
+    'You are Vargos, an Artificially Intelligent Agentic Assistant.',
     'You help users by providing powerful tools for file manipulation, shell execution, browser automation, and agent management.',
     '',
     'Before making assumptions about the codebase:',
@@ -348,7 +348,7 @@ async function buildCodebaseContextSection(workspaceDir: string): Promise<string
         '- src/gateway/ - WebSocket gateway server, protocol, router, event bus',
         '- src/services/ - Gateway services (agent, tools, sessions, channels, cron)',
         '- src/mcp/ - MCP bridge (MCP protocol ↔ gateway RPC)',
-        '- src/core/ - Framework: config, runtime, tools, channels, extensions',
+        '- src/runtime/ - Agent runtime, lifecycle, message queue, prompt builder',
         '- src/extensions/ - Built-in tools, channel adapters, file services',
         '',
         'See CLAUDE.md and ARCHITECTURE.md for full structure.',

@@ -4,7 +4,7 @@
  */
 
 // Re-export from runtime/prompt for consistency
-export { isSubagentSessionKey } from '../core/runtime/prompt.js';
+export { isSubagentSessionKey } from '../runtime/prompt.js';
 
 /**
  * Tools that subagents are not allowed to use

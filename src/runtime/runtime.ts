@@ -15,6 +15,7 @@ import {
   type AgentSession,
   type AgentSessionEvent,
   type CompactionResult,
+  type SessionMessageEntry,
 } from '@mariozechner/pi-coding-agent';
 import { getVargosToolNames, createVargosCustomTools } from './extension.js';
 import { createLogger } from '../lib/logger.js';
@@ -23,9 +24,9 @@ import { promises as fs } from 'node:fs';
 const log = createLogger('runtime');
 import path from 'node:path';
 import { buildSystemPrompt, resolvePromptMode } from './prompt.js';
-import { getSessionService } from '../services/factory.js';
-import { getAgentLifecycle, type AgentStreamEvent } from './lifecycle.js';
-import { getSessionMessageQueue } from './queue.js';
+import { AgentLifecycle, type AgentStreamEvent } from './lifecycle.js';
+import { SessionMessageQueue } from './queue.js';
+import type { ISessionService } from '../contracts/service.js';
 import { getPiConfigPaths } from '../config/pi-config.js';
 import { loadContextFiles } from '../config/workspace.js';
 import { LOCAL_PROVIDERS } from '../config/validate.js';
@@ -144,16 +145,25 @@ export interface PiAgentRunResult {
   duration?: number;
 }
 
+export interface RuntimeDeps {
+  sessionService: ISessionService;
+  lifecycle?: AgentLifecycle;
+  queue?: SessionMessageQueue;
+}
+
 /**
  * Pi Agent Runtime
  * Manages Pi SDK agent sessions
  */
 export class PiAgentRuntime {
-  private lifecycle = getAgentLifecycle();
-  private messageQueue = getSessionMessageQueue();
+  private lifecycle: AgentLifecycle;
+  private messageQueue: SessionMessageQueue;
+  private sessionService: ISessionService;
 
-  constructor() {
-    // Set up message queue handler
+  constructor(deps: RuntimeDeps) {
+    this.sessionService = deps.sessionService;
+    this.lifecycle = deps.lifecycle ?? new AgentLifecycle();
+    this.messageQueue = deps.queue ?? new SessionMessageQueue();
     this.messageQueue.on('execute', this.handleQueuedMessage.bind(this));
   }
 
@@ -246,7 +256,7 @@ export class PiAgentRuntime {
             modelRegistry.registerProvider(provider, {
               baseUrl,
               apiKey,
-              api: 'openai-completions' as any,
+              api: 'openai-completions',
               models: [{
                 id: config.model,
                 name: config.model,
@@ -345,7 +355,7 @@ export class PiAgentRuntime {
       for (let i = sessionEntries.length - 1; i >= 0; i--) {
         const entry = sessionEntries[i];
         if (entry.type === 'message') {
-          const msg = (entry as any).message;
+          const msg = (entry as SessionMessageEntry).message;
           if (msg?.role === 'assistant') {
             // API/provider error
             if (msg.stopReason === 'error' && msg.errorMessage) {
@@ -441,8 +451,8 @@ export class PiAgentRuntime {
         this.lifecycle.streamTool(runId, 'tool', 'end', {}, {});
         const result = event.result;
         if (result) {
-          const content = Array.isArray(result.content) 
-            ? result.content.map((c: any) => c.text || c.data || '').join('\n')
+          const content = Array.isArray(result.content)
+            ? result.content.map((c: { text?: string; data?: string }) => c.text || c.data || '').join('\n')
             : String(result);
           const preview = content.slice(0, 500);
           log.debug(`result: ${preview}${content.length > 500 ? '...' : ''}`);
@@ -465,7 +475,7 @@ export class PiAgentRuntime {
     // Stream compaction event
     this.lifecycle.streamCompaction(runId, result.tokensBefore, result.summary);
 
-    const sessions = getSessionService();
+    const sessions = this.sessionService;
 
     // Check if session still exists
     const session = await sessions.get(vargosSessionKey);
@@ -514,7 +524,7 @@ export class PiAgentRuntime {
     childSessionKey: string,
     result: PiAgentRunResult
   ): Promise<void> {
-    const sessions = getSessionService();
+    const sessions = this.sessionService;
 
     // Check parent exists
     const parentSession = await sessions.get(parentSessionKey);
@@ -558,7 +568,7 @@ export class PiAgentRuntime {
   private async loadSessionMessages(
     sessionKey: string
   ): Promise<Array<{ content: string; role: string; metadata?: Record<string, unknown> }>> {
-    const sessions = getSessionService();
+    const sessions = this.sessionService;
     return sessions.getMessages(sessionKey);
   }
 
@@ -566,7 +576,7 @@ export class PiAgentRuntime {
    * Store agent response
    */
   private async storeResponse(sessionKey: string, response: string): Promise<void> {
-    const sessions = getSessionService();
+    const sessions = this.sessionService;
     await sessions.addMessage({
       sessionKey,
       content: response,
@@ -611,17 +621,3 @@ export class PiAgentRuntime {
   }
 }
 
-// Global runtime instance
-let globalRuntime: PiAgentRuntime | null = null;
-
-export function getPiAgentRuntime(): PiAgentRuntime {
-  if (!globalRuntime) {
-    globalRuntime = new PiAgentRuntime();
-  }
-  return globalRuntime;
-}
-
-export function initializePiAgentRuntime(): PiAgentRuntime {
-  globalRuntime = new PiAgentRuntime();
-  return globalRuntime;
-}
