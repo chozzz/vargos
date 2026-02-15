@@ -531,11 +531,12 @@ describe('processAndDeliver', () => {
     expect(send).toHaveBeenCalled();
   });
 
-  it('should not call send for failed results', async () => {
+  it('should send error message for failed results', async () => {
     processInputSpy.mockResolvedValue(errorResult);
-    const send = vi.fn();
+    const send = vi.fn().mockResolvedValue(undefined);
     await processAndDeliver(input, context, send);
-    expect(send).not.toHaveBeenCalled();
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith(expect.stringContaining('[error]'));
   });
 
   it('should fire sendTyping immediately', async () => {

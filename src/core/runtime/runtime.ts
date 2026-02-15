@@ -32,6 +32,26 @@ import { LOCAL_PROVIDERS } from '../config/validate.js';
 import { sanitizeHistory, limitHistoryTurns, getHistoryLimit } from './history.js';
 import { prepareSessionManager } from './session-init.js';
 
+const PROVIDER_BASE_URLS: Record<string, string> = {
+  openrouter: 'https://openrouter.ai/api/v1',
+  ollama: 'http://127.0.0.1:11434/v1',
+  lmstudio: 'http://127.0.0.1:1234/v1',
+  groq: 'https://api.groq.com/openai/v1',
+  together: 'https://api.together.xyz/v1',
+  deepseek: 'https://api.deepseek.com/v1',
+  mistral: 'https://api.mistral.ai/v1',
+  fireworks: 'https://api.fireworks.ai/inference/v1',
+  perplexity: 'https://api.perplexity.ai',
+};
+
+function resolveProviderBaseUrl(provider: string, configBaseUrl?: string): string | undefined {
+  if (configBaseUrl) {
+    const raw = configBaseUrl.replace(/\/$/, '');
+    return raw.endsWith('/v1') ? raw : raw + '/v1';
+  }
+  return PROVIDER_BASE_URLS[provider];
+}
+
 /**
  * Extract plain text from Pi SDK content (string, array of content blocks, or object)
  */
@@ -44,12 +64,56 @@ function extractTextContent(content: unknown): string {
       .filter(Boolean)
       .join('\n');
   }
-  // Fallback: try to get .text or stringify
   if (content && typeof content === 'object') {
     const obj = content as Record<string, unknown>;
     if (typeof obj.text === 'string') return obj.text;
   }
   return String(content);
+}
+
+/**
+ * Classify raw API/provider errors into actionable user-facing messages.
+ */
+function classifyError(raw: string, provider: string, model: string): string {
+  const lower = raw.toLowerCase();
+
+  // Auth errors
+  if (lower.includes('401') || lower.includes('unauthorized') || lower.includes('user not found') || lower.includes('invalid api key'))
+    return `Auth failed for ${provider}. Check your API key (vargos config llm).`;
+
+  // Quota / billing
+  if (lower.includes('402') || lower.includes('payment') || lower.includes('insufficient') || lower.includes('quota'))
+    return `${provider} billing issue — check your account balance or plan.`;
+
+  // Rate limit
+  if (lower.includes('429') || lower.includes('rate limit') || lower.includes('too many'))
+    return `Rate limited by ${provider}. Try again shortly.`;
+
+  // Unsupported input modality (e.g. images on text-only model)
+  if (lower.includes('not support') && (lower.includes('image') || lower.includes('vision') || lower.includes('input')))
+    return `${model} on ${provider} doesn't support this input type. Try a vision-capable model or send text instead.`;
+
+  // Model not found
+  if (lower.includes('404') || lower.includes('not found') || lower.includes('does not exist') || lower.includes('no such model'))
+    return `Model "${model}" not found on ${provider}. Check model name.`;
+
+  // Context overflow
+  if (lower.includes('context') && (lower.includes('length') || lower.includes('overflow') || lower.includes('too long')))
+    return `Message too long for ${model}. Try a shorter message or clear session history.`;
+
+  // Timeout
+  if (lower.includes('timeout') || lower.includes('timed out') || lower.includes('econnaborted'))
+    return `Request to ${provider} timed out. Try again.`;
+
+  // Network
+  if (lower.includes('econnrefused') || lower.includes('enotfound') || lower.includes('network') || lower.includes('fetch failed'))
+    return `Cannot reach ${provider}. Check network or provider status.`;
+
+  // Content filter
+  if (lower.includes('content') && (lower.includes('filter') || lower.includes('policy') || lower.includes('moderation')))
+    return `Message blocked by ${provider}'s content filter.`;
+
+  return `${provider} error: ${raw}`;
 }
 
 export interface PiAgentConfig {
@@ -172,27 +236,29 @@ export class PiAgentRuntime {
       if (config.model) {
         model = modelRegistry.find(provider, config.model) ?? undefined;
 
-        // Register local providers not in Pi SDK's built-in registry
-        if (!model && LOCAL_PROVIDERS.has(provider) && config.model) {
-          const raw = config.baseUrl?.replace(/\/$/, '')
-            ?? (provider === 'ollama' ? 'http://127.0.0.1:11434' : 'http://127.0.0.1:1234');
-          const baseUrl = raw.endsWith('/v1') ? raw : raw + '/v1';
+        // Register unknown models not in Pi SDK's built-in registry
+        if (!model && config.model) {
+          const baseUrl = resolveProviderBaseUrl(provider, config.baseUrl);
+          const apiKey = config.apiKey ?? (LOCAL_PROVIDERS.has(provider) ? 'local' : undefined);
 
-          modelRegistry.registerProvider(provider, {
-            baseUrl,
-            apiKey: config.apiKey ?? 'local',
-            api: 'openai-completions' as any,
-            models: [{
-              id: config.model,
-              name: config.model,
-              reasoning: false,
-              input: ['text'] as ('text' | 'image')[],
-              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-              contextWindow: 128_000,
-              maxTokens: 8_192,
-            }],
-          });
-          model = modelRegistry.find(provider, config.model) ?? undefined;
+          if (baseUrl && apiKey) {
+            log.info(`registering model: provider=${provider} model=${config.model} baseUrl=${baseUrl}`);
+            modelRegistry.registerProvider(provider, {
+              baseUrl,
+              apiKey,
+              api: 'openai-completions' as any,
+              models: [{
+                id: config.model,
+                name: config.model,
+                reasoning: false,
+                input: ['text', 'image'] as ('text' | 'image')[],
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                contextWindow: 128_000,
+                maxTokens: 8_192,
+              }],
+            });
+            model = modelRegistry.find(provider, config.model) ?? undefined;
+          }
         }
       }
 
@@ -264,23 +330,48 @@ export class PiAgentRuntime {
         data: img.data,
         mimeType: img.mimeType,
       }));
+      log.info(`prompting agent: session=${config.sessionKey} prompt=${prompt.slice(0, 120)}...`);
       await session.prompt(prompt, piImages?.length ? { images: piImages } : undefined);
+      log.info(`agent finished: session=${config.sessionKey}`);
 
       // Get response from session history
       const sessionEntries = sessionManager.getEntries();
-      let response = 'Task completed';
+      const agentProvider = config.provider ?? 'openai';
+      const agentModel = config.model ?? 'unknown';
+      let response = '';
       let inputTokens = 0;
       let outputTokens = 0;
 
       for (let i = sessionEntries.length - 1; i >= 0; i--) {
         const entry = sessionEntries[i];
         if (entry.type === 'message') {
-          const msg = (entry as { message?: { role?: string; content?: unknown } }).message;
-          if (msg?.role === 'assistant' && msg?.content) {
-            response = extractTextContent(msg.content);
-            break;
+          const msg = (entry as any).message;
+          if (msg?.role === 'assistant') {
+            // API/provider error
+            if (msg.stopReason === 'error' && msg.errorMessage) {
+              log.error(`raw: ${msg.errorMessage}`);
+              const friendly = classifyError(msg.errorMessage, agentProvider, agentModel);
+              log.error(friendly);
+              return { success: false, error: friendly, duration: Date.now() - startedAt };
+            }
+            // Extract text content
+            if (msg.content) {
+              response = extractTextContent(msg.content);
+              if (msg.usage) {
+                inputTokens = msg.usage.input ?? 0;
+                outputTokens = msg.usage.output ?? 0;
+              }
+              break;
+            }
           }
         }
+      }
+
+      // Empty response — model returned nothing useful
+      if (!response.trim()) {
+        const hint = `${agentModel} on ${agentProvider} returned an empty response. Try a different model or check provider status.`;
+        log.error(hint);
+        return { success: false, error: hint, duration: Date.now() - startedAt };
       }
 
       // Store completion in Vargos session
@@ -308,18 +399,18 @@ export class PiAgentRuntime {
       };
     } catch (err) {
       const duration = Date.now() - startedAt;
-      const message = err instanceof Error ? err.message : String(err);
-      log.error(`Run ${runId} failed (${(duration / 1000).toFixed(1)}s): ${message}`);
-      if (err instanceof Error && err.stack) {
-        log.error(err.stack);
-      }
+      const raw = err instanceof Error ? err.message : String(err);
+      const provider = config.provider ?? 'openai';
+      const model = config.model ?? 'unknown';
+      const friendly = classifyError(raw, provider, model);
+      log.error(`Run ${runId} failed (${(duration / 1000).toFixed(1)}s): ${raw}`);
 
       // Error lifecycle
-      this.lifecycle.errorRun(runId, message);
+      this.lifecycle.errorRun(runId, friendly);
 
       return {
         success: false,
-        error: message,
+        error: friendly,
         duration,
       };
     }
