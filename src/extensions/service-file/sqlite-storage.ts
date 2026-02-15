@@ -26,7 +26,8 @@ export class MemorySQLiteStorage {
     await fs.mkdir(dir, { recursive: true });
 
     this.db = new Database(this.config.dbPath);
-    this.db.pragma('journal_mode = WAL');
+    // DELETE mode — WAL requires mmap which breaks on network filesystems (NFS/CIFS)
+    this.db.pragma('journal_mode = DELETE');
     this.createTables();
   }
 
