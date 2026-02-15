@@ -169,8 +169,3 @@ export async function runFirstRunSetup(dataDir: string, workspaceDir: string): P
 
   outro('Setup complete — starting gateway...');
 }
-
-/** Backward-compat wrapper — LLM step only (used by start.ts fallback) */
-export async function interactivePiConfig(dataDir: string): Promise<void> {
-  await setupLlm(dataDir);
-}

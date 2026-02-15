@@ -10,9 +10,24 @@
   },
   "homepage": "https://github.com/chozzz/vargos",
   "bugs": "https://github.com/chozzz/vargos/issues",
-  "keywords": ["mcp", "agent", "ai", "runtime", "self-hosted", "llm", "tools", "whatsapp", "telegram"],
+  "keywords": [
+    "mcp",
+    "agent",
+    "ai",
+    "runtime",
+    "self-hosted",
+    "llm",
+    "tools",
+    "whatsapp",
+    "telegram"
+  ],
   "type": "module",
-  "files": ["dist", "README.md", "LICENSE.md", "CONTRIBUTING.md"],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE.md",
+    "CONTRIBUTING.md"
+  ],
   "bin": {
     "vargos": "./dist/cli/index.js"
   },
@@ -30,17 +45,15 @@
   "dependencies": {
     "@clack/prompts": "^1.0.0",
     "@mariozechner/pi-agent-core": "^0.50.7",
-    "@mariozechner/pi-ai": "^0.50.7",
     "@mariozechner/pi-coding-agent": "^0.50.7",
     "@modelcontextprotocol/sdk": "^1.26.0",
     "@whiskeysockets/baileys": "7.0.0-rc.9",
+    "better-sqlite3": "^12.6.2",
     "chalk": "^5.6.2",
     "cron": "^4.4.0",
     "pino": "^10.3.1",
     "playwright": "^1.58.1",
     "qrcode-terminal": "^0.12.0",
-    "sqlite": "^5.1.1",
-    "sqlite3": "^5.1.7",
     "tinyglobby": "^0.2.15",
     "ws": "^8.18.0",
     "zod": "^3.23.8",
@@ -48,10 +61,10 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/cron": "^2.4.3",
     "@types/node": "^25.2.1",
     "@types/qrcode-terminal": "^0.12.2",
-    "@types/sqlite3": "^5.1.0",
     "@types/ws": "^8.5.13",
     "@typescript-eslint/eslint-plugin": "^8.54.0",
     "@typescript-eslint/parser": "^8.54.0",

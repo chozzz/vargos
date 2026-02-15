@@ -14,17 +14,6 @@ export interface BrowserSession {
   startedAt: number;
 }
 
-export interface SnapshotResult {
-  title: string;
-  url: string;
-  elements: Array<{
-    ref: string;
-    role: string;
-    name?: string;
-    content?: string;
-  }>;
-}
-
 export class BrowserService {
   private sessions = new Map<string, BrowserSession>();
   private sessionCounter = 0;

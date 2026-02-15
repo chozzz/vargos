@@ -3,7 +3,7 @@
  * Used by first-run wizard and `vargos config channel edit`
  */
 
-import { text, confirm, log, isCancel } from '@clack/prompts';
+import { text, log, isCancel } from '@clack/prompts';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { loadChannelConfigs, addChannelConfig } from './config.js';

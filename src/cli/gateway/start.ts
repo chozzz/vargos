@@ -14,7 +14,7 @@ import { FileSessionService } from '../../extensions/service-file/sessions-file.
 import { setSessionService } from '../../core/services/factory.js';
 import { initializeMemoryContext, getMemoryContext } from '../../extensions/service-file/memory-context.js';
 import { resolveDataDir, resolveWorkspaceDir, initPaths } from '../../core/config/paths.js';
-import { loadConfig, syncPiSdkFiles } from '../../core/config/pi-config.js';
+import { loadConfig } from '../../core/config/pi-config.js';
 import { validateConfig, checkLocalProvider } from '../../core/config/validate.js';
 import { initializeWorkspace, isWorkspaceInitialized } from '../../core/config/workspace.js';
 import type { ExtensionContext } from '../../core/extensions.js';
@@ -97,7 +97,6 @@ export async function start(): Promise<void> {
   }
 
   initPaths(config.paths);
-  await syncPiSdkFiles(workspaceDir, config.agent);
 
   // ── Banner ────────────────────────────────────────────────────────────────
   renderBanner({
