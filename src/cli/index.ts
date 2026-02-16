@@ -1,21 +1,27 @@
 #!/usr/bin/env node
 
 import { createRequire } from 'node:module';
+import chalk from 'chalk';
 import { buildTree, resolve, isGroup } from './tree.js';
 import { runMenu } from './menu.js';
 
 const require = createRequire(import.meta.url);
 const { version: VERSION } = require('../../package.json');
 
-function printHelp(nodes: ReturnType<typeof buildTree>, prefix = ''): void {
-  for (const node of nodes) {
-    const path = prefix ? `${prefix} ${node.key}` : node.key;
+function printTree(nodes: ReturnType<typeof buildTree>, indent = '', isLast: boolean[] = []): void {
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    const last = i === nodes.length - 1;
+    const connector = last ? '└─' : '├─';
+    const hint = !isGroup(node) && (node as { hint?: string }).hint
+      ? `  ${chalk.dim((node as { hint?: string }).hint!)}`
+      : '';
+
+    console.log(`${indent}${connector} ${node.key}${hint}`);
+
     if (isGroup(node)) {
-      console.log(`  ${path}`);
-      printHelp(node.children, path);
-    } else {
-      const hint = (node as { hint?: string }).hint ?? '';
-      console.log(`  ${path.padEnd(30)} ${hint}`);
+      const childIndent = indent + (last ? '   ' : '│  ');
+      printTree(node.children, childIndent, [...isLast, last]);
     }
   }
 }
@@ -39,7 +45,7 @@ async function main(): Promise<void> {
   if (args[0] === '--help' || args[0] === '-h' || args[0] === 'help') {
     console.log(`\n  vargos v${VERSION}\n`);
     console.log('  Usage: vargos [command]\n');
-    printHelp(tree);
+    printTree(tree, '  ');
     console.log('');
     return;
   }
@@ -56,12 +62,9 @@ async function main(): Promise<void> {
   const { node, remaining } = result;
 
   if (isGroup(node)) {
-    console.log(`\n  vargos ${args.slice(0, args.length - remaining.length).join(' ')}\n`);
-    console.log('  Subcommands:');
-    for (const child of node.children) {
-      const hint = isGroup(child) ? '' : ((child as { hint?: string }).hint ?? '');
-      console.log(`    ${child.key.padEnd(20)} ${hint}`);
-    }
+    const path = args.slice(0, args.length - remaining.length).join(' ');
+    console.log(`\n  vargos ${path}\n`);
+    printTree(node.children, '  ');
     console.log('');
     return;
   }

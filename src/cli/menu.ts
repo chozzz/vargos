@@ -10,7 +10,7 @@ const EXIT: Choice = '__exit__';
 
 export async function runMenu(tree: MenuNode[]): Promise<void> {
   intro('Vargos');
-  await runSubmenu(tree, 'What would you like to do?');
+  await runSubmenu(tree, 'vargos');
   outro('Bye');
 }
 
@@ -20,7 +20,7 @@ function nodeMap(nodes: MenuNode[]): Map<string, MenuNode> {
   return map;
 }
 
-async function runSubmenu(nodes: MenuNode[], message: string): Promise<void> {
+async function runSubmenu(nodes: MenuNode[], breadcrumb: string): Promise<void> {
   const lookup = nodeMap(nodes);
 
   while (true) {
@@ -33,7 +33,7 @@ async function runSubmenu(nodes: MenuNode[], message: string): Promise<void> {
       { value: EXIT, label: 'Exit' },
     ];
 
-    const choice = await select({ message, options });
+    const choice = await select({ message: breadcrumb, options });
     if (isCancel(choice)) return;
 
     if (choice === EXIT) return;
@@ -42,15 +42,16 @@ async function runSubmenu(nodes: MenuNode[], message: string): Promise<void> {
     if (!node) continue;
 
     if (isGroup(node)) {
-      await runGroupSubmenu(node);
+      await runGroupSubmenu(node, breadcrumb);
     } else {
       await node.action();
     }
   }
 }
 
-async function runGroupSubmenu(group: MenuNode & { children: MenuNode[] }): Promise<void> {
+async function runGroupSubmenu(group: MenuNode & { children: MenuNode[] }, parentCrumb: string): Promise<void> {
   const lookup = nodeMap(group.children);
+  const breadcrumb = `${parentCrumb} > ${group.label}`;
 
   while (true) {
     const options = [
@@ -63,7 +64,7 @@ async function runGroupSubmenu(group: MenuNode & { children: MenuNode[] }): Prom
       { value: EXIT, label: 'Exit' },
     ];
 
-    const choice = await select({ message: group.label, options });
+    const choice = await select({ message: breadcrumb, options });
     if (isCancel(choice) || choice === EXIT) process.exit(0);
     if (choice === BACK) return;
 
@@ -71,7 +72,7 @@ async function runGroupSubmenu(group: MenuNode & { children: MenuNode[] }): Prom
     if (!node) continue;
 
     if (isGroup(node)) {
-      await runGroupSubmenu(node);
+      await runGroupSubmenu(node, breadcrumb);
     } else {
       await node.action();
     }
