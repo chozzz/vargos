@@ -141,6 +141,41 @@ export function buildTree(): MenuNode[] {
       ],
     },
     {
+      key: 'cron',
+      kind: 'group',
+      label: 'Cron',
+      children: [
+        {
+          key: 'list',
+          kind: 'leaf',
+          label: 'List',
+          hint: 'Show scheduled tasks',
+          action: async () => { const m = await import('./cron.js'); await m.list(); },
+        },
+        {
+          key: 'trigger',
+          kind: 'leaf',
+          label: 'Trigger',
+          hint: 'Manually trigger a task',
+          action: async (args) => { const m = await import('./cron.js'); await m.trigger(args); },
+        },
+        {
+          key: 'logs',
+          kind: 'leaf',
+          label: 'Logs',
+          hint: 'View past cron executions',
+          action: async (args) => { const m = await import('./cron.js'); await m.logs(args); },
+        },
+        {
+          key: 'heartbeat',
+          kind: 'leaf',
+          label: 'Heartbeat',
+          hint: 'Heartbeat config & status',
+          action: async () => { const m = await import('./cron.js'); await m.heartbeat(); },
+        },
+      ],
+    },
+    {
       key: 'health',
       kind: 'leaf',
       label: 'Health',

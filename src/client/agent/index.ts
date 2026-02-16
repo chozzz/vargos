@@ -188,6 +188,7 @@ export class AgentService extends ServiceClient {
       sessionKey,
       sessionFile: resolveSessionFile(sessionKey),
       workspaceDir: params.workspaceDir ?? this.workspaceDir,
+      task: params.task,
       model: params.model ?? primary.model,
       provider: params.provider ?? primary.provider,
       apiKey,

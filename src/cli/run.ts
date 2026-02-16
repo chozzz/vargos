@@ -14,8 +14,14 @@ export async function run(args?: string[]): Promise<void> {
 
   try {
     const sessionKey = `cli:run:${Date.now()}`;
-    await client.call('agent', 'agent.run', { sessionKey, task }, 300_000);
+    const result = await client.call<{ success: boolean; error?: string }>(
+      'agent', 'agent.run', { sessionKey, task }, 300_000,
+    );
     console.log('');
+    if (!result.success) {
+      console.error(chalk.red(`  ${result.error ?? 'Agent run failed.'}`));
+      process.exit(1);
+    }
   } catch (err) {
     console.error(chalk.red(`  Error: ${err instanceof Error ? err.message : String(err)}`));
     process.exit(1);
