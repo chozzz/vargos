@@ -20,6 +20,7 @@ export async function chat(): Promise<void> {
     const msg = line.trim();
     if (!msg) { rl.prompt(); return; }
 
+    client.startThinking();
     try {
       await client.call('agent', 'agent.run', { sessionKey: 'cli:chat', task: msg }, 300_000);
       console.log(''); // newline after streaming deltas
@@ -29,7 +30,17 @@ export async function chat(): Promise<void> {
     rl.prompt();
   });
 
-  // Keep alive until readline closes (Ctrl+C / Ctrl+D)
+  const cleanup = async () => {
+    rl.close();
+    await client.disconnect();
+  };
+
+  process.on('SIGINT', async () => {
+    await cleanup();
+    process.exit(0);
+  });
+
+  // Keep alive until readline closes (Ctrl+D)
   await new Promise<void>((resolve) => {
     rl.on('close', async () => {
       await client.disconnect();
