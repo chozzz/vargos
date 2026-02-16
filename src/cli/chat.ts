@@ -22,8 +22,13 @@ export async function chat(): Promise<void> {
 
     client.startThinking();
     try {
-      await client.call('agent', 'agent.run', { sessionKey: 'cli:chat', task: msg }, 300_000);
-      console.log(''); // newline after streaming deltas
+      const result = await client.call<{ success: boolean; error?: string }>(
+        'agent', 'agent.run', { sessionKey: 'cli:chat', task: msg }, 300_000,
+      );
+      console.log('');
+      if (!result.success) {
+        console.error(chalk.red(`  ${result.error ?? 'Agent run failed.'}`));
+      }
     } catch (err) {
       console.error(chalk.red(`  Error: ${err instanceof Error ? err.message : String(err)}`));
     }
