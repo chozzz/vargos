@@ -16,22 +16,10 @@ import { glob } from 'tinyglobby';
 import { fileURLToPath } from 'node:url';
 import type { MemoryStorage } from './storage.js';
 import { FSWatcher, watch } from 'node:fs';
+export type { MemoryChunk } from '../../contracts/storage.js';
+import type { MemoryChunk } from '../../contracts/storage.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-export interface MemoryChunk {
-  id: string;
-  path: string;
-  content: string;
-  startLine: number;
-  endLine: number;
-  embedding?: number[];
-  metadata: {
-    date: string;
-    size: number;
-    [key: string]: unknown;
-  };
-}
 
 export interface SearchResult {
   chunk: MemoryChunk;

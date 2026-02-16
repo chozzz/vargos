@@ -12,7 +12,8 @@ export async function run(args?: string[]): Promise<void> {
   client.onDelta((delta) => process.stdout.write(delta));
 
   try {
-    await client.call('agent', 'agent.run', { sessionKey: 'cli:run', task });
+    const sessionKey = `cli:run:${Date.now()}`;
+    await client.call('agent', 'agent.run', { sessionKey, task }, 300_000);
     console.log('');
   } catch (err) {
     console.error(chalk.red(`  Error: ${err instanceof Error ? err.message : String(err)}`));

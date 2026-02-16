@@ -3,7 +3,7 @@
  */
 
 import { z } from 'zod';
-import { Tool, ToolContext, textResult, errorResult } from '../../core/tools/types.js';
+import { Tool, ToolContext, textResult, errorResult } from '../../contracts/tool.js';
 
 const CronAddParameters = z.object({
   name: z.string().describe('Name of the scheduled task'),

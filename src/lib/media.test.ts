@@ -3,20 +3,18 @@ import { readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { saveMedia } from './media.js';
-import { initPaths, resetPaths } from '../config/paths.js';
 
 const TEST_DIR = path.join(os.tmpdir(), 'vargos-media-test');
+const MEDIA_DIR = path.join(TEST_DIR, 'media');
 
 describe('saveMedia', () => {
   afterEach(async () => {
-    resetPaths();
     await rm(TEST_DIR, { recursive: true, force: true });
   });
 
   it('writes buffer to disk and returns absolute path', async () => {
-    initPaths({ dataDir: TEST_DIR });
     const buf = Buffer.from('fake-jpeg-data');
-    const result = await saveMedia({ buffer: buf, sessionKey: 'wa:123', mimeType: 'image/jpeg' });
+    const result = await saveMedia({ buffer: buf, sessionKey: 'wa:123', mimeType: 'image/jpeg', mediaDir: MEDIA_DIR });
 
     expect(path.isAbsolute(result)).toBe(true);
     expect(result).toMatch(/\.jpg$/);
@@ -27,7 +25,6 @@ describe('saveMedia', () => {
   });
 
   it('derives correct extension from mime type', async () => {
-    initPaths({ dataDir: TEST_DIR });
     const cases: Array<[string, string]> = [
       ['image/png', '.png'],
       ['image/webp', '.webp'],
@@ -41,15 +38,15 @@ describe('saveMedia', () => {
         buffer: Buffer.from('data'),
         sessionKey: 'test',
         mimeType: mime,
+        mediaDir: MEDIA_DIR,
       });
       expect(result).toMatch(new RegExp(`\\${ext}$`));
     }
   });
 
   it('produces sortable, collision-resistant filenames', async () => {
-    initPaths({ dataDir: TEST_DIR });
-    const a = await saveMedia({ buffer: Buffer.from('aaa'), sessionKey: 's', mimeType: 'image/jpeg' });
-    const b = await saveMedia({ buffer: Buffer.from('bbb'), sessionKey: 's', mimeType: 'image/jpeg' });
+    const a = await saveMedia({ buffer: Buffer.from('aaa'), sessionKey: 's', mimeType: 'image/jpeg', mediaDir: MEDIA_DIR });
+    const b = await saveMedia({ buffer: Buffer.from('bbb'), sessionKey: 's', mimeType: 'image/jpeg', mediaDir: MEDIA_DIR });
 
     const nameA = path.basename(a);
     const nameB = path.basename(b);

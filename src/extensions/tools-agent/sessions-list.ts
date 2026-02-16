@@ -3,7 +3,7 @@
  */
 
 import { z } from 'zod';
-import { Tool, ToolContext, textResult, errorResult } from '../../core/tools/types.js';
+import { Tool, ToolContext, textResult, errorResult } from '../../contracts/tool.js';
 
 const SessionsListParameters = z.object({
   kinds: z.array(z.enum(['main', 'subagent'])).optional().describe('Filter by session kinds'),

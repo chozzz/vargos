@@ -4,7 +4,7 @@
  */
 
 import { z } from 'zod';
-import { Tool, ToolContext, textResult, errorResult } from '../../core/tools/types.js';
+import { Tool, ToolContext, textResult, errorResult } from '../../contracts/tool.js';
 
 const WebFetchParameters = z.object({
   url: z.string().describe('HTTP or HTTPS URL to fetch'),

@@ -8,7 +8,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import { memorySearchTool } from './memory-search.js';
 import { memoryGetTool } from './memory-get.js';
-import { ToolContext, getFirstTextContent } from '../../core/tools/types.js';
+import { ToolContext, getFirstTextContent } from '../../contracts/tool.js';
 import { initializeMemoryContext, getMemoryContext } from '../service-file/memory-context.js';
 
 describe('memory tools', () => {

@@ -12,7 +12,7 @@ import { createDedupeCache } from '../../lib/dedupe.js';
 import { createMessageDebouncer } from '../../lib/debounce.js';
 import { saveMedia } from '../../lib/media.js';
 import { deliverReply } from '../../lib/reply-delivery.js';
-import { resolveChannelsDir } from '../../config/paths.js';
+import { resolveChannelsDir, resolveMediaDir } from '../../config/paths.js';
 import { Reconnector } from '../../lib/reconnect.js';
 import { createLogger } from '../../lib/logger.js';
 
@@ -236,7 +236,7 @@ export class WhatsAppAdapter implements ChannelAdapter {
     if (msg.mediaBuffer) {
       const isImage = msg.mediaType === 'image';
       const mimeType = msg.mimeType || (isImage ? 'image/jpeg' : 'application/octet-stream');
-      const savedPath = await saveMedia({ buffer: msg.mediaBuffer, sessionKey, mimeType });
+      const savedPath = await saveMedia({ buffer: msg.mediaBuffer, sessionKey, mimeType, mediaDir: resolveMediaDir() });
 
       if (isImage) {
         const caption = msg.caption || 'User sent an image.';

@@ -7,7 +7,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { readTool } from './read.js';
-import { ToolContext, getFirstTextContent } from '../../core/tools/types.js';
+import { ToolContext, getFirstTextContent } from '../../contracts/tool.js';
 
 describe('read tool', () => {
   let tempDir: string;

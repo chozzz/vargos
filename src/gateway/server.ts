@@ -7,7 +7,6 @@ import { WebSocketServer, WebSocket } from 'ws';
 import {
   parseFrame,
   serializeFrame,
-  createRequestId,
   ServiceRegistrationSchema,
   type RequestFrame,
   type ResponseFrame,

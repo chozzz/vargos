@@ -16,9 +16,9 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import http from 'node:http';
-import { ServiceClient } from '../services/client.js';
-import { resolveWorkspaceDir } from '../core/config/paths.js';
-import type { ToolResult } from '../core/tools/types.js';
+import { ServiceClient } from '../client/client.js';
+import { resolveWorkspaceDir } from '../config/paths.js';
+import type { ToolResult } from '../contracts/tool.js';
 
 interface ToolSchema { name: string; description: string; parameters: Record<string, unknown> }
 
@@ -164,7 +164,7 @@ export class McpBridge extends ServiceClient {
 
       try {
         await transport.handleRequest(req, res);
-      } catch (err) {
+      } catch {
         if (!res.headersSent) {
           res.writeHead(500);
           res.end(JSON.stringify({ error: 'Internal server error' }));

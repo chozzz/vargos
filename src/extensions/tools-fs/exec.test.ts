@@ -7,7 +7,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { execTool } from './exec.js';
-import { ToolContext, getFirstTextContent } from '../../core/tools/types.js';
+import { ToolContext, getFirstTextContent } from '../../contracts/tool.js';
 
 describe('exec tool', () => {
   let tempDir: string;

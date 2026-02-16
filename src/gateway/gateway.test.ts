@@ -329,6 +329,61 @@ describe('GatewayServer', () => {
     expect(response.error?.code).toBe('TIMEOUT');
   }, 5000);
 
+  it('duplicate service registration overwrites the first', async () => {
+    // First registration with method A
+    const ws1 = await connectClient();
+    await registerService(ws1, {
+      service: 'dup',
+      version: '1.0.0',
+      methods: ['dup.methodA'],
+      events: [],
+      subscriptions: [],
+    });
+
+    // Second registration with same service name, different method
+    const ws2 = await connectClient();
+    const res = await registerService(ws2, {
+      service: 'dup',
+      version: '1.0.0',
+      methods: ['dup.methodB'],
+      events: [],
+      subscriptions: [],
+    });
+
+    expect(res.ok).toBe(true);
+
+    // Set up ws2 to echo back
+    ws2.on('message', (raw) => {
+      const frame = parseFrame(raw.toString());
+      if (frame.type === 'req' && frame.method === 'dup.methodB') {
+        const resp: ResponseFrame = { type: 'res', id: frame.id, ok: true, payload: { from: 'ws2' } };
+        ws2.send(serializeFrame(resp));
+      }
+    });
+
+    // Caller can reach methodB on the new registration
+    const caller = await connectClient();
+    await registerService(caller, { service: 'caller2', version: '1.0.0', methods: [], events: [], subscriptions: [] });
+
+    const responsePromise = waitForMessage(caller);
+    sendRequest(caller, 'dup.methodB', {}, 'dup');
+
+    const response = await responsePromise as ResponseFrame;
+    expect(response.ok).toBe(true);
+    expect((response.payload as any).from).toBe('ws2');
+  });
+
+  it('returns error for request from unregistered client', async () => {
+    const ws = await connectClient();
+    // Don't register — just send a request directly
+    const responsePromise = waitForMessage(ws);
+    sendRequest(ws, 'some.method', {}, 'some');
+
+    const response = await responsePromise as ResponseFrame;
+    expect(response.ok).toBe(false);
+    expect(response.error?.code).toBe('NO_HANDLER');
+  });
+
   it('increments event sequence numbers', async () => {
     const publisher = await connectClient();
     await registerService(publisher, {
