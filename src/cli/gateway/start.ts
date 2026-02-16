@@ -20,6 +20,7 @@ import { validateConfig, checkLocalProvider } from '../../config/validate.js';
 import { initializeWorkspace, isWorkspaceInitialized } from '../../config/workspace.js';
 import type { ExtensionContext } from '../../contracts/extension.js';
 import { setGatewayCall } from '../../runtime/extension.js';
+import { extractLoaderArgs } from '../../lib/loader-args.js';
 import { acquireLock, releaseLock } from '../lock.js';
 import {
   renderBanner,
@@ -302,7 +303,7 @@ export async function start(): Promise<void> {
     await removePidFile(dataDir);
     await releaseLock();
     const { spawn } = await import('node:child_process');
-    spawn(process.argv[0], process.argv.slice(1), {
+    spawn(process.execPath, [...extractLoaderArgs(process.execArgv), ...process.argv.slice(1)], {
       detached: true,
       stdio: 'inherit',
     }).unref();
