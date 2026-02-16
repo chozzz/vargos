@@ -103,6 +103,27 @@ export function buildTree(): MenuNode[] {
             },
           ],
         },
+        {
+          key: 'heartbeat',
+          kind: 'group',
+          label: 'Heartbeat',
+          children: [
+            {
+              key: 'show',
+              kind: 'leaf',
+              label: 'Show',
+              hint: 'Display heartbeat config',
+              action: async () => { const m = await import('./config/heartbeat.js'); await m.show(); },
+            },
+            {
+              key: 'edit',
+              kind: 'leaf',
+              label: 'Edit',
+              hint: 'Configure heartbeat schedule',
+              action: async () => { const m = await import('./config/heartbeat.js'); await m.edit(); },
+            },
+          ],
+        },
       ],
     },
     {
@@ -165,13 +186,6 @@ export function buildTree(): MenuNode[] {
           label: 'Logs',
           hint: 'View past cron executions',
           action: async (args) => { const m = await import('./cron.js'); await m.logs(args); },
-        },
-        {
-          key: 'heartbeat',
-          kind: 'leaf',
-          label: 'Heartbeat',
-          hint: 'Heartbeat config & status',
-          action: async () => { const m = await import('./cron.js'); await m.heartbeat(); },
         },
       ],
     },
