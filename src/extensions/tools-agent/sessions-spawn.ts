@@ -4,7 +4,7 @@
 
 import { z } from 'zod';
 import { Tool, ToolContext, textResult, errorResult } from '../../contracts/tool.js';
-import { isSubagentSessionKey } from '../../runtime/prompt.js';
+import { isSubagentSessionKey } from '../../lib/errors.js';
 
 const SessionsSpawnParameters = z.object({
   task: z.string().describe('Task description for the sub-agent'),

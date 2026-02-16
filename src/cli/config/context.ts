@@ -3,7 +3,7 @@ import chalk from 'chalk';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { loadAndValidate } from '../boot.js';
-import { CONTEXT_FILE_NAMES, loadContextFiles } from '../../core/config/workspace.js';
+import { CONTEXT_FILE_NAMES, loadContextFiles } from '../../config/workspace.js';
 
 export async function show(): Promise<void> {
   const { workspaceDir } = await loadAndValidate();

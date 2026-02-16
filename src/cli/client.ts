@@ -1,5 +1,5 @@
 import chalk from 'chalk';
-import { ServiceClient } from '../services/client.js';
+import { ServiceClient } from '../client/client.js';
 import { loadAndValidate } from './boot.js';
 
 export class CliClient extends ServiceClient {

@@ -4,7 +4,7 @@
  * Spawns multiple specialized subagents
  */
 
-import type { CronTask } from '../../../services/cron/index.js';
+import type { CronTask } from '../../../contracts/cron.js';
 
 interface TaskAdder {
   addTask(task: Omit<CronTask, 'id'>): CronTask;

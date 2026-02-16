@@ -1,9 +1,9 @@
 import { select, text, isCancel } from '@clack/prompts';
 import chalk from 'chalk';
 import { loadAndValidate } from '../boot.js';
-import { resolveDataDir } from '../../core/config/paths.js';
-import { loadConfig, saveConfig, type AgentConfig, type VargosConfig } from '../../core/config/pi-config.js';
-import { LOCAL_PROVIDERS } from '../../core/config/validate.js';
+import { resolveDataDir } from '../../config/paths.js';
+import { loadConfig, saveConfig, type AgentConfig, type VargosConfig } from '../../config/pi-config.js';
+import { LOCAL_PROVIDERS } from '../../config/validate.js';
 
 const DEFAULT_MODELS: Record<string, string> = {
   openai: 'gpt-4o', anthropic: 'claude-3-5-sonnet-20241022',

@@ -6,7 +6,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { sessionsListTool } from './sessions-list.js';
 import { sessionsSendTool } from './sessions-send.js';
 import { sessionsSpawnTool } from './sessions-spawn.js';
-import { ToolContext, getFirstTextContent } from '../../core/tools/types.js';
+import { ToolContext, getFirstTextContent } from '../../contracts/tool.js';
 
 // In-memory session store for mocking
 function createMockContext(sessionKey = 'test-session'): ToolContext {

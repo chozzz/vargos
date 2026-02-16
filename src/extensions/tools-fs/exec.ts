@@ -6,7 +6,7 @@
 import { z } from 'zod';
 import { spawn } from 'node:child_process';
 import * as path from 'node:path';
-import { Tool, ToolContext, textResult, errorResult } from '../../core/tools/types.js';
+import { Tool, ToolContext, textResult, errorResult } from '../../contracts/tool.js';
 
 const ExecParameters = z.object({
   command: z.string().describe('Shell command to execute'),

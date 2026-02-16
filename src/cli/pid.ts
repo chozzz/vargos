@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import { resolveDataDir } from '../core/config/paths.js';
+import { resolveDataDir } from '../config/paths.js';
 
 export async function readGatewayPid(): Promise<number | null> {
   try {

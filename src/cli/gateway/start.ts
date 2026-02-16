@@ -2,12 +2,12 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { createRequire } from 'node:module';
 import { GatewayServer } from '../../gateway/server.js';
-import { ToolsService } from '../../services/tools/index.js';
-import { SessionsService } from '../../services/sessions/index.js';
-import { CronService } from '../../services/cron/index.js';
-import { ChannelService } from '../../services/channels/index.js';
+import { ToolsService } from '../../client/tools/index.js';
+import { SessionsService } from '../../client/sessions/index.js';
+import { CronService } from '../../client/cron/index.js';
+import { ChannelService } from '../../client/channels/index.js';
 import type { ChannelType } from '../../contracts/channel.js';
-import { AgentService } from '../../services/agent/index.js';
+import { AgentService } from '../../client/agent/index.js';
 import { McpBridge } from '../../mcp/server.js';
 import { toolRegistry } from '../../tools/registry.js';
 import { FileSessionService } from '../../extensions/service-file/sessions-file.js';
@@ -107,7 +107,7 @@ export async function start(): Promise<void> {
   const gatewayHost = config.gateway?.host ?? '127.0.0.1';
   const gatewayUrl = `ws://${gatewayHost}:${gatewayPort}`;
 
-  const gateway = new GatewayServer({ port: gatewayPort, host: gatewayHost });
+  const gateway = new GatewayServer({ port: gatewayPort, host: gatewayHost, requestTimeout: 300_000 });
   await gateway.start();
 
   const services: ServiceStatus[] = [];

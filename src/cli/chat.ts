@@ -21,7 +21,7 @@ export async function chat(): Promise<void> {
     if (!msg) { rl.prompt(); return; }
 
     try {
-      await client.call('agent', 'agent.run', { sessionKey: 'cli:chat', task: msg });
+      await client.call('agent', 'agent.run', { sessionKey: 'cli:chat', task: msg }, 300_000);
       console.log(''); // newline after streaming deltas
     } catch (err) {
       console.error(chalk.red(`  Error: ${err instanceof Error ? err.message : String(err)}`));

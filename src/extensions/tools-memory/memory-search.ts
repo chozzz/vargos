@@ -4,7 +4,7 @@
  */
 
 import { z } from 'zod';
-import { Tool, ToolContext, textResult, errorResult } from '../../core/tools/types.js';
+import { Tool, ToolContext, textResult, errorResult } from '../../contracts/tool.js';
 import { getMemoryContext } from '../service-file/memory-context.js';
 
 const MemorySearchParameters = z.object({

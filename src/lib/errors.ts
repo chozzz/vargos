@@ -3,8 +3,14 @@
  * Extracted to reduce code duplication
  */
 
-// Re-export from runtime/prompt for consistency
-export { isSubagentSessionKey } from '../runtime/prompt.js';
+/**
+ * Check if session key is a subagent
+ */
+export function isSubagentSessionKey(sessionKey: string): boolean {
+  return sessionKey.includes(':subagent:') ||
+         sessionKey.startsWith('agent:') ||
+         sessionKey.includes('subagent');
+}
 
 /**
  * Tools that subagents are not allowed to use

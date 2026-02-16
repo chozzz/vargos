@@ -4,8 +4,8 @@
  */
 
 import { z } from 'zod';
-import { BaseTool } from '../../core/tools/base.js';
-import { ToolContext, ToolResult, textResult, errorResult, imageResult } from '../../core/tools/types.js';
+import { BaseTool } from '../../tools/base.js';
+import { ToolContext, ToolResult, textResult, errorResult, imageResult } from '../../contracts/tool.js';
 import { getBrowserService } from '../service-file/browser.js';
 
 const BrowserAction = z.enum([
