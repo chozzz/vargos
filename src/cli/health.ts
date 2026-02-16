@@ -20,6 +20,7 @@ class HealthProbe extends ServiceClient {
 }
 
 function startSpinner(label: string): () => void {
+  if (!process.stderr.isTTY) return () => {};
   const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
   let i = 0;
   const dim = chalk.dim;
