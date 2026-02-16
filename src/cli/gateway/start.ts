@@ -232,6 +232,16 @@ export async function start(): Promise<void> {
   await agent.connect();
   services.push({ name: 'Agent', ok: true });
 
+  // ── Heartbeat (optional) ────────────────────────────────────────────────
+  if (config.heartbeat?.enabled) {
+    const { createHeartbeatTask } = await import('../../extensions/cron/tasks/heartbeat.js');
+    createHeartbeatTask(cron, config.heartbeat, workspaceDir, () => runtime.listActiveRuns().length);
+    const updatedCronCount = cron.listTasks().length;
+    // Update cron service status detail
+    const cronStatus = services.find(s => s.name === 'Cron');
+    if (cronStatus) cronStatus.detail = `${updatedCronCount} task${updatedCronCount !== 1 ? 's' : ''}`;
+  }
+
   // ── MCP bridge ────────────────────────────────────────────────────────────
   const mcpBridge = new McpBridge({ gatewayUrl, version: VERSION });
   await mcpBridge.connect();

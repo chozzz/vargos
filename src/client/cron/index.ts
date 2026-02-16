@@ -21,6 +21,7 @@ export interface CronServiceConfig {
 
 export class CronService extends ServiceClient {
   private jobs = new Map<string, { task: CronTask; job: CronJob }>();
+  private hooks = new Map<string, (task: CronTask) => Promise<boolean>>();
 
   constructor(config: CronServiceConfig = {}) {
     super({
@@ -97,15 +98,24 @@ export class CronService extends ServiceClient {
     }
   }
 
-  private onTaskFire(task: CronTask): void {
+  onBeforeFire(taskId: string, hook: (task: CronTask) => Promise<boolean>): void {
+    this.hooks.set(taskId, hook);
+  }
+
+  private async onTaskFire(task: CronTask): Promise<void> {
+    const hook = this.hooks.get(task.id);
+    if (hook) {
+      const shouldFire = await hook(task).catch(() => true);
+      if (!shouldFire) return;
+    }
     const sessionKey = `cron:${task.id}:${Date.now()}`;
     this.emit('cron.trigger', { taskId: task.id, task: task.task, name: task.name, sessionKey });
   }
 
-  private triggerTask(id: string): boolean {
+  private async triggerTask(id: string): Promise<boolean> {
     const entry = this.jobs.get(id);
     if (!entry) throw new Error(`No task with id: ${id}`);
-    this.onTaskFire(entry.task);
+    await this.onTaskFire(entry.task);
     return true;
   }
 }

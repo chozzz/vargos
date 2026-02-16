@@ -48,10 +48,24 @@ export interface StorageConfig {
   url?: string;  // required when type=postgres
 }
 
+export interface ActiveHoursConfig {
+  start: string;    // "HH:MM"
+  end: string;      // "HH:MM"
+  timezone: string; // IANA, e.g. "Australia/Sydney"
+}
+
+export interface HeartbeatConfig {
+  enabled?: boolean;              // default: false
+  every?: string;                 // cron expression, default: "*/30 * * * *"
+  activeHours?: ActiveHoursConfig;
+  prompt?: string;                // custom heartbeat prompt override
+}
+
 export interface VargosConfig {
   agent: AgentConfig;
   channels?: Record<string, ChannelEntry>;
   gateway?: GatewayConfig;
+  heartbeat?: HeartbeatConfig;
   mcp?: McpConfig;
   paths?: PathsConfig;
   storage?: StorageConfig;
