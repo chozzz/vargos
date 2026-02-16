@@ -121,6 +121,7 @@ export interface PiAgentConfig {
   sessionKey: string;
   sessionFile: string;
   workspaceDir: string;
+  task?: string;
   model?: string;
   provider?: string;
   apiKey?: string;
@@ -304,11 +305,13 @@ export class PiAgentRuntime {
       // Subscribe to Pi session events
       this.subscribeToSessionEvents(session, config.sessionKey, runId);
 
-      // Get task from session messages (last task message wins for channel conversations)
-      const messages = await this.loadSessionMessages(config.sessionKey);
-      const taskMessages = messages.filter((m) => m.metadata?.type === 'task');
-      const taskMessage = taskMessages[taskMessages.length - 1];
-      const task = taskMessage?.content ?? 'Complete your assigned task.';
+      // Task comes from the caller; fall back to session messages for legacy flows
+      let task = config.task;
+      if (!task) {
+        const messages = await this.loadSessionMessages(config.sessionKey);
+        const taskMessages = messages.filter((m) => m.metadata?.type === 'task');
+        task = taskMessages[taskMessages.length - 1]?.content ?? 'Complete your assigned task.';
+      }
 
       // Only inject context on the first message for this session.
       // Subsequent runs already have it in conversation history.
