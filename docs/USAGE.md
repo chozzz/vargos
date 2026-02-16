@@ -73,6 +73,20 @@ Priority: `config.paths.dataDir` > `VARGOS_DATA_DIR` env > `~/.vargos`
     "dataDir": "~/.vargos",       // default: ~/.vargos
     "workspace": "~/.vargos/workspace"
   },
+  "storage": {
+    "type": "postgres",             // postgres | sqlite, default: postgres
+    "url": "postgresql://..."       // required when type=postgres
+  },
+  "heartbeat": {
+    "enabled": false,               // default: false
+    "every": "*/30 * * * *",        // cron expression, default: every 30 min
+    "activeHours": {
+      "start": "09:00",            // HH:MM
+      "end": "22:00",
+      "timezone": "Australia/Sydney"
+    },
+    "prompt": "..."                 // optional custom heartbeat prompt
+  },
   "channels": { ... }            // see Channels section
 }
 ```
