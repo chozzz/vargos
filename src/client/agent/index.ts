@@ -147,7 +147,30 @@ export class AgentService extends ServiceClient {
 
     log.debug(`cron trigger: ${taskId}`);
 
-    await this.runAgent({ sessionKey, task });
+    const result = await this.runAgent({ sessionKey, task });
+
+    // Broadcast to all configured channels
+    if (result.success && result.response) {
+      const cleaned = stripHeartbeatToken(result.response);
+      if (cleaned === null) return; // pure HEARTBEAT_OK → skip broadcast
+      await this.broadcastToChannels(cleaned);
+    }
+  }
+
+  private async broadcastToChannels(text: string): Promise<void> {
+    const config = await loadConfig(this.dataDir);
+    if (!config?.channels) return;
+
+    for (const [channel, entry] of Object.entries(config.channels)) {
+      if (entry.enabled === false) continue;
+      if (!entry.allowFrom?.length) continue;
+
+      for (const userId of entry.allowFrom) {
+        await this.call('channel', 'channel.send', { channel, userId, text }).catch((err) =>
+          log.error(`Failed to broadcast to ${channel}:${userId}: ${err}`),
+        );
+      }
+    }
   }
 
   private async buildRunConfig(params: AgentRunParams): Promise<PiAgentConfig> {
