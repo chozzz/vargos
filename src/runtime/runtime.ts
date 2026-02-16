@@ -131,6 +131,7 @@ export interface PiAgentConfig {
   runId?: string;
   images?: Array<{ data: string; mimeType: string }>;
   channel?: string;
+  bootstrapOverrides?: Record<string, string>;
 }
 
 export interface PiAgentRunResult {
@@ -328,6 +329,7 @@ export class PiAgentRuntime {
           repoRoot: config.workspaceDir,
           model: config.model,
           channel: config.channel,
+          bootstrapOverrides: config.bootstrapOverrides,
         });
         prompt = `${systemContext}\n\n## Task\n\n${task}`;
       } else {

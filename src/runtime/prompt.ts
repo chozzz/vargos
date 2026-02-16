@@ -18,6 +18,7 @@ export interface SystemPromptOptions {
   model?: string;
   thinking?: 'off' | 'low' | 'medium' | 'high';
   channel?: string;
+  bootstrapOverrides?: Record<string, string>;
 }
 
 // Bootstrap files to inject (in priority order)
@@ -71,7 +72,7 @@ export async function buildSystemPrompt(options: SystemPromptOptions): Promise<s
   }
 
   // 4. Project Context - Injected bootstrap files
-  const bootstrapContent = await loadBootstrapFiles(workspaceDir, mode);
+  const bootstrapContent = await loadBootstrapFiles(workspaceDir, mode, options.bootstrapOverrides);
   if (bootstrapContent) {
     sections.push(bootstrapContent);
   }
@@ -79,6 +80,11 @@ export async function buildSystemPrompt(options: SystemPromptOptions): Promise<s
   // 4.5 Behavioral override — placed after bootstrap so it takes precedence
   if (mode === 'full') {
     sections.push(buildBehaviorSection());
+  }
+
+  // 4.7 Tool narration guidance
+  if (mode === 'full') {
+    sections.push(buildToolNarrationSection());
   }
 
   // 5. Channel context (if from a messaging channel)
@@ -216,6 +222,19 @@ function buildBehaviorSection(): string {
   ].join('\n');
 }
 
+/**
+ * Tool narration guidance — reduces verbose tool-call commentary
+ */
+function buildToolNarrationSection(): string {
+  return [
+    '## Tool Call Style',
+    '',
+    'Default: do not narrate routine, low-risk tool calls (just call the tool).',
+    'Narrate only when it helps: multi-step work, complex problems, sensitive actions (e.g. deletions), or when the user explicitly asks.',
+    'Keep narration brief and value-dense; avoid repeating obvious steps.',
+  ].join('\n');
+}
+
 // Subagents only need these files to save tokens
 const SUBAGENT_ALLOWLIST = new Set(['AGENTS.md', 'TOOLS.md']);
 
@@ -223,7 +242,11 @@ const SUBAGENT_ALLOWLIST = new Set(['AGENTS.md', 'TOOLS.md']);
  * Load and inject bootstrap files.
  * Uses 70/20 head/tail truncation to preserve both beginning and end of large files.
  */
-async function loadBootstrapFiles(workspaceDir: string, mode: 'full' | 'minimal'): Promise<string | null> {
+async function loadBootstrapFiles(
+  workspaceDir: string,
+  mode: 'full' | 'minimal',
+  overrides?: Record<string, string>,
+): Promise<string | null> {
   const lines: string[] = [];
   const isFirstRun = await checkFirstRun(workspaceDir);
   let hasSoulFile = false;
@@ -232,16 +255,20 @@ async function loadBootstrapFiles(workspaceDir: string, mode: 'full' | 'minimal'
     if (filename === 'BOOTSTRAP.md' && !isFirstRun) continue;
     if (mode === 'minimal' && !SUBAGENT_ALLOWLIST.has(filename)) continue;
 
-    const filepath = path.join(workspaceDir, filename);
     let content: string;
 
-    try {
-      content = await fs.readFile(filepath, 'utf-8');
-    } catch {
-      if (mode === 'full') {
-        lines.push(`<!-- ${filename} - missing -->`);
+    if (overrides?.[filename] !== undefined) {
+      content = overrides[filename];
+    } else {
+      const filepath = path.join(workspaceDir, filename);
+      try {
+        content = await fs.readFile(filepath, 'utf-8');
+      } catch {
+        if (mode === 'full') {
+          lines.push(`<!-- ${filename} - missing -->`);
+        }
+        continue;
       }
-      continue;
     }
 
     if (!content.trim()) continue;

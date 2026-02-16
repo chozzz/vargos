@@ -11,6 +11,7 @@
 
 import { ServiceClient } from '../client.js';
 import { createLogger } from '../../lib/logger.js';
+import { stripHeartbeatToken } from '../../lib/heartbeat.js';
 import { type PiAgentRuntime, type PiAgentConfig, type PiAgentRunResult } from '../../runtime/runtime.js';
 
 const log = createLogger('agent');
@@ -123,12 +124,14 @@ export class AgentService extends ServiceClient {
       channel,
     });
 
-    // Reply back through the channel
+    // Reply back through the channel (strip HEARTBEAT_OK token)
     if (result.success && result.response) {
+      const cleaned = stripHeartbeatToken(result.response);
+      if (cleaned === null) return; // pure HEARTBEAT_OK → skip delivery
       await this.call('channel', 'channel.send', {
         channel,
         userId,
-        text: result.response,
+        text: cleaned,
       }).catch((err) =>
         log.error(`Failed to send reply: ${err}`),
       );
@@ -169,6 +172,7 @@ export class AgentService extends ServiceClient {
       contextFiles: await loadContextFiles(this.workspaceDir),
       images: params.images,
       channel: params.channel,
+      bootstrapOverrides: params.bootstrapOverrides,
       runId,
     };
   }
@@ -197,4 +201,5 @@ interface AgentRunParams {
   workspaceDir?: string;
   images?: Array<{ data: string; mimeType: string }>;
   channel?: string;
+  bootstrapOverrides?: Record<string, string>;
 }
