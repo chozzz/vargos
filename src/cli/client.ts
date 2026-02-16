@@ -36,6 +36,7 @@ export class CliClient extends ServiceClient {
   /** Show animated "Thinking..." until the first delta arrives */
   startThinking(): void {
     this.firstDelta = true;
+    if (!process.stderr.isTTY) return;
     const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
     let i = 0;
     const dim = chalk.dim;
