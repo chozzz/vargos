@@ -17,7 +17,7 @@ import { type PiAgentRuntime, type PiAgentConfig, type PiAgentRunResult } from '
 const log = createLogger('agent');
 import type { AgentStreamEvent } from '../../runtime/lifecycle.js';
 import { resolveSessionFile, resolveWorkspaceDir, resolveDataDir } from '../../config/paths.js';
-import { loadConfig } from '../../config/pi-config.js';
+import { loadConfig, resolveModel } from '../../config/pi-config.js';
 import { loadContextFiles } from '../../config/workspace.js';
 import { LOCAL_PROVIDERS } from '../../config/validate.js';
 
@@ -177,9 +177,9 @@ export class AgentService extends ServiceClient {
     const config = await loadConfig(this.dataDir);
     if (!config) throw new Error('No config.json — run: vargos config');
 
-    const { provider, model } = config.agent;
-    const envKey = process.env[`${provider.toUpperCase()}_API_KEY`];
-    const apiKey = envKey || config.agent.apiKey || (LOCAL_PROVIDERS.has(provider) ? 'local' : undefined);
+    const primary = resolveModel(config);
+    const envKey = process.env[`${primary.provider.toUpperCase()}_API_KEY`];
+    const apiKey = envKey || primary.apiKey || (LOCAL_PROVIDERS.has(primary.provider) ? 'local' : undefined);
 
     const sessionKey = params.sessionKey;
     const runId = `run-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -188,10 +188,10 @@ export class AgentService extends ServiceClient {
       sessionKey,
       sessionFile: resolveSessionFile(sessionKey),
       workspaceDir: params.workspaceDir ?? this.workspaceDir,
-      model: params.model ?? model,
-      provider: params.provider ?? provider,
+      model: params.model ?? primary.model,
+      provider: params.provider ?? primary.provider,
       apiKey,
-      baseUrl: config.agent.baseUrl,
+      baseUrl: primary.baseUrl,
       contextFiles: await loadContextFiles(this.workspaceDir),
       images: params.images,
       channel: params.channel,

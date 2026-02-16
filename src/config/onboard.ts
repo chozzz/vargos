@@ -7,7 +7,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { intro, outro, text, select, confirm, log, isCancel } from '@clack/prompts';
 import pg from 'pg';
-import { loadConfig, saveConfig, type AgentConfig, type StorageConfig, type VargosConfig } from './pi-config.js';
+import { loadConfig, saveConfig, type ModelProfile, type StorageConfig, type VargosConfig } from './pi-config.js';
 import { LOCAL_PROVIDERS } from './validate.js';
 
 const PLACEHOLDERS = ['[Your name]', '[Preferred name]', '[they/them, he/him, she/her, etc.]', '[e.g., UTC, EST, PST]'];
@@ -112,7 +112,7 @@ async function setupLlm(dataDir: string): Promise<void> {
   });
   if (isCancel(model)) return;
 
-  const agent: AgentConfig = { provider, model };
+  const profile: ModelProfile = { provider, model };
 
   if (LOCAL_PROVIDERS.has(provider)) {
     const defaultUrl = provider === 'ollama' ? 'http://localhost:11434' : 'http://localhost:1234';
@@ -122,7 +122,7 @@ async function setupLlm(dataDir: string): Promise<void> {
       placeholder: defaultUrl,
     });
     if (isCancel(baseUrl)) return;
-    agent.baseUrl = baseUrl;
+    profile.baseUrl = baseUrl;
   } else {
     const link = getProviderLink(provider);
     const apiKey = await text({
@@ -130,13 +130,18 @@ async function setupLlm(dataDir: string): Promise<void> {
       placeholder: 'sk-...',
     });
     if (isCancel(apiKey)) return;
-    if (apiKey) agent.apiKey = apiKey;
+    if (apiKey) profile.apiKey = apiKey;
   }
 
+  const profileName = provider;
   const existing = await loadConfig(dataDir);
-  const config: VargosConfig = existing ? { ...existing, agent } : { agent };
+  const models = existing?.models ?? {};
+  models[profileName] = profile;
+  const config: VargosConfig = existing
+    ? { ...existing, models, agent: { ...existing.agent, primary: profileName } }
+    : { models, agent: { primary: profileName } };
   await saveConfig(dataDir, config);
-  log.success(`Configured ${provider}/${agent.model}`);
+  log.success(`Configured ${provider}/${profile.model}`);
 }
 
 // ── Step 3: Storage ──────────────────────────────────────────────────────────

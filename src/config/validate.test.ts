@@ -1,16 +1,24 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { validateConfig, LOCAL_PROVIDERS } from './validate.js';
-import type { VargosConfig } from './pi-config.js';
+import type { VargosConfig, ModelProfile } from './pi-config.js';
 
 function validConfig(overrides?: Partial<VargosConfig>): VargosConfig {
   return {
-    agent: { provider: 'openai', model: 'gpt-4o', apiKey: 'sk-test' },
+    models: { openai: { provider: 'openai', model: 'gpt-4o', apiKey: 'sk-test' } },
+    agent: { primary: 'openai' },
     ...overrides,
   };
 }
 
+function withProfile(name: string, profile: ModelProfile, extra?: Partial<VargosConfig>): VargosConfig {
+  return {
+    models: { [name]: profile },
+    agent: { primary: name },
+    ...extra,
+  };
+}
+
 describe('validateConfig', () => {
-  // Save/restore env so API key env fallback tests are isolated
   let savedEnv: Record<string, string | undefined>;
 
   beforeEach(() => {
@@ -30,45 +38,55 @@ describe('validateConfig', () => {
     expect(result).toEqual({ valid: true, errors: [], warnings: [] });
   });
 
-  it('missing agent section is an error', () => {
-    const result = validateConfig({} as VargosConfig);
+  it('empty models map is an error', () => {
+    const result = validateConfig({ models: {}, agent: { primary: 'x' } } as VargosConfig);
     expect(result.valid).toBe(false);
-    expect(result.errors[0]).toMatch(/Missing "agent" section/);
+    expect(result.errors[0]).toMatch(/No model profiles/);
   });
 
-  it('missing agent.provider is an error', () => {
-    const result = validateConfig({ agent: { provider: '', model: 'gpt-4o', apiKey: 'sk' } });
+  it('missing agent.primary is an error', () => {
+    const result = validateConfig({ models: { a: { provider: 'openai', model: 'gpt-4o', apiKey: 'sk' } }, agent: { primary: '' } });
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]).toMatch(/agent\.primary/);
+  });
+
+  it('agent.primary referencing unknown profile is an error', () => {
+    const result = validateConfig({ models: { a: { provider: 'openai', model: 'gpt-4o', apiKey: 'sk' } }, agent: { primary: 'missing' } });
+    expect(result.valid).toBe(false);
+    expect(result.errors).toEqual(expect.arrayContaining([expect.stringMatching(/not found/)]));
+  });
+
+  it('missing profile provider is an error', () => {
+    const result = validateConfig(withProfile('x', { provider: '', model: 'gpt-4o', apiKey: 'sk' }));
     expect(result.valid).toBe(false);
     expect(result.errors).toEqual(expect.arrayContaining([expect.stringMatching(/provider/)]));
   });
 
-  it('missing agent.model is an error', () => {
-    const result = validateConfig({ agent: { provider: 'openai', model: '', apiKey: 'sk' } });
+  it('missing profile model is an error', () => {
+    const result = validateConfig(withProfile('x', { provider: 'openai', model: '', apiKey: 'sk' }));
     expect(result.valid).toBe(false);
     expect(result.errors).toEqual(expect.arrayContaining([expect.stringMatching(/model/)]));
   });
 
   it('cloud provider without API key or env var is an error', () => {
-    const result = validateConfig({ agent: { provider: 'openai', model: 'gpt-4o' } });
+    const result = validateConfig(withProfile('x', { provider: 'openai', model: 'gpt-4o' }));
     expect(result.valid).toBe(false);
     expect(result.errors).toEqual(expect.arrayContaining([expect.stringMatching(/API key/)]));
   });
 
   it('cloud provider with env var API key is valid', () => {
     process.env.OPENAI_API_KEY = 'sk-env';
-    const result = validateConfig({ agent: { provider: 'openai', model: 'gpt-4o' } });
+    const result = validateConfig(withProfile('x', { provider: 'openai', model: 'gpt-4o' }));
     expect(result.valid).toBe(true);
   });
 
   it('local provider without API key is valid', () => {
-    const result = validateConfig({ agent: { provider: 'ollama', model: 'llama3' } });
+    const result = validateConfig(withProfile('x', { provider: 'ollama', model: 'llama3' }));
     expect(result.valid).toBe(true);
   });
 
   it('local provider with invalid baseUrl is an error', () => {
-    const result = validateConfig({
-      agent: { provider: 'ollama', model: 'llama3', baseUrl: 'not-a-url' },
-    });
+    const result = validateConfig(withProfile('x', { provider: 'ollama', model: 'llama3', baseUrl: 'not-a-url' }));
     expect(result.valid).toBe(false);
     expect(result.errors).toEqual(expect.arrayContaining([expect.stringMatching(/baseUrl/)]));
   });
@@ -103,8 +121,7 @@ describe('validateConfig', () => {
   });
 
   it('mcp.transport invalid is an error', () => {
-    const cfg = { ...validConfig(), mcp: { transport: 'grpc' as any } };
-    const result = validateConfig(cfg);
+    const result = validateConfig({ ...validConfig(), mcp: { transport: 'grpc' as any } });
     expect(result.valid).toBe(false);
     expect(result.errors).toEqual(expect.arrayContaining([expect.stringMatching(/mcp\.transport/)]));
   });
@@ -123,12 +140,19 @@ describe('validateConfig', () => {
 
   it('multiple errors accumulate', () => {
     const result = validateConfig({
-      agent: { provider: '', model: '' },
+      models: { x: { provider: '', model: '' } },
+      agent: { primary: 'x' },
       gateway: { port: -1 },
       mcp: { transport: 'bad' as any, port: 0, endpoint: 'no-slash' },
     });
     expect(result.valid).toBe(false);
     expect(result.errors.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it('agent.fallback referencing unknown profile produces warning', () => {
+    const result = validateConfig({ ...validConfig(), agent: { primary: 'openai', fallback: 'missing' } });
+    expect(result.valid).toBe(true);
+    expect(result.warnings).toEqual(expect.arrayContaining([expect.stringMatching(/fallback/)]));
   });
 });
 

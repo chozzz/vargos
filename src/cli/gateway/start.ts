@@ -88,7 +88,11 @@ export async function start(): Promise<void> {
     process.exit(1);
   }
 
-  const connectErr = await checkLocalProvider(config.agent.provider, config.agent.baseUrl);
+  const { resolveModel } = await import('../../config/pi-config.js');
+  const primary = resolveModel(config);
+  const primaryName = config.agent.primary;
+
+  const connectErr = await checkLocalProvider(primary.provider, primary.baseUrl);
   if (connectErr) {
     log(`  ✗ ${connectErr}`);
     process.exit(1);
@@ -99,7 +103,7 @@ export async function start(): Promise<void> {
   // ── Banner ────────────────────────────────────────────────────────────────
   renderBanner({
     version: VERSION,
-    agent: config.agent,
+    profile: { name: primaryName, provider: primary.provider, model: primary.model },
     dataDir,
   });
 
@@ -122,8 +126,8 @@ export async function start(): Promise<void> {
   services.push({ name: 'Sessions', ok: true });
 
   // ── Memory context ────────────────────────────────────────────────────────
-  const envKey = process.env[`${config.agent.provider.toUpperCase()}_API_KEY`];
-  const apiKey = envKey || config.agent.apiKey;
+  const envKey = process.env[`${primary.provider.toUpperCase()}_API_KEY`];
+  const apiKey = envKey || primary.apiKey;
 
   let memoryStorage: MemoryStorage;
   const storageType = config.storage?.type ?? 'postgres';
@@ -138,7 +142,7 @@ export async function start(): Promise<void> {
   await initializeMemoryContext({
     memoryDir: workspaceDir,
     cacheDir: path.join(dataDir, 'cache'),
-    embeddingProvider: apiKey && config.agent.provider === 'openai' ? 'openai' : 'none',
+    embeddingProvider: apiKey && primary.provider === 'openai' ? 'openai' : 'none',
     openaiApiKey: apiKey,
     chunkSize: 400,
     chunkOverlap: 80,

@@ -13,12 +13,22 @@ const AUTH_FILE = 'auth.json';
 const SETTINGS_FILE = 'settings.json';
 const MODELS_FILE = 'models.json';
 
-export interface AgentConfig {
+/** Named model profile — provider + model + credentials */
+export interface ModelProfile {
   provider: string;
   model: string;
   apiKey?: string;
   baseUrl?: string;
 }
+
+/** Agent references into the models map */
+export interface AgentRef {
+  primary: string;
+  fallback?: string;
+}
+
+/** @deprecated Use ModelProfile instead — kept for migration compatibility */
+export type AgentConfig = ModelProfile;
 
 export interface ChannelEntry {
   enabled?: boolean;
@@ -62,13 +72,27 @@ export interface HeartbeatConfig {
 }
 
 export interface VargosConfig {
-  agent: AgentConfig;
+  models: Record<string, ModelProfile>;
+  agent: AgentRef;
   channels?: Record<string, ChannelEntry>;
   gateway?: GatewayConfig;
   heartbeat?: HeartbeatConfig;
   mcp?: McpConfig;
   paths?: PathsConfig;
   storage?: StorageConfig;
+}
+
+/**
+ * Resolve a model profile by name (defaults to agent.primary).
+ * Throws if the profile doesn't exist in the models map.
+ */
+export function resolveModel(config: VargosConfig, name?: string): ModelProfile {
+  const profileName = name ?? config.agent.primary;
+  const profile = config.models[profileName];
+  if (!profile) {
+    throw new Error(`Model profile "${profileName}" not found — available: ${Object.keys(config.models).join(', ')}`);
+  }
+  return profile;
 }
 
 export function getConfigPath(dataDir: string): string {
@@ -93,7 +117,7 @@ export function getPiConfigPaths(workspaceDir: string): {
 /**
  * Load config.json from dataDir — returns null if missing.
  * Migrates legacy formats on first read:
- *   1. ~/.vargos/config.json (new nested) → return
+ *   1. ~/.vargos/config.json (current or legacy inline agent) → return
  *   2. ~/.vargos/workspace/config.json (flat) → migrate
  *   3. ~/.vargos/workspace/settings.json + agent/auth.json (legacy Pi SDK) → migrate
  *   4. ~/.vargos/channels.json → merge into channels section
@@ -101,18 +125,26 @@ export function getPiConfigPaths(workspaceDir: string): {
 export async function loadConfig(dataDir: string): Promise<VargosConfig | null> {
   const configPath = getConfigPath(dataDir);
 
-  // Try reading new nested format
+  // Try reading config.json
   try {
     const raw = JSON.parse(await fs.readFile(configPath, 'utf-8'));
-    if (raw.agent) return raw as VargosConfig;
+
+    // Current format — has models map
+    if (raw.models && raw.agent?.primary) return raw as VargosConfig;
+
+    // Legacy inline agent format — migrate to profiles
+    if (raw.agent?.provider) {
+      const config = migrateInlineAgent(raw);
+      await saveConfig(dataDir, config);
+      return config;
+    }
   } catch { /* missing or invalid */ }
 
   // Migration: flat workspace/config.json → nested
   const workspaceDir = path.join(dataDir, 'workspace');
-  const flatConfig = await readFlatConfig(workspaceDir);
-  if (flatConfig) {
-    const config: VargosConfig = { agent: flatConfig };
-    // Also pull in channels.json if present
+  const flatProfile = await readFlatConfig(workspaceDir);
+  if (flatProfile) {
+    const config = buildConfigFromProfile(flatProfile);
     const channels = await readLegacyChannels(dataDir);
     if (channels) config.channels = channels;
     await saveConfig(dataDir, config);
@@ -122,9 +154,9 @@ export async function loadConfig(dataDir: string): Promise<VargosConfig | null> 
   }
 
   // Migration: legacy Pi SDK settings.json + auth.json
-  const legacyAgent = await migrateLegacyPiSdk(workspaceDir);
-  if (legacyAgent) {
-    const config: VargosConfig = { agent: legacyAgent };
+  const legacyProfile = await migrateLegacyPiSdk(workspaceDir);
+  if (legacyProfile) {
+    const config = buildConfigFromProfile(legacyProfile);
     const channels = await readLegacyChannels(dataDir);
     if (channels) config.channels = channels;
     await saveConfig(dataDir, config);
@@ -135,8 +167,6 @@ export async function loadConfig(dataDir: string): Promise<VargosConfig | null> 
   // Migration: channels-only (no agent config found)
   const channels = await readLegacyChannels(dataDir);
   if (channels) {
-    // Can't create a valid config without agent section
-    // Rename channels.json but return null so wizard runs
     await safeRename(path.join(dataDir, 'channels.json'));
   }
 
@@ -154,23 +184,52 @@ export async function saveConfig(dataDir: string, config: VargosConfig): Promise
 
 // -- Migration helpers --
 
+/** Migrate old { agent: { provider, model, apiKey } } → models map */
+function migrateInlineAgent(raw: Record<string, unknown>): VargosConfig {
+  const oldAgent = raw.agent as ModelProfile;
+  const profileName = oldAgent.provider;
+  const profile: ModelProfile = { provider: oldAgent.provider, model: oldAgent.model };
+  if (oldAgent.apiKey) profile.apiKey = oldAgent.apiKey;
+  if (oldAgent.baseUrl) profile.baseUrl = oldAgent.baseUrl;
+
+  const config: VargosConfig = {
+    models: { [profileName]: profile },
+    agent: { primary: profileName },
+  };
+
+  // Preserve other top-level fields
+  for (const key of Object.keys(raw)) {
+    if (key === 'agent') continue;
+    (config as unknown as Record<string, unknown>)[key] = raw[key];
+  }
+
+  return config;
+}
+
+/** Build a fresh config from a single profile (used by legacy migrations) */
+function buildConfigFromProfile(profile: ModelProfile): VargosConfig {
+  return {
+    models: { [profile.provider]: profile },
+    agent: { primary: profile.provider },
+  };
+}
+
 /** Read old flat config.json from workspace dir */
-async function readFlatConfig(workspaceDir: string): Promise<AgentConfig | null> {
+async function readFlatConfig(workspaceDir: string): Promise<ModelProfile | null> {
   try {
     const raw = JSON.parse(await fs.readFile(path.join(workspaceDir, CONFIG_FILE), 'utf-8'));
-    // Flat format has provider/model at top level (no .agent wrapper)
     if (raw.provider && raw.model && !raw.agent) {
-      const agent: AgentConfig = { provider: raw.provider, model: raw.model };
-      if (raw.apiKey) agent.apiKey = raw.apiKey;
-      if (raw.baseUrl) agent.baseUrl = raw.baseUrl;
-      return agent;
+      const profile: ModelProfile = { provider: raw.provider, model: raw.model };
+      if (raw.apiKey) profile.apiKey = raw.apiKey;
+      if (raw.baseUrl) profile.baseUrl = raw.baseUrl;
+      return profile;
     }
   } catch { /* missing */ }
   return null;
 }
 
 /** Read legacy Pi SDK settings.json + agent/auth.json */
-async function migrateLegacyPiSdk(workspaceDir: string): Promise<AgentConfig | null> {
+async function migrateLegacyPiSdk(workspaceDir: string): Promise<ModelProfile | null> {
   const { settingsPath, authPath } = getPiConfigPaths(workspaceDir);
 
   let provider: string | undefined;
@@ -193,9 +252,9 @@ async function migrateLegacyPiSdk(workspaceDir: string): Promise<AgentConfig | n
   await safeRename(settingsPath);
   await safeRename(authPath);
 
-  const agent: AgentConfig = { provider, model };
-  if (apiKey) agent.apiKey = apiKey;
-  return agent;
+  const profile: ModelProfile = { provider, model };
+  if (apiKey) profile.apiKey = apiKey;
+  return profile;
 }
 
 /** Read legacy channels.json array format → record format */

@@ -9,7 +9,7 @@ export interface ServiceStatus {
 
 export interface BannerData {
   version: string;
-  agent: { provider: string; model: string };
+  profile: { name: string; provider: string; model: string };
   dataDir: string;
 }
 
@@ -63,7 +63,7 @@ export function renderBanner(data: BannerData): void {
   renderLogo();
   out(`  ${DIM('v' + data.version)}`);
   out('');
-  out(`  ${LABEL(pad('Agent'))}${data.agent.provider} ${DIM('/')} ${data.agent.model}`);
+  out(`  ${LABEL(pad('Agent'))}${data.profile.provider} ${DIM('/')} ${data.profile.model} ${DIM(`(${data.profile.name})`)}`);
   out(`  ${LABEL(pad('Data'))}${shortenHome(data.dataDir)}`);
   out('');
 }
@@ -103,7 +103,7 @@ export function renderNextSteps(): void {
 
 export function renderHealthCheck(data: {
   config: boolean;
-  agent?: { provider: string; model: string };
+  profile?: { name: string; provider: string; model: string };
   apiKey: boolean;
   gateway?: { url: string; ok: boolean; services?: number };
   warnings?: string[];
@@ -121,8 +121,8 @@ export function renderHealthCheck(data: {
     return;
   }
   out(`    ${OK} ${pad('config.json')}found`);
-  if (data.agent) {
-    out(`    ${OK} ${pad('agent')}${data.agent.provider} ${DIM('/')} ${data.agent.model}`);
+  if (data.profile) {
+    out(`    ${OK} ${pad('agent')}${data.profile.provider} ${DIM('/')} ${data.profile.model} ${DIM(`(${data.profile.name})`)}`);
   }
   out(`    ${data.apiKey ? OK : FAIL} ${pad('API key')}${data.apiKey ? 'present' : 'missing'}`);
 
