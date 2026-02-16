@@ -1,5 +1,5 @@
 import { resolveDataDir } from '../config/paths.js';
-import { loadConfig } from '../config/pi-config.js';
+import { loadConfig, resolveModel } from '../config/pi-config.js';
 import { validateConfig } from '../config/validate.js';
 import { ServiceClient } from '../client/client.js';
 import { renderHealthCheck } from './banner.js';
@@ -27,8 +27,9 @@ export async function health(): Promise<void> {
     return;
   }
 
-  const envKey = process.env[`${config.agent.provider.toUpperCase()}_API_KEY`];
-  const hasKey = !!(envKey || config.agent.apiKey);
+  const primary = resolveModel(config);
+  const envKey = process.env[`${primary.provider.toUpperCase()}_API_KEY`];
+  const hasKey = !!(envKey || primary.apiKey);
 
   const validation = validateConfig(config);
 
@@ -50,7 +51,7 @@ export async function health(): Promise<void> {
 
   renderHealthCheck({
     config: true,
-    agent: config.agent,
+    profile: { name: config.agent.primary, ...primary },
     apiKey: hasKey,
     gateway: { url, ok: gatewayOk },
     warnings: validation.warnings,

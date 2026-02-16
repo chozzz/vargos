@@ -30,8 +30,10 @@ function createMockRuntime() {
 
 vi.mock('../../config/pi-config.js', () => ({
   loadConfig: async () => ({
-    agent: { provider: 'test', model: 'test-model', apiKey: 'test-key' },
+    models: { test: { provider: 'test', model: 'test-model', apiKey: 'test-key' } },
+    agent: { primary: 'test' },
   }),
+  resolveModel: (config: any) => config.models[config.agent.primary],
   getPiConfigPaths: () => ({ agentDir: '/tmp', authPath: '/tmp/auth.json', modelsPath: '/tmp/models.json' }),
 }));
 
