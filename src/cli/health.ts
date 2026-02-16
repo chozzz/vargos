@@ -1,3 +1,4 @@
+import chalk from 'chalk';
 import { resolveDataDir } from '../config/paths.js';
 import { loadConfig, resolveModel } from '../config/pi-config.js';
 import { validateConfig } from '../config/validate.js';
@@ -18,6 +19,21 @@ class HealthProbe extends ServiceClient {
   handleEvent(): void {}
 }
 
+function startSpinner(label: string): () => void {
+  const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+  let i = 0;
+  const dim = chalk.dim;
+  process.stderr.write(dim(`  ${frames[0]} ${label}`));
+  const timer = setInterval(() => {
+    i = (i + 1) % frames.length;
+    process.stderr.write(`\r${dim(`  ${frames[i]} ${label}`)}`);
+  }, 80);
+  return () => {
+    clearInterval(timer);
+    process.stderr.write('\r\x1b[K');
+  };
+}
+
 export async function health(): Promise<void> {
   const dataDir = resolveDataDir();
   const config = await loadConfig(dataDir);
@@ -33,11 +49,12 @@ export async function health(): Promise<void> {
 
   const validation = validateConfig(config);
 
-  // Gateway probe
+  // Gateway probe with spinner
   const host = config.gateway?.host ?? '127.0.0.1';
   const port = config.gateway?.port ?? 9000;
   const url = `ws://${host}:${port}`;
 
+  const stopSpinner = startSpinner('Checking gateway...');
   let gatewayOk = false;
   try {
     const probe = new HealthProbe(url);
@@ -48,6 +65,7 @@ export async function health(): Promise<void> {
     gatewayOk = true;
     await probe.disconnect();
   } catch { /* unreachable */ }
+  stopSpinner();
 
   renderHealthCheck({
     config: true,
