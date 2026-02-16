@@ -3,7 +3,6 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { connectToGateway } from './client.js';
 import { resolveDataDir } from '../config/paths.js';
-import { loadConfig } from '../config/pi-config.js';
 import type { CronTask } from '../contracts/cron.js';
 
 const DIM = chalk.dim;
@@ -123,35 +122,6 @@ export async function logs(args?: string[]): Promise<void> {
   }
 
   console.log(DIM(`  Logs dir: ${sessionsDir}`));
-  console.log();
-}
-
-export async function heartbeat(): Promise<void> {
-  const config = await loadConfig(resolveDataDir());
-
-  console.log(`\n  ${BOLD('Heartbeat')}\n`);
-
-  if (!config?.heartbeat?.enabled) {
-    console.log(chalk.yellow('  Heartbeat is disabled.'));
-    console.log(DIM('  Enable in config.json: { "heartbeat": { "enabled": true } }'));
-    console.log();
-    return;
-  }
-
-  const hb = config.heartbeat;
-  console.log(`    ${LABEL('Status')}      ${chalk.green('enabled')}`);
-  console.log(`    ${LABEL('Schedule')}    ${formatSchedule(hb.every ?? '*/30 * * * *')} ${DIM(`(${hb.every ?? '*/30 * * * *'})`)}`);
-
-  if (hb.activeHours) {
-    console.log(`    ${LABEL('Hours')}       ${hb.activeHours.start} - ${hb.activeHours.end} ${DIM(hb.activeHours.timezone)}`);
-  } else {
-    console.log(`    ${LABEL('Hours')}       ${DIM('always active')}`);
-  }
-
-  if (hb.prompt) {
-    console.log(`    ${LABEL('Prompt')}      ${hb.prompt.slice(0, 60)}${hb.prompt.length > 60 ? '...' : ''}`);
-  }
-
   console.log();
 }
 
