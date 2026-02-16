@@ -3,7 +3,7 @@
  * Fails fast so runtime errors don't surface minutes later
  */
 
-import type { VargosConfig } from './pi-config.js';
+import type { VargosConfig, ModelProfile } from './pi-config.js';
 
 export const LOCAL_PROVIDERS = new Set(['ollama', 'lmstudio']);
 
@@ -21,39 +21,29 @@ export function validateConfig(config: VargosConfig): ValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  // Agent section
-  if (!config.agent) {
-    errors.push('Missing "agent" section in config.json');
+  // Models section
+  if (!config.models || Object.keys(config.models).length === 0) {
+    errors.push('No model profiles defined — run: vargos config llm edit');
     return { valid: false, errors, warnings };
   }
 
-  if (!config.agent.provider) {
-    errors.push('Missing agent.provider — run: vargos config');
+  // Agent section
+  if (!config.agent?.primary) {
+    errors.push('Missing agent.primary — run: vargos config llm edit');
+    return { valid: false, errors, warnings };
   }
 
-  if (!config.agent.model) {
-    errors.push('Missing agent.model — run: vargos config');
+  if (!config.models[config.agent.primary]) {
+    errors.push(`agent.primary "${config.agent.primary}" not found in models — available: ${Object.keys(config.models).join(', ')}`);
   }
 
-  // API key — required for cloud providers, optional for local
-  if (config.agent.provider && !LOCAL_PROVIDERS.has(config.agent.provider)) {
-    const envKey = process.env[`${config.agent.provider.toUpperCase()}_API_KEY`];
-    if (!envKey && !config.agent.apiKey) {
-      errors.push(
-        `Missing API key for ${config.agent.provider} — set agent.apiKey in config.json or ${config.agent.provider.toUpperCase()}_API_KEY env var`
-      );
-    }
+  if (config.agent.fallback && !config.models[config.agent.fallback]) {
+    warnings.push(`agent.fallback "${config.agent.fallback}" not found in models`);
   }
 
-  // Local providers — check baseUrl format
-  if (config.agent.provider && LOCAL_PROVIDERS.has(config.agent.provider)) {
-    if (config.agent.baseUrl) {
-      try {
-        new URL(config.agent.baseUrl);
-      } catch {
-        errors.push(`Invalid agent.baseUrl: "${config.agent.baseUrl}" — must be a valid URL`);
-      }
-    }
+  // Validate each model profile
+  for (const [name, profile] of Object.entries(config.models)) {
+    validateProfile(name, profile, errors, warnings);
   }
 
   // Channel validation
@@ -90,6 +80,36 @@ export function validateConfig(config: VargosConfig): ValidationResult {
   }
 
   return { valid: errors.length === 0, errors, warnings };
+}
+
+function validateProfile(name: string, profile: ModelProfile, errors: string[], warnings: string[]): void {
+  if (!profile.provider) {
+    errors.push(`models.${name}: missing provider`);
+  }
+  if (!profile.model) {
+    errors.push(`models.${name}: missing model`);
+  }
+
+  if (!profile.provider) return;
+
+  // Cloud providers need an API key
+  if (!LOCAL_PROVIDERS.has(profile.provider)) {
+    const envKey = process.env[`${profile.provider.toUpperCase()}_API_KEY`];
+    if (!envKey && !profile.apiKey) {
+      errors.push(
+        `models.${name}: missing API key — set apiKey in profile or ${profile.provider.toUpperCase()}_API_KEY env var`
+      );
+    }
+  }
+
+  // Local providers — check baseUrl format
+  if (LOCAL_PROVIDERS.has(profile.provider) && profile.baseUrl) {
+    try {
+      new URL(profile.baseUrl);
+    } catch {
+      errors.push(`models.${name}: invalid baseUrl "${profile.baseUrl}" — must be a valid URL`);
+    }
+  }
 }
 
 /**
