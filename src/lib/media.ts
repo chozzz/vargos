@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { resolveMediaDir } from '../config/paths.js';
 
 const MIME_EXT: Record<string, string> = {
   'image/jpeg': '.jpg',
@@ -25,8 +24,9 @@ export async function saveMedia(params: {
   buffer: Buffer;
   sessionKey: string;
   mimeType: string;
+  mediaDir: string;
 }): Promise<string> {
-  const dir = resolveMediaDir(params.sessionKey);
+  const dir = path.join(params.mediaDir, params.sessionKey.replace(/:/g, '-'));
   await mkdir(dir, { recursive: true });
 
   const now = new Date();

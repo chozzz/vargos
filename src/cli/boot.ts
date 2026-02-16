@@ -1,6 +1,6 @@
-import { resolveDataDir, resolveWorkspaceDir, initPaths } from '../core/config/paths.js';
-import { loadConfig, type VargosConfig } from '../core/config/pi-config.js';
-import { validateConfig } from '../core/config/validate.js';
+import { resolveDataDir, resolveWorkspaceDir, initPaths } from '../config/paths.js';
+import { loadConfig, type VargosConfig } from '../config/pi-config.js';
+import { validateConfig } from '../config/validate.js';
 
 export interface BootResult {
   config: VargosConfig;

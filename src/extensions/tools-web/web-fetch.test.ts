@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { webFetchTool } from './web-fetch.js';
-import { ToolContext, getFirstTextContent } from '../../core/tools/types.js';
+import { ToolContext, getFirstTextContent } from '../../contracts/tool.js';
 
 describe('web_fetch tool', () => {
   const context: ToolContext = {

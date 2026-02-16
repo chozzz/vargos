@@ -51,7 +51,7 @@ export async function createWhatsAppSocket(
   const { state, saveCreds } = await useMultiFileAuthState(authDir);
   const { version } = await fetchLatestBaileysVersion();
 
-  const logger = pino({ level: 'silent' }) as any;
+  const logger = pino({ level: 'silent' }) as pino.Logger;
 
   const sock = makeWASocket({
     version,

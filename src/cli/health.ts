@@ -1,7 +1,7 @@
-import { resolveDataDir } from '../core/config/paths.js';
-import { loadConfig } from '../core/config/pi-config.js';
-import { validateConfig } from '../core/config/validate.js';
-import { ServiceClient } from '../services/client.js';
+import { resolveDataDir } from '../config/paths.js';
+import { loadConfig } from '../config/pi-config.js';
+import { validateConfig } from '../config/validate.js';
+import { ServiceClient } from '../client/client.js';
 import { renderHealthCheck } from './banner.js';
 
 class HealthProbe extends ServiceClient {

@@ -435,6 +435,14 @@ export class PiAgentRuntime {
     runId: string
   ): void {
     session.subscribe((event: AgentSessionEvent) => {
+      // Stream assistant text deltas to lifecycle
+      if (event.type === 'message_update') {
+        const ame = event.assistantMessageEvent;
+        if (ame?.type === 'text_delta') {
+          this.lifecycle.streamAssistant(runId, ame.delta);
+        }
+      }
+
       // Handle auto-compaction
       if (event.type === 'auto_compaction_end') {
         this.handleCompactionEvent(event.result, vargosSessionKey, runId, event.aborted);
@@ -442,12 +450,10 @@ export class PiAgentRuntime {
 
       // Handle tool execution events
       if (event.type === 'tool_execution_start') {
-        // Tool started - Pi doesn't expose tool name directly in event
         this.lifecycle.streamTool(runId, 'tool', 'start', {});
         log.debug(`tool: ${event.toolName || 'unknown'}`);
       }
       if (event.type === 'tool_execution_end') {
-        // Tool completed - show result
         this.lifecycle.streamTool(runId, 'tool', 'end', {}, {});
         const result = event.result;
         if (result) {

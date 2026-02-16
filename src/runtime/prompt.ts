@@ -5,6 +5,7 @@
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { isSubagentSessionKey } from '../lib/errors.js';
 
 export interface SystemPromptOptions {
   mode: 'full' | 'minimal' | 'none';
@@ -73,6 +74,11 @@ export async function buildSystemPrompt(options: SystemPromptOptions): Promise<s
   const bootstrapContent = await loadBootstrapFiles(workspaceDir, mode);
   if (bootstrapContent) {
     sections.push(bootstrapContent);
+  }
+
+  // 4.5 Behavioral override — placed after bootstrap so it takes precedence
+  if (mode === 'full') {
+    sections.push(buildBehaviorSection());
   }
 
   // 5. Channel context (if from a messaging channel)
@@ -162,7 +168,7 @@ function buildWorkspaceSection(workspaceDir: string): string {
     '',
     `Working directory: ${workspaceDir}`,
     '',
-    'Read AGENTS.md for workspace rules and TOOLS.md for local tool notes before starting work.',
+    'Consult AGENTS.md and TOOLS.md when you need workspace rules or tool notes for a task.',
   ].join('\n');
 }
 
@@ -173,12 +179,12 @@ function buildMemorySection(): string {
   return [
     '## Memory Recall',
     '',
-    'Before answering about prior work, decisions, dates, people, preferences, or todos:',
+    'When the user asks about prior work, decisions, dates, people, preferences, or todos:',
     '1. Run `memory_search` on MEMORY.md + memory/*.md',
     '2. Use `memory_get` to pull only the needed lines',
-    '3. If low confidence after search, say you checked but found nothing',
+    '3. If nothing found, say so',
     '',
-    'Do NOT guess from conversation history alone — always search memory files first.',
+    'Only search memory when the question actually requires it — not on greetings or small talk.',
   ].join('\n');
 }
 
@@ -192,6 +198,21 @@ function buildHeartbeatSection(): string {
     'When you receive a heartbeat poll, read HEARTBEAT.md for pending tasks.',
     'If nothing needs attention, reply with exactly: HEARTBEAT_OK',
     'If something needs attention, reply with the alert text — do NOT include HEARTBEAT_OK.',
+  ].join('\n');
+}
+
+/**
+ * Behavioral override — placed after bootstrap files so it takes precedence
+ * over any "read files before doing anything" instructions in AGENTS.md
+ */
+function buildBehaviorSection(): string {
+  return [
+    '## Behavior',
+    '',
+    'IMPORTANT: The workspace rules above (AGENTS.md) apply when executing tasks.',
+    'For casual conversation (greetings, small talk, questions about yourself),',
+    'respond directly and naturally WITHOUT reading files or searching memory first.',
+    'Only use tools when the user\'s message requires action or information retrieval.',
   ].join('\n');
 }
 
@@ -320,10 +341,8 @@ function buildIdentitySection(): string {
     'You are Vargos, an Artificially Intelligent Agentic Assistant.',
     'You help users by providing powerful tools for file manipulation, shell execution, browser automation, and agent management.',
     '',
-    'Before making assumptions about the codebase:',
-    '1. Read ARCHITECTURE.md to understand the project structure',
-    '2. List the src/ directory to see actual file structure',
-    '3. Read relevant source files before describing them',
+    'Respond naturally to conversation. Only use tools when the user asks you to do something that requires them.',
+    'Do NOT read workspace files or search memory on casual messages like greetings or small talk.',
   ].join('\n');
 }
 
@@ -409,11 +428,5 @@ export function resolvePromptMode(sessionKey: string): 'full' | 'minimal' | 'non
   return 'full';
 }
 
-/**
- * Check if session key is a subagent
- */
-export function isSubagentSessionKey(sessionKey: string): boolean {
-  return sessionKey.includes(':subagent:') || 
-         sessionKey.startsWith('agent:') ||
-         sessionKey.includes('subagent');
-}
+// Re-export for backward compatibility
+export { isSubagentSessionKey } from '../lib/errors.js';

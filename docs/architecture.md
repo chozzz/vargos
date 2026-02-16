@@ -17,6 +17,46 @@ Vargos is a **service-oriented system** where independent services communicate t
 
 ---
 
+## Directory Structure
+
+```
+src/
+  contracts/     Layer 0 — pure types, string literal unions for events/methods
+  lib/           Layer 1 — shared utilities (logger, dedupe, debounce, reconnect)
+  config/        Layer 2 — configuration loading, validation, workspace, paths
+  protocol/      Layer 3 — wire protocol (frame types, Zod schemas, parse/serialize)
+  tools/         Layer 3 — tool registry and base tool class
+  gateway/       Layer 4 — WS server, router, event bus, service registry
+  client/        Layer 5 — ServiceClient base + 5 service clients
+  runtime/       Layer 5 — Pi agent runtime, lifecycle, queue, prompt builder
+  channels/      Layer 6 — channel adapter factory, config, onboard
+  extensions/    Layer 6 — tool implementations, channel adapters, cron tasks, storage
+  mcp/           Layer 7 — MCP-to-gateway RPC bridge (stdio + HTTP)
+  cli/           Layer 8 — composition root, interactive menu, config wizards
+```
+
+---
+
+## Dependency Layers
+
+Each layer can only import from layers below it. ESLint enforces this via `no-restricted-imports`.
+
+```
+Layer 0  contracts/    → nothing (only node:* and zod)
+Layer 1  lib/          → contracts/
+Layer 2  config/       → contracts/, lib/
+Layer 3  protocol/     → contracts/
+Layer 3  tools/        → contracts/
+Layer 4  gateway/      → protocol/
+Layer 5  client/       → protocol/, lib/, contracts/, config/
+Layer 5  runtime/      → contracts/, config/, tools/, lib/
+Layer 6  extensions/   → contracts/, lib/, config/, tools/
+Layer 7  mcp/          → client/, contracts/, config/
+Layer 8  cli/          → everything (composition root)
+```
+
+---
+
 ## Topology
 
 ```
@@ -105,15 +145,15 @@ Gateway responds with the full routing table so services know what's available.
 
 ## Base Service Client
 
-Every service extends `ServiceClient`. It handles the protocol so services only implement their domain logic:
+Every service extends `ServiceClient` (in `client/client.ts`). It handles the protocol so services only implement their domain logic. Methods and events use typed string literal unions from `contracts/` for compile-time safety:
 
 ```typescript
 abstract class ServiceClient {
   constructor(config: {
     service: string;
-    methods: string[];
-    events: string[];
-    subscriptions: string[];
+    methods: ServiceMethod[];    // typed string literals from contracts/
+    events: ServiceEvent[];      // typed string literals from contracts/
+    subscriptions: ServiceEvent[];
     gatewayUrl?: string;
   }) {}
 

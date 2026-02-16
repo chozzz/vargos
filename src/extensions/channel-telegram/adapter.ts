@@ -15,6 +15,7 @@ import type {
 import { createDedupeCache } from '../../lib/dedupe.js';
 import { createMessageDebouncer } from '../../lib/debounce.js';
 import { saveMedia } from '../../lib/media.js';
+import { resolveMediaDir } from '../../config/paths.js';
 import { deliverReply } from '../../lib/reply-delivery.js';
 import { createLogger } from '../../lib/logger.js';
 
@@ -214,7 +215,7 @@ export class TelegramAdapter implements ChannelAdapter {
       try {
         const buffer = await this.downloadFile(largest.file_id);
         const mimeType = 'image/jpeg';
-        const savedPath = await saveMedia({ buffer, sessionKey, mimeType });
+        const savedPath = await saveMedia({ buffer, sessionKey, mimeType, mediaDir: resolveMediaDir() });
         const caption = msg.caption || 'User sent an image.';
         const images = [{ data: buffer.toString('base64'), mimeType }];
         await this.runViaGateway({
@@ -238,7 +239,7 @@ export class TelegramAdapter implements ChannelAdapter {
 
     try {
       const buffer = await this.downloadFile(fileId!);
-      const savedPath = await saveMedia({ buffer, sessionKey, mimeType });
+      const savedPath = await saveMedia({ buffer, sessionKey, mimeType, mediaDir: resolveMediaDir() });
       await this.runViaGateway({
         sessionKey, chatId,
         content: `${msg.caption || `[${label}, ${duration}s]`}\n\n[${label} saved: ${savedPath}]`,
