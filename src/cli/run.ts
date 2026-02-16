@@ -10,6 +10,7 @@ export async function run(args?: string[]): Promise<void> {
 
   const client = await connectToGateway();
   client.onDelta((delta) => process.stdout.write(delta));
+  client.startThinking();
 
   try {
     const sessionKey = `cli:run:${Date.now()}`;

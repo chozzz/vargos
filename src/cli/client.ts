@@ -4,6 +4,8 @@ import { loadAndValidate } from './boot.js';
 
 export class CliClient extends ServiceClient {
   private deltaHandler?: (delta: string) => void;
+  private thinkingTimer?: ReturnType<typeof setInterval>;
+  private firstDelta = true;
 
   constructor(gatewayUrl: string) {
     super({
@@ -21,6 +23,7 @@ export class CliClient extends ServiceClient {
 
   handleEvent(event: string, payload: unknown): void {
     if (event === 'run.delta' && this.deltaHandler) {
+      this.clearThinking();
       const { delta } = payload as { delta: string };
       this.deltaHandler(delta);
     }
@@ -28,6 +31,29 @@ export class CliClient extends ServiceClient {
 
   onDelta(handler: (delta: string) => void): void {
     this.deltaHandler = handler;
+  }
+
+  /** Show animated "Thinking..." until the first delta arrives */
+  startThinking(): void {
+    this.firstDelta = true;
+    const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+    let i = 0;
+    const dim = chalk.dim;
+    process.stderr.write(dim(`  ${frames[0]} Thinking...`));
+    this.thinkingTimer = setInterval(() => {
+      i = (i + 1) % frames.length;
+      process.stderr.write(`\r${dim(`  ${frames[i]} Thinking...`)}`);
+    }, 80);
+  }
+
+  private clearThinking(): void {
+    if (!this.firstDelta) return;
+    this.firstDelta = false;
+    if (this.thinkingTimer) {
+      clearInterval(this.thinkingTimer);
+      this.thinkingTimer = undefined;
+    }
+    process.stderr.write('\r\x1b[K'); // clear the line
   }
 }
 
