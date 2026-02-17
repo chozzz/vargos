@@ -192,6 +192,26 @@ export async function start(): Promise<void> {
   services.push({ name: 'Tools', ok: true, detail: `${totalTools} (${groupSummary})` });
 
   // ── Cron service ──────────────────────────────────────────────────────────
+
+  // Seed default cron tasks on first boot
+  if (!config.cron?.tasks) {
+    config.cron = {
+      tasks: [
+        {
+          name: 'Vargos Morning Analysis (AEST)',
+          schedule: '0 23 * * *',
+          task: 'Analyze the Vargos codebase for improvements. Review scalability, code quality, architecture patterns, and feature gaps. Present suggestions with effort/impact ratings. Store findings in memory/vargos-suggestions/. Wait for user approval before implementing.',
+        },
+        {
+          name: 'Vargos Evening Analysis (AEST)',
+          schedule: '0 11 * * *',
+          task: 'Analyze the Vargos codebase for improvements. Review scalability, code quality, architecture patterns, and feature gaps. Present suggestions with effort/impact ratings. Store findings in memory/vargos-suggestions/. Wait for user approval before implementing.',
+        },
+      ],
+    };
+    await saveConfig(dataDir, config);
+  }
+
   const cron = new CronService({
     gatewayUrl,
     onPersist: async (tasks) => {
@@ -202,10 +222,7 @@ export async function start(): Promise<void> {
     },
   });
   await cron.connect();
-  const { createTwiceDailyVargosAnalysis } = await import('../../extensions/cron/tasks/vargos-analysis.js');
-  createTwiceDailyVargosAnalysis(cron);
 
-  // Load user-defined tasks from config
   for (const t of config.cron?.tasks ?? []) {
     cron.addTask({ name: t.name, schedule: t.schedule, task: t.task, description: t.task.slice(0, 100), enabled: t.enabled ?? true });
   }
