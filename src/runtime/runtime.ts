@@ -54,9 +54,10 @@ function resolveProviderBaseUrl(provider: string, configBaseUrl?: string): strin
 }
 
 /**
- * Extract plain text from Pi SDK content (string, array of content blocks, or object)
+ * Extract plain text from Pi SDK content (string, array of content blocks, or object).
+ * Skips thinking/reasoning blocks — only returns visible text.
  */
-function extractTextContent(content: unknown): string {
+export function extractTextContent(content: unknown): string {
   if (typeof content === 'string') return content;
   if (Array.isArray(content)) {
     return content
@@ -72,6 +73,19 @@ function extractTextContent(content: unknown): string {
   return String(content);
 }
 
+/**
+ * Check if a Pi SDK content array contains only thinking/reasoning blocks
+ * (no visible text, no tool calls). These should not be treated as errors.
+ */
+export function isThinkingOnlyContent(content: unknown): boolean {
+  if (!Array.isArray(content) || content.length === 0) return false;
+  return content.every((block: { type?: string; text?: string }) => {
+    if (block?.type === 'thinking') return true;
+    if (block?.type === 'text' && (!block.text || !block.text.trim())) return true;
+    return false;
+  });
+}
+
 export interface PiAgentConfig {
   sessionKey: string;
   sessionFile: string;
@@ -81,6 +95,8 @@ export interface PiAgentConfig {
   provider?: string;
   apiKey?: string;
   baseUrl?: string;
+  maxTokens?: number;
+  contextWindow?: number;
   contextFiles?: Array<{ name: string; content: string }>;
   extraSystemPrompt?: string;
   userTimezone?: string;
@@ -209,7 +225,9 @@ export class PiAgentRuntime {
           const apiKey = config.apiKey ?? (LOCAL_PROVIDERS.has(provider) ? 'local' : undefined);
 
           if (baseUrl && apiKey) {
-            log.info(`registering model: provider=${provider} model=${config.model} baseUrl=${baseUrl}`);
+            const contextWindow = config.contextWindow ?? 128_000;
+            const maxTokens = config.maxTokens ?? Math.min(16_384, contextWindow);
+            log.info(`registering model: provider=${provider} model=${config.model} baseUrl=${baseUrl} maxTokens=${maxTokens}`);
             modelRegistry.registerProvider(provider, {
               baseUrl,
               apiKey,
@@ -220,8 +238,8 @@ export class PiAgentRuntime {
                 reasoning: false,
                 input: ['text', 'image'] as ('text' | 'image')[],
                 cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-                contextWindow: 128_000,
-                maxTokens: 8_192,
+                contextWindow,
+                maxTokens,
               }],
             });
             model = modelRegistry.find(provider, config.model) ?? undefined;
@@ -307,6 +325,7 @@ export class PiAgentRuntime {
       // Get response from session history
       const sessionEntries = sessionManager.getEntries();
       let response = '';
+      let rawContent: unknown;
       let inputTokens = 0;
       let outputTokens = 0;
 
@@ -320,6 +339,7 @@ export class PiAgentRuntime {
               return { success: false, error: msg.errorMessage, duration: Date.now() - startedAt };
             }
             if (msg.content) {
+              rawContent = msg.content;
               response = extractTextContent(msg.content);
               if (msg.usage) {
                 inputTokens = msg.usage.input ?? 0;
@@ -332,6 +352,14 @@ export class PiAgentRuntime {
       }
 
       if (!response.trim()) {
+        // Thinking-only responses (model spent entire budget reasoning) — treat as success, skip delivery
+        if (rawContent && isThinkingOnlyContent(rawContent)) {
+          log.info(`thinking-only response for ${config.sessionKey} — skipping delivery`);
+          const duration = Date.now() - startedAt;
+          this.lifecycle.endRun(runId, { input: inputTokens, output: outputTokens, total: inputTokens + outputTokens });
+          return { success: true, duration };
+        }
+
         const hint = 'Empty response — model returned nothing useful.';
         log.error(hint);
         return { success: false, error: hint, duration: Date.now() - startedAt };

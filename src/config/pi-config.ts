@@ -13,12 +13,14 @@ const AUTH_FILE = 'auth.json';
 const SETTINGS_FILE = 'settings.json';
 const MODELS_FILE = 'models.json';
 
-/** Named model profile — provider + model + credentials */
+/** Named model profile — provider + model + credentials + limits */
 export interface ModelProfile {
   provider: string;
   model: string;
   apiKey?: string;
   baseUrl?: string;
+  maxTokens?: number;
+  contextWindow?: number;
 }
 
 /** Agent references into the models map */

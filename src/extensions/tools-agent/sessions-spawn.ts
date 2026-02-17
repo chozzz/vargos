@@ -5,6 +5,9 @@
 import { z } from 'zod';
 import { Tool, ToolContext, textResult, errorResult } from '../../contracts/tool.js';
 import { isSubagentSessionKey } from '../../lib/errors.js';
+import { createLogger } from '../../lib/logger.js';
+
+const log = createLogger('sessions-spawn');
 
 const SessionsSpawnParameters = z.object({
   task: z.string().describe('Task description for the sub-agent'),
@@ -50,7 +53,7 @@ export const sessionsSpawnTool: Tool = {
         task: params.task,
         model: params.model,
       }).catch(err => {
-        console.error(`Subagent ${childKey} failed:`, err instanceof Error ? err.message : err);
+        log.error(`Subagent ${childKey} failed:`, err instanceof Error ? err.message : err);
       });
 
       return textResult(
