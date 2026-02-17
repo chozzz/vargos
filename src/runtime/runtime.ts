@@ -72,51 +72,6 @@ function extractTextContent(content: unknown): string {
   return String(content);
 }
 
-/**
- * Classify raw API/provider errors into actionable user-facing messages.
- */
-function classifyError(raw: string, provider: string, model: string): string {
-  const lower = raw.toLowerCase();
-
-  // Auth errors
-  if (lower.includes('401') || lower.includes('unauthorized') || lower.includes('user not found') || lower.includes('invalid api key'))
-    return `Auth failed for ${provider}. Check your API key (vargos config llm).`;
-
-  // Quota / billing
-  if (lower.includes('402') || lower.includes('payment') || lower.includes('insufficient') || lower.includes('quota'))
-    return `${provider} billing issue — check your account balance or plan.`;
-
-  // Rate limit
-  if (lower.includes('429') || lower.includes('rate limit') || lower.includes('too many'))
-    return `Rate limited by ${provider}. Try again shortly.`;
-
-  // Unsupported input modality (e.g. images on text-only model)
-  if (lower.includes('not support') && (lower.includes('image') || lower.includes('vision') || lower.includes('input')))
-    return `${model} on ${provider} doesn't support this input type. Try a vision-capable model or send text instead.`;
-
-  // Model not found
-  if (lower.includes('404') || lower.includes('not found') || lower.includes('does not exist') || lower.includes('no such model'))
-    return `Model "${model}" not found on ${provider}. Check model name.`;
-
-  // Context overflow
-  if (lower.includes('context') && (lower.includes('length') || lower.includes('overflow') || lower.includes('too long')))
-    return `Message too long for ${model}. Try a shorter message or clear session history.`;
-
-  // Timeout
-  if (lower.includes('timeout') || lower.includes('timed out') || lower.includes('econnaborted'))
-    return `Request to ${provider} timed out. Try again.`;
-
-  // Network
-  if (lower.includes('econnrefused') || lower.includes('enotfound') || lower.includes('network') || lower.includes('fetch failed'))
-    return `Cannot reach ${provider}. Check network or provider status.`;
-
-  // Content filter
-  if (lower.includes('content') && (lower.includes('filter') || lower.includes('policy') || lower.includes('moderation')))
-    return `Message blocked by ${provider}'s content filter.`;
-
-  return `${provider} error: ${raw}`;
-}
-
 export interface PiAgentConfig {
   sessionKey: string;
   sessionFile: string;
@@ -351,8 +306,6 @@ export class PiAgentRuntime {
 
       // Get response from session history
       const sessionEntries = sessionManager.getEntries();
-      const agentProvider = config.provider ?? 'openai';
-      const agentModel = config.model ?? 'unknown';
       let response = '';
       let inputTokens = 0;
       let outputTokens = 0;
@@ -362,14 +315,10 @@ export class PiAgentRuntime {
         if (entry.type === 'message') {
           const msg = (entry as SessionMessageEntry).message;
           if (msg?.role === 'assistant') {
-            // API/provider error
             if (msg.stopReason === 'error' && msg.errorMessage) {
-              log.error(`raw: ${msg.errorMessage}`);
-              const friendly = classifyError(msg.errorMessage, agentProvider, agentModel);
-              log.error(friendly);
-              return { success: false, error: friendly, duration: Date.now() - startedAt };
+              log.error(msg.errorMessage);
+              return { success: false, error: msg.errorMessage, duration: Date.now() - startedAt };
             }
-            // Extract text content
             if (msg.content) {
               response = extractTextContent(msg.content);
               if (msg.usage) {
@@ -382,15 +331,16 @@ export class PiAgentRuntime {
         }
       }
 
-      // Empty response — model returned nothing useful
       if (!response.trim()) {
-        const hint = `${agentModel} on ${agentProvider} returned an empty response. Try a different model or check provider status.`;
+        const hint = 'Empty response — model returned nothing useful.';
         log.error(hint);
         return { success: false, error: hint, duration: Date.now() - startedAt };
       }
 
-      // Store completion in Vargos session
-      await this.storeResponse(config.sessionKey, response);
+      // Store completion in Vargos session (non-fatal — response already streamed)
+      await this.storeResponse(config.sessionKey, response).catch((e) =>
+        log.error(`failed to store response for ${config.sessionKey}: ${e instanceof Error ? e.message : e}`),
+      );
 
       // Calculate duration
       const duration = Date.now() - startedAt;
@@ -415,19 +365,9 @@ export class PiAgentRuntime {
     } catch (err) {
       const duration = Date.now() - startedAt;
       const raw = err instanceof Error ? err.message : String(err);
-      const provider = config.provider ?? 'openai';
-      const model = config.model ?? 'unknown';
-      const friendly = classifyError(raw, provider, model);
       log.error(`Run ${runId} failed (${(duration / 1000).toFixed(1)}s): ${raw}`);
-
-      // Error lifecycle
-      this.lifecycle.errorRun(runId, friendly);
-
-      return {
-        success: false,
-        error: friendly,
-        duration,
-      };
+      this.lifecycle.errorRun(runId, raw);
+      return { success: false, error: raw, duration };
     }
   }
 

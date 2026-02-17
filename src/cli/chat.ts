@@ -2,8 +2,14 @@ import readline from 'node:readline';
 import chalk from 'chalk';
 import { connectToGateway } from './client.js';
 
+const SESSION_KEY = 'cli:chat';
+
 export async function chat(): Promise<void> {
   const client = await connectToGateway();
+
+  await client.call('sessions', 'session.create', {
+    sessionKey: SESSION_KEY, kind: 'cli', metadata: {},
+  }).catch(() => {}); // ignore if already exists
 
   const rl = readline.createInterface({
     input: process.stdin,
@@ -23,7 +29,7 @@ export async function chat(): Promise<void> {
     client.startThinking();
     try {
       const result = await client.call<{ success: boolean; error?: string }>(
-        'agent', 'agent.run', { sessionKey: 'cli:chat', task: msg }, 300_000,
+        'agent', 'agent.run', { sessionKey: SESSION_KEY, task: msg }, 300_000,
       );
       console.log('');
       if (!result.success) {
