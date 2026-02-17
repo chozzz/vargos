@@ -16,6 +16,9 @@ import makeWASocket, {
 import qrcode from 'qrcode-terminal';
 import pino from 'pino';
 import { promises as fs } from 'node:fs';
+import { createLogger } from '../../lib/logger.js';
+
+const log = createLogger('whatsapp');
 
 // libsignal-node's session_record.js uses console.info to dump raw Signal
 // protocol state (crypto keys, ratchets) on every session close/open.
@@ -150,7 +153,7 @@ export async function processInboundMessage(
         ? downloaded
         : Buffer.from(downloaded as Uint8Array);
     } catch (err) {
-      console.error(`[WhatsApp] Media download failed for ${base.messageId}:`, err);
+      log.error(`Media download failed for ${base.messageId}:`, err);
     }
 
     const caption = (mediaMsg.msg as { caption?: string }).caption || '';
