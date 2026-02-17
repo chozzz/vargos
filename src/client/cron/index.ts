@@ -23,6 +23,7 @@ export interface CronServiceConfig {
 export class CronService extends ServiceClient {
   private jobs = new Map<string, { task: CronTask; job: CronJob }>();
   private hooks = new Map<string, (task: CronTask) => Promise<boolean>>();
+  private ephemeralIds = new Set<string>();
   private onPersist?: (tasks: CronTask[]) => Promise<void>;
 
   constructor(config: CronServiceConfig = {}) {
@@ -43,11 +44,17 @@ export class CronService extends ServiceClient {
       case 'cron.list':
         return this.listTasks();
 
-      case 'cron.add':
-        return this.addTask(p as Omit<CronTask, 'id'>);
+      case 'cron.add': {
+        const task = this.addTask(p as Omit<CronTask, 'id'>);
+        this.persist();
+        return task;
+      }
 
-      case 'cron.remove':
-        return this.removeTask(p.id as string);
+      case 'cron.remove': {
+        const result = this.removeTask(p.id as string);
+        if (result) this.persist();
+        return result;
+      }
 
       case 'cron.run':
         return this.triggerTask(p.id as string);
@@ -61,7 +68,7 @@ export class CronService extends ServiceClient {
     // Cron service subscribes to nothing
   }
 
-  addTask(task: Omit<CronTask, 'id'>): CronTask {
+  addTask(task: Omit<CronTask, 'id'>, opts?: { ephemeral?: boolean }): CronTask {
     const id = `cron-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const fullTask: CronTask = { ...task, id };
 
@@ -74,7 +81,7 @@ export class CronService extends ServiceClient {
     );
 
     this.jobs.set(id, { task: fullTask, job });
-    if (!fullTask.builtIn) this.persistUserTasks();
+    if (opts?.ephemeral) this.ephemeralIds.add(id);
     return fullTask;
   }
 
@@ -83,7 +90,7 @@ export class CronService extends ServiceClient {
     if (!entry) return false;
     entry.job.stop();
     this.jobs.delete(id);
-    if (!entry.task.builtIn) this.persistUserTasks();
+    this.ephemeralIds.delete(id);
     return true;
   }
 
@@ -91,10 +98,10 @@ export class CronService extends ServiceClient {
     return Array.from(this.jobs.values()).map((e) => e.task);
   }
 
-  private persistUserTasks(): void {
+  private persist(): void {
     if (!this.onPersist) return;
-    const userTasks = this.listTasks().filter((t) => !t.builtIn);
-    this.onPersist(userTasks).catch(() => {});
+    const persistable = this.listTasks().filter((t) => !this.ephemeralIds.has(t.id));
+    this.onPersist(persistable).catch(() => {});
   }
 
   startAll(): void {

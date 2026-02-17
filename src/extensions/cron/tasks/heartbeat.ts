@@ -12,7 +12,7 @@ import {
 } from '../../../lib/heartbeat.js';
 
 interface CronScheduler {
-  addTask(task: Omit<CronTask, 'id'>): CronTask;
+  addTask(task: Omit<CronTask, 'id'>, opts?: { ephemeral?: boolean }): CronTask;
   onBeforeFire(taskId: string, hook: (task: CronTask) => Promise<boolean>): void;
 }
 
@@ -35,8 +35,7 @@ export function createHeartbeatTask(
     description: 'Periodic heartbeat poll — checks HEARTBEAT.md for pending tasks',
     task: config.prompt ?? DEFAULT_PROMPT,
     enabled: true,
-    builtIn: true,
-  });
+  }, { ephemeral: true });
 
   scheduler.onBeforeFire(task.id, async () => {
     // 1. Outside active hours → skip
