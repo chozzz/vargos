@@ -1,7 +1,11 @@
 /** Interactive menu walker using @clack/prompts */
 
 import { select, intro, outro, isCancel } from '@clack/prompts';
-import { isGroup, type MenuNode } from './tree.js';
+import { isGroup, type MenuNode, type MenuLeaf } from './tree.js';
+
+function isVisible(node: MenuNode): boolean {
+  return !(!isGroup(node) && (node as MenuLeaf & { key: string }).hidden);
+}
 
 type Choice = string; // node key, '__back__', or '__exit__'
 
@@ -22,10 +26,11 @@ function nodeMap(nodes: MenuNode[]): Map<string, MenuNode> {
 
 async function runSubmenu(nodes: MenuNode[], breadcrumb: string): Promise<void> {
   const lookup = nodeMap(nodes);
+  const visible = nodes.filter(isVisible);
 
   while (true) {
     const options = [
-      ...nodes.map((n) => ({
+      ...visible.map((n) => ({
         value: n.key,
         label: n.label,
         hint: isGroup(n) ? undefined : (n as { hint?: string }).hint,
@@ -51,11 +56,12 @@ async function runSubmenu(nodes: MenuNode[], breadcrumb: string): Promise<void> 
 
 async function runGroupSubmenu(group: MenuNode & { children: MenuNode[] }, parentCrumb: string): Promise<void> {
   const lookup = nodeMap(group.children);
+  const visible = group.children.filter(isVisible);
   const breadcrumb = `${parentCrumb} > ${group.label}`;
 
   while (true) {
     const options = [
-      ...group.children.map((n) => ({
+      ...visible.map((n) => ({
         value: n.key,
         label: n.label,
         hint: isGroup(n) ? undefined : (n as { hint?: string }).hint,
