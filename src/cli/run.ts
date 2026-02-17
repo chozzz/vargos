@@ -1,6 +1,8 @@
 import chalk from 'chalk';
 import { connectToGateway } from './client.js';
 
+const SESSION_KEY = 'cli:run';
+
 export async function run(args?: string[]): Promise<void> {
   const task = args?.join(' ') || '';
   if (!task) {
@@ -13,9 +15,12 @@ export async function run(args?: string[]): Promise<void> {
   client.startThinking();
 
   try {
-    const sessionKey = `cli:run:${Date.now()}`;
+    await client.call('sessions', 'session.create', {
+      sessionKey: SESSION_KEY, kind: 'cli', metadata: {},
+    }).catch(() => {}); // ignore if already exists
+
     const result = await client.call<{ success: boolean; error?: string }>(
-      'agent', 'agent.run', { sessionKey, task }, 300_000,
+      'agent', 'agent.run', { sessionKey: SESSION_KEY, task }, 300_000,
     );
     console.log('');
     if (!result.success) {
