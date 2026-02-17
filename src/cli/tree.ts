@@ -10,6 +10,7 @@ export interface MenuLeaf {
   kind: 'leaf';
   label: string;
   hint?: string;
+  hidden?: boolean;
   action: (args?: string[]) => Promise<void>;
 }
 
@@ -185,6 +186,7 @@ export function buildTree(): MenuNode[] {
           kind: 'leaf',
           label: 'Remove',
           hint: 'Remove a scheduled task',
+          hidden: true,
           action: async (args) => { const m = await import('./cron.js'); await m.remove(args); },
         },
         {
@@ -192,6 +194,7 @@ export function buildTree(): MenuNode[] {
           kind: 'leaf',
           label: 'Trigger',
           hint: 'Manually trigger a task',
+          hidden: true,
           action: async (args) => { const m = await import('./cron.js'); await m.trigger(args); },
         },
         {

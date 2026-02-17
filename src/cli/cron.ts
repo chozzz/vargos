@@ -33,22 +33,66 @@ export async function list(): Promise<void> {
       return;
     }
 
-    console.log(`\n  ${BOLD('Scheduled Tasks')}\n`);
-    for (const task of tasks) {
-      const status = task.enabled ? chalk.green('on') : chalk.red('off');
-      const badge = task.builtIn ? DIM(' [built-in]') : '';
-      console.log(`    ${chalk.cyan(task.name)} ${DIM(`[${status}]`)}${badge}`);
-      const human = formatSchedule(task.schedule);
-      const scheduleDisplay = human !== task.schedule
-        ? `${human} ${DIM(`(${task.schedule})`)}`
-        : task.schedule;
-      console.log(`      ${LABEL('Schedule')}  ${scheduleDisplay}`);
-      console.log(`      ${LABEL('Task')}      ${truncateAtWord(task.task.replace(/\n/g, ' ').trim(), 80)}`);
-      console.log(`      ${LABEL('ID')}        ${DIM(task.id)}`);
-      console.log();
+    printTasks(tasks);
+
+    // Interactive mode: offer actions on tasks
+    if (!process.stdin.isTTY) return;
+
+    const userTasks = tasks.filter((t) => !t.builtIn);
+    const actions: { value: string; label: string; hint?: string }[] = [
+      { value: 'done', label: 'Done' },
+    ];
+    if (tasks.length > 0) {
+      actions.unshift({ value: 'trigger', label: 'Trigger', hint: 'Run a task now' });
+    }
+    if (userTasks.length > 0) {
+      actions.unshift({ value: 'remove', label: 'Remove', hint: 'Remove a user task' });
+    }
+    if (actions.length === 1) return; // only "Done"
+
+    const action = await select({ message: 'Action', options: actions });
+    if (isCancel(action) || action === 'done') return;
+
+    if (action === 'trigger') {
+      const picked = await select({
+        message: 'Select task to trigger',
+        options: tasks.map((t) => ({ value: t.id, label: t.name, hint: formatSchedule(t.schedule) })),
+      });
+      if (isCancel(picked)) return;
+      await client.call('cron', 'cron.run', { id: picked });
+      console.log(chalk.green(`  Triggered task: ${picked}`));
+    } else if (action === 'remove') {
+      const picked = await select({
+        message: 'Select task to remove',
+        options: userTasks.map((t) => ({ value: t.id, label: t.name, hint: formatSchedule(t.schedule) })),
+      });
+      if (isCancel(picked)) return;
+      const removed = await client.call<boolean>('cron', 'cron.remove', { id: picked });
+      if (removed) {
+        console.log(chalk.green(`  Removed task: ${picked}`));
+      } else {
+        console.log(chalk.yellow(`  Task not found: ${picked}`));
+      }
     }
   } finally {
     await client.disconnect();
+  }
+}
+
+function printTasks(tasks: CronTask[]): void {
+  console.log(`\n  ${BOLD('Scheduled Tasks')}\n`);
+  for (const task of tasks) {
+    const status = task.enabled ? chalk.green('on') : chalk.red('off');
+    const badge = task.builtIn ? DIM(' [built-in]') : '';
+    console.log(`    ${chalk.cyan(task.name)} ${DIM(`[${status}]`)}${badge}`);
+    const human = formatSchedule(task.schedule);
+    const scheduleDisplay = human !== task.schedule
+      ? `${human} ${DIM(`(${task.schedule})`)}`
+      : task.schedule;
+    console.log(`      ${LABEL('Schedule')}  ${scheduleDisplay}`);
+    console.log(`      ${LABEL('Task')}      ${truncateAtWord(task.task.replace(/\n/g, ' ').trim(), 80)}`);
+    console.log(`      ${LABEL('ID')}        ${DIM(task.id)}`);
+    console.log();
   }
 }
 
