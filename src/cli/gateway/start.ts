@@ -15,7 +15,7 @@ import { PiAgentRuntime } from '../../runtime/runtime.js';
 import { initializeMemoryContext, getMemoryContext } from '../../extensions/service-file/memory-context.js';
 import { resolveDataDir, resolveWorkspaceDir, resolveCacheDir, initPaths } from '../../config/paths.js';
 import type { MemoryStorage } from '../../extensions/service-file/storage.js';
-import { loadConfig } from '../../config/pi-config.js';
+import { loadConfig, saveConfig } from '../../config/pi-config.js';
 import { validateConfig, checkLocalProvider } from '../../config/validate.js';
 import { initializeWorkspace, isWorkspaceInitialized } from '../../config/workspace.js';
 import type { ExtensionContext } from '../../contracts/extension.js';
@@ -192,10 +192,24 @@ export async function start(): Promise<void> {
   services.push({ name: 'Tools', ok: true, detail: `${totalTools} (${groupSummary})` });
 
   // ── Cron service ──────────────────────────────────────────────────────────
-  const cron = new CronService({ gatewayUrl });
+  const cron = new CronService({
+    gatewayUrl,
+    onPersist: async (tasks) => {
+      const current = await loadConfig(dataDir);
+      if (!current) return;
+      current.cron = { tasks: tasks.map((t) => ({ name: t.name, schedule: t.schedule, task: t.task, enabled: t.enabled })) };
+      await saveConfig(dataDir, current);
+    },
+  });
   await cron.connect();
   const { createTwiceDailyVargosAnalysis } = await import('../../extensions/cron/tasks/vargos-analysis.js');
   createTwiceDailyVargosAnalysis(cron);
+
+  // Load user-defined tasks from config
+  for (const t of config.cron?.tasks ?? []) {
+    cron.addTask({ name: t.name, schedule: t.schedule, task: t.task, description: t.task.slice(0, 100), enabled: t.enabled ?? true });
+  }
+
   cron.startAll();
   const cronCount = cron.listTasks().length;
   services.push({ name: 'Cron', ok: true, detail: `${cronCount} task${cronCount !== 1 ? 's' : ''}` });

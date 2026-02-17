@@ -9,6 +9,7 @@ import { sessionsSendTool } from './sessions-send.js';
 import { sessionsSpawnTool } from './sessions-spawn.js';
 import { cronAddTool } from './cron-add.js';
 import { cronListTool } from './cron-list.js';
+import { cronRemoveTool } from './cron-remove.js';
 import { createProcessTool } from './process.js';
 
 const extension: VargosExtension = {
@@ -21,6 +22,7 @@ const extension: VargosExtension = {
     ctx.registerTool(sessionsSpawnTool);
     ctx.registerTool(cronAddTool);
     ctx.registerTool(cronListTool);
+    ctx.registerTool(cronRemoveTool);
     ctx.registerTool(createProcessTool());
   },
 };

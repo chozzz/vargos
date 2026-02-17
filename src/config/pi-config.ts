@@ -73,10 +73,22 @@ export interface HeartbeatConfig {
   prompt?: string;                // custom heartbeat prompt override
 }
 
+export interface CronTaskConfig {
+  name: string;
+  schedule: string;
+  task: string;
+  enabled?: boolean;
+}
+
+export interface CronConfig {
+  tasks?: CronTaskConfig[];
+}
+
 export interface VargosConfig {
   models: Record<string, ModelProfile>;
   agent: AgentRef;
   channels?: Record<string, ChannelEntry>;
+  cron?: CronConfig;
   gateway?: GatewayConfig;
   heartbeat?: HeartbeatConfig;
   mcp?: McpConfig;

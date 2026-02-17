@@ -5,4 +5,5 @@ export interface CronTask {
   description: string;
   task: string;
   enabled: boolean;
+  builtIn?: boolean;
 }

@@ -17,11 +17,13 @@ export type { CronTask };
 
 export interface CronServiceConfig {
   gatewayUrl?: string;
+  onPersist?: (tasks: CronTask[]) => Promise<void>;
 }
 
 export class CronService extends ServiceClient {
   private jobs = new Map<string, { task: CronTask; job: CronJob }>();
   private hooks = new Map<string, (task: CronTask) => Promise<boolean>>();
+  private onPersist?: (tasks: CronTask[]) => Promise<void>;
 
   constructor(config: CronServiceConfig = {}) {
     super({
@@ -31,6 +33,7 @@ export class CronService extends ServiceClient {
       subscriptions: [],
       gatewayUrl: config.gatewayUrl,
     });
+    this.onPersist = config.onPersist;
   }
 
   async handleMethod(method: string, params: unknown): Promise<unknown> {
@@ -71,6 +74,7 @@ export class CronService extends ServiceClient {
     );
 
     this.jobs.set(id, { task: fullTask, job });
+    if (!fullTask.builtIn) this.persistUserTasks();
     return fullTask;
   }
 
@@ -79,11 +83,18 @@ export class CronService extends ServiceClient {
     if (!entry) return false;
     entry.job.stop();
     this.jobs.delete(id);
+    if (!entry.task.builtIn) this.persistUserTasks();
     return true;
   }
 
   listTasks(): CronTask[] {
     return Array.from(this.jobs.values()).map((e) => e.task);
+  }
+
+  private persistUserTasks(): void {
+    if (!this.onPersist) return;
+    const userTasks = this.listTasks().filter((t) => !t.builtIn);
+    this.onPersist(userTasks).catch(() => {});
   }
 
   startAll(): void {

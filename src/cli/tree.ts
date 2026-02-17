@@ -174,6 +174,20 @@ export function buildTree(): MenuNode[] {
           action: async () => { const m = await import('./cron.js'); await m.list(); },
         },
         {
+          key: 'add',
+          kind: 'leaf',
+          label: 'Add',
+          hint: 'Add a scheduled task',
+          action: async () => { const m = await import('./cron.js'); await m.add(); },
+        },
+        {
+          key: 'remove',
+          kind: 'leaf',
+          label: 'Remove',
+          hint: 'Remove a scheduled task',
+          action: async (args) => { const m = await import('./cron.js'); await m.remove(args); },
+        },
+        {
           key: 'trigger',
           kind: 'leaf',
           label: 'Trigger',

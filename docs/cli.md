@@ -41,8 +41,10 @@ Bare `vargos` opens an interactive menu with breadcrumb navigation. Select comma
 | Command | Description |
 |---------|-------------|
 | `vargos cron list` | Show scheduled tasks |
-| `vargos cron trigger <id>` | Manually trigger a task |
-| `vargos cron logs <id>` | View past cron executions |
+| `vargos cron add` | Add a scheduled task (interactive wizard) |
+| `vargos cron remove [id]` | Remove a scheduled task (interactive picker or by ID) |
+| `vargos cron trigger [id]` | Manually trigger a task (interactive picker or by ID) |
+| `vargos cron logs [filter]` | View past cron executions |
 
 ## Gateway Lifecycle
 
