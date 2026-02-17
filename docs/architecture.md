@@ -77,7 +77,7 @@ Layer 8  cli/          → everything (composition root)
         └───────┘  └────────┘  └───────┘  └───────┘  └──────┘
 ```
 
-The gateway is a **dumb router** — it knows nothing about agents, tools, or channels. It routes frames between services based on a registration table. Adding a service means connecting and registering, nothing else.
+The gateway is a **dumb router** — it knows nothing about agents, tools, or channels. It routes frames between services based on a registration table. Adding a service means connecting and registering, nothing else. See [extensions.md](./extensions.md) for tool implementations and channel adapters.
 
 ---
 
@@ -171,7 +171,7 @@ abstract class ServiceClient {
 
 ### Agent Service
 
-Wraps the Pi agent runtime. Handles agent execution, streaming, and subagent spawning.
+Wraps the Pi agent runtime. Handles agent execution, streaming, and subagent spawning. See [runtime.md](./runtime.md) for internals.
 
 | Method | Params | Description |
 |--------|--------|-------------|
