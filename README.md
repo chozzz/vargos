@@ -43,7 +43,8 @@ All settings live in `~/.vargos/config.json`:
 
 ```jsonc
 {
-  "agent": { "provider": "anthropic", "model": "claude-sonnet-4-20250514" },
+  "models": { "anthropic": { "provider": "anthropic", "model": "claude-sonnet-4-20250514" } },
+  "agent": { "primary": "anthropic" },
   "gateway": { "port": 9000, "host": "127.0.0.1" },           // optional
   "mcp": { "transport": "http", "port": 9001, "endpoint": "/mcp" }, // optional
   "channels": { ... }                                           // optional
@@ -136,8 +137,16 @@ pnpm lint                 # ESLint + typecheck
 
 ## Documentation
 
+- **[Getting Started](./docs/getting-started.md)** — Install, first run, config wizard
+- **[Configuration](./docs/configuration.md)** — Config reference, model profiles, API keys
+- **[CLI](./docs/cli.md)** — Commands, gateway lifecycle, chat/run modes
 - **[Architecture](./docs/architecture.md)** — Protocol spec, service contracts, message flows
-- **[Usage Guide](./docs/USAGE.md)** — Detailed CLI, MCP setup, channel configuration
+- **[Channels](./docs/channels.md)** — WhatsApp and Telegram setup
+- **[MCP](./docs/mcp.md)** — MCP server, tool list, client integration
+- **[Sessions](./docs/sessions.md)** — Session types, storage, lifecycle
+- **[Extensions](./docs/extensions.md)** — Tool system, writing extensions
+- **[Runtime](./docs/runtime.md)** — Agent runtime, prompt layers, streaming
+- **[Troubleshooting](./docs/troubleshooting.md)** — Common issues and fixes
 - **[Contributing](./CONTRIBUTING.md)** — How to contribute
 
 ## License
