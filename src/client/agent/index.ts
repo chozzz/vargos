@@ -193,6 +193,8 @@ export class AgentService extends ServiceClient {
       provider: params.provider ?? primary.provider,
       apiKey,
       baseUrl: primary.baseUrl,
+      maxTokens: primary.maxTokens,
+      contextWindow: primary.contextWindow,
       contextFiles: await loadContextFiles(this.workspaceDir),
       images: params.images,
       channel: params.channel,
