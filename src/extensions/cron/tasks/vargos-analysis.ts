@@ -86,6 +86,7 @@ export function createTwiceDailyVargosAnalysis(scheduler: TaskAdder): void {
     description: 'Morning analysis of Vargos project - scalability, architecture, and feature gaps',
     task: generateSuggestionTask(),
     enabled: true,
+    builtIn: true,
   });
 
   scheduler.addTask({
@@ -94,6 +95,7 @@ export function createTwiceDailyVargosAnalysis(scheduler: TaskAdder): void {
     description: 'Evening analysis of Vargos project - review and recommendations',
     task: generateSuggestionTask(),
     enabled: true,
+    builtIn: true,
   });
 }
 
