@@ -77,6 +77,16 @@ Priority: `config.paths.dataDir` > `VARGOS_DATA_DIR` env > `~/.vargos`
     },
     "prompt": "..."                 // optional custom prompt
   },
+  "cron": {
+    "tasks": [                      // user-defined scheduled tasks
+      {
+        "name": "daily-report",
+        "schedule": "0 9 * * *",   // cron expression
+        "task": "Generate a summary of recent changes",
+        "enabled": true             // default: true
+      }
+    ]
+  },
   "channels": { ... }              // see channels.md
 }
 ```
@@ -106,6 +116,19 @@ The `agent` field points into the `models` map:
   }
 }
 ```
+
+## Cron Tasks
+
+User-defined scheduled tasks are persisted in `config.json` and loaded at gateway boot. Tasks added via `vargos cron add` or the `cron_add` agent tool are automatically saved.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | yes | Human-readable task name |
+| `schedule` | string | yes | Cron expression (e.g. `0 */6 * * *`) |
+| `task` | string | yes | Prompt/description for the agent |
+| `enabled` | boolean | no | Whether active (default: `true`) |
+
+Built-in tasks (vargos analysis, heartbeat) are not stored in config — they're registered at boot.
 
 ## API Key Precedence
 

@@ -1,6 +1,7 @@
 import chalk from 'chalk';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { select, text, isCancel } from '@clack/prompts';
 import { connectToGateway } from './client.js';
 import { resolveDataDir } from '../config/paths.js';
 import type { CronTask } from '../contracts/cron.js';
@@ -9,16 +10,16 @@ const DIM = chalk.dim;
 const LABEL = chalk.gray;
 const BOLD = chalk.bold;
 
+const SCHEDULE_PRESETS: Record<string, string> = {
+  '*/30 * * * *': 'every 30 min',
+  '*/1 * * * *': 'every minute',
+  '0 9,21 * * *': 'daily at 9am & 9pm',
+  '0 */6 * * *': 'every 6 hours',
+  '0 * * * *': 'every hour',
+};
+
 function formatSchedule(cron: string): string {
-  // Common cron patterns → human-readable
-  const patterns: Record<string, string> = {
-    '*/30 * * * *': 'every 30 min',
-    '*/1 * * * *': 'every minute',
-    '0 9,21 * * *': 'daily at 9am & 9pm',
-    '0 */6 * * *': 'every 6 hours',
-    '0 * * * *': 'every hour',
-  };
-  return patterns[cron] ?? cron;
+  return SCHEDULE_PRESETS[cron] ?? cron;
 }
 
 export async function list(): Promise<void> {
@@ -35,7 +36,8 @@ export async function list(): Promise<void> {
     console.log(`\n  ${BOLD('Scheduled Tasks')}\n`);
     for (const task of tasks) {
       const status = task.enabled ? chalk.green('on') : chalk.red('off');
-      console.log(`    ${chalk.cyan(task.name)} ${DIM(`[${status}]`)}`);
+      const badge = task.builtIn ? DIM(' [built-in]') : '';
+      console.log(`    ${chalk.cyan(task.name)} ${DIM(`[${status}]`)}${badge}`);
       const human = formatSchedule(task.schedule);
       const scheduleDisplay = human !== task.schedule
         ? `${human} ${DIM(`(${task.schedule})`)}`
@@ -50,16 +52,129 @@ export async function list(): Promise<void> {
   }
 }
 
-export async function trigger(args?: string[]): Promise<void> {
-  const taskId = args?.[0];
-  if (!taskId) {
-    console.error(chalk.red('  Usage: vargos cron trigger <task-id>'));
-    process.exit(1);
+export async function add(): Promise<void> {
+  const name = await text({
+    message: 'Task name',
+    placeholder: 'daily-report',
+    validate: (v) => (v?.trim() ? undefined : 'Name is required'),
+  });
+  if (isCancel(name)) return;
+
+  const schedule = await select({
+    message: 'Schedule',
+    options: [
+      { value: '*/30 * * * *', label: 'Every 30 minutes' },
+      { value: '0 * * * *', label: 'Every hour' },
+      { value: '0 */6 * * *', label: 'Every 6 hours' },
+      { value: '0 9,21 * * *', label: 'Daily at 9am & 9pm' },
+      { value: '__custom__', label: 'Custom cron expression' },
+    ],
+  });
+  if (isCancel(schedule)) return;
+
+  let finalSchedule: string = schedule;
+  if (schedule === '__custom__') {
+    const custom = await text({
+      message: 'Cron expression',
+      placeholder: '0 */2 * * *',
+      validate: (v) => (v?.trim() ? undefined : 'Expression is required'),
+    });
+    if (isCancel(custom)) return;
+    finalSchedule = custom;
   }
 
+  const task = await text({
+    message: 'Task description (prompt for the agent)',
+    placeholder: 'Generate a daily summary of recent changes',
+    validate: (v) => (v?.trim() ? undefined : 'Task is required'),
+  });
+  if (isCancel(task)) return;
+
+  const client = await connectToGateway();
+  try {
+    const created = await client.call<CronTask>('cron', 'cron.add', {
+      name,
+      schedule: finalSchedule,
+      description: task.slice(0, 100),
+      task,
+      enabled: true,
+    });
+    console.log(chalk.green(`\n  Created task: ${created.name}`));
+    console.log(`  ${LABEL('ID')}        ${DIM(created.id)}`);
+    console.log(`  ${LABEL('Schedule')}  ${formatSchedule(finalSchedule)}`);
+    console.log();
+  } catch (err) {
+    console.error(chalk.red(`  Error: ${err instanceof Error ? err.message : String(err)}`));
+  } finally {
+    await client.disconnect();
+  }
+}
+
+export async function remove(args?: string[]): Promise<void> {
   const client = await connectToGateway();
 
   try {
+    let taskId = args?.[0];
+
+    if (!taskId) {
+      const tasks = await client.call<CronTask[]>('cron', 'cron.list', {});
+      const removable = tasks.filter((t) => !t.builtIn);
+
+      if (removable.length === 0) {
+        console.log(chalk.yellow('  No user-defined tasks to remove.'));
+        return;
+      }
+
+      const picked = await select({
+        message: 'Select task to remove',
+        options: removable.map((t) => ({
+          value: t.id,
+          label: t.name,
+          hint: formatSchedule(t.schedule),
+        })),
+      });
+      if (isCancel(picked)) return;
+      taskId = picked;
+    }
+
+    const removed = await client.call<boolean>('cron', 'cron.remove', { id: taskId });
+    if (removed) {
+      console.log(chalk.green(`  Removed task: ${taskId}`));
+    } else {
+      console.log(chalk.yellow(`  Task not found: ${taskId}`));
+    }
+  } catch (err) {
+    console.error(chalk.red(`  Error: ${err instanceof Error ? err.message : String(err)}`));
+  } finally {
+    await client.disconnect();
+  }
+}
+
+export async function trigger(args?: string[]): Promise<void> {
+  const client = await connectToGateway();
+
+  try {
+    let taskId = args?.[0];
+
+    if (!taskId) {
+      const tasks = await client.call<CronTask[]>('cron', 'cron.list', {});
+      if (tasks.length === 0) {
+        console.log(chalk.yellow('  No scheduled tasks.'));
+        return;
+      }
+
+      const picked = await select({
+        message: 'Select task to trigger',
+        options: tasks.map((t) => ({
+          value: t.id,
+          label: t.name,
+          hint: formatSchedule(t.schedule),
+        })),
+      });
+      if (isCancel(picked)) return;
+      taskId = picked;
+    }
+
     await client.call('cron', 'cron.run', { id: taskId });
     console.log(chalk.green(`  Triggered task: ${taskId}`));
   } catch (err) {
@@ -72,7 +187,7 @@ export async function trigger(args?: string[]): Promise<void> {
 export async function logs(args?: string[]): Promise<void> {
   const dataDir = resolveDataDir();
   const sessionsDir = path.join(dataDir, 'sessions');
-  const filter = args?.[0]; // optional: 'cron', 'heartbeat', or a specific task id
+  const filter = args?.[0];
 
   let files: string[];
   try {
@@ -82,7 +197,6 @@ export async function logs(args?: string[]): Promise<void> {
     return;
   }
 
-  // Filter to cron session files
   let cronFiles = files
     .filter((f) => f.startsWith('cron-') && f.endsWith('.jsonl'))
     .sort()
@@ -99,15 +213,12 @@ export async function logs(args?: string[]): Promise<void> {
 
   console.log(`\n  ${BOLD('Cron Execution Logs')}${filter ? DIM(` (filter: ${filter})`) : ''}\n`);
 
-  // Show last 10 executions
   const show = cronFiles.slice(0, 10);
   for (const file of show) {
     const filePath = path.join(sessionsDir, file);
     const stat = await fs.stat(filePath);
     const age = formatAge(stat.mtimeMs);
     const size = formatSize(stat.size);
-
-    // Read last entry for result summary
     const summary = await readLastEntry(filePath);
 
     console.log(`    ${chalk.cyan(file)} ${DIM(`${age} ago, ${size}`)}`);
