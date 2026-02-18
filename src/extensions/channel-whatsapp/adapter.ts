@@ -104,7 +104,13 @@ export class WhatsAppAdapter implements ChannelAdapter {
 
   async send(jid: string, text: string): Promise<void> {
     if (!this.sock) throw new Error('WhatsApp not connected');
-    await this.sock.sendMessage(jid, { text });
+    await this.sock.sendMessage(this.toJid(jid), { text });
+  }
+
+  /** Normalize a phone number or raw JID into a valid WhatsApp JID */
+  private toJid(id: string): string {
+    if (id.includes('@')) return id;
+    return `${id.replace(/^\+/, '')}@s.whatsapp.net`;
   }
 
   /**
@@ -199,7 +205,7 @@ export class WhatsAppAdapter implements ChannelAdapter {
     // Typing indicator
     let typingInterval: ReturnType<typeof setInterval> | undefined;
     if (this.sock) {
-      const typing = () => this.sock!.sendPresenceUpdate('composing', params.jid);
+      const typing = () => this.sock!.sendPresenceUpdate('composing', this.toJid(params.jid));
       typing().catch(() => {});
       typingInterval = setInterval(() => typing().catch(() => {}), 4000);
     }

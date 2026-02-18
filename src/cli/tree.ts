@@ -123,6 +123,13 @@ export function buildTree(): MenuNode[] {
               hint: 'Configure heartbeat schedule',
               action: async () => { const m = await import('./config/heartbeat.js'); await m.edit(); },
             },
+            {
+              key: 'tasks',
+              kind: 'leaf',
+              label: 'Tasks',
+              hint: 'Edit HEARTBEAT.md in $EDITOR',
+              action: async () => { const m = await import('./config/heartbeat.js'); await m.tasks(); },
+            },
           ],
         },
       ],

@@ -1,6 +1,9 @@
+import { spawn } from 'node:child_process';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
 import { select, text, confirm, isCancel } from '@clack/prompts';
 import chalk from 'chalk';
-import { resolveDataDir } from '../../config/paths.js';
+import { resolveDataDir, resolveWorkspaceDir } from '../../config/paths.js';
 import { loadConfig, saveConfig } from '../../config/pi-config.js';
 import type { HeartbeatConfig, ActiveHoursConfig } from '../../config/pi-config.js';
 
@@ -145,4 +148,30 @@ export async function edit(): Promise<void> {
     console.log(chalk.green(`  Active hours: ${activeHours.start} - ${activeHours.end} ${activeHours.timezone}`));
   }
   console.log(DIM('  Restart gateway to apply changes.\n'));
+}
+
+export async function tasks(): Promise<void> {
+  const filePath = path.join(resolveWorkspaceDir(), 'HEARTBEAT.md');
+
+  // Ensure file exists with default template
+  try {
+    await fs.access(filePath);
+  } catch {
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(filePath, [
+      '# HEARTBEAT.md',
+      '',
+      '# Keep this file empty (or with only comments) to skip heartbeat API calls.',
+      '',
+      '# Add tasks below when you want the agent to check something periodically.',
+      '',
+    ].join('\n'));
+  }
+
+  const editor = process.env.EDITOR || process.env.VISUAL || 'nano';
+  const child = spawn(editor, [filePath], { stdio: 'inherit' });
+  await new Promise<void>((resolve, reject) => {
+    child.on('close', (code) => code === 0 ? resolve() : reject(new Error(`${editor} exited with ${code}`)));
+    child.on('error', reject);
+  });
 }
