@@ -112,7 +112,7 @@ export async function start(): Promise<void> {
   const gatewayHost = config.gateway?.host ?? '127.0.0.1';
   const gatewayUrl = `ws://${gatewayHost}:${gatewayPort}`;
 
-  const gateway = new GatewayServer({ port: gatewayPort, host: gatewayHost, requestTimeout: 300_000 });
+  const gateway = new GatewayServer({ port: gatewayPort, host: gatewayHost });
   await gateway.start();
 
   const services: ServiceStatus[] = [];
