@@ -147,6 +147,16 @@ export class AgentService extends ServiceClient {
 
     log.debug(`cron trigger: ${taskId}`);
 
+    // Create session so storeResponse can persist the result
+    await this.call('sessions', 'session.create', {
+      sessionKey,
+      kind: 'cron',
+      metadata: { taskId },
+    }).catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!msg.includes('already exists')) log.error(`Failed to create cron session: ${msg}`);
+    });
+
     const result = await this.runAgent({ sessionKey, task });
 
     // Broadcast to all configured channels

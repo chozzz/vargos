@@ -74,7 +74,7 @@ export interface Session {
   sessionKey: string;
   label?: string;
   agentId?: string;
-  kind: 'main' | 'subagent';
+  kind: 'main' | 'subagent' | 'cron';
   createdAt: Date;
   updatedAt: Date;
   metadata: Record<string, unknown>;
