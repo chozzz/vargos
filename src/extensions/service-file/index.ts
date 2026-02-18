@@ -25,6 +25,6 @@ const extension: VargosExtension = {
 
 export default extension;
 export { FileMemoryService } from './memory-file.js';
-export { FileSessionService } from './sessions-file.js';
+export { FileSessionService } from '../../sessions/file-store.js';
 export { MemoryContext, initializeMemoryContext } from './memory-context.js';
 export { MemorySQLiteStorage } from './sqlite-storage.js';

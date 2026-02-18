@@ -2,11 +2,11 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { GatewayServer } from '../../gateway/server.js';
-import { ServiceClient } from '../../gateway/service-client.js';
-import { SessionsService } from './index.js';
-import { FileSessionService } from '../../extensions/service-file/sessions-file.js';
-import type { Session, SessionMessage } from '../../contracts/service.js';
+import { GatewayServer } from '../gateway/server.js';
+import { ServiceClient } from '../gateway/service-client.js';
+import { SessionsService } from './service.js';
+import { FileSessionService } from './file-store.js';
+import type { Session, SessionMessage } from './types.js';
 
 const PORT = 19803;
 const GATEWAY_URL = `ws://127.0.0.1:${PORT}`;

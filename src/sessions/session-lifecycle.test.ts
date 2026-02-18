@@ -7,8 +7,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import { FileSessionService } from './sessions-file.js';
-import type { ISessionService } from '../../contracts/service.js';
+import { FileSessionService } from './file-store.js';
+import type { ISessionService } from './types.js';
 
 describe('session lifecycle edge cases', () => {
   let tempDir: string;
@@ -120,7 +120,7 @@ describe('session lifecycle edge cases', () => {
       const subagentKey = 'agent:test:subagent:1234567890-abcde';
       await sessions.create({ sessionKey: subagentKey, kind: 'subagent', metadata: {} });
 
-      const { isSubagentSessionKey } = await import('../../runtime/prompt.js');
+      const { isSubagentSessionKey } = await import('../runtime/prompt.js');
       expect(isSubagentSessionKey(subagentKey)).toBe(true);
       expect(isSubagentSessionKey('main:session')).toBe(false);
     });

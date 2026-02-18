@@ -11,7 +11,7 @@ import {
   type ISessionService,
   type Session,
   type SessionMessage,
-} from '../../contracts/service.js';
+} from './types.js';
 
 export interface FileSessionConfig {
   baseDir: string;
