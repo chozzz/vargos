@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { GatewayServer } from '../../gateway/server.js';
-import { ServiceClient, type ServiceClientConfig } from '../../gateway/service-client.js';
+import { GatewayServer } from '../gateway/server.js';
+import { ServiceClient, type ServiceClientConfig } from '../gateway/service-client.js';
 
 // Mock the Pi runtime dependencies so we can test the service shell
-vi.mock('../../runtime/runtime.js', () => {
+vi.mock('./runtime.js', () => {
   class MockRuntime {
     async run(config: any) {
       return { success: true, response: `Executed: ${config.sessionKey}`, duration: 100 };
@@ -28,7 +28,7 @@ function createMockRuntime() {
   } as any;
 }
 
-vi.mock('../../config/pi-config.js', () => ({
+vi.mock('../config/pi-config.js', () => ({
   loadConfig: async () => ({
     models: { test: { provider: 'test', model: 'test-model', apiKey: 'test-key' } },
     agent: { primary: 'test' },
@@ -37,17 +37,17 @@ vi.mock('../../config/pi-config.js', () => ({
   getPiConfigPaths: () => ({ agentDir: '/tmp', authPath: '/tmp/auth.json', modelsPath: '/tmp/models.json' }),
 }));
 
-vi.mock('../../config/workspace.js', () => ({
+vi.mock('../config/workspace.js', () => ({
   loadContextFiles: async () => [],
 }));
 
-vi.mock('../../config/paths.js', () => ({
+vi.mock('../config/paths.js', () => ({
   resolveSessionFile: (key: string) => `/tmp/sessions/${key}.jsonl`,
   resolveWorkspaceDir: () => '/tmp/workspace',
   resolveDataDir: () => '/tmp/data',
 }));
 
-import { AgentService } from './index.js';
+import { AgentService } from './service.js';
 
 const PORT = 19806;
 const GATEWAY_URL = `ws://127.0.0.1:${PORT}`;
