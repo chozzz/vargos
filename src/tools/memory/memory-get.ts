@@ -5,7 +5,7 @@
 
 import { z } from 'zod';
 import { Tool, ToolContext, textResult, errorResult } from '../types.js';
-import { getMemoryContext } from '../../extensions/service-file/memory-context.js';
+import { getMemoryContext } from '../../memory/context.js';
 
 const MemoryGetParameters = z.object({
   path: z.string().describe('Relative path to memory file (e.g., "MEMORY.md" or "daily/2026-02-05.md")'),

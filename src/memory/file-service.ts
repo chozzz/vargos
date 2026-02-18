@@ -14,7 +14,7 @@ import {
   type MemoryWriteOptions,
   type SearchOptions,
   type SearchResult,
-} from '../../contracts/service.js';
+} from './types.js';
 
 export interface FileMemoryConfig {
   baseDir: string;

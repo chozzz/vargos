@@ -5,7 +5,7 @@
 
 import pg from 'pg';
 import pgvector from 'pgvector/pg';
-import type { MemoryChunk, MemoryStorage } from './storage.js';
+import type { MemoryChunk, MemoryStorage } from './types.js';
 
 export interface PostgresStorageConfig {
   url: string;

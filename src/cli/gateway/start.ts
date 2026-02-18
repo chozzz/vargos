@@ -12,9 +12,9 @@ import { McpBridge } from '../../mcp/server.js';
 import { toolRegistry } from '../../tools/registry.js';
 import { FileSessionService } from '../../sessions/file-store.js';
 import { PiAgentRuntime } from '../../runtime/runtime.js';
-import { initializeMemoryContext, getMemoryContext } from '../../extensions/service-file/memory-context.js';
+import { initializeMemoryContext, getMemoryContext } from '../../memory/context.js';
 import { resolveDataDir, resolveWorkspaceDir, resolveCacheDir, initPaths } from '../../config/paths.js';
-import type { MemoryStorage } from '../../extensions/service-file/storage.js';
+import type { MemoryStorage } from '../../memory/types.js';
 import { loadConfig, saveConfig } from '../../config/pi-config.js';
 import { validateConfig, checkLocalProvider } from '../../config/validate.js';
 import { initializeWorkspace, isWorkspaceInitialized } from '../../config/workspace.js';
@@ -132,10 +132,10 @@ export async function start(): Promise<void> {
   let memoryStorage: MemoryStorage;
   const storageType = config.storage?.type ?? 'postgres';
   if (storageType === 'postgres' && config.storage?.url) {
-    const { MemoryPostgresStorage } = await import('../../extensions/service-file/postgres-storage.js');
+    const { MemoryPostgresStorage } = await import('../../memory/postgres-storage.js');
     memoryStorage = new MemoryPostgresStorage({ url: config.storage.url });
   } else {
-    const { MemorySQLiteStorage } = await import('../../extensions/service-file/sqlite-storage.js');
+    const { MemorySQLiteStorage } = await import('../../memory/sqlite-storage.js');
     memoryStorage = new MemorySQLiteStorage({ dbPath: path.join(resolveCacheDir(), 'memory.db') });
   }
 
