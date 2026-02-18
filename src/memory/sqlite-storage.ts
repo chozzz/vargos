@@ -7,7 +7,7 @@ import Database from 'better-sqlite3';
 import type BetterSqlite3 from 'better-sqlite3';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import type { MemoryChunk, MemoryStorage } from './storage.js';
+import type { MemoryChunk, MemoryStorage } from './types.js';
 
 export interface SQLiteStorageConfig {
   dbPath: string;

@@ -5,7 +5,7 @@
 
 import { z } from 'zod';
 import { Tool, ToolContext, textResult, errorResult } from '../types.js';
-import { getMemoryContext } from '../../extensions/service-file/memory-context.js';
+import { getMemoryContext } from '../../memory/context.js';
 
 const MemorySearchParameters = z.object({
   query: z.string().describe('Search query to find relevant memories'),
