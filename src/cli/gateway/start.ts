@@ -227,6 +227,19 @@ export async function start(): Promise<void> {
     cron.addTask({ name: t.name, schedule: t.schedule, task: t.task, description: t.task.slice(0, 100), enabled: t.enabled ?? true });
   }
 
+  // ── Agent service ─────────────────────────────────────────────────────────
+  const runtime = new PiAgentRuntime({ sessionService: fileSessionService });
+  const agent = new AgentService({ gatewayUrl, workspaceDir, dataDir, runtime });
+  await agent.connect();
+  services.push({ name: 'Agent', ok: true });
+
+  // ── Heartbeat (optional) ────────────────────────────────────────────────
+  if (config.heartbeat?.enabled) {
+    const { createHeartbeatTask } = await import('../../extensions/cron/tasks/heartbeat.js');
+    createHeartbeatTask(cron, config.heartbeat, workspaceDir, () => runtime.listActiveRuns().length);
+  }
+
+  // Start all cron jobs after all tasks (config + heartbeat) are registered
   cron.startAll();
   const cronCount = cron.listTasks().length;
   services.push({ name: 'Cron', ok: true, detail: `${cronCount} task${cronCount !== 1 ? 's' : ''}` });
@@ -260,22 +273,6 @@ export async function start(): Promise<void> {
         services.push({ name: 'Channel', ok: false, detail: `${type} (${err instanceof Error ? err.message : String(err)})` });
       }
     }
-  }
-
-  // ── Agent service ─────────────────────────────────────────────────────────
-  const runtime = new PiAgentRuntime({ sessionService: fileSessionService });
-  const agent = new AgentService({ gatewayUrl, workspaceDir, dataDir, runtime });
-  await agent.connect();
-  services.push({ name: 'Agent', ok: true });
-
-  // ── Heartbeat (optional) ────────────────────────────────────────────────
-  if (config.heartbeat?.enabled) {
-    const { createHeartbeatTask } = await import('../../extensions/cron/tasks/heartbeat.js');
-    createHeartbeatTask(cron, config.heartbeat, workspaceDir, () => runtime.listActiveRuns().length);
-    const updatedCronCount = cron.listTasks().length;
-    // Update cron service status detail
-    const cronStatus = services.find(s => s.name === 'Cron');
-    if (cronStatus) cronStatus.detail = `${updatedCronCount} task${updatedCronCount !== 1 ? 's' : ''}`;
   }
 
   // ── MCP bridge ────────────────────────────────────────────────────────────
