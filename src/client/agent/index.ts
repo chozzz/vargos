@@ -9,7 +9,7 @@
  * by running the agent, and replies via channel.send.
  */
 
-import { ServiceClient } from '../client.js';
+import { ServiceClient } from '../../gateway/service-client.js';
 import { createLogger } from '../../lib/logger.js';
 import { stripHeartbeatToken } from '../../lib/heartbeat.js';
 import { type PiAgentRuntime, type PiAgentConfig, type PiAgentRunResult } from '../../runtime/runtime.js';

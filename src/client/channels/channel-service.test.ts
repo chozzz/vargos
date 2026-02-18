@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { GatewayServer } from '../../gateway/server.js';
-import { ServiceClient } from '../client.js';
+import { ServiceClient } from '../../gateway/service-client.js';
 import { ChannelService } from './index.js';
 import { SessionsService } from '../sessions/index.js';
 import { FileSessionService } from '../../extensions/service-file/sessions-file.js';

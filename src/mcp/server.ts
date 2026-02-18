@@ -16,7 +16,7 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import http from 'node:http';
-import { ServiceClient } from '../client/client.js';
+import { ServiceClient } from '../gateway/service-client.js';
 import { resolveWorkspaceDir } from '../config/paths.js';
 import type { ToolResult } from '../contracts/tool.js';
 

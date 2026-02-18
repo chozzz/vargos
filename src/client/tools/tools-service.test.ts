@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { z } from 'zod';
 import { GatewayServer } from '../../gateway/server.js';
-import { ServiceClient } from '../client.js';
+import { ServiceClient } from '../../gateway/service-client.js';
 import { ToolsService } from './index.js';
 import { ToolRegistry } from '../../tools/registry.js';
 import type { Tool, ToolResult } from '../../contracts/tool.js';

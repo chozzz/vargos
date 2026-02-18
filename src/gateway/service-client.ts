@@ -17,8 +17,8 @@ import {
 } from '../protocol/index.js';
 import { Reconnector } from '../lib/reconnect.js';
 import { createLogger } from '../lib/logger.js';
-import type { ServiceMethod } from '../contracts/methods.js';
-import type { ServiceEvent } from '../contracts/events.js';
+import type { ServiceMethod } from './methods.js';
+import type { ServiceEvent } from './events.js';
 
 const DEFAULT_GATEWAY_URL = 'ws://127.0.0.1:9000';
 const DEFAULT_REQUEST_TIMEOUT = 30_000;

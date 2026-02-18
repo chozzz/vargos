@@ -1,5 +1,5 @@
-export * from './events.js';
-export * from './methods.js';
+export * from '../gateway/events.js';
+export * from '../gateway/methods.js';
 export * from './tool.js';
 export * from './channel.js';
 export * from './service.js';

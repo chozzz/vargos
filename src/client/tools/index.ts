@@ -5,7 +5,7 @@
  */
 
 import { zodToJsonSchema } from 'zod-to-json-schema';
-import { ServiceClient, type ServiceClientConfig } from '../client.js';
+import { ServiceClient, type ServiceClientConfig } from '../../gateway/service-client.js';
 import { ToolRegistry } from '../../tools/registry.js';
 import type { Tool, ToolContext } from '../../contracts/tool.js';
 import { isSubagentSessionKey, isToolAllowedForSubagent } from '../../lib/errors.js';

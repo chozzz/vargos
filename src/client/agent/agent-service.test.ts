@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { GatewayServer } from '../../gateway/server.js';
-import { ServiceClient, type ServiceClientConfig } from '../client.js';
+import { ServiceClient, type ServiceClientConfig } from '../../gateway/service-client.js';
 
 // Mock the Pi runtime dependencies so we can test the service shell
 vi.mock('../../runtime/runtime.js', () => {
