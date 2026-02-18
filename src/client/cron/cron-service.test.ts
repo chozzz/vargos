@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { GatewayServer } from '../../gateway/server.js';
-import { ServiceClient } from '../client.js';
+import { ServiceClient } from '../../gateway/service-client.js';
 import { CronService, type CronTask } from './index.js';
 
 const PORT = 19804;
