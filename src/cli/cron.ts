@@ -4,7 +4,7 @@ import path from 'node:path';
 import { select, text, isCancel } from '@clack/prompts';
 import { connectToGateway, type CliClient } from './client.js';
 import { resolveDataDir } from '../config/paths.js';
-import type { CronTask } from '../contracts/cron.js';
+import type { CronTask } from '../cron/types.js';
 
 const DIM = chalk.dim;
 const LABEL = chalk.gray;
