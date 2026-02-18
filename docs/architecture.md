@@ -21,38 +21,46 @@ Vargos is a **service-oriented system** where independent services communicate t
 
 ```
 src/
-  contracts/     Layer 0 — pure types, string literal unions for events/methods
-  lib/           Layer 1 — shared utilities (logger, dedupe, debounce, reconnect)
-  config/        Layer 2 — configuration loading, validation, workspace, paths
-  protocol/      Layer 3 — wire protocol (frame types, Zod schemas, parse/serialize)
-  tools/         Layer 3 — tool registry and base tool class
-  gateway/       Layer 4 — WS server, router, event bus, service registry
-  client/        Layer 5 — ServiceClient base + 5 service clients
-  runtime/       Layer 5 — Pi agent runtime, lifecycle, queue, prompt builder
-  channels/      Layer 6 — channel adapter factory, config, onboard
-  extensions/    Layer 6 — tool implementations, channel adapters, cron tasks, storage
-  mcp/           Layer 7 — MCP-to-gateway RPC bridge (stdio + HTTP)
-  cli/           Layer 8 — composition root, interactive menu, config wizards
+  # Cross-cutting infrastructure
+  lib/           Pure utilities (logger, dedupe, debounce, errors, media)
+  config/        Config loading, validation, workspace, paths
+  protocol/      Wire protocol (frame types, Zod schemas)
+  gateway/       WS server, router, event bus, registry, ServiceClient base, methods/events
+
+  # Domain modules (each owns its types, service, implementation)
+  agent/         Agent service, Pi runtime, lifecycle, prompt, queue, history
+  sessions/      Session service, file-store, types
+  channels/      Channel service, delivery, factory, whatsapp/, telegram/
+  cron/          Cron service, tasks/heartbeat
+  memory/        Memory service, context, sqlite/postgres storage, types
+  tools/         Tool service, registry, base, fs/, web/, agent/, memory/
+  services/      Shared services (browser, process)
+
+  # Edge layers
+  mcp/           MCP-to-gateway RPC bridge (stdio + HTTP)
+  cli/           Composition root, interactive menu, config wizards
 ```
 
 ---
 
-## Dependency Layers
+## Domain Boundaries
 
-Each layer can only import from layers below it. ESLint enforces this via `no-restricted-imports`.
+Each domain module owns its types, service client, and implementation. Domains communicate via gateway RPC — never by importing each other directly. ESLint enforces this via `no-restricted-imports`.
 
 ```
-Layer 0  contracts/    → nothing (only node:* and zod)
-Layer 1  lib/          → contracts/
-Layer 2  config/       → contracts/, lib/
-Layer 3  protocol/     → contracts/
-Layer 3  tools/        → contracts/
-Layer 4  gateway/      → protocol/
-Layer 5  client/       → protocol/, lib/, contracts/, config/
-Layer 5  runtime/      → contracts/, config/, tools/, lib/
-Layer 6  extensions/   → contracts/, lib/, config/, tools/
-Layer 7  mcp/          → client/, contracts/, config/
-Layer 8  cli/          → everything (composition root)
+lib/           → nothing (pure utilities)
+config/        → lib/
+protocol/      → nothing (wire format only)
+gateway/       → protocol/
+agent/         → gateway/, config/, lib/, tools/, sessions/ (DI only)
+sessions/      → gateway/, config/, lib/
+channels/      → gateway/, config/, lib/
+cron/          → gateway/, config/, lib/
+memory/        → config/, lib/
+tools/         → gateway/, config/, lib/, services/
+services/      → lib/
+mcp/           → gateway/, config/
+cli/           → everything (composition root)
 ```
 
 ---
@@ -145,14 +153,14 @@ Gateway responds with the full routing table so services know what's available.
 
 ## Base Service Client
 
-Every service extends `ServiceClient` (in `client/client.ts`). It handles the protocol so services only implement their domain logic. Methods and events use typed string literal unions from `contracts/` for compile-time safety:
+Every service extends `ServiceClient` (in `gateway/service-client.ts`). It handles the protocol so services only implement their domain logic. Methods and events use typed string literal unions from `gateway/` for compile-time safety:
 
 ```typescript
 abstract class ServiceClient {
   constructor(config: {
     service: string;
-    methods: ServiceMethod[];    // typed string literals from contracts/
-    events: ServiceEvent[];      // typed string literals from contracts/
+    methods: ServiceMethod[];    // typed string literals from gateway/methods.ts
+    events: ServiceEvent[];      // typed string literals from gateway/events.ts
     subscriptions: ServiceEvent[];
     gatewayUrl?: string;
   }) {}

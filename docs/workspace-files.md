@@ -18,7 +18,7 @@ Templates live in `docs/templates/`. They're copied once on first boot — after
 
 ## Prompt Injection Order
 
-The prompt builder (`src/runtime/prompt.ts`) injects files in this order:
+The prompt builder (`src/agent/prompt.ts`) injects files in this order:
 
 | Order | File | Note |
 |-------|------|------|
