@@ -14,11 +14,10 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { glob } from 'tinyglobby';
 import { fileURLToPath } from 'node:url';
-import type { MemoryStorage } from './storage.js';
+import type { MemoryStorage, MemoryChunk } from './types.js';
 import { FSWatcher, watch } from 'node:fs';
-import { createLogger } from '../../lib/logger.js';
-export type { MemoryChunk } from '../../contracts/storage.js';
-import type { MemoryChunk } from '../../contracts/storage.js';
+import { createLogger } from '../lib/logger.js';
+export type { MemoryChunk } from './types.js';
 
 const log = createLogger('memory');
 
