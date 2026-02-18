@@ -11,6 +11,9 @@
 import { ServiceClient } from '../client.js';
 import type { ChannelAdapter, ChannelType, ChannelConfig } from '../../contracts/channel.js';
 import { deliverReply } from '../../lib/reply-delivery.js';
+import { createLogger } from '../../lib/logger.js';
+
+const log = createLogger('channels');
 
 export interface ChannelServiceConfig {
   gatewayUrl?: string;
@@ -73,7 +76,7 @@ export class ChannelService extends ServiceClient {
       metadata: { type: 'task', channel, ...metadata },
     });
 
-    // Emit for agent service
+    log.info(`inbound: ${channel}:${userId} "${content.slice(0, 80)}"`);
     this.emit('message.received', { channel, userId, sessionKey, content, metadata });
   }
 
@@ -85,7 +88,13 @@ export class ChannelService extends ServiceClient {
         const { channel, userId, text } = p as { channel: string; userId: string; text: string };
         const adapter = this.adapters.get(channel);
         if (!adapter) throw new Error(`No adapter for channel: ${channel}`);
-        await deliverReply((chunk) => adapter.send(userId, chunk), text);
+        log.info(`send: ${channel}:${userId} (${text.length} chars)`);
+        try {
+          await deliverReply((chunk) => adapter.send(userId, chunk), text);
+        } catch (err) {
+          log.error(`send failed: ${channel}:${userId}: ${err}`);
+          throw err;
+        }
         return { sent: true };
       }
 

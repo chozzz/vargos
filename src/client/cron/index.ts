@@ -11,7 +11,10 @@
 
 import { CronJob } from 'cron';
 import { ServiceClient } from '../client.js';
+import { createLogger } from '../../lib/logger.js';
 import type { CronTask } from '../../contracts/cron.js';
+
+const log = createLogger('cron');
 
 export type { CronTask };
 
@@ -90,12 +93,14 @@ export class CronService extends ServiceClient {
     this.jobs.set(id, { task: fullTask, job });
     if (opts?.ephemeral) this.ephemeralIds.add(id);
     if (this.running && task.enabled) job.start();
+    log.info(`task added: ${fullTask.name} (${fullTask.schedule}) id=${id}`);
     return fullTask;
   }
 
   updateTask(id: string, updates: Partial<Omit<CronTask, 'id'>>): CronTask {
     const entry = this.jobs.get(id);
     if (!entry) throw new Error(`No task with id: ${id}`);
+    log.info(`task updated: ${id}`);
 
     const updated: CronTask = { ...entry.task };
     if (updates.name !== undefined) updated.name = updates.name;
@@ -122,6 +127,7 @@ export class CronService extends ServiceClient {
     entry.job.stop();
     this.jobs.delete(id);
     this.ephemeralIds.delete(id);
+    log.info(`task removed: ${id}`);
     return true;
   }
 
@@ -132,14 +138,16 @@ export class CronService extends ServiceClient {
   private persist(): void {
     if (!this.onPersist) return;
     const persistable = this.listTasks().filter((t) => !this.ephemeralIds.has(t.id));
-    this.onPersist(persistable).catch(() => {});
+    this.onPersist(persistable).catch((e) => log.error('persist failed:', e));
   }
 
   startAll(): void {
     this.running = true;
+    let count = 0;
     for (const { task, job } of this.jobs.values()) {
-      if (task.enabled) job.start();
+      if (task.enabled) { job.start(); count++; }
     }
+    log.info(`started ${count} tasks`);
   }
 
   stopAll(): void {
@@ -159,6 +167,7 @@ export class CronService extends ServiceClient {
       const shouldFire = await hook(task).catch(() => true);
       if (!shouldFire) return;
     }
+    log.info(`task fired: ${task.name} (${task.id})`);
     const sessionKey = `cron:${task.id}:${Date.now()}`;
     this.emit('cron.trigger', { taskId: task.id, task: task.task, name: task.name, sessionKey });
   }

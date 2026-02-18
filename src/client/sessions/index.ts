@@ -7,7 +7,10 @@
  */
 
 import { ServiceClient } from '../client.js';
+import { createLogger } from '../../lib/logger.js';
 import type { ISessionService, Session, SessionMessage } from '../../contracts/service.js';
+
+const log = createLogger('sessions');
 
 export interface SessionsServiceConfig {
   sessionService: ISessionService;
@@ -51,15 +54,18 @@ export class SessionsService extends ServiceClient {
 
       case 'session.create': {
         const session = await this.sessions.create(p as Omit<Session, 'createdAt' | 'updatedAt'>);
+        log.info(`session created: ${session.sessionKey} kind=${session.kind}`);
         this.emit('session.created', { sessionKey: session.sessionKey, kind: session.kind });
         return session;
       }
 
       case 'session.delete':
+        log.info(`session deleted: ${p.sessionKey}`);
         return this.sessions.delete(p.sessionKey as string);
 
       case 'session.addMessage': {
         const msg = await this.sessions.addMessage(p as Omit<SessionMessage, 'id' | 'timestamp'>);
+        log.debug(`message added: ${p.sessionKey} role=${p.role}`);
         this.emit('session.message', { sessionKey: p.sessionKey, role: p.role });
         return msg;
       }

@@ -118,11 +118,15 @@ export class AgentService extends ServiceClient {
       content: string;
     };
 
+    log.info(`inbound message: ${channel}:${userId} → ${sessionKey}`);
+
     const result = await this.runAgent({
       sessionKey,
       task: content,
       channel,
     });
+
+    log.info(`agent result: ${sessionKey} success=${result.success} (${result.response?.length ?? 0} chars)`);
 
     // Reply back through the channel (strip HEARTBEAT_OK token)
     if (result.success && result.response) {
@@ -135,6 +139,7 @@ export class AgentService extends ServiceClient {
       }).catch((err) =>
         log.error(`Failed to send reply: ${err}`),
       );
+      log.info(`reply sent: ${channel}:${userId}`);
     }
   }
 
@@ -145,7 +150,7 @@ export class AgentService extends ServiceClient {
       sessionKey: string;
     };
 
-    log.debug(`cron trigger: ${taskId}`);
+    log.info(`cron trigger: ${taskId} → ${sessionKey}`);
 
     // Create session so storeResponse can persist the result
     await this.call('sessions', 'session.create', {
@@ -170,6 +175,9 @@ export class AgentService extends ServiceClient {
   private async broadcastToChannels(text: string): Promise<void> {
     const config = await loadConfig(this.dataDir);
     if (!config?.channels) return;
+
+    const channelCount = Object.keys(config.channels).length;
+    log.info(`broadcast: ${text.length} chars to ${channelCount} channels`);
 
     for (const [channel, entry] of Object.entries(config.channels)) {
       if (entry.enabled === false) continue;

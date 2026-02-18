@@ -4,6 +4,10 @@
  * Retries with exponential backoff on failure
  */
 
+import { createLogger } from './logger.js';
+
+const log = createLogger('delivery');
+
 export interface DeliveryOptions {
   /** Max characters per chunk (default: 4000) */
   maxChunkSize?: number;
@@ -74,6 +78,7 @@ export async function deliverReply(
   const retryBaseMs = opts.retryBaseMs ?? 1000;
 
   const chunks = chunkText(text, maxChunkSize);
+  log.debug(`delivering ${text.length} chars in ${chunks.length} chunk(s)`);
 
   for (let i = 0; i < chunks.length; i++) {
     let lastError: Error | undefined;
@@ -81,17 +86,22 @@ export async function deliverReply(
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         await send(chunks[i]);
+        log.debug(`chunk ${i + 1}/${chunks.length} sent (${chunks[i].length} chars)`);
         lastError = undefined;
         break;
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
+        log.error(`chunk ${i + 1} attempt ${attempt + 1} failed: ${lastError.message}`);
         if (attempt < maxRetries) {
           await sleep(retryBaseMs * 2 ** attempt);
         }
       }
     }
 
-    if (lastError) throw lastError;
+    if (lastError) {
+      log.error(`chunk ${i + 1} delivery failed after ${maxRetries + 1} attempts`);
+      throw lastError;
+    }
 
     // Delay between chunks (not after last)
     if (i < chunks.length - 1) {
