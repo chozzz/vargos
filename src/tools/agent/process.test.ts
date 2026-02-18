@@ -5,7 +5,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { ProcessTool } from './process.js';
 import { ToolContext, getFirstTextContent } from '../types.js';
-import { getProcessService } from '../../extensions/service-file/process.js';
+import { getProcessService } from '../../services/process.js';
 
 describe('process tool', () => {
   let tool: ProcessTool;
