@@ -6,7 +6,7 @@
 import type { Tool } from './types.js';
 import type { ChannelAdapter, ChannelConfig } from '../contracts/channel.js';
 import type { IMemoryService, ISessionService, ServiceConfig } from '../contracts/service.js';
-import type { CronTask } from '../contracts/cron.js';
+import type { CronTask } from '../cron/types.js';
 
 export interface VargosExtension {
   id: string;

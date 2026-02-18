@@ -4,12 +4,12 @@
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { CronTask } from '../../../contracts/cron.js';
-import type { HeartbeatConfig } from '../../../config/pi-config.js';
+import type { CronTask } from '../types.js';
+import type { HeartbeatConfig } from '../../config/pi-config.js';
 import {
   isHeartbeatContentEffectivelyEmpty,
   isWithinActiveHours,
-} from '../../../lib/heartbeat.js';
+} from '../../lib/heartbeat.js';
 
 interface CronScheduler {
   addTask(task: Omit<CronTask, 'id'>, opts?: { ephemeral?: boolean }): CronTask;
