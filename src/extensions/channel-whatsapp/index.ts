@@ -2,7 +2,7 @@
  * WhatsApp channel extension
  */
 
-import type { VargosExtension } from '../../contracts/extension.js';
+import type { VargosExtension } from '../../tools/extension.js';
 import { WhatsAppAdapter } from './adapter.js';
 
 const extension: VargosExtension = {

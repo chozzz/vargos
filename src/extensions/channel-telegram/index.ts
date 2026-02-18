@@ -2,7 +2,7 @@
  * Telegram channel extension
  */
 
-import type { VargosExtension } from '../../contracts/extension.js';
+import type { VargosExtension } from '../../tools/extension.js';
 import { TelegramAdapter } from './adapter.js';
 
 const extension: VargosExtension = {

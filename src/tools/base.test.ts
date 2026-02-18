@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { z } from 'zod';
 import { BaseTool } from './base.js';
-import { ToolContext, ToolResult, textResult } from '../contracts/tool.js';
+import { ToolContext, ToolResult, textResult } from './types.js';
 
 const ctx: ToolContext = { sessionKey: 'test', workingDir: '/tmp' };
 
