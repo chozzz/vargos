@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import { GatewayServer } from '../../gateway/server.js';
 import { ToolsService } from '../../tools/service.js';
 import { SessionsService } from '../../sessions/service.js';
-import { CronService } from '../../client/cron/index.js';
+import { CronService } from '../../cron/service.js';
 import { ChannelService } from '../../client/channels/index.js';
 import type { ChannelType } from '../../contracts/channel.js';
 import { AgentService } from '../../client/agent/index.js';
@@ -235,7 +235,7 @@ export async function start(): Promise<void> {
 
   // ── Heartbeat (optional) ────────────────────────────────────────────────
   if (config.heartbeat?.enabled) {
-    const { createHeartbeatTask } = await import('../../extensions/cron/tasks/heartbeat.js');
+    const { createHeartbeatTask } = await import('../../cron/tasks/heartbeat.js');
     createHeartbeatTask(cron, config.heartbeat, workspaceDir, () => runtime.listActiveRuns().length);
   }
 

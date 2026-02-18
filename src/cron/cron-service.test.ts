@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { GatewayServer } from '../../gateway/server.js';
-import { ServiceClient } from '../../gateway/service-client.js';
-import { CronService, type CronTask } from './index.js';
+import { GatewayServer } from '../gateway/server.js';
+import { ServiceClient } from '../gateway/service-client.js';
+import { CronService, type CronTask } from './service.js';
 
 const PORT = 19804;
 const GATEWAY_URL = `ws://127.0.0.1:${PORT}`;
