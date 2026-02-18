@@ -90,6 +90,39 @@ describe('CronService', () => {
     ).rejects.toThrow('No task with id: nonexistent-id');
   });
 
+  it('updates task fields via gateway', async () => {
+    const task = await subscriber.call<CronTask>('cron', 'cron.add', {
+      name: 'original',
+      schedule: '0 * * * *',
+      description: 'original desc',
+      task: 'original task',
+      enabled: true,
+    });
+
+    const updated = await subscriber.call<CronTask>('cron', 'cron.update', {
+      id: task.id,
+      name: 'renamed',
+      schedule: '*/5 * * * *',
+      task: 'updated task',
+    });
+
+    expect(updated.id).toBe(task.id);
+    expect(updated.name).toBe('renamed');
+    expect(updated.schedule).toBe('*/5 * * * *');
+    expect(updated.task).toBe('updated task');
+
+    const tasks = await subscriber.call<CronTask[]>('cron', 'cron.list');
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].name).toBe('renamed');
+    expect(tasks[0].schedule).toBe('*/5 * * * *');
+  });
+
+  it('throws when updating a nonexistent task', async () => {
+    await expect(
+      subscriber.call('cron', 'cron.update', { id: 'nonexistent-id', name: 'x' }),
+    ).rejects.toThrow('No task with id: nonexistent-id');
+  });
+
   it('emits cron.trigger on manual run', async () => {
     const task = await subscriber.call<CronTask>('cron', 'cron.add', {
       name: 'trigger-test',

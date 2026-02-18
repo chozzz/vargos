@@ -31,9 +31,9 @@ describe('contracts/methods', () => {
   });
 
   it('cron methods are valid ServiceMethod values', () => {
-    const methods: CronMethod[] = ['cron.list', 'cron.add', 'cron.remove', 'cron.run'];
+    const methods: CronMethod[] = ['cron.list', 'cron.add', 'cron.remove', 'cron.update', 'cron.run'];
     const asService: ServiceMethod[] = methods;
-    expect(asService).toHaveLength(4);
+    expect(asService).toHaveLength(5);
   });
 
   it('gateway methods are valid ServiceMethod values', () => {
