@@ -29,7 +29,7 @@ export class CronService extends ServiceClient {
   constructor(config: CronServiceConfig = {}) {
     super({
       service: 'cron',
-      methods: ['cron.list', 'cron.add', 'cron.remove', 'cron.run'],
+      methods: ['cron.list', 'cron.add', 'cron.remove', 'cron.update', 'cron.run'],
       events: ['cron.trigger'],
       subscriptions: [],
       gatewayUrl: config.gatewayUrl,
@@ -54,6 +54,12 @@ export class CronService extends ServiceClient {
         const result = this.removeTask(p.id as string);
         if (result) this.persist();
         return result;
+      }
+
+      case 'cron.update': {
+        const task = this.updateTask(p.id as string, p as Partial<Omit<CronTask, 'id'>>);
+        this.persist();
+        return task;
       }
 
       case 'cron.run':
@@ -83,6 +89,29 @@ export class CronService extends ServiceClient {
     this.jobs.set(id, { task: fullTask, job });
     if (opts?.ephemeral) this.ephemeralIds.add(id);
     return fullTask;
+  }
+
+  updateTask(id: string, updates: Partial<Omit<CronTask, 'id'>>): CronTask {
+    const entry = this.jobs.get(id);
+    if (!entry) throw new Error(`No task with id: ${id}`);
+
+    const updated: CronTask = { ...entry.task };
+    if (updates.name !== undefined) updated.name = updates.name;
+    if (updates.description !== undefined) updated.description = updates.description;
+    if (updates.task !== undefined) updated.task = updates.task;
+    if (updates.enabled !== undefined) updated.enabled = updates.enabled;
+
+    // Schedule change requires a new CronJob
+    if (updates.schedule !== undefined && updates.schedule !== entry.task.schedule) {
+      updated.schedule = updates.schedule;
+      entry.job.stop();
+      const job = new CronJob(updated.schedule, () => this.onTaskFire(updated), null, updated.enabled, 'UTC');
+      this.jobs.set(id, { task: updated, job });
+    } else {
+      entry.task = updated;
+    }
+
+    return updated;
   }
 
   removeTask(id: string): boolean {
