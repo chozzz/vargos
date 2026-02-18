@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { TelegramUpdate } from './types.js';
-import type { GatewayCallFn } from '../../contracts/channel.js';
+import type { GatewayCallFn } from '../types.js';
 
 // Track gateway RPC calls
 const gatewayCalls: Array<{ target: string; method: string; params: unknown }> = [];
@@ -19,7 +19,7 @@ vi.mock('../../lib/media.js', () => ({
 }));
 
 // Mock deliverReply
-vi.mock('../../lib/reply-delivery.js', () => ({
+vi.mock('../delivery.js', () => ({
   deliverReply: vi.fn(async () => {}),
 }));
 

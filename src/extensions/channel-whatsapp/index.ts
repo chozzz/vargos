@@ -3,7 +3,7 @@
  */
 
 import type { VargosExtension } from '../../tools/extension.js';
-import { WhatsAppAdapter } from './adapter.js';
+import { WhatsAppAdapter } from '../../channels/whatsapp/adapter.js';
 
 const extension: VargosExtension = {
   id: 'channel-whatsapp',
@@ -14,5 +14,5 @@ const extension: VargosExtension = {
 };
 
 export default extension;
-export { WhatsAppAdapter } from './adapter.js';
-export { createWhatsAppSocket } from './session.js';
+export { WhatsAppAdapter } from '../../channels/whatsapp/adapter.js';
+export { createWhatsAppSocket } from '../../channels/whatsapp/session.js';
