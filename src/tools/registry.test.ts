@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
 import { ToolRegistry } from './registry.js';
-import { Tool } from '../contracts/tool.js';
+import { Tool } from './types.js';
 
 function makeTool(name: string): Tool {
   return {
