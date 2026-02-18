@@ -4,7 +4,7 @@
  * Retries with exponential backoff on failure
  */
 
-import { createLogger } from './logger.js';
+import { createLogger } from '../lib/logger.js';
 
 const log = createLogger('delivery');
 

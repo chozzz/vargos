@@ -3,7 +3,7 @@
  */
 
 import type { VargosExtension } from '../../tools/extension.js';
-import { TelegramAdapter } from './adapter.js';
+import { TelegramAdapter } from '../../channels/telegram/adapter.js';
 
 const extension: VargosExtension = {
   id: 'channel-telegram',
@@ -17,5 +17,5 @@ const extension: VargosExtension = {
 };
 
 export default extension;
-export { TelegramAdapter } from './adapter.js';
-export type { TelegramUpdate, TelegramMessage, TelegramUser, TelegramChat } from './types.js';
+export { TelegramAdapter } from '../../channels/telegram/adapter.js';
+export type { TelegramUpdate, TelegramMessage, TelegramUser, TelegramChat } from '../../channels/telegram/types.js';

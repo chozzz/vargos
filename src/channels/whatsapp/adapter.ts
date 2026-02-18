@@ -6,12 +6,12 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { WASocket } from '@whiskeysockets/baileys';
-import type { ChannelAdapter, ChannelStatus, GatewayCallFn } from '../../contracts/channel.js';
+import type { ChannelAdapter, ChannelStatus, GatewayCallFn } from '../types.js';
 import { createWhatsAppSocket, type WhatsAppInboundMessage } from './session.js';
 import { createDedupeCache } from '../../lib/dedupe.js';
 import { createMessageDebouncer } from '../../lib/debounce.js';
 import { saveMedia } from '../../lib/media.js';
-import { deliverReply } from '../../lib/reply-delivery.js';
+import { deliverReply } from '../delivery.js';
 import { resolveChannelsDir, resolveMediaDir } from '../../config/paths.js';
 import { Reconnector } from '../../lib/reconnect.js';
 import { createLogger } from '../../lib/logger.js';

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { chunkText, deliverReply } from './reply-delivery.js';
+import { chunkText, deliverReply } from './delivery.js';
 
 describe('chunkText', () => {
   it('should return single chunk for short text', () => {

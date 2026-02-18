@@ -13,7 +13,7 @@ vi.mock('../../lib/debounce.js', () => ({
   }),
 }));
 vi.mock('../../lib/media.js', () => ({ saveMedia: vi.fn() }));
-vi.mock('../../lib/reply-delivery.js', () => ({
+vi.mock('../delivery.js', () => ({
   deliverReply: async (send: Function, text: string) => send(text),
 }));
 vi.mock('../../config/paths.js', () => ({
