@@ -45,7 +45,7 @@ export class GatewayServer {
   constructor(opts: GatewayServerOptions = {}) {
     this.port = opts.port ?? 9000;
     this.host = opts.host ?? '127.0.0.1';
-    this.requestTimeout = opts.requestTimeout ?? 10_000;
+    this.requestTimeout = opts.requestTimeout ?? 300_000;
     this.pingInterval = opts.pingInterval ?? 30_000;
   }
 

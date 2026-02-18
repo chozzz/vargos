@@ -21,7 +21,7 @@ import type { ServiceMethod } from './methods.js';
 import type { ServiceEvent } from './events.js';
 
 const DEFAULT_GATEWAY_URL = 'ws://127.0.0.1:9000';
-const DEFAULT_REQUEST_TIMEOUT = 30_000;
+const DEFAULT_REQUEST_TIMEOUT = 300_000;
 
 export interface ServiceClientConfig {
   service: string;
