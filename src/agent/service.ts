@@ -9,17 +9,17 @@
  * by running the agent, and replies via channel.send.
  */
 
-import { ServiceClient } from '../../gateway/service-client.js';
-import { createLogger } from '../../lib/logger.js';
-import { stripHeartbeatToken } from '../../lib/heartbeat.js';
-import { type PiAgentRuntime, type PiAgentConfig, type PiAgentRunResult } from '../../runtime/runtime.js';
+import { ServiceClient } from '../gateway/service-client.js';
+import { createLogger } from '../lib/logger.js';
+import { stripHeartbeatToken } from '../lib/heartbeat.js';
+import { type PiAgentRuntime, type PiAgentConfig, type PiAgentRunResult } from './runtime.js';
 
 const log = createLogger('agent');
-import type { AgentStreamEvent } from '../../runtime/lifecycle.js';
-import { resolveSessionFile, resolveWorkspaceDir, resolveDataDir } from '../../config/paths.js';
-import { loadConfig, resolveModel } from '../../config/pi-config.js';
-import { loadContextFiles } from '../../config/workspace.js';
-import { LOCAL_PROVIDERS } from '../../config/validate.js';
+import type { AgentStreamEvent } from './lifecycle.js';
+import { resolveSessionFile, resolveWorkspaceDir, resolveDataDir } from '../config/paths.js';
+import { loadConfig, resolveModel } from '../config/pi-config.js';
+import { loadContextFiles } from '../config/workspace.js';
+import { LOCAL_PROVIDERS } from '../config/validate.js';
 
 export interface AgentServiceConfig {
   gatewayUrl?: string;
