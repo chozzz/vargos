@@ -26,7 +26,7 @@ import path from 'node:path';
 import { buildSystemPrompt, resolvePromptMode } from './prompt.js';
 import { AgentLifecycle, type AgentStreamEvent } from './lifecycle.js';
 import { SessionMessageQueue } from './queue.js';
-import type { ISessionService } from '../contracts/service.js';
+import type { ISessionService } from '../sessions/types.js';
 import { getPiConfigPaths } from '../config/pi-config.js';
 import { loadContextFiles } from '../config/workspace.js';
 import { LOCAL_PROVIDERS } from '../config/validate.js';

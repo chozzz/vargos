@@ -5,8 +5,8 @@ import os from 'node:os';
 import { GatewayServer } from '../../gateway/server.js';
 import { ServiceClient } from '../../gateway/service-client.js';
 import { ChannelService } from './index.js';
-import { SessionsService } from '../sessions/index.js';
-import { FileSessionService } from '../../extensions/service-file/sessions-file.js';
+import { SessionsService } from '../../sessions/service.js';
+import { FileSessionService } from '../../sessions/file-store.js';
 import type { ChannelAdapter, ChannelStatus, ChannelType } from '../../contracts/channel.js';
 
 const PORT = 19805;
