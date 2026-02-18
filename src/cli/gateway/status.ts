@@ -2,7 +2,7 @@ import chalk from 'chalk';
 import { readGatewayPid } from '../pid.js';
 import { resolveDataDir } from '../../config/paths.js';
 import { loadConfig } from '../../config/pi-config.js';
-import { ServiceClient } from '../../client/client.js';
+import { ServiceClient } from '../../gateway/service-client.js';
 
 class StatusProbe extends ServiceClient {
   constructor(gatewayUrl: string) {

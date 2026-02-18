@@ -6,7 +6,7 @@
  * Events:  session.created, session.message
  */
 
-import { ServiceClient } from '../client.js';
+import { ServiceClient } from '../../gateway/service-client.js';
 import { createLogger } from '../../lib/logger.js';
 import type { ISessionService, Session, SessionMessage } from '../../contracts/service.js';
 

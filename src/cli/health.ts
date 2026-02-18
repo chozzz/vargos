@@ -2,7 +2,7 @@ import chalk from 'chalk';
 import { resolveDataDir } from '../config/paths.js';
 import { loadConfig, resolveModel } from '../config/pi-config.js';
 import { validateConfig } from '../config/validate.js';
-import { ServiceClient } from '../client/client.js';
+import { ServiceClient } from '../gateway/service-client.js';
 import { renderHealthCheck } from './banner.js';
 
 class HealthProbe extends ServiceClient {

@@ -10,7 +10,7 @@
  */
 
 import { CronJob } from 'cron';
-import { ServiceClient } from '../client.js';
+import { ServiceClient } from '../../gateway/service-client.js';
 import { createLogger } from '../../lib/logger.js';
 import type { CronTask } from '../../contracts/cron.js';
 
