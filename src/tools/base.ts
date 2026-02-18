@@ -4,7 +4,7 @@
  */
 
 import { z } from 'zod';
-import { Tool, ToolContext, ToolResult, errorResult } from '../contracts/tool.js';
+import { Tool, ToolContext, ToolResult, errorResult } from './types.js';
 
 export interface BaseToolConfig {
   name: string;

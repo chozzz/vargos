@@ -18,7 +18,7 @@ import {
 import http from 'node:http';
 import { ServiceClient } from '../gateway/service-client.js';
 import { resolveWorkspaceDir } from '../config/paths.js';
-import type { ToolResult } from '../contracts/tool.js';
+import type { ToolResult } from '../tools/types.js';
 
 interface ToolSchema { name: string; description: string; parameters: Record<string, unknown> }
 

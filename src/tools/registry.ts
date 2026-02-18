@@ -2,7 +2,7 @@
  * Tool registry - Extensions populate this via ctx.registerTool()
  */
 
-import { Tool } from '../contracts/tool.js';
+import { Tool } from './types.js';
 
 export class ToolRegistry {
   private tools = new Map<string, Tool>();

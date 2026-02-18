@@ -8,7 +8,7 @@ import type { ToolDefinition } from '@mariozechner/pi-coding-agent';
 import type { AgentToolResult, AgentToolUpdateCallback } from '@mariozechner/pi-agent-core';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { toolRegistry } from '../tools/registry.js';
-import type { Tool, ToolContext } from '../contracts/tool.js';
+import type { Tool, ToolContext } from '../tools/types.js';
 import { createLogger } from '../lib/logger.js';
 
 const log = createLogger('tools');

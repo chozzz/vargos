@@ -2,9 +2,9 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { GatewayServer } from '../gateway/server.js';
-import { ToolsService } from '../client/tools/index.js';
+import { ToolsService } from '../tools/service.js';
 import { ToolRegistry } from '../tools/registry.js';
-import type { Tool } from '../contracts/tool.js';
+import type { Tool } from '../tools/types.js';
 import { buildOpenApiSpec, McpBridge } from './server.js';
 
 const echoTool: Tool = {

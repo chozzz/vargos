@@ -2,7 +2,7 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { createRequire } from 'node:module';
 import { GatewayServer } from '../../gateway/server.js';
-import { ToolsService } from '../../client/tools/index.js';
+import { ToolsService } from '../../tools/service.js';
 import { SessionsService } from '../../client/sessions/index.js';
 import { CronService } from '../../client/cron/index.js';
 import { ChannelService } from '../../client/channels/index.js';
@@ -18,7 +18,7 @@ import type { MemoryStorage } from '../../extensions/service-file/storage.js';
 import { loadConfig, saveConfig } from '../../config/pi-config.js';
 import { validateConfig, checkLocalProvider } from '../../config/validate.js';
 import { initializeWorkspace, isWorkspaceInitialized } from '../../config/workspace.js';
-import type { ExtensionContext } from '../../contracts/extension.js';
+import type { ExtensionContext } from '../../tools/extension.js';
 import { setGatewayCall } from '../../runtime/extension.js';
 import { extractLoaderArgs } from '../../lib/loader-args.js';
 import { acquireLock, releaseLock } from '../lock.js';
@@ -169,10 +169,10 @@ export async function start(): Promise<void> {
   // Track tool count per extension group
   const toolCounts: Record<string, number> = {};
   const extensionModules = await Promise.all([
-    import('../../extensions/tools-fs/index.js'),
-    import('../../extensions/tools-web/index.js'),
-    import('../../extensions/tools-agent/index.js'),
-    import('../../extensions/tools-memory/index.js'),
+    import('../../tools/fs/index.js'),
+    import('../../tools/web/index.js'),
+    import('../../tools/agent/index.js'),
+    import('../../tools/memory/index.js'),
   ]);
   for (let i = 0; i < extensionModules.length; i++) {
     const before = toolRegistry.list().length;
