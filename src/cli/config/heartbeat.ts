@@ -153,19 +153,11 @@ export async function edit(): Promise<void> {
 export async function tasks(): Promise<void> {
   const filePath = path.join(resolveWorkspaceDir(), 'HEARTBEAT.md');
 
-  // Ensure file exists with default template
   try {
     await fs.access(filePath);
   } catch {
-    await fs.mkdir(path.dirname(filePath), { recursive: true });
-    await fs.writeFile(filePath, [
-      '# HEARTBEAT.md',
-      '',
-      '# Keep this file empty (or with only comments) to skip heartbeat API calls.',
-      '',
-      '# Add tasks below when you want the agent to check something periodically.',
-      '',
-    ].join('\n'));
+    console.log(chalk.yellow('  HEARTBEAT.md not found. Run gateway first to initialize workspace.\n'));
+    return;
   }
 
   const editor = process.env.EDITOR || process.env.VISUAL || 'nano';

@@ -24,6 +24,7 @@ export class CronService extends ServiceClient {
   private jobs = new Map<string, { task: CronTask; job: CronJob }>();
   private hooks = new Map<string, (task: CronTask) => Promise<boolean>>();
   private ephemeralIds = new Set<string>();
+  private running = false;
   private onPersist?: (tasks: CronTask[]) => Promise<void>;
 
   constructor(config: CronServiceConfig = {}) {
@@ -82,12 +83,13 @@ export class CronService extends ServiceClient {
       task.schedule,
       () => this.onTaskFire(fullTask),
       null,
-      task.enabled,
+      false,
       'UTC',
     );
 
     this.jobs.set(id, { task: fullTask, job });
     if (opts?.ephemeral) this.ephemeralIds.add(id);
+    if (this.running && task.enabled) job.start();
     return fullTask;
   }
 
@@ -105,7 +107,7 @@ export class CronService extends ServiceClient {
     if (updates.schedule !== undefined && updates.schedule !== entry.task.schedule) {
       updated.schedule = updates.schedule;
       entry.job.stop();
-      const job = new CronJob(updated.schedule, () => this.onTaskFire(updated), null, updated.enabled, 'UTC');
+      const job = new CronJob(updated.schedule, () => this.onTaskFire(updated), null, this.running && updated.enabled, 'UTC');
       this.jobs.set(id, { task: updated, job });
     } else {
       entry.task = updated;
@@ -134,12 +136,14 @@ export class CronService extends ServiceClient {
   }
 
   startAll(): void {
+    this.running = true;
     for (const { task, job } of this.jobs.values()) {
       if (task.enabled) job.start();
     }
   }
 
   stopAll(): void {
+    this.running = false;
     for (const { job } of this.jobs.values()) {
       job.stop();
     }
