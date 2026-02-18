@@ -16,6 +16,7 @@ import {
   type ServiceRegistration,
 } from '../protocol/index.js';
 import { Reconnector } from '../lib/reconnect.js';
+import { createLogger } from '../lib/logger.js';
 import type { ServiceMethod } from '../contracts/methods.js';
 import type { ServiceEvent } from '../contracts/events.js';
 
@@ -40,13 +41,16 @@ interface PendingRequest {
 
 export abstract class ServiceClient {
   protected ws: WebSocket | null = null;
+  protected readonly log;
   private pending = new Map<string, PendingRequest>();
   private reconnector = new Reconnector({ maxAttempts: 20 });
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private connected = false;
   private closing = false;
 
-  constructor(protected config: ServiceClientConfig) {}
+  constructor(protected config: ServiceClientConfig) {
+    this.log = createLogger(config.service);
+  }
 
   get service(): string { return this.config.service; }
   get isConnected(): boolean { return this.connected; }
@@ -85,10 +89,12 @@ export abstract class ServiceClient {
 
     const id = createRequestId();
     const timeout = callTimeout ?? this.config.requestTimeout ?? DEFAULT_REQUEST_TIMEOUT;
+    this.log.debug(`call ${method} → ${target}`);
 
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
+        this.log.error(`call ${method} timed out after ${timeout}ms`);
         reject(new Error(`Request ${method} timed out after ${timeout}ms`));
       }, timeout);
 
@@ -141,6 +147,7 @@ export abstract class ServiceClient {
           await this.register();
           this.connected = true;
           this.reconnector.reset();
+          this.log.info('connected to gateway');
           resolve();
         } catch (err) {
           reject(err);
@@ -152,6 +159,7 @@ export abstract class ServiceClient {
       ws.on('close', () => {
         this.connected = false;
         this.ws = null;
+        this.log.info('disconnected');
         if (!this.closing) this.scheduleReconnect();
       });
 
@@ -195,6 +203,7 @@ export abstract class ServiceClient {
   }
 
   private async onRequest(frame: RequestFrame): Promise<void> {
+    this.log.debug(`method ${frame.method} received`);
     try {
       const result = await this.handleMethod(frame.method, frame.params);
       const response: ResponseFrame = { type: 'res', id: frame.id, ok: true, payload: result };
@@ -228,6 +237,7 @@ export abstract class ServiceClient {
     const delay = this.reconnector.next();
     if (delay === null) return; // Max attempts exhausted
 
+    this.log.error(`reconnect scheduled, attempt ${this.reconnector.attempts}`);
     this.reconnectTimer = setTimeout(() => {
       this.doConnect().catch(() => {
         // Will retry via the close handler

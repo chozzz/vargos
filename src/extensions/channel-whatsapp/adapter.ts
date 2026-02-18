@@ -104,6 +104,7 @@ export class WhatsAppAdapter implements ChannelAdapter {
 
   async send(jid: string, text: string): Promise<void> {
     if (!this.sock) throw new Error('WhatsApp not connected');
+    log.info(`send: ${jid} (${text.length} chars)`);
     await this.sock.sendMessage(this.toJid(jid), { text });
   }
 
@@ -222,8 +223,10 @@ export class WhatsAppAdapter implements ChannelAdapter {
 
       if (result.success && result.response) {
         await deliverReply((chunk) => this.send(params.jid, chunk), result.response);
+        log.info(`delivery complete: ${params.sessionKey}`);
       } else if (!result.success) {
-        await this.send(params.jid, `[error] ${result.error || 'Agent run failed'}`).catch(() => {});
+        await this.send(params.jid, `[error] ${result.error || 'Agent run failed'}`)
+          .catch((e) => log.error(`error delivery failed: ${e}`));
       }
     } finally {
       if (typingInterval) clearInterval(typingInterval);
