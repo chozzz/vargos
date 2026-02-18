@@ -16,6 +16,9 @@ import {
 import { Router } from './router.js';
 import { EventBus } from './bus.js';
 import { ServiceRegistry } from './registry.js';
+import { createLogger } from '../lib/logger.js';
+
+const log = createLogger('gateway');
 
 export interface GatewayServerOptions {
   port?: number;
@@ -129,18 +132,23 @@ export class GatewayServer {
     // Route to target service
     const target = this.router.route(frame);
     if (!target) {
+      log.error(`no handler for method: ${frame.method}`);
       this.sendError(caller, frame.id, 'NO_HANDLER', `No service handles method: ${frame.method}`);
       return;
     }
 
     if (target.readyState !== WebSocket.OPEN) {
+      log.error(`service unavailable: ${frame.method}`);
       this.sendError(caller, frame.id, 'SERVICE_UNAVAILABLE', `Service for ${frame.method} is disconnected`);
       return;
     }
 
+    log.debug(`req ${frame.id} ${frame.method}`);
+
     // Track the caller so we can route the response back
     const timer = setTimeout(() => {
       this.pending.delete(frame.id);
+      log.error(`timeout: ${frame.method} after ${this.requestTimeout}ms`);
       this.sendError(caller, frame.id, 'TIMEOUT', `Request ${frame.method} timed out`);
     }, this.requestTimeout);
 
@@ -156,6 +164,7 @@ export class GatewayServer {
 
     clearTimeout(entry.timer);
     this.pending.delete(frame.id);
+    log.debug(`res ${frame.id} ok=${frame.ok}`);
 
     if (entry.caller.readyState === WebSocket.OPEN) {
       entry.caller.send(serializeFrame(frame));
@@ -184,6 +193,7 @@ export class GatewayServer {
       this.registry.add(reg, conn);
       this.router.register(reg.methods, conn);
       this.bus.subscribe(reg.subscriptions, conn);
+      log.info(`service registered: ${reg.service} (methods=${reg.methods.join(',')})`);
 
       const routingTable = this.registry.getRoutingTable();
 
@@ -218,7 +228,7 @@ export class GatewayServer {
     }
 
     if (serviceName) {
-      // Emit disconnection event for observers
+      log.info(`service disconnected: ${serviceName}`);
       this.bus.publish('gateway', 'service.disconnected', { service: serviceName });
     }
   }
