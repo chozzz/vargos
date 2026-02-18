@@ -1,6 +1,6 @@
 # Extensions
 
-Extensions register tools, channel adapters, services, and cron tasks into the Vargos runtime.
+Extensions register tools into the Vargos runtime. Channel adapters and storage backends are wired directly at boot.
 
 ## Architecture
 
@@ -14,16 +14,11 @@ interface VargosExtension {
 }
 ```
 
-The `ExtensionContext` provides registration methods:
+The `ExtensionContext` provides registration:
 
 ```typescript
 interface ExtensionContext {
   registerTool(tool: Tool): void;
-  registerChannel(type: string, factory: ChannelFactory): void;
-  registerMemoryService(factory: MemoryServiceFactory): void;
-  registerSessionService(factory: SessionServiceFactory): void;
-  registerCronTask(task: Omit<CronTask, 'id'>): void;
-  getServices(): { memory: IMemoryService; sessions: ISessionService };
   paths: { dataDir: string; workspaceDir: string };
 }
 ```
@@ -61,7 +56,7 @@ Helper factories: `textResult()`, `errorResult()`, `imageResult()`.
 
 ## Tool Categories
 
-### File System (`tools-fs`)
+### File System (`tools/fs/`)
 
 | Tool | Description |
 |------|-------------|
@@ -70,7 +65,7 @@ Helper factories: `textResult()`, `errorResult()`, `imageResult()`.
 | `edit` | Find-and-replace; requires exact match of `oldText` (single occurrence) |
 | `exec` | Shell command execution via `bash -c`; 60s timeout; blocks dangerous patterns |
 
-### Agent (`tools-agent`)
+### Agent (`tools/agent/`)
 
 | Tool | Description |
 |------|-------------|
@@ -82,14 +77,14 @@ Helper factories: `textResult()`, `errorResult()`, `imageResult()`.
 | `cron_list` | List all scheduled cron tasks |
 | `process` | Manage background processes (list, poll, write stdin, kill) |
 
-### Memory (`tools-memory`)
+### Memory (`tools/memory/`)
 
 | Tool | Description |
 |------|-------------|
 | `memory_search` | Hybrid vector + text search over memory files and session transcripts |
 | `memory_get` | Read specific lines from a memory file |
 
-### Web (`tools-web`)
+### Web (`tools/web/`)
 
 | Tool | Description |
 |------|-------------|
@@ -111,7 +106,7 @@ class ToolRegistry {
 
 ## Channel Adapters
 
-Channel adapters implement `ChannelAdapter`:
+Channel adapters implement `ChannelAdapter` and live in `channels/whatsapp/` and `channels/telegram/`:
 
 ```typescript
 interface ChannelAdapter {
@@ -124,17 +119,15 @@ interface ChannelAdapter {
 }
 ```
 
-Registered via `ctx.registerChannel(type, factory)`. The factory receives `ChannelConfig` and returns an adapter instance.
-
-Both adapters share patterns: 1.5s message debounce, 120s dedup cache, text + media support, private messages only.
+Adapters are wired directly in `cli/gateway/start.ts` via the channel factory. Both share patterns: 1.5s message debounce, 120s dedup cache, text + media support, private messages only.
 
 ## File Storage
 
-The `service-file` extension provides file-based implementations:
+Storage backends live in their domain directories:
 
-- **FileSessionService** — JSONL files in `~/.vargos/sessions/`, one per session
-- **FileMemoryService** — markdown files with term-frequency search
+- **FileSessionService** (`sessions/file-store.ts`) — JSONL files in `~/.vargos/sessions/`, one per session
+- **FileMemoryService** (`memory/file-service.ts`) — markdown files with term-frequency search
 
-Memory search uses `MemoryContext` for hybrid scoring: vector similarity (0.7 weight) + text matching (0.3 weight). Optional embedding providers: OpenAI `text-embedding-3-small` or character trigram fallback.
+Memory search uses `MemoryContext` (`memory/context.ts`) for hybrid scoring: vector similarity (0.7 weight) + text matching (0.3 weight). Optional embedding providers: OpenAI `text-embedding-3-small` or character trigram fallback.
 
 See [architecture.md](./architecture.md) for protocol details, [runtime.md](./runtime.md) for agent execution.
