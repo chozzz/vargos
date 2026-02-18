@@ -156,13 +156,6 @@ export async function start(): Promise<void> {
   // ── Tools service ─────────────────────────────────────────────────────────
   const extensionCtx: ExtensionContext = {
     registerTool: (tool) => toolRegistry.register(tool),
-    registerChannel: () => {},
-    registerGatewayPlugin: () => {},
-    registerMemoryService: () => {},
-    registerSessionService: () => {},
-    registerCronTask: () => {},
-    getServices: () => { throw new Error('Use gateway RPC'); },
-    getRuntime: () => { throw new Error('Use gateway RPC'); },
     paths: { dataDir, workspaceDir },
   };
 
