@@ -16,54 +16,95 @@ export default tseslint.config(
       "@typescript-eslint/no-explicit-any": "warn",
     },
   },
-  // ── Dependency layer enforcement ──────────────────────────────────────
-  // Layer 0: contracts/ — pure types, no src/ imports
-  {
-    files: ["src/contracts/**/*.ts"],
-    rules: {
-      "no-restricted-imports": ["error", {
-        patterns: [{
-          group: ["*/lib/*", "*/config/*", "*/protocol/*", "*/tools/*", "*/gateway/*", "*/client/*", "*/runtime/*", "*/extensions/*", "*/mcp/*", "*/cli/*", "*/channels/*"],
-          message: "contracts/ is Layer 0 — cannot import from other src/ modules",
-        }],
-      }],
-    },
-  },
-  // Layer 1: lib/ — can only import contracts/
+  // ── Domain boundary enforcement ──────────────────────────────────────
+  // lib/ — pure utilities, no domain imports
   {
     files: ["src/lib/**/*.ts"],
     ignores: ["src/lib/**/*.test.ts"],
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
-          group: ["*/config/*", "*/protocol/*", "*/tools/*", "*/gateway/*", "*/client/*", "*/runtime/*", "*/extensions/*", "*/mcp/*", "*/cli/*", "*/channels/*"],
-          message: "lib/ is Layer 1 — can only import from contracts/",
+          group: ["*/agent/*", "*/sessions/*", "*/channels/*", "*/cron/*", "*/memory/*", "*/tools/*", "*/services/*", "*/gateway/*", "*/mcp/*", "*/cli/*"],
+          message: "lib/ is pure utilities — cannot import from domain or infrastructure modules",
         }],
       }],
     },
   },
-  // Layer 5: runtime/ — cannot import gateway/, client/, extensions/, mcp/, cli/
+  // agent/ — communicates with other domains via gateway RPC only
+  // Exception: agent/runtime.ts takes ISessionService via DI
   {
-    files: ["src/runtime/**/*.ts"],
-    ignores: ["src/runtime/**/*.test.ts"],
+    files: ["src/agent/**/*.ts"],
+    ignores: ["src/agent/**/*.test.ts"],
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
-          group: ["*/gateway/*", "*/client/*", "*/extensions/*", "*/mcp/*", "*/cli/*"],
-          message: "runtime/ cannot import from gateway/, client/, extensions/, mcp/, or cli/",
+          group: ["*/channels/*", "*/cron/*", "*/memory/*", "*/mcp/*", "*/cli/*"],
+          message: "agent/ communicates with other domains via gateway RPC only",
         }],
       }],
     },
   },
-  // Layer 6: extensions/ — cannot import client/, gateway/, cli/, mcp/
+  // sessions/ — no cross-domain imports
   {
-    files: ["src/extensions/**/*.ts"],
-    ignores: ["src/extensions/**/*.test.ts"],
+    files: ["src/sessions/**/*.ts"],
+    ignores: ["src/sessions/**/*.test.ts"],
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
-          group: ["*/client/*", "*/gateway/*", "*/cli/*", "*/mcp/*"],
-          message: "extensions/ cannot import from client/, gateway/, cli/, or mcp/",
+          group: ["*/agent/*", "*/channels/*", "*/cron/*", "*/memory/*", "*/tools/*", "*/services/*", "*/mcp/*", "*/cli/*"],
+          message: "sessions/ communicates with other domains via gateway RPC only",
+        }],
+      }],
+    },
+  },
+  // channels/ — no cross-domain imports (except gateway for RPC types)
+  {
+    files: ["src/channels/**/*.ts"],
+    ignores: ["src/channels/**/*.test.ts"],
+    rules: {
+      "no-restricted-imports": ["error", {
+        patterns: [{
+          group: ["*/agent/*", "*/sessions/*", "*/cron/*", "*/memory/*", "*/tools/*", "*/services/*", "*/mcp/*", "*/cli/*"],
+          message: "channels/ communicates with other domains via gateway RPC only",
+        }],
+      }],
+    },
+  },
+  // cron/ — no cross-domain imports
+  {
+    files: ["src/cron/**/*.ts"],
+    ignores: ["src/cron/**/*.test.ts"],
+    rules: {
+      "no-restricted-imports": ["error", {
+        patterns: [{
+          group: ["*/agent/*", "*/sessions/*", "*/channels/*", "*/memory/*", "*/tools/*", "*/services/*", "*/mcp/*", "*/cli/*"],
+          message: "cron/ communicates with other domains via gateway RPC only",
+        }],
+      }],
+    },
+  },
+  // memory/ — no cross-domain imports
+  {
+    files: ["src/memory/**/*.ts"],
+    ignores: ["src/memory/**/*.test.ts"],
+    rules: {
+      "no-restricted-imports": ["error", {
+        patterns: [{
+          group: ["*/agent/*", "*/sessions/*", "*/channels/*", "*/cron/*", "*/tools/*", "*/services/*", "*/mcp/*", "*/cli/*"],
+          message: "memory/ communicates with other domains via gateway RPC only",
+        }],
+      }],
+    },
+  },
+  // tools/ — can import services/ (ProcessService, BrowserService)
+  {
+    files: ["src/tools/**/*.ts"],
+    ignores: ["src/tools/**/*.test.ts"],
+    rules: {
+      "no-restricted-imports": ["error", {
+        patterns: [{
+          group: ["*/agent/*", "*/sessions/*", "*/channels/*", "*/cron/*", "*/memory/*", "*/mcp/*", "*/cli/*"],
+          message: "tools/ cannot import from other domain modules (except services/)",
         }],
       }],
     },
