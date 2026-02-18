@@ -2,12 +2,12 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { GatewayServer } from '../../gateway/server.js';
-import { ServiceClient } from '../../gateway/service-client.js';
-import { ChannelService } from './index.js';
-import { SessionsService } from '../../sessions/service.js';
-import { FileSessionService } from '../../sessions/file-store.js';
-import type { ChannelAdapter, ChannelStatus, ChannelType } from '../../contracts/channel.js';
+import { GatewayServer } from '../gateway/server.js';
+import { ServiceClient } from '../gateway/service-client.js';
+import { ChannelService } from './service.js';
+import { SessionsService } from '../sessions/service.js';
+import { FileSessionService } from '../sessions/file-store.js';
+import type { ChannelAdapter, ChannelStatus, ChannelType } from './types.js';
 
 const PORT = 19805;
 const GATEWAY_URL = `ws://127.0.0.1:${PORT}`;

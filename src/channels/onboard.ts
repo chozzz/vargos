@@ -8,9 +8,9 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { loadChannelConfigs, addChannelConfig } from './config.js';
 import { resolveChannelsDir, resolveDataDir } from '../config/paths.js';
-import { createWhatsAppSocket } from '../extensions/channel-whatsapp/session.js';
-import { TelegramAdapter } from '../extensions/channel-telegram/adapter.js';
-import type { ChannelConfig } from '../contracts/channel.js';
+import { createWhatsAppSocket } from './whatsapp/session.js';
+import { TelegramAdapter } from './telegram/adapter.js';
+import type { ChannelConfig } from './types.js';
 import type { WASocket } from '@whiskeysockets/baileys';
 
 async function promptAllowFrom(label: string, example: string): Promise<string[]> {

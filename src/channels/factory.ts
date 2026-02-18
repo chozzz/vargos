@@ -3,9 +3,9 @@
  * Creates adapter instances from channel config
  */
 
-import type { ChannelAdapter, ChannelConfig, GatewayCallFn } from '../contracts/channel.js';
-import { WhatsAppAdapter } from '../extensions/channel-whatsapp/index.js';
-import { TelegramAdapter } from '../extensions/channel-telegram/index.js';
+import type { ChannelAdapter, ChannelConfig, GatewayCallFn } from './types.js';
+import { WhatsAppAdapter } from './whatsapp/adapter.js';
+import { TelegramAdapter } from './telegram/adapter.js';
 
 export function createAdapter(config: ChannelConfig, gatewayCall?: GatewayCallFn): ChannelAdapter {
   switch (config.type) {

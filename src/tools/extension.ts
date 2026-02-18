@@ -4,7 +4,7 @@
  */
 
 import type { Tool } from './types.js';
-import type { ChannelAdapter, ChannelConfig } from '../contracts/channel.js';
+import type { ChannelAdapter, ChannelConfig } from '../channels/types.js';
 import type { IMemoryService, ISessionService, ServiceConfig } from '../contracts/service.js';
 import type { CronTask } from '../cron/types.js';
 

@@ -4,7 +4,7 @@
  * Text-only private chats, no SDK dependency
  */
 
-import type { ChannelAdapter, ChannelStatus, GatewayCallFn } from '../../contracts/channel.js';
+import type { ChannelAdapter, ChannelStatus, GatewayCallFn } from '../types.js';
 import type {
   TelegramUpdate,
   TelegramResponse,
@@ -16,7 +16,7 @@ import { createDedupeCache } from '../../lib/dedupe.js';
 import { createMessageDebouncer } from '../../lib/debounce.js';
 import { saveMedia } from '../../lib/media.js';
 import { resolveMediaDir } from '../../config/paths.js';
-import { deliverReply } from '../../lib/reply-delivery.js';
+import { deliverReply } from '../delivery.js';
 import { createLogger } from '../../lib/logger.js';
 
 const log = createLogger('telegram');

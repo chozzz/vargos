@@ -8,10 +8,10 @@
  * emits a message.received event. The agent service subscribes and handles it.
  */
 
-import { ServiceClient } from '../../gateway/service-client.js';
-import type { ChannelAdapter, ChannelType, ChannelConfig } from '../../contracts/channel.js';
-import { deliverReply } from '../../lib/reply-delivery.js';
-import { createLogger } from '../../lib/logger.js';
+import { ServiceClient } from '../gateway/service-client.js';
+import type { ChannelAdapter, ChannelType, ChannelConfig } from './types.js';
+import { deliverReply } from './delivery.js';
+import { createLogger } from '../lib/logger.js';
 
 const log = createLogger('channels');
 
