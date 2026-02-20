@@ -258,6 +258,26 @@ export class PiAgentRuntime {
         customTools: vargosCustomTools, // All Vargos MCP tools
       });
 
+      // Build and inject system prompt every run (channels never hit storedMessages===0)
+      const contextFiles = config.contextFiles !== undefined
+        ? config.contextFiles
+        : await loadContextFiles(config.workspaceDir);
+      const vargosToolNames = getVargosToolNames();
+      const promptMode = resolvePromptMode(config.sessionKey);
+      const systemPromptText = await buildSystemPrompt({
+        mode: promptMode,
+        workspaceDir: config.workspaceDir,
+        toolNames: vargosToolNames,
+        contextFiles,
+        extraSystemPrompt: config.extraSystemPrompt,
+        userTimezone: config.userTimezone,
+        repoRoot: config.workspaceDir,
+        model: config.model,
+        channel: config.channel,
+        bootstrapOverrides: config.bootstrapOverrides,
+      });
+      session.agent.setSystemPrompt(systemPromptText);
+
       // Load history from FileSessionService and inject into Pi SDK session
       const storedMessages = await this.loadSessionMessages(config.sessionKey);
       if (storedMessages.length > 0) {
@@ -277,32 +297,7 @@ export class PiAgentRuntime {
         const taskMessages = messages.filter((m) => m.metadata?.type === 'task');
         task = taskMessages[taskMessages.length - 1]?.content ?? 'Complete your assigned task.';
       }
-
-      // Only inject context on the first message for this session.
-      // Subsequent runs already have it in conversation history.
-      let prompt: string;
-      if (storedMessages.length === 0) {
-        const contextFiles = config.contextFiles !== undefined
-          ? config.contextFiles
-          : await loadContextFiles(config.workspaceDir);
-        const vargosToolNames = getVargosToolNames();
-        const promptMode = resolvePromptMode(config.sessionKey);
-        const systemContext = await buildSystemPrompt({
-          mode: promptMode,
-          workspaceDir: config.workspaceDir,
-          toolNames: vargosToolNames,
-          contextFiles,
-          extraSystemPrompt: config.extraSystemPrompt,
-          userTimezone: config.userTimezone,
-          repoRoot: config.workspaceDir,
-          model: config.model,
-          channel: config.channel,
-          bootstrapOverrides: config.bootstrapOverrides,
-        });
-        prompt = `${systemContext}\n\n## Task\n\n${task}`;
-      } else {
-        prompt = task;
-      }
+      const prompt = task;
 
       // Prompt the agent (with optional vision images)
       const piImages = config.images?.map(img => ({
