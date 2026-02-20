@@ -6,14 +6,14 @@ import { ToolsService } from '../../tools/service.js';
 import { SessionsService } from '../../sessions/service.js';
 import { CronService } from '../../cron/service.js';
 import { ChannelService } from '../../channels/service.js';
-import type { ChannelType } from '../../channels/types.js';
+import type { ChannelType, OnInboundMessageFn } from '../../channels/types.js';
 import { AgentService } from '../../agent/service.js';
 import { McpBridge } from '../../mcp/server.js';
 import { toolRegistry } from '../../tools/registry.js';
 import { FileSessionService } from '../../sessions/file-store.js';
 import { PiAgentRuntime } from '../../agent/runtime.js';
 import { initializeMemoryContext, getMemoryContext } from '../../memory/context.js';
-import { resolveDataDir, resolveWorkspaceDir, resolveCacheDir, initPaths } from '../../config/paths.js';
+import { resolveDataDir, resolveWorkspaceDir, resolveCacheDir, resolveGatewayUrl, initPaths } from '../../config/paths.js';
 import type { MemoryStorage } from '../../memory/types.js';
 import { loadConfig, saveConfig } from '../../config/pi-config.js';
 import { validateConfig, checkLocalProvider } from '../../config/validate.js';
@@ -108,9 +108,9 @@ export async function start(): Promise<void> {
   });
 
   // ── Gateway ───────────────────────────────────────────────────────────────
-  const gatewayPort = config.gateway?.port ?? 9000;
   const gatewayHost = config.gateway?.host ?? '127.0.0.1';
-  const gatewayUrl = `ws://${gatewayHost}:${gatewayPort}`;
+  const gatewayPort = config.gateway?.port ?? 9000;
+  const gatewayUrl = resolveGatewayUrl(config.gateway);
 
   const gateway = new GatewayServer({ port: gatewayPort, host: gatewayHost });
   await gateway.start();
@@ -243,12 +243,12 @@ export async function start(): Promise<void> {
 
   if (config.channels) {
     const { createAdapter } = await import('../../channels/factory.js');
-    const gatewayCall = <T = unknown>(target: string, method: string, params?: unknown) =>
-      tools.call<T>(target, method, params);
+    const onInbound: OnInboundMessageFn = (ch, userId, content, metadata) =>
+      channels.onInboundMessage(ch, userId, content, metadata);
     for (const [type, chConfig] of Object.entries(config.channels)) {
       if (chConfig.enabled === false) continue;
       try {
-        const adapter = createAdapter({ type: type as ChannelType, enabled: true, ...chConfig }, gatewayCall);
+        const adapter = createAdapter({ type: type as ChannelType, enabled: true, ...chConfig }, onInbound);
         await channels.addAdapter(adapter);
         await adapter.initialize();
         await adapter.start();

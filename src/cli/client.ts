@@ -1,10 +1,12 @@
 import chalk from 'chalk';
 import { ServiceClient } from '../gateway/service-client.js';
 import { loadAndValidate } from './boot.js';
+import { resolveGatewayUrl } from '../config/paths.js';
+import { startSpinner } from '../lib/spinner.js';
 
 export class CliClient extends ServiceClient {
   private deltaHandler?: (delta: string) => void;
-  private thinkingTimer?: ReturnType<typeof setInterval>;
+  private stopThinking?: () => void;
   private firstDelta = true;
 
   constructor(gatewayUrl: string) {
@@ -36,35 +38,20 @@ export class CliClient extends ServiceClient {
   /** Show animated "Thinking..." until the first delta arrives */
   startThinking(): void {
     this.firstDelta = true;
-    if (!process.stderr.isTTY) return;
-    const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-    let i = 0;
-    const dim = chalk.dim;
-    process.stderr.write(dim(`  ${frames[0]} Thinking...`));
-    this.thinkingTimer = setInterval(() => {
-      i = (i + 1) % frames.length;
-      process.stderr.write(`\r${dim(`  ${frames[i]} Thinking...`)}`);
-    }, 80);
+    this.stopThinking = startSpinner('Thinking...');
   }
 
   private clearThinking(): void {
     if (!this.firstDelta) return;
     this.firstDelta = false;
-    if (this.thinkingTimer) {
-      clearInterval(this.thinkingTimer);
-      this.thinkingTimer = undefined;
-    }
-    process.stderr.write('\r\x1b[K'); // clear the line
+    this.stopThinking?.();
+    this.stopThinking = undefined;
   }
 }
 
 export async function connectToGateway(): Promise<CliClient> {
   const { config } = await loadAndValidate();
-
-  const host = config.gateway?.host ?? '127.0.0.1';
-  const port = config.gateway?.port ?? 9000;
-  const gatewayUrl = `ws://${host}:${port}`;
-  const client = new CliClient(gatewayUrl);
+  const client = new CliClient(resolveGatewayUrl(config.gateway));
 
   try {
     await client.connect();

@@ -1,26 +1,13 @@
 import chalk from 'chalk';
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
 import { select, text, isCancel } from '@clack/prompts';
 import { connectToGateway, type CliClient } from './client.js';
-import { resolveDataDir } from '../config/paths.js';
+import { formatSchedule } from '../lib/schedule.js';
 import type { CronTask } from '../cron/types.js';
+import type { Session, SessionMessage } from '../sessions/types.js';
 
 const DIM = chalk.dim;
 const LABEL = chalk.gray;
 const BOLD = chalk.bold;
-
-const SCHEDULE_PRESETS: Record<string, string> = {
-  '*/30 * * * *': 'every 30 min',
-  '*/1 * * * *': 'every minute',
-  '0 9,21 * * *': 'daily at 9am & 9pm',
-  '0 */6 * * *': 'every 6 hours',
-  '0 * * * *': 'every hour',
-};
-
-function formatSchedule(cron: string): string {
-  return SCHEDULE_PRESETS[cron] ?? cron;
-}
 
 export async function list(): Promise<void> {
   const client = await connectToGateway();
@@ -276,55 +263,50 @@ export async function trigger(args?: string[]): Promise<void> {
 }
 
 export async function logs(args?: string[]): Promise<void> {
-  const dataDir = resolveDataDir();
-  const sessionsDir = path.join(dataDir, 'sessions');
   const filter = args?.[0];
+  const client = await connectToGateway();
 
-  let files: string[];
   try {
-    files = await fs.readdir(sessionsDir);
-  } catch {
-    console.log(chalk.yellow('  No sessions directory found.'));
-    return;
-  }
-
-  let cronFiles = files
-    .filter((f) => f.startsWith('cron-') && f.endsWith('.jsonl'))
-    .sort()
-    .reverse();
-
-  if (filter) {
-    cronFiles = cronFiles.filter((f) => f.includes(filter));
-  }
-
-  if (cronFiles.length === 0) {
-    console.log(chalk.yellow(`  No cron execution logs found${filter ? ` matching "${filter}"` : ''}.`));
-    return;
-  }
-
-  console.log(`\n  ${BOLD('Cron Execution Logs')}${filter ? DIM(` (filter: ${filter})`) : ''}\n`);
-
-  const show = cronFiles.slice(0, 10);
-  for (const file of show) {
-    const filePath = path.join(sessionsDir, file);
-    const stat = await fs.stat(filePath);
-    const age = formatAge(stat.mtimeMs);
-    const size = formatSize(stat.size);
-    const summary = await readLastEntry(filePath);
-
-    console.log(`    ${chalk.cyan(file)} ${DIM(`${age} ago, ${size}`)}`);
-    if (summary) {
-      console.log(`      ${summary}`);
+    const sessions = await client.call<Session[]>('sessions', 'session.list', { kind: 'cron' });
+    let filtered = sessions;
+    if (filter) {
+      filtered = sessions.filter(s => s.sessionKey.includes(filter));
     }
+
+    if (filtered.length === 0) {
+      console.log(chalk.yellow(`  No cron execution logs found${filter ? ` matching "${filter}"` : ''}.`));
+      return;
+    }
+
+    console.log(`\n  ${BOLD('Cron Execution Logs')}${filter ? DIM(` (filter: ${filter})`) : ''}\n`);
+
+    const show = filtered.slice(0, 10);
+    for (const session of show) {
+      const updatedAt = new Date(session.updatedAt).getTime();
+      const age = formatAge(updatedAt);
+      const messages = await client.call<SessionMessage[]>('sessions', 'session.getMessages', {
+        sessionKey: session.sessionKey,
+      });
+      const last = messages[messages.length - 1];
+      const summary = last?.role === 'assistant'
+        ? last.content.slice(0, 100) + (last.content.length > 100 ? '...' : '')
+        : DIM(`${messages.length} entries`);
+
+      console.log(`    ${chalk.cyan(session.sessionKey)} ${DIM(`${age} ago`)}`);
+      if (summary) {
+        console.log(`      ${summary}`);
+      }
+      console.log();
+    }
+
+    if (filtered.length > 10) {
+      console.log(DIM(`    ... and ${filtered.length - 10} more`));
+    }
+
     console.log();
+  } finally {
+    await client.disconnect();
   }
-
-  if (cronFiles.length > 10) {
-    console.log(DIM(`    ... and ${cronFiles.length - 10} more`));
-  }
-
-  console.log(DIM(`  Logs dir: ${sessionsDir}`));
-  console.log();
 }
 
 // -- Helpers --
@@ -343,25 +325,3 @@ function formatAge(mtimeMs: number): string {
   return `${Math.floor(seconds / 86400)}d`;
 }
 
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes}B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}K`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)}M`;
-}
-
-async function readLastEntry(filePath: string): Promise<string | null> {
-  try {
-    const content = await fs.readFile(filePath, 'utf-8');
-    const lines = content.trim().split('\n').filter(Boolean);
-    if (lines.length === 0) return null;
-
-    const last = JSON.parse(lines[lines.length - 1]);
-    if (last.role === 'assistant' && last.content) {
-      const text = typeof last.content === 'string' ? last.content : '';
-      return text.slice(0, 100) + (text.length > 100 ? '...' : '');
-    }
-    return DIM(`${lines.length} entries`);
-  } catch {
-    return null;
-  }
-}

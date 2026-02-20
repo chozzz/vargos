@@ -1,6 +1,6 @@
 import chalk from 'chalk';
 import { readGatewayPid } from '../pid.js';
-import { resolveDataDir } from '../../config/paths.js';
+import { resolveDataDir, resolveGatewayUrl } from '../../config/paths.js';
 import { loadConfig } from '../../config/pi-config.js';
 import { ServiceClient } from '../../gateway/service-client.js';
 
@@ -29,9 +29,7 @@ export async function status(): Promise<void> {
 
   // Attempt health probe
   const config = await loadConfig(resolveDataDir());
-  const host = config?.gateway?.host ?? '127.0.0.1';
-  const port = config?.gateway?.port ?? 9000;
-  const url = `ws://${host}:${port}`;
+  const url = resolveGatewayUrl(config?.gateway);
 
   try {
     const probe = new StatusProbe(url);

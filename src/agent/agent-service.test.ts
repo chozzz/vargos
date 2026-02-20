@@ -42,7 +42,6 @@ vi.mock('../config/workspace.js', () => ({
 }));
 
 vi.mock('../config/paths.js', () => ({
-  resolveSessionFile: (key: string) => `/tmp/sessions/${key}.jsonl`,
   resolveWorkspaceDir: () => '/tmp/workspace',
   resolveDataDir: () => '/tmp/data',
 }));

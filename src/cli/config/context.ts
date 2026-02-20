@@ -1,9 +1,9 @@
 import { select, isCancel } from '@clack/prompts';
 import chalk from 'chalk';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
 import { loadAndValidate } from '../boot.js';
 import { CONTEXT_FILE_NAMES, loadContextFiles } from '../../config/workspace.js';
+import { editFile } from '../../lib/editor.js';
 
 export async function show(): Promise<void> {
   const { workspaceDir } = await loadAndValidate();
@@ -30,13 +30,6 @@ export async function edit(): Promise<void> {
   if (isCancel(file)) process.exit(0);
 
   const filePath = path.join(workspaceDir, file);
-  const editor = process.env.EDITOR || 'vi';
-
-  console.log(`\n  Opening ${chalk.gray(filePath)} in ${editor}...\n`);
-
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn(editor, [filePath], { stdio: 'inherit' });
-    child.on('close', (code) => code === 0 ? resolve() : reject(new Error(`Editor exited with code ${code}`)));
-    child.on('error', reject);
-  });
+  console.log(`\n  Opening ${chalk.gray(filePath)}...\n`);
+  await editFile(filePath);
 }

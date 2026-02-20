@@ -7,7 +7,6 @@ import {
   resolveDataDir,
   resolveWorkspaceDir,
   resolveSessionsDir,
-  resolveSessionFile,
   resolveMediaDir,
   resolveChannelsDir,
   resolveCacheDir,
@@ -76,13 +75,6 @@ describe('resolveSessionsDir', () => {
   it('returns {dataDir}/sessions', () => {
     initPaths({ dataDir: '/data' });
     expect(resolveSessionsDir()).toBe('/data/sessions');
-  });
-});
-
-describe('resolveSessionFile', () => {
-  it('replaces colons with hyphens and appends .jsonl', () => {
-    initPaths({ dataDir: '/data' });
-    expect(resolveSessionFile('telegram:123')).toBe('/data/sessions/telegram-123.jsonl');
   });
 });
 

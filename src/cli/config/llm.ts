@@ -4,16 +4,13 @@ import { loadAndValidate } from '../boot.js';
 import { resolveDataDir } from '../../config/paths.js';
 import { loadConfig, saveConfig, resolveModel, type ModelProfile, type VargosConfig } from '../../config/pi-config.js';
 import { LOCAL_PROVIDERS } from '../../config/validate.js';
+import { maskSecret } from '../../lib/mask.js';
 
 const DEFAULT_MODELS: Record<string, string> = {
   openai: 'gpt-4o', anthropic: 'claude-3-5-sonnet-20241022',
   google: 'gemini-1.5-pro', openrouter: 'openai/gpt-4o',
   ollama: 'llama3.2', lmstudio: 'default',
 };
-
-function maskKey(key: string): string {
-  return key.length > 3 ? '****' + key.slice(-3) : '****';
-}
 
 export async function show(): Promise<void> {
   const { config } = await loadAndValidate();
@@ -25,7 +22,7 @@ export async function show(): Promise<void> {
     console.log(`    ${chalk.cyan(name)}${active}${fallback}`);
     console.log(`      ${chalk.gray('Provider')}  ${profile.provider}`);
     console.log(`      ${chalk.gray('Model')}     ${profile.model}`);
-    if (profile.apiKey) console.log(`      ${chalk.gray('API Key')}   ${maskKey(profile.apiKey)}`);
+    if (profile.apiKey) console.log(`      ${chalk.gray('API Key')}   ${maskSecret(profile.apiKey)}`);
     if (profile.baseUrl) console.log(`      ${chalk.gray('Base URL')}  ${profile.baseUrl}`);
     console.log();
   }
@@ -192,7 +189,7 @@ async function promptProfile(existing?: ModelProfile): Promise<ModelProfile | nu
     const apiKey = await text({
       message: 'API Key',
       defaultValue: currentKey,
-      placeholder: currentKey ? maskKey(currentKey) : 'sk-...',
+      placeholder: currentKey ? maskSecret(currentKey) : 'sk-...',
     });
     if (isCancel(apiKey)) return null;
     // Keep existing key if user pressed Enter without typing
