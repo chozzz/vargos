@@ -27,11 +27,8 @@ describe('resolvePromptMode', () => {
   });
 
   it('returns minimal for subagent keys', () => {
-    expect(resolvePromptMode('wa:user:subagent:123')).toBe('minimal');
-  });
-
-  it('returns minimal for agent: prefix', () => {
-    expect(resolvePromptMode('agent:task1')).toBe('minimal');
+    expect(resolvePromptMode('whatsapp:123:subagent:1708-x7k')).toBe('minimal');
+    expect(resolvePromptMode('cli:chat:subagent:1708-abc')).toBe('minimal');
   });
 
   it('returns minimal for cron: prefix', () => {

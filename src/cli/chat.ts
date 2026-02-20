@@ -26,6 +26,10 @@ export async function chat(): Promise<void> {
     const msg = line.trim();
     if (!msg) { rl.prompt(); return; }
 
+    await client.call('sessions', 'session.addMessage', {
+      sessionKey: SESSION_KEY, content: msg, role: 'user',
+    }).catch(() => {});
+
     client.startThinking();
     try {
       const result = await client.call<{ success: boolean; error?: string }>(

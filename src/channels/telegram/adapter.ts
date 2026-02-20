@@ -4,7 +4,7 @@
  * Text-only private chats, no SDK dependency
  */
 
-import type { ChannelAdapter, ChannelStatus, GatewayCallFn } from '../types.js';
+import type { ChannelAdapter, ChannelStatus, OnInboundMessageFn } from '../types.js';
 import type {
   TelegramUpdate,
   TelegramResponse,
@@ -16,7 +16,6 @@ import { createDedupeCache } from '../../lib/dedupe.js';
 import { createMessageDebouncer } from '../../lib/debounce.js';
 import { saveMedia } from '../../lib/media.js';
 import { resolveMediaDir } from '../../config/paths.js';
-import { deliverReply } from '../delivery.js';
 import { createLogger } from '../../lib/logger.js';
 
 const log = createLogger('telegram');
@@ -38,12 +37,13 @@ export class TelegramAdapter implements ChannelAdapter {
   private dedupe = createDedupeCache({ ttlMs: 120_000 });
   private debouncer: ReturnType<typeof createMessageDebouncer>;
   private allowFrom: Set<string> | null;
-  private gatewayCall?: GatewayCallFn;
+  private onInboundMessage?: OnInboundMessageFn;
+  private typingIntervals = new Map<string, ReturnType<typeof setInterval>>();
 
-  constructor(botToken: string, allowFrom?: string[], gatewayCall?: GatewayCallFn) {
+  constructor(botToken: string, allowFrom?: string[], onInboundMessage?: OnInboundMessageFn) {
     this.botToken = botToken;
     this.allowFrom = allowFrom?.length ? new Set(allowFrom) : null;
-    this.gatewayCall = gatewayCall;
+    this.onInboundMessage = onInboundMessage;
     this.debouncer = createMessageDebouncer(
       (chatId, messages) => {
         this.handleBatch(chatId, messages).catch((err) => {
@@ -76,6 +76,8 @@ export class TelegramAdapter implements ChannelAdapter {
   async stop(): Promise<void> {
     this.polling = false;
     this.debouncer.cancelAll();
+    for (const interval of this.typingIntervals.values()) clearInterval(interval);
+    this.typingIntervals.clear();
     this.abortController?.abort();
     this.abortController = null;
     this.status = 'disconnected';
@@ -88,6 +90,21 @@ export class TelegramAdapter implements ChannelAdapter {
       text,
       parse_mode: 'Markdown',
     });
+  }
+
+  startTyping(recipientId: string): void {
+    if (this.typingIntervals.has(recipientId)) return;
+    const typing = () => this.apiCall('sendChatAction', { chat_id: recipientId, action: 'typing' }).catch(() => {});
+    typing();
+    this.typingIntervals.set(recipientId, setInterval(typing, 4000));
+  }
+
+  stopTyping(recipientId: string): void {
+    const interval = this.typingIntervals.get(recipientId);
+    if (interval) {
+      clearInterval(interval);
+      this.typingIntervals.delete(recipientId);
+    }
   }
 
   private async pollLoop(): Promise<void> {
@@ -147,61 +164,12 @@ export class TelegramAdapter implements ChannelAdapter {
     return Buffer.from(await res.arrayBuffer());
   }
 
-  private async runViaGateway(params: {
-    sessionKey: string;
-    chatId: string;
-    content: string;
-    channel: string;
-    images?: Array<{ data: string; mimeType: string }>;
-  }): Promise<void> {
-    if (!this.gatewayCall) {
-      log.error('No gateway connection — cannot process message');
+  private async routeToService(chatId: string, content: string, metadata?: Record<string, unknown>): Promise<void> {
+    if (!this.onInboundMessage) {
+      log.error('No inbound message handler — cannot process message');
       return;
     }
-
-    // Create session (idempotent)
-    await this.gatewayCall('sessions', 'session.create', {
-      sessionKey: params.sessionKey,
-      kind: 'main',
-      metadata: { channel: params.channel },
-    }).catch((err: unknown) => {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (!msg.includes('already exists')) throw err;
-    });
-
-    // Store user message
-    await this.gatewayCall('sessions', 'session.addMessage', {
-      sessionKey: params.sessionKey,
-      content: params.content,
-      role: 'user',
-      metadata: { type: 'task', channel: params.channel },
-    });
-
-    // Typing indicator
-    const typing = async () => {
-      await this.apiCall('sendChatAction', { chat_id: params.chatId, action: 'typing' });
-    };
-    typing().catch(() => {});
-    const typingInterval = setInterval(() => typing().catch(() => {}), 4000);
-
-    try {
-      const result = await this.gatewayCall<{ success: boolean; response?: string; error?: string }>(
-        'agent', 'agent.run', {
-          sessionKey: params.sessionKey,
-          task: params.content,
-          channel: params.channel,
-          images: params.images,
-        },
-      );
-
-      if (result.success && result.response) {
-        await deliverReply((chunk) => this.send(params.chatId, chunk), result.response);
-      } else if (!result.success) {
-        await this.send(params.chatId, `[error] ${result.error || 'Agent run failed'}`).catch(() => {});
-      }
-    } finally {
-      clearInterval(typingInterval);
-    }
+    await this.onInboundMessage('telegram', chatId, content, metadata);
   }
 
   private async handleMedia(chatId: string, msg: TelegramMessage): Promise<void> {
@@ -218,11 +186,7 @@ export class TelegramAdapter implements ChannelAdapter {
         const savedPath = await saveMedia({ buffer, sessionKey, mimeType, mediaDir: resolveMediaDir() });
         const caption = msg.caption || 'User sent an image.';
         const images = [{ data: buffer.toString('base64'), mimeType }];
-        await this.runViaGateway({
-          sessionKey, chatId,
-          content: `${caption}\n\n[Image saved: ${savedPath}]`,
-          channel: 'telegram', images,
-        });
+        await this.routeToService(chatId, `${caption}\n\n[Image saved: ${savedPath}]`, { images });
       } catch (err) {
         log.debug(`photo download failed for ${chatId}: ${err}`);
       }
@@ -240,11 +204,7 @@ export class TelegramAdapter implements ChannelAdapter {
     try {
       const buffer = await this.downloadFile(fileId!);
       const savedPath = await saveMedia({ buffer, sessionKey, mimeType, mediaDir: resolveMediaDir() });
-      await this.runViaGateway({
-        sessionKey, chatId,
-        content: `${msg.caption || `[${label}, ${duration}s]`}\n\n[${label} saved: ${savedPath}]`,
-        channel: 'telegram',
-      });
+      await this.routeToService(chatId, `${msg.caption || `[${label}, ${duration}s]`}\n\n[${label} saved: ${savedPath}]`);
     } catch (err) {
       log.debug(`audio download failed for ${chatId}: ${err}`);
     }
@@ -252,9 +212,8 @@ export class TelegramAdapter implements ChannelAdapter {
 
   private async handleBatch(chatId: string, messages: string[]): Promise<void> {
     const text = messages.join('\n');
-    const sessionKey = `telegram:${chatId}`;
-    log.debug(`batch for ${sessionKey}: "${text.slice(0, 80)}"`);
-    await this.runViaGateway({ sessionKey, chatId, content: text, channel: 'telegram' });
+    log.debug(`batch for telegram:${chatId}: "${text.slice(0, 80)}"`);
+    await this.routeToService(chatId, text);
   }
 
   private async apiCall<T>(method: string, params?: Record<string, unknown>): Promise<T> {

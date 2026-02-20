@@ -17,6 +17,7 @@ class MockAdapter implements ChannelAdapter {
   readonly type: ChannelType = 'whatsapp';
   status: ChannelStatus = 'connected';
   sentMessages: Array<{ to: string; text: string }> = [];
+  typingRecipients = new Set<string>();
 
   async initialize() {}
   async start() { this.status = 'connected'; }
@@ -24,6 +25,8 @@ class MockAdapter implements ChannelAdapter {
   async send(recipientId: string, text: string) {
     this.sentMessages.push({ to: recipientId, text });
   }
+  startTyping(recipientId: string) { this.typingRecipients.add(recipientId); }
+  stopTyping(recipientId: string) { this.typingRecipients.delete(recipientId); }
 }
 
 class TestSubscriber extends ServiceClient {
