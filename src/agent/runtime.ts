@@ -277,6 +277,7 @@ export class PiAgentRuntime {
         bootstrapOverrides: config.bootstrapOverrides,
       });
       session.agent.setSystemPrompt(systemPromptText);
+      log.debug(`system prompt: ${systemPromptText.length} chars, mode=${promptMode}`);
 
       // Load history from FileSessionService and inject into Pi SDK session
       const storedMessages = await this.loadSessionMessages(config.sessionKey);
@@ -284,7 +285,10 @@ export class PiAgentRuntime {
         const agentMessages = toAgentMessages(storedMessages);
         const sanitized = sanitizeHistory(agentMessages);
         const limited = limitHistoryTurns(sanitized, getHistoryLimit(config.sessionKey));
+        log.debug(`history: ${storedMessages.length} stored → ${agentMessages.length} converted → ${sanitized.length} sanitized → ${limited.length} injected (limit=${getHistoryLimit(config.sessionKey)})`);
         session.agent.replaceMessages(limited);
+      } else {
+        log.debug('history: no stored messages');
       }
 
       // Subscribe to Pi session events
@@ -307,10 +311,11 @@ export class PiAgentRuntime {
       }));
       log.info(`prompting agent: session=${config.sessionKey} prompt=${prompt.slice(0, 120)}...`);
       await session.prompt(prompt, piImages?.length ? { images: piImages } : undefined);
-      log.info(`agent finished: session=${config.sessionKey}`);
+      log.info(`agent run complete: session=${config.sessionKey}`);
 
       // Get response from session history
       const sessionEntries = sessionManager.getEntries();
+      log.debug(`session entries: ${sessionEntries.length} total`);
       let response = '';
       let rawContent: unknown;
       let inputTokens = 0;
@@ -322,7 +327,15 @@ export class PiAgentRuntime {
           const msg = (entry as SessionMessageEntry).message;
           if (msg?.role === 'assistant') {
             if (msg.stopReason === 'error' && msg.errorMessage) {
-              log.error(msg.errorMessage);
+              // Dump surrounding context for diagnosis
+              const entryTypes = sessionEntries.slice(Math.max(0, i - 3), i + 1)
+                .map((e, j) => {
+                  const m = (e as { type?: string; message?: { role?: string; stopReason?: string } });
+                  return `[${i - 3 + j}] type=${m.type} role=${m.message?.role ?? '?'} stop=${m.message?.stopReason ?? '?'}`;
+                });
+              log.error(`agent error: ${msg.errorMessage}`);
+              log.error(`context: ${entryTypes.join(' | ')}`);
+              if (msg.usage) log.error(`usage: in=${msg.usage.input} out=${msg.usage.output}`);
               return { success: false, error: msg.errorMessage, duration: Date.now() - startedAt };
             }
             if (msg.content) {
@@ -411,7 +424,7 @@ export class PiAgentRuntime {
       // Handle tool execution events
       if (event.type === 'tool_execution_start') {
         this.lifecycle.streamTool(runId, 'tool', 'start', {});
-        log.debug(`tool: ${event.toolName || 'unknown'}`);
+        log.info(`tool start: ${event.toolName || 'unknown'}`);
       }
       if (event.type === 'tool_execution_end') {
         this.lifecycle.streamTool(runId, 'tool', 'end', {}, {});
@@ -420,8 +433,16 @@ export class PiAgentRuntime {
           const content = Array.isArray(result.content)
             ? result.content.map((c: { text?: string; data?: string }) => c.text || c.data || '').join('\n')
             : String(result);
-          const preview = content.slice(0, 500);
-          log.debug(`result: ${preview}${content.length > 500 ? '...' : ''}`);
+          const preview = content.slice(0, 200);
+          log.info(`tool end: ${preview}${content.length > 200 ? '...' : ''}`);
+        }
+      }
+
+      // Log message completion — catches errors at the Pi SDK level
+      if (event.type === 'message_end') {
+        const msg = (event as unknown as { message?: { stopReason?: string; errorMessage?: string } }).message;
+        if (msg?.stopReason === 'error') {
+          log.error(`pi-sdk message error: ${msg.errorMessage ?? 'unknown'}`);
         }
       }
     });
