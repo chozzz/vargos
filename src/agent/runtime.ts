@@ -451,7 +451,9 @@ export class PiAgentRuntime {
       // Handle tool execution events
       if (event.type === 'tool_execution_start') {
         this.lifecycle.streamTool(runId, 'tool', 'start', {});
-        log.info(`tool start: ${event.toolName || 'unknown'}`);
+        const args = event.args as Record<string, unknown> | undefined;
+        const summary = this.formatToolArgs(event.toolName, args);
+        log.info(`tool: ${event.toolName}(${summary})`);
       }
       if (event.type === 'tool_execution_end') {
         this.lifecycle.streamTool(runId, 'tool', 'end', {}, {});
@@ -598,6 +600,27 @@ export class PiAgentRuntime {
       }
     }
     return null;
+  }
+
+  /**
+   * Format tool args for compact logging
+   */
+  private formatToolArgs(toolName: string, args?: Record<string, unknown>): string {
+    if (!args) return '';
+    switch (toolName) {
+      case 'read': return String(args.path || args.file || '');
+      case 'write': return String(args.path || args.file || '');
+      case 'edit': return String(args.path || args.file || '');
+      case 'exec': return String(args.command || '').slice(0, 120);
+      case 'web_fetch': return String(args.url || '').slice(0, 120);
+      case 'memory_search': return String(args.query || '').slice(0, 80);
+      case 'sessions_history': return String(args.sessionKey || '');
+      case 'sessions_spawn': return `task=${String(args.task || '').slice(0, 80)}`;
+      default: {
+        const pairs = Object.entries(args).map(([k, v]) => `${k}=${String(v).slice(0, 60)}`);
+        return pairs.join(', ').slice(0, 120);
+      }
+    }
   }
 
   /**
