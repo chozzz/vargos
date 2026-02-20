@@ -15,7 +15,12 @@ export interface ChannelConfig {
   allowFrom?: string[];
 }
 
-export type GatewayCallFn = <T = unknown>(target: string, method: string, params?: unknown) => Promise<T>;
+export type OnInboundMessageFn = (
+  channel: string,
+  userId: string,
+  content: string,
+  metadata?: Record<string, unknown>,
+) => Promise<void>;
 
 export interface ChannelAdapter {
   readonly type: ChannelType;
@@ -32,4 +37,10 @@ export interface ChannelAdapter {
 
   /** Send a text message to a specific recipient */
   send(recipientId: string, text: string): Promise<void>;
+
+  /** Start typing indicator for a recipient */
+  startTyping(recipientId: string): void;
+
+  /** Stop typing indicator for a recipient */
+  stopTyping(recipientId: string): void;
 }

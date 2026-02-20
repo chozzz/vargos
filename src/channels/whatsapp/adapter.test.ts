@@ -106,21 +106,9 @@ describe('WhatsAppAdapter', () => {
     });
   });
 
-  describe('runViaGateway — typing indicator JID normalization', () => {
-    it('normalizes JID for sendPresenceUpdate', async () => {
-      const gatewayCall = vi.fn()
-        .mockResolvedValueOnce(undefined) // session.create
-        .mockResolvedValueOnce(undefined) // session.addMessage
-        .mockResolvedValueOnce({ success: true, response: 'ok' }); // agent.run
-
-      (adapter as any).gatewayCall = gatewayCall;
-
-      await (adapter as any).runViaGateway({
-        sessionKey: 'whatsapp:61423222658',
-        jid: '+61423222658',
-        content: 'test',
-        channel: 'whatsapp',
-      });
+  describe('startTyping / stopTyping', () => {
+    it('starts typing indicator with JID normalization', () => {
+      adapter.startTyping('+61423222658');
 
       expect(sock.sendPresenceUpdate).toHaveBeenCalledWith(
         'composing',
@@ -128,25 +116,37 @@ describe('WhatsAppAdapter', () => {
       );
     });
 
-    it('passes through already-formatted JID for typing', async () => {
-      const gatewayCall = vi.fn()
-        .mockResolvedValueOnce(undefined)
-        .mockResolvedValueOnce(undefined)
-        .mockResolvedValueOnce({ success: true, response: 'ok' });
+    it('stops typing and clears interval', () => {
+      adapter.startTyping('61423222658');
+      adapter.stopTyping('61423222658');
 
-      (adapter as any).gatewayCall = gatewayCall;
+      // No error — interval cleared
+      expect(sock.sendPresenceUpdate).toHaveBeenCalledTimes(1);
+    });
 
-      await (adapter as any).runViaGateway({
-        sessionKey: 'whatsapp:61423222658',
-        jid: '61423222658@s.whatsapp.net',
-        content: 'test',
-        channel: 'whatsapp',
-      });
+    it('is idempotent for startTyping', () => {
+      adapter.startTyping('61423222658');
+      adapter.startTyping('61423222658');
 
-      expect(sock.sendPresenceUpdate).toHaveBeenCalledWith(
-        'composing',
-        '61423222658@s.whatsapp.net',
-      );
+      // Only one initial call
+      expect(sock.sendPresenceUpdate).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('routeToService', () => {
+    it('calls onInboundMessage callback', async () => {
+      const onInbound = vi.fn().mockResolvedValue(undefined);
+      const adapterWithCb = new WhatsAppAdapter(undefined, onInbound);
+      (adapterWithCb as any).sock = sock;
+
+      await (adapterWithCb as any).routeToService('61423222658', 'test message');
+
+      expect(onInbound).toHaveBeenCalledWith('whatsapp', '61423222658', 'test message', undefined);
+    });
+
+    it('logs error when no callback is set', async () => {
+      // Default adapter has no callback — should not throw
+      await (adapter as any).routeToService('61423222658', 'test');
     });
   });
 });

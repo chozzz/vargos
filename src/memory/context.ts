@@ -247,7 +247,7 @@ export class MemoryContext {
     let totalChunks = 0;
 
     try {
-      const sessionFiles = await glob('*.jsonl', {
+      const sessionFiles = await glob('**/*.jsonl', {
         cwd: this.config.sessionsDir,
         absolute: true,
       });

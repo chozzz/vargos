@@ -1,17 +1,16 @@
 /**
  * WhatsApp channel adapter
- * Receives text DMs via Baileys, processes through gateway RPC, delivers replies
+ * Receives text DMs via Baileys, parses messages, hands off to ChannelService
  */
 
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { WASocket } from '@whiskeysockets/baileys';
-import type { ChannelAdapter, ChannelStatus, GatewayCallFn } from '../types.js';
+import type { ChannelAdapter, ChannelStatus, OnInboundMessageFn } from '../types.js';
 import { createWhatsAppSocket, type WhatsAppInboundMessage } from './session.js';
 import { createDedupeCache } from '../../lib/dedupe.js';
 import { createMessageDebouncer } from '../../lib/debounce.js';
 import { saveMedia } from '../../lib/media.js';
-import { deliverReply } from '../delivery.js';
 import { resolveChannelsDir, resolveMediaDir } from '../../config/paths.js';
 import { Reconnector } from '../../lib/reconnect.js';
 import { createLogger } from '../../lib/logger.js';
@@ -30,13 +29,14 @@ export class WhatsAppAdapter implements ChannelAdapter {
   private allowFrom: Set<string> | null;
   private authDir = '';
   private lidCache = new Map<string, string>();
-  private gatewayCall?: GatewayCallFn;
+  private onInboundMessage?: OnInboundMessageFn;
+  private typingIntervals = new Map<string, ReturnType<typeof setInterval>>();
 
-  constructor(allowFrom?: string[], gatewayCall?: GatewayCallFn) {
+  constructor(allowFrom?: string[], onInboundMessage?: OnInboundMessageFn) {
     this.allowFrom = allowFrom?.length
       ? new Set(allowFrom.flatMap(p => [p, p.replace(/^\+/, '')]))
       : null;
-    this.gatewayCall = gatewayCall;
+    this.onInboundMessage = onInboundMessage;
     this.debouncer = createMessageDebouncer(
       (jid, messages) => {
         this.handleBatch(jid, messages).catch((err) => {
@@ -91,6 +91,8 @@ export class WhatsAppAdapter implements ChannelAdapter {
 
   async stop(): Promise<void> {
     this.debouncer.cancelAll();
+    for (const interval of this.typingIntervals.values()) clearInterval(interval);
+    this.typingIntervals.clear();
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -106,6 +108,22 @@ export class WhatsAppAdapter implements ChannelAdapter {
     if (!this.sock) throw new Error('WhatsApp not connected');
     log.info(`send: ${jid} (${text.length} chars)`);
     await this.sock.sendMessage(this.toJid(jid), { text });
+  }
+
+  startTyping(recipientId: string): void {
+    if (this.typingIntervals.has(recipientId)) return;
+    const jid = this.toJid(recipientId);
+    const typing = () => this.sock?.sendPresenceUpdate('composing', jid).catch(() => {});
+    typing();
+    this.typingIntervals.set(recipientId, setInterval(typing, 4000));
+  }
+
+  stopTyping(recipientId: string): void {
+    const interval = this.typingIntervals.get(recipientId);
+    if (interval) {
+      clearInterval(interval);
+      this.typingIntervals.delete(recipientId);
+    }
   }
 
   /** Normalize a phone number or raw JID into a valid WhatsApp JID */
@@ -169,73 +187,21 @@ export class WhatsAppAdapter implements ChannelAdapter {
     this.debouncer.push(msg.jid, msg.text);
   }
 
-  private buildSessionKey(jid: string): string {
-    return `whatsapp:${this.resolvePhone(jid)}`;
+  private buildUserId(jid: string): string {
+    return this.resolvePhone(jid);
   }
 
-  private async runViaGateway(params: {
-    sessionKey: string;
-    jid: string;
-    content: string;
-    channel: string;
-    images?: Array<{ data: string; mimeType: string }>;
-  }): Promise<void> {
-    if (!this.gatewayCall) {
-      log.error('No gateway connection — cannot process message');
+  private async routeToService(userId: string, content: string, metadata?: Record<string, unknown>): Promise<void> {
+    if (!this.onInboundMessage) {
+      log.error('No inbound message handler — cannot process message');
       return;
     }
-
-    // Create session (idempotent)
-    await this.gatewayCall('sessions', 'session.create', {
-      sessionKey: params.sessionKey,
-      kind: 'main',
-      metadata: { channel: params.channel },
-    }).catch((err: unknown) => {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (!msg.includes('already exists')) throw err;
-    });
-
-    // Store user message
-    await this.gatewayCall('sessions', 'session.addMessage', {
-      sessionKey: params.sessionKey,
-      content: params.content,
-      role: 'user',
-      metadata: { type: 'task', channel: params.channel },
-    });
-
-    // Typing indicator
-    let typingInterval: ReturnType<typeof setInterval> | undefined;
-    if (this.sock) {
-      const typing = () => this.sock!.sendPresenceUpdate('composing', this.toJid(params.jid));
-      typing().catch(() => {});
-      typingInterval = setInterval(() => typing().catch(() => {}), 4000);
-    }
-
-    try {
-      const result = await this.gatewayCall<{ success: boolean; response?: string; error?: string }>(
-        'agent', 'agent.run', {
-          sessionKey: params.sessionKey,
-          task: params.content,
-          channel: params.channel,
-          images: params.images,
-        },
-      );
-
-      if (result.success && result.response) {
-        await deliverReply((chunk) => this.send(params.jid, chunk), result.response);
-        log.info(`delivery complete: ${params.sessionKey}`);
-      } else if (!result.success) {
-        await this.send(params.jid, `[error] ${result.error || 'Agent run failed'}`)
-          .catch((e) => log.error(`error delivery failed: ${e}`));
-      }
-    } finally {
-      if (typingInterval) clearInterval(typingInterval);
-    }
+    await this.onInboundMessage('whatsapp', userId, content, metadata);
   }
 
   private async handleMedia(msg: WhatsAppInboundMessage): Promise<void> {
-    const jid = msg.jid;
-    const sessionKey = this.buildSessionKey(jid);
+    const userId = this.buildUserId(msg.jid);
+    const sessionKey = `whatsapp:${userId}`;
 
     const typeLabels: Record<string, string> = {
       audio: 'Voice message', video: 'Video message',
@@ -250,36 +216,24 @@ export class WhatsAppAdapter implements ChannelAdapter {
       if (isImage) {
         const caption = msg.caption || 'User sent an image.';
         const images = [{ data: msg.mediaBuffer.toString('base64'), mimeType }];
-        await this.runViaGateway({
-          sessionKey, jid,
-          content: `${caption}\n\n[Image saved: ${savedPath}]`,
-          channel: 'whatsapp', images,
-        });
+        await this.routeToService(userId, `${caption}\n\n[Image saved: ${savedPath}]`, { images });
       } else {
         const label = typeLabels[msg.mediaType!] || 'Media';
-        await this.runViaGateway({
-          sessionKey, jid,
-          content: `${msg.caption || `${label} received`}\n\n[${label} saved: ${savedPath}]`,
-          channel: 'whatsapp',
-        });
+        await this.routeToService(userId, `${msg.caption || `${label} received`}\n\n[${label} saved: ${savedPath}]`);
       }
       return;
     }
 
     // Media without buffer — fallback text
     const label = typeLabels[msg.mediaType!] || 'Media';
-    await this.runViaGateway({
-      sessionKey, jid,
-      content: msg.caption ? `[${label}] ${msg.caption}` : `[${label} received]`,
-      channel: 'whatsapp',
-    });
+    await this.routeToService(userId, msg.caption ? `[${label}] ${msg.caption}` : `[${label} received]`);
   }
 
   private async handleBatch(jid: string, messages: string[]): Promise<void> {
     const text = messages.join('\n');
-    const sessionKey = this.buildSessionKey(jid);
-    log.info(`batch for ${sessionKey}: "${text.slice(0, 80)}"`);
-    await this.runViaGateway({ sessionKey, jid, content: text, channel: 'whatsapp' });
+    const userId = this.buildUserId(jid);
+    log.info(`batch for whatsapp:${userId}: "${text.slice(0, 80)}"`);
+    await this.routeToService(userId, text);
   }
 
   private scheduleReconnect(): void {

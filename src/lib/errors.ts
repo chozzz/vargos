@@ -7,9 +7,7 @@
  * Check if session key is a subagent
  */
 export function isSubagentSessionKey(sessionKey: string): boolean {
-  return sessionKey.includes(':subagent:') ||
-         sessionKey.startsWith('agent:') ||
-         sessionKey.includes('subagent');
+  return sessionKey.includes(':subagent:');
 }
 
 /**
