@@ -19,6 +19,10 @@ export async function run(args?: string[]): Promise<void> {
       sessionKey: SESSION_KEY, kind: 'cli', metadata: {},
     }).catch(() => {}); // ignore if already exists
 
+    await client.call('sessions', 'session.addMessage', {
+      sessionKey: SESSION_KEY, content: task, role: 'user',
+    }).catch(() => {});
+
     const result = await client.call<{ success: boolean; error?: string }>(
       'agent', 'agent.run', { sessionKey: SESSION_KEY, task }, 300_000,
     );

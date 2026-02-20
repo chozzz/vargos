@@ -29,7 +29,7 @@ export const sessionsSpawnTool: Tool = {
         return errorResult('Sub-agents cannot spawn other sub-agents.');
       }
 
-      const childKey = `agent:${params.agentId ?? 'default'}:subagent:${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const childKey = `${context.sessionKey}:subagent:${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 
       // Create child session + add task
       await context.call('sessions', 'session.create', {
