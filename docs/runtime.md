@@ -11,7 +11,7 @@ enqueue message (per-session serialization)
 executeRun()
     |
     v
-Open session file (JSONL) + sanitize history
+In-memory Pi session + load history from FileSessionService
     |
     v
 Register model + create agent session

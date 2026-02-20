@@ -5,8 +5,10 @@ import {
   validateTurns,
   repairToolResultPairing,
   sanitizeHistory,
+  toAgentMessages,
 } from './history.js';
 import type { AgentMessage } from '@mariozechner/pi-agent-core';
+import type { SessionMessage } from '../sessions/types.js';
 
 // Cast helpers — we only care about role/content/toolCallId shape, not full type compliance
 function msg(obj: Record<string, unknown>): AgentMessage {
@@ -256,5 +258,52 @@ describe('sanitizeHistory', () => {
     // After validate: consecutive user 'a'+'b' merged
     const userMsgs = result.filter((m) => (m as unknown as { role: string }).role === 'user');
     expect(userMsgs.length).toBe(2);
+  });
+});
+
+// ============================================================================
+// toAgentMessages
+// ============================================================================
+
+function sessionMsg(role: 'user' | 'assistant' | 'system', content: string): SessionMessage {
+  return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    sessionKey: 'test:session',
+    role,
+    content,
+    timestamp: new Date('2025-01-01T00:00:00Z'),
+  };
+}
+
+describe('toAgentMessages', () => {
+  it('returns empty array for empty input', () => {
+    expect(toAgentMessages([])).toEqual([]);
+  });
+
+  it('converts user messages', () => {
+    const result = toAgentMessages([sessionMsg('user', 'hello')]);
+    expect(result.length).toBe(1);
+    const m = result[0] as unknown as { role: string; content: string };
+    expect(m.role).toBe('user');
+    expect(m.content).toBe('hello');
+  });
+
+  it('converts assistant messages with stub metadata', () => {
+    const result = toAgentMessages([sessionMsg('assistant', 'hi back')]);
+    expect(result.length).toBe(1);
+    const m = result[0] as unknown as { role: string; content: Array<{ type: string; text: string }> };
+    expect(m.role).toBe('assistant');
+    expect(m.content).toEqual([{ type: 'text', text: 'hi back' }]);
+  });
+
+  it('filters out system messages', () => {
+    const result = toAgentMessages([
+      sessionMsg('user', 'a'),
+      sessionMsg('system', 'compaction note'),
+      sessionMsg('assistant', 'b'),
+    ]);
+    expect(result.length).toBe(2);
+    const roles = result.map(m => (m as unknown as { role: string }).role);
+    expect(roles).toEqual(['user', 'assistant']);
   });
 });

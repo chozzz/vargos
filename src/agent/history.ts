@@ -4,6 +4,36 @@
  */
 
 import type { AgentMessage } from '@mariozechner/pi-agent-core';
+import type { SessionMessage } from '../sessions/types.js';
+
+// ============================================================================
+// Session → AgentMessage Conversion
+// ============================================================================
+
+/**
+ * Convert FileSessionService messages to Pi SDK AgentMessage format.
+ * Skips system messages (compaction notes, subagent announcements) — only user/assistant matter for LLM context.
+ */
+export function toAgentMessages(messages: SessionMessage[]): AgentMessage[] {
+  return messages
+    .filter(m => m.role === 'user' || m.role === 'assistant')
+    .map(m => {
+      const ts = m.timestamp instanceof Date ? m.timestamp.getTime() : Number(m.timestamp);
+      if (m.role === 'user') {
+        return { role: 'user', content: m.content, timestamp: ts } as AgentMessage;
+      }
+      return {
+        role: 'assistant',
+        content: [{ type: 'text', text: m.content }],
+        api: 'openai-completions',
+        provider: 'unknown',
+        model: 'unknown',
+        usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        stopReason: 'stop',
+        timestamp: ts,
+      } as unknown as AgentMessage;
+    });
+}
 
 // ============================================================================
 // History Limiting

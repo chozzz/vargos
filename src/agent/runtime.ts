@@ -22,16 +22,14 @@ import { createLogger } from '../lib/logger.js';
 import { promises as fs } from 'node:fs';
 
 const log = createLogger('runtime');
-import path from 'node:path';
 import { buildSystemPrompt, resolvePromptMode } from './prompt.js';
 import { AgentLifecycle, type AgentStreamEvent } from './lifecycle.js';
 import { SessionMessageQueue } from './queue.js';
-import type { ISessionService } from '../sessions/types.js';
+import type { ISessionService, SessionMessage } from '../sessions/types.js';
 import { getPiConfigPaths } from '../config/pi-config.js';
 import { loadContextFiles } from '../config/workspace.js';
 import { LOCAL_PROVIDERS } from '../config/validate.js';
-import { sanitizeHistory, limitHistoryTurns, getHistoryLimit } from './history.js';
-import { prepareSessionManager } from './session-init.js';
+import { sanitizeHistory, limitHistoryTurns, getHistoryLimit, toAgentMessages } from './history.js';
 
 const PROVIDER_BASE_URLS: Record<string, string> = {
   openrouter: 'https://openrouter.ai/api/v1',
@@ -88,7 +86,6 @@ export function isThinkingOnlyContent(content: unknown): boolean {
 
 export interface PiAgentConfig {
   sessionKey: string;
-  sessionFile: string;
   workspaceDir: string;
   task?: string;
   model?: string;
@@ -187,14 +184,10 @@ export class PiAgentRuntime {
 
       // Ensure directories exist
       const piPaths = getPiConfigPaths(config.workspaceDir);
-      await fs.mkdir(path.dirname(config.sessionFile), { recursive: true });
       await fs.mkdir(piPaths.agentDir, { recursive: true });
 
-      // Create Pi session manager
-      const sessionManager = SessionManager.open(config.sessionFile);
-
-      // Fix partial-write edge case
-      await prepareSessionManager({ sessionManager, sessionFile: config.sessionFile });
+      // In-memory session — no Pi SDK files, all persistence via FileSessionService
+      const sessionManager = SessionManager.inMemory(config.workspaceDir);
 
       // Create auth storage for API keys
       const authStorage = new AuthStorage(piPaths.authPath);
@@ -265,14 +258,13 @@ export class PiAgentRuntime {
         customTools: vargosCustomTools, // All Vargos MCP tools
       });
 
-      // Sanitize and limit history before prompting
-      const existingMessages = session.messages;
-      if (existingMessages.length > 0) {
-        const sanitized = sanitizeHistory(existingMessages);
+      // Load history from FileSessionService and inject into Pi SDK session
+      const storedMessages = await this.loadSessionMessages(config.sessionKey);
+      if (storedMessages.length > 0) {
+        const agentMessages = toAgentMessages(storedMessages);
+        const sanitized = sanitizeHistory(agentMessages);
         const limited = limitHistoryTurns(sanitized, getHistoryLimit(config.sessionKey));
-        if (limited.length !== existingMessages.length) {
-          session.agent.replaceMessages(limited);
-        }
+        session.agent.replaceMessages(limited);
       }
 
       // Subscribe to Pi session events
@@ -289,7 +281,7 @@ export class PiAgentRuntime {
       // Only inject context on the first message for this session.
       // Subsequent runs already have it in conversation history.
       let prompt: string;
-      if (existingMessages.length === 0) {
+      if (storedMessages.length === 0) {
         const contextFiles = config.contextFiles !== undefined
           ? config.contextFiles
           : await loadContextFiles(config.workspaceDir);
@@ -544,11 +536,8 @@ export class PiAgentRuntime {
   /**
    * Load messages from Vargos session
    */
-  private async loadSessionMessages(
-    sessionKey: string
-  ): Promise<Array<{ content: string; role: string; metadata?: Record<string, unknown> }>> {
-    const sessions = this.sessionService;
-    return sessions.getMessages(sessionKey);
+  private async loadSessionMessages(sessionKey: string): Promise<SessionMessage[]> {
+    return this.sessionService.getMessages(sessionKey);
   }
 
   /**

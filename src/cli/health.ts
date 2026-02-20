@@ -1,8 +1,9 @@
 import chalk from 'chalk';
-import { resolveDataDir } from '../config/paths.js';
+import { resolveDataDir, resolveGatewayUrl } from '../config/paths.js';
 import { loadConfig, resolveModel } from '../config/pi-config.js';
 import { validateConfig } from '../config/validate.js';
 import { ServiceClient } from '../gateway/service-client.js';
+import { startSpinner } from '../lib/spinner.js';
 import { renderHealthCheck } from './banner.js';
 
 class HealthProbe extends ServiceClient {
@@ -17,22 +18,6 @@ class HealthProbe extends ServiceClient {
   }
   async handleMethod(): Promise<unknown> { throw new Error('not implemented'); }
   handleEvent(): void {}
-}
-
-function startSpinner(label: string): () => void {
-  if (!process.stderr.isTTY) return () => {};
-  const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-  let i = 0;
-  const dim = chalk.dim;
-  process.stderr.write(dim(`  ${frames[0]} ${label}`));
-  const timer = setInterval(() => {
-    i = (i + 1) % frames.length;
-    process.stderr.write(`\r${dim(`  ${frames[i]} ${label}`)}`);
-  }, 80);
-  return () => {
-    clearInterval(timer);
-    process.stderr.write('\r\x1b[K');
-  };
 }
 
 export async function health(): Promise<void> {
@@ -51,9 +36,7 @@ export async function health(): Promise<void> {
   const validation = validateConfig(config);
 
   // Gateway probe with spinner
-  const host = config.gateway?.host ?? '127.0.0.1';
-  const port = config.gateway?.port ?? 9000;
-  const url = `ws://${host}:${port}`;
+  const url = resolveGatewayUrl(config.gateway);
 
   const stopSpinner = startSpinner('Checking gateway...');
   let gatewayOk = false;

@@ -22,7 +22,7 @@ Vargos is a **service-oriented system** where independent services communicate t
 ```
 src/
   # Cross-cutting infrastructure
-  lib/           Pure utilities (logger, dedupe, debounce, errors, media)
+  lib/           Pure utilities (logger, dedupe, debounce, errors, media, mask, schedule, spinner, editor)
   config/        Config loading, validation, workspace, paths
   protocol/      Wire protocol (frame types, Zod schemas)
   gateway/       WS server, router, event bus, registry, ServiceClient base, methods/events
