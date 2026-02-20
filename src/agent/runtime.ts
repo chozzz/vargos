@@ -455,13 +455,21 @@ export class PiAgentRuntime {
       }
       if (event.type === 'tool_execution_end') {
         this.lifecycle.streamTool(runId, 'tool', 'end', {}, {});
+        const toolName = (event as unknown as { toolName?: string }).toolName;
         const result = event.result;
         if (result) {
           const content = Array.isArray(result.content)
             ? result.content.map((c: { text?: string; data?: string }) => c.text || c.data || '').join('\n')
             : String(result);
-          const preview = content.slice(0, 200);
-          log.info(`tool end: ${preview}${content.length > 200 ? '...' : ''}`);
+          // Compact output for read — just line count and filename
+          if (toolName === 'read') {
+            const lines = content.split('\n').length;
+            const file = content.split('\n')[0]?.slice(0, 120) || '?';
+            log.info(`tool end: read ${lines} lines — ${file}`);
+          } else {
+            const preview = content.slice(0, 200);
+            log.info(`tool end: ${preview}${content.length > 200 ? '...' : ''}`);
+          }
         }
       }
 
