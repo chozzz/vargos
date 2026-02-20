@@ -143,6 +143,7 @@ export class PiAgentRuntime {
    */
   async run(config: PiAgentConfig): Promise<PiAgentRunResult> {
     const runId = config.runId || `run-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    log.debug(`Queueing run: runId=${runId} session=${config.sessionKey} model=${config.model ?? 'default'}`);
 
     // Queue this run for the session
     return this.messageQueue.enqueue<PiAgentRunResult>(
@@ -177,10 +178,12 @@ export class PiAgentRuntime {
    */
   private async executeRun(config: PiAgentConfig, runId: string): Promise<PiAgentRunResult> {
     const startedAt = Date.now();
+    log.debug(`Executing run: runId=${runId} session=${config.sessionKey} provider=${config.provider ?? 'openai'}`);
 
     try {
       // Start lifecycle
       this.lifecycle.startRun(runId, config.sessionKey);
+      log.debug(`Lifecycle started: runId=${runId}`);
 
       // Ensure directories exist
       const piPaths = getPiConfigPaths(config.workspaceDir);
@@ -243,9 +246,11 @@ export class PiAgentRuntime {
       // Create Vargos custom tools for Pi SDK
       // These wrap Vargos MCP tools into Pi SDK's ToolDefinition format
       const vargosCustomTools = createVargosCustomTools(config.workspaceDir, config.sessionKey);
+      log.debug(`Created ${vargosCustomTools.length} custom tools`);
 
       // Create agent session with Vargos custom tools
       // We pass empty built-in tools and all Vargos tools as customTools
+      log.debug(`Creating agent session: workspace=${config.workspaceDir}`);
       const { session } = await createAgentSession({
         cwd: config.workspaceDir,
         agentDir: piPaths.agentDir,
@@ -310,7 +315,36 @@ export class PiAgentRuntime {
         mimeType: img.mimeType,
       }));
       log.info(`prompting agent: session=${config.sessionKey} prompt=${prompt.slice(0, 120)}...`);
-      await session.prompt(prompt, piImages?.length ? { images: piImages } : undefined);
+
+      // Prompt with retry on transient API parse errors
+      const API_RETRY_LIMIT = 2;
+      let lastError: string | undefined;
+      for (let attempt = 0; attempt <= API_RETRY_LIMIT; attempt++) {
+        if (attempt === 0) {
+          await session.prompt(prompt, piImages?.length ? { images: piImages } : undefined);
+        } else {
+          log.info(`retrying after transient API error (attempt ${attempt + 1}/${API_RETRY_LIMIT + 1})`);
+          await session.prompt('Continue from where you left off.');
+        }
+
+        // Check if the last assistant message is an error
+        const entries = sessionManager.getEntries();
+        const lastAssistantEntry = this.findLastAssistantMessage(entries);
+        if (!lastAssistantEntry || lastAssistantEntry.stopReason !== 'error') {
+          lastError = undefined;
+          break; // Success or non-error — proceed
+        }
+
+        lastError = lastAssistantEntry.errorMessage;
+
+        // Only retry on JSON parse errors (transient API/provider issues)
+        if (!lastError?.includes('after JSON') && !lastError?.includes('Unexpected')) break;
+
+        if (attempt === API_RETRY_LIMIT) {
+          log.error(`exhausted ${API_RETRY_LIMIT + 1} attempts: ${lastError}`);
+        }
+      }
+
       log.info(`agent run complete: session=${config.sessionKey}`);
 
       // Get response from session history
@@ -327,14 +361,7 @@ export class PiAgentRuntime {
           const msg = (entry as SessionMessageEntry).message;
           if (msg?.role === 'assistant') {
             if (msg.stopReason === 'error' && msg.errorMessage) {
-              // Dump surrounding context for diagnosis
-              const entryTypes = sessionEntries.slice(Math.max(0, i - 3), i + 1)
-                .map((e, j) => {
-                  const m = (e as { type?: string; message?: { role?: string; stopReason?: string } });
-                  return `[${i - 3 + j}] type=${m.type} role=${m.message?.role ?? '?'} stop=${m.message?.stopReason ?? '?'}`;
-                });
               log.error(`agent error: ${msg.errorMessage}`);
-              log.error(`context: ${entryTypes.join(' | ')}`);
               if (msg.usage) log.error(`usage: in=${msg.usage.input} out=${msg.usage.output}`);
               return { success: false, error: msg.errorMessage, duration: Date.now() - startedAt };
             }
@@ -467,7 +494,7 @@ export class PiAgentRuntime {
     // Check if session still exists
     const session = await sessions.get(vargosSessionKey);
     if (!session) {
-      console.error(`[PiRuntime] Session ${vargosSessionKey} not found, skipping compaction`);
+      log.error(`Session ${vargosSessionKey} not found, skipping compaction`);
       return;
     }
 
@@ -516,7 +543,7 @@ export class PiAgentRuntime {
     // Check parent exists
     const parentSession = await sessions.get(parentSessionKey);
     if (!parentSession) {
-      console.error(`[PiRuntime] Parent ${parentSessionKey} not found, skipping announcement`);
+      log.error(`Parent ${parentSessionKey} not found, skipping announcement`);
       return;
     }
 
@@ -547,6 +574,22 @@ export class PiAgentRuntime {
         duration: result.duration,
       },
     });
+  }
+
+  /**
+   * Find the last assistant message in Pi SDK session entries
+   */
+  private findLastAssistantMessage(
+    entries: Array<{ type: string }>,
+  ): { stopReason?: string; errorMessage?: string; content?: unknown } | null {
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const entry = entries[i];
+      if (entry.type === 'message') {
+        const msg = (entry as SessionMessageEntry).message;
+        if (msg?.role === 'assistant') return msg;
+      }
+    }
+    return null;
   }
 
   /**
