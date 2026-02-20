@@ -16,7 +16,7 @@ export class ToolRegistry {
   }
 
   get(name: string): Tool | undefined {
-    return this.tools.get(name);
+    return this.tools.get(name?.trim());
   }
 
   list(): Tool[] {
