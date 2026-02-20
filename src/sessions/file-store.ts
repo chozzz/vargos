@@ -36,6 +36,37 @@ export class FileSessionService extends EventEmitter implements ISessionService 
 
   async initialize(): Promise<void> {
     await fs.mkdir(this.sessionsDir, { recursive: true });
+    await this.migrateFlat();
+  }
+
+  private async migrateFlat(): Promise<void> {
+    let entries: string[];
+    try {
+      entries = await fs.readdir(this.sessionsDir);
+    } catch { return; }
+
+    for (const entry of entries) {
+      if (!entry.endsWith('.jsonl')) continue;
+      const fullPath = path.join(this.sessionsDir, entry);
+      const stat = await fs.stat(fullPath).catch(() => null);
+      if (!stat?.isFile()) continue;
+
+      try {
+        const content = await fs.readFile(fullPath, 'utf-8');
+        const firstLine = content.split('\n')[0];
+        if (!firstLine) continue;
+        const meta = JSON.parse(firstLine) as { sessionKey?: string };
+        if (!meta.sessionKey) continue;
+
+        const newPath = this.getSessionPath(meta.sessionKey);
+        if (fullPath === newPath) continue;
+
+        await fs.mkdir(path.dirname(newPath), { recursive: true });
+        await fs.rename(fullPath, newPath);
+      } catch {
+        // Skip files that can't be parsed
+      }
+    }
   }
 
   async close(): Promise<void> {
@@ -44,9 +75,17 @@ export class FileSessionService extends EventEmitter implements ISessionService 
   }
 
   private getSessionPath(sessionKey: string): string {
-    // Hash session key for safe filename
-    const safeKey = Buffer.from(sessionKey).toString('base64url');
-    return path.join(this.sessionsDir, `${safeKey}.jsonl`);
+    const subIdx = sessionKey.indexOf(':subagent:');
+    const sanitize = (s: string) => s.replace(/:/g, '-');
+
+    if (subIdx >= 0) {
+      const rootKey = sessionKey.slice(0, subIdx);
+      const subPart = sessionKey.slice(subIdx + 1); // "subagent:1234-abc"
+      return path.join(this.sessionsDir, sanitize(rootKey), `${sanitize(subPart)}.jsonl`);
+    }
+
+    const safe = sanitize(sessionKey);
+    return path.join(this.sessionsDir, safe, `${safe}.jsonl`);
   }
 
   private async loadSession(sessionKey: string): Promise<SessionFile | null> {
@@ -87,6 +126,7 @@ export class FileSessionService extends EventEmitter implements ISessionService 
 
   private async saveSession(sessionKey: string, data: SessionFile): Promise<void> {
     const filePath = this.getSessionPath(sessionKey);
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
     const lines = [
       JSON.stringify(data.session),
       ...data.messages.map(m => JSON.stringify(m)),
@@ -95,6 +135,11 @@ export class FileSessionService extends EventEmitter implements ISessionService 
   }
 
   async create(session: Omit<Session, 'createdAt' | 'updatedAt'>): Promise<Session> {
+    const existing = await this.loadSession(session.sessionKey);
+    if (existing) {
+      throw new Error(`Session already exists: ${session.sessionKey}`);
+    }
+
     const now = new Date();
     const fullSession: Session = {
       ...session,
@@ -138,9 +183,9 @@ export class FileSessionService extends EventEmitter implements ISessionService 
 
   async delete(sessionKey: string): Promise<boolean> {
     const filePath = this.getSessionPath(sessionKey);
-    
     try {
       await fs.unlink(filePath);
+      await fs.rmdir(path.dirname(filePath)).catch(() => {});
       this.emit('session.deleted', { sessionKey });
       return true;
     } catch {
@@ -149,7 +194,7 @@ export class FileSessionService extends EventEmitter implements ISessionService 
   }
 
   async list(options: { kind?: Session['kind']; limit?: number } = {}): Promise<Session[]> {
-    const files = await glob('*.jsonl', { cwd: this.sessionsDir, absolute: true });
+    const files = await glob('**/*.jsonl', { cwd: this.sessionsDir, absolute: true });
     const sessions: Session[] = [];
 
     for (const file of files) {
