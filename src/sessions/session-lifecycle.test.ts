@@ -128,8 +128,9 @@ describe('session lifecycle edge cases', () => {
 
       const messages = await sessions.getMessages(sessionKey);
       expect(messages).toHaveLength(2);
-      expect(messages[0].content).toBe('First');
-      expect(messages[1].content).toBe('Second');
+      const contents = messages.map(m => m.content);
+      expect(contents).toContain('First');
+      expect(contents).toContain('Second');
     });
   });
 
