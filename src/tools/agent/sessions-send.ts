@@ -14,6 +14,7 @@ export const sessionsSendTool: Tool = {
   name: 'sessions_send',
   description: 'Send a message into another session',
   parameters: SessionsSendParameters,
+  formatCall: (args) => String(args.sessionKey || ''),
   execute: async (args: unknown, context: ToolContext) => {
     const params = SessionsSendParameters.parse(args);
     if (!context.call) return errorResult('Gateway not available');

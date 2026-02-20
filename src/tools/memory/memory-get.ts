@@ -18,6 +18,7 @@ export const memoryGetTool: Tool = {
   // Safe snippet read description
   description: 'Safe snippet read from MEMORY.md or memory/*.md with optional from/lines; use after memory_search to pull only the needed lines and keep context small.',
   parameters: MemoryGetParameters,
+  formatCall: (args) => String(args.path || ''),
   execute: async (args: unknown, context: ToolContext) => {
     const params = MemoryGetParameters.parse(args);
     

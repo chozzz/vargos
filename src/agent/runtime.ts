@@ -18,6 +18,8 @@ import {
   type SessionMessageEntry,
 } from '@mariozechner/pi-coding-agent';
 import { getVargosToolNames, createVargosCustomTools } from './extension.js';
+import { toolRegistry } from '../tools/registry.js';
+import type { ToolResult } from '../tools/types.js';
 import { createLogger } from '../lib/logger.js';
 import { promises as fs } from 'node:fs';
 
@@ -451,27 +453,23 @@ export class PiAgentRuntime {
       // Handle tool execution events
       if (event.type === 'tool_execution_start') {
         this.lifecycle.streamTool(runId, 'tool', 'start', {});
+        const tool = toolRegistry.get(event.toolName);
         const args = event.args as Record<string, unknown> | undefined;
-        const summary = this.formatToolArgs(event.toolName, args);
+        const summary = tool?.formatCall && args ? tool.formatCall(args) : '';
         log.info(`tool: ${event.toolName}(${summary})`);
       }
       if (event.type === 'tool_execution_end') {
         this.lifecycle.streamTool(runId, 'tool', 'end', {}, {});
         const toolName = (event as unknown as { toolName?: string }).toolName;
-        const result = event.result;
-        if (result) {
-          const content = Array.isArray(result.content)
-            ? result.content.map((c: { text?: string; data?: string }) => c.text || c.data || '').join('\n')
-            : String(result);
-          // Compact output for read — just line count and filename
-          if (toolName === 'read') {
-            const lines = content.split('\n').length;
-            const file = content.split('\n')[0]?.slice(0, 120) || '?';
-            log.info(`tool end: read ${lines} lines — ${file}`);
-          } else {
-            const preview = content.slice(0, 200);
-            log.info(`tool end: ${preview}${content.length > 200 ? '...' : ''}`);
-          }
+        const tool = toolName ? toolRegistry.get(toolName) : undefined;
+        if (tool?.formatResult && event.result) {
+          log.info(`tool end: ${tool.name} ${tool.formatResult(event.result as ToolResult)}`);
+        } else if (event.result) {
+          const content = Array.isArray(event.result.content)
+            ? (event.result.content as Array<{ text?: string; data?: string }>).map(c => c.text || c.data || '').join('\n')
+            : String(event.result);
+          const preview = content.slice(0, 200);
+          log.info(`tool end: ${preview}${content.length > 200 ? '...' : ''}`);
         }
       }
 
@@ -600,27 +598,6 @@ export class PiAgentRuntime {
       }
     }
     return null;
-  }
-
-  /**
-   * Format tool args for compact logging
-   */
-  private formatToolArgs(toolName: string, args?: Record<string, unknown>): string {
-    if (!args) return '';
-    switch (toolName) {
-      case 'read': return String(args.path || args.file || '');
-      case 'write': return String(args.path || args.file || '');
-      case 'edit': return String(args.path || args.file || '');
-      case 'exec': return String(args.command || '').slice(0, 120);
-      case 'web_fetch': return String(args.url || '').slice(0, 120);
-      case 'memory_search': return String(args.query || '').slice(0, 80);
-      case 'sessions_history': return String(args.sessionKey || '');
-      case 'sessions_spawn': return `task=${String(args.task || '').slice(0, 80)}`;
-      default: {
-        const pairs = Object.entries(args).map(([k, v]) => `${k}=${String(v).slice(0, 60)}`);
-        return pairs.join(', ').slice(0, 120);
-      }
-    }
   }
 
   /**

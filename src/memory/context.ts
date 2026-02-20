@@ -121,14 +121,14 @@ export class MemoryContext {
 
         const timeout = setTimeout(async () => {
           this.watcherDebounce.delete(fullPath);
-          console.log(`[Memory] File changed: ${filename}`);
+          log.debug(`File changed: ${filename}`);
           await this.indexFile(filename, { force: true });
         }, 500); // 500ms debounce
 
         this.watcherDebounce.set(fullPath, timeout);
       });
     } catch (err) {
-      console.error('[Memory] Failed to start file watcher:', err);
+      log.error('Failed to start file watcher:', err);
     }
   }
 
@@ -233,7 +233,7 @@ export class MemoryContext {
 
       options?.progress?.(`Indexed ${relPath}: ${chunks.length} chunks`);
     } catch (err) {
-      console.error(`Failed to index ${relPath}:`, err);
+      log.error(`Failed to index ${relPath}:`, err);
     }
   }
 
@@ -257,7 +257,7 @@ export class MemoryContext {
         totalChunks += chunks;
       }
     } catch (err) {
-      console.error('[Memory] Failed to index sessions:', err);
+      log.error('Failed to index sessions:', err);
     }
 
     return totalChunks;
@@ -325,7 +325,7 @@ export class MemoryContext {
 
       return chunks.length;
     } catch (err) {
-      console.error(`Failed to index session ${filePath}:`, err);
+      log.error(`Failed to index session ${filePath}:`, err);
       return 0;
     }
   }
