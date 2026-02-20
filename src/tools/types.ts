@@ -37,6 +37,10 @@ export interface Tool {
   description: string;
   parameters: z.ZodSchema;
   execute: (args: unknown, context: ToolContext) => Promise<ToolResult>;
+  /** Compact one-line summary for logging, e.g. "read(/path/to/file)" */
+  formatCall?: (args: Record<string, unknown>) => string;
+  /** Compact result summary for logging, e.g. "read 47 lines" */
+  formatResult?: (result: ToolResult) => string;
 }
 
 export function textResult(text: string, metadata?: Record<string, unknown>): ToolResult {

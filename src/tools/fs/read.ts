@@ -20,6 +20,13 @@ export const readTool: Tool = {
   name: 'read',
   description: 'Read the contents of a file. Use offset/limit for large files. Supports text and images.',
   parameters: ReadParameters,
+  formatCall: (args) => String(args.path || ''),
+  formatResult: (result) => {
+    const text = result.content[0];
+    if (text?.type === 'image') return 'image';
+    const lines = text?.type === 'text' ? text.text.split('\n').length : 0;
+    return `${lines} lines`;
+  },
   execute: async (args: unknown, context: ToolContext): Promise<ToolResult> => {
     const params = ReadParameters.parse(args);
     const resolvedPath = expandTilde(params.path);

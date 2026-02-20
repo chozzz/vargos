@@ -18,6 +18,7 @@ export const writeTool: Tool = {
   name: 'write',
   description: 'Create a new file or overwrite an existing file with new content.',
   parameters: WriteParameters,
+  formatCall: (args) => String(args.path || ''),
   execute: async (args: unknown, context: ToolContext) => {
     const params = WriteParameters.parse(args);
     const resolvedPath = expandTilde(params.path);

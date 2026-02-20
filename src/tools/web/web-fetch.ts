@@ -97,6 +97,7 @@ export const webFetchTool: Tool = {
   name: 'web_fetch',
   description: 'Fetch and extract readable content from a URL (HTML → markdown/text)',
   parameters: WebFetchParameters,
+  formatCall: (args) => String(args.url || '').slice(0, 120),
   execute: async (args: unknown, context: ToolContext) => {
     const params = WebFetchParameters.parse(args);
     const extractMode = params.extractMode ?? 'markdown';

@@ -15,6 +15,7 @@ export const sessionsListTool: Tool = {
   name: 'sessions_list',
   description: 'List sessions with optional filters and last messages',
   parameters: SessionsListParameters,
+  formatCall: (args) => args.kinds ? `kinds=${String(args.kinds)}` : '',
   execute: async (args: unknown, context: ToolContext) => {
     const params = SessionsListParameters.parse(args);
     if (!context.call) return errorResult('Gateway not available');

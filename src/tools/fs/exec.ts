@@ -79,6 +79,7 @@ export const execTool: Tool = {
   name: 'exec',
   description: 'Execute a shell command in the working directory. Use with caution.',
   parameters: ExecParameters,
+  formatCall: (args) => String(args.command || '').slice(0, 120),
   execute: async (args: unknown, context: ToolContext) => {
     const params = ExecParameters.parse(args);
     const timeoutMs = params.timeout ?? 60000;

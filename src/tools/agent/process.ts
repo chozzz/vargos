@@ -64,6 +64,12 @@ export class ProcessTool extends BaseTool {
     });
   }
 
+  formatCall = (args: Record<string, unknown>) => {
+    const action = String(args.action || '');
+    const sid = args.sessionId ? ` ${args.sessionId}` : '';
+    return `${action}${sid}`;
+  };
+
   async executeImpl(args: z.infer<typeof ProcessParameters>, context: ToolContext): Promise<ToolResult> {
     const service = getProcessService();
 
