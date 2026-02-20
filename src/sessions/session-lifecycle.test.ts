@@ -64,12 +64,10 @@ describe('session lifecycle edge cases', () => {
       let session = await sessions.get(sessionKey);
       expect(session).not.toBeNull();
 
-      // Delete the underlying file directly
+      // Delete the underlying files directly
       const sessionsDir = path.join(tempDir, 'sessions');
-      const files = await fs.readdir(sessionsDir);
-      for (const file of files) {
-        await fs.unlink(path.join(sessionsDir, file));
-      }
+      await fs.rm(sessionsDir, { recursive: true, force: true });
+      await fs.mkdir(sessionsDir, { recursive: true });
 
       session = await sessions.get(sessionKey);
       expect(session).toBeNull();
@@ -83,6 +81,55 @@ describe('session lifecycle edge cases', () => {
       await expect(
         sessions.addMessage({ sessionKey, content: 'test', role: 'user' })
       ).rejects.toThrow();
+    });
+  });
+
+  describe('Session history loading', () => {
+    it('should load full message history with correct roles and count', async () => {
+      const sessionKey = 'whatsapp:61400000000';
+      await sessions.create({ sessionKey, kind: 'main', metadata: { channel: 'whatsapp' } });
+
+      await sessions.addMessage({ sessionKey, content: 'Hello', role: 'user', metadata: { type: 'task' } });
+      await sessions.addMessage({ sessionKey, content: 'Hi there!', role: 'assistant' });
+      await sessions.addMessage({ sessionKey, content: 'Do the thing', role: 'user', metadata: { type: 'task' } });
+      await sessions.addMessage({ sessionKey, content: 'Done.', role: 'assistant' });
+      await sessions.addMessage({ sessionKey, content: 'Thanks', role: 'user', metadata: { type: 'task' } });
+
+      const messages = await sessions.getMessages(sessionKey);
+      expect(messages).toHaveLength(5);
+
+      const userMessages = messages.filter(m => m.role === 'user');
+      const assistantMessages = messages.filter(m => m.role === 'assistant');
+      expect(userMessages).toHaveLength(3);
+      expect(assistantMessages).toHaveLength(2);
+
+      // All contents present
+      const contents = messages.map(m => m.content);
+      expect(contents).toContain('Hello');
+      expect(contents).toContain('Hi there!');
+      expect(contents).toContain('Do the thing');
+      expect(contents).toContain('Done.');
+      expect(contents).toContain('Thanks');
+
+      // User messages carry metadata
+      for (const msg of userMessages) {
+        expect(msg.metadata?.type).toBe('task');
+      }
+    });
+
+    it('should not wipe history when create is called on existing session', async () => {
+      const sessionKey = 'whatsapp:61400000001';
+      await sessions.create({ sessionKey, kind: 'main', metadata: {} });
+      await sessions.addMessage({ sessionKey, content: 'First', role: 'user' });
+      await sessions.addMessage({ sessionKey, content: 'Second', role: 'user' });
+
+      // Simulate channel service calling create again on next inbound message
+      await sessions.create({ sessionKey, kind: 'main', metadata: {} }).catch(() => {});
+
+      const messages = await sessions.getMessages(sessionKey);
+      expect(messages).toHaveLength(2);
+      expect(messages[0].content).toBe('First');
+      expect(messages[1].content).toBe('Second');
     });
   });
 
