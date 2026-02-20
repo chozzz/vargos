@@ -16,7 +16,7 @@ import { type PiAgentRuntime, type PiAgentConfig, type PiAgentRunResult } from '
 
 const log = createLogger('agent');
 import type { AgentStreamEvent } from './lifecycle.js';
-import { resolveSessionFile, resolveWorkspaceDir, resolveDataDir } from '../config/paths.js';
+import { resolveWorkspaceDir, resolveDataDir } from '../config/paths.js';
 import { loadConfig, resolveModel } from '../config/pi-config.js';
 import { loadContextFiles } from '../config/workspace.js';
 import { LOCAL_PROVIDERS } from '../config/validate.js';
@@ -111,19 +111,23 @@ export class AgentService extends ServiceClient {
   }
 
   private async handleInboundMessage(payload: Record<string, unknown>): Promise<void> {
-    const { channel, userId, sessionKey, content } = payload as {
+    const { channel, userId, sessionKey, content, metadata } = payload as {
       channel: string;
       userId: string;
       sessionKey: string;
       content: string;
+      metadata?: Record<string, unknown>;
     };
 
     log.info(`inbound message: ${channel}:${userId} → ${sessionKey}`);
+
+    const images = metadata?.images as Array<{ data: string; mimeType: string }> | undefined;
 
     const result = await this.runAgent({
       sessionKey,
       task: content,
       channel,
+      images,
     });
 
     log.info(`agent result: ${sessionKey} success=${result.success} (${result.response?.length ?? 0} chars)`);
@@ -162,17 +166,23 @@ export class AgentService extends ServiceClient {
       if (!msg.includes('already exists')) log.error(`Failed to create cron session: ${msg}`);
     });
 
+    // Store the user task so history loading picks it up
+    await this.call('sessions', 'session.addMessage', {
+      sessionKey, content: task, role: 'user',
+      metadata: { source: 'cron', taskId },
+    }).catch(() => {});
+
     const result = await this.runAgent({ sessionKey, task });
 
     // Broadcast to all configured channels
     if (result.success && result.response) {
       const cleaned = stripHeartbeatToken(result.response);
       if (cleaned === null) return; // pure HEARTBEAT_OK → skip broadcast
-      await this.broadcastToChannels(cleaned);
+      await this.broadcastToChannels(cleaned, taskId);
     }
   }
 
-  private async broadcastToChannels(text: string): Promise<void> {
+  private async broadcastToChannels(text: string, taskId?: string): Promise<void> {
     const config = await loadConfig(this.dataDir);
     if (!config?.channels) return;
 
@@ -184,6 +194,15 @@ export class AgentService extends ServiceClient {
       if (!entry.allowFrom?.length) continue;
 
       for (const userId of entry.allowFrom) {
+        // Inject cron output into recipient's channel session so they have context
+        const sessionKey = `${channel}:${userId}`;
+        await this.call('sessions', 'session.addMessage', {
+          sessionKey,
+          content: text,
+          role: 'assistant',
+          metadata: { source: 'cron', taskId },
+        }).catch(() => {}); // session may not exist yet — best effort
+
         await this.call('channel', 'channel.send', { channel, userId, text }).catch((err) =>
           log.error(`Failed to broadcast to ${channel}:${userId}: ${err}`),
         );
@@ -204,7 +223,6 @@ export class AgentService extends ServiceClient {
 
     return {
       sessionKey,
-      sessionFile: resolveSessionFile(sessionKey),
       workspaceDir: params.workspaceDir ?? this.workspaceDir,
       task: params.task,
       model: params.model ?? primary.model,

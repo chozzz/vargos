@@ -40,11 +40,13 @@ Each session key maps to an independent conversation. Sessions do **not** share 
 
 ## Storage
 
-Sessions are stored as JSONL files in `~/.vargos/sessions/`. Each file contains:
+Sessions are stored as JSONL files in `~/.vargos/sessions/` by `FileSessionService`. Each file contains:
 - Line 0: session metadata (key, kind, timestamps)
-- Remaining lines: individual messages (role, content, timestamp)
+- Remaining lines: individual messages (role, content, timestamp, metadata)
 
-File names are the session key with `:` replaced by `-` (e.g., `cli-chat.jsonl`).
+File names use base64url-encoded session keys (e.g., `Y2xpOmNoYXQ.jsonl` for `cli:chat`).
+
+The Pi SDK runs in-memory only — no session files from the LLM runtime. All persistence goes through `FileSessionService`. Before each agent run, history is loaded from `FileSessionService`, converted to `AgentMessage[]` via `toAgentMessages()`, sanitized, and injected into the Pi SDK session.
 
 ## Lifecycle
 

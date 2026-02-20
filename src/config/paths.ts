@@ -5,7 +5,7 @@
 
 import path from 'node:path';
 import os from 'node:os';
-import type { PathsConfig } from './pi-config.js';
+import type { PathsConfig, GatewayConfig } from './pi-config.js';
 import { expandTilde } from '../lib/path.js';
 
 let cachedPaths: { dataDir: string; workspace: string } | null = null;
@@ -46,10 +46,6 @@ export function resolveSessionsDir(): string {
   return path.join(resolveDataDir(), 'sessions');
 }
 
-export function resolveSessionFile(sessionKey: string): string {
-  return path.join(resolveSessionsDir(), `${sessionKey.replace(/:/g, '-')}.jsonl`);
-}
-
 export function resolveMediaDir(sessionKey?: string): string {
   const base = path.join(resolveDataDir(), 'media');
   return sessionKey ? path.join(base, sessionKey.replace(/:/g, '-')) : base;
@@ -57,6 +53,12 @@ export function resolveMediaDir(sessionKey?: string): string {
 
 export function resolveChannelsDir(): string {
   return path.join(resolveDataDir(), 'channels');
+}
+
+export function resolveGatewayUrl(gateway?: GatewayConfig): string {
+  const host = gateway?.host ?? '127.0.0.1';
+  const port = gateway?.port ?? 9000;
+  return `ws://${host}:${port}`;
 }
 
 /**

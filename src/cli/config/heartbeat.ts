@@ -1,26 +1,16 @@
-import { spawn } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { select, text, confirm, isCancel } from '@clack/prompts';
 import chalk from 'chalk';
 import { resolveDataDir, resolveWorkspaceDir } from '../../config/paths.js';
+import { editFile } from '../../lib/editor.js';
 import { loadConfig, saveConfig } from '../../config/pi-config.js';
 import type { HeartbeatConfig, ActiveHoursConfig } from '../../config/pi-config.js';
+import { formatSchedule } from '../../lib/schedule.js';
 
 const DIM = chalk.dim;
 const LABEL = chalk.gray;
 const BOLD = chalk.bold;
-
-function formatSchedule(cron: string): string {
-  const patterns: Record<string, string> = {
-    '*/30 * * * *': 'every 30 min',
-    '*/15 * * * *': 'every 15 min',
-    '*/1 * * * *': 'every minute',
-    '0 */6 * * *': 'every 6 hours',
-    '0 * * * *': 'every hour',
-  };
-  return patterns[cron] ?? cron;
-}
 
 export async function show(): Promise<void> {
   const config = await loadConfig(resolveDataDir());
@@ -160,10 +150,5 @@ export async function tasks(): Promise<void> {
     return;
   }
 
-  const editor = process.env.EDITOR || process.env.VISUAL || 'nano';
-  const child = spawn(editor, [filePath], { stdio: 'inherit' });
-  await new Promise<void>((resolve, reject) => {
-    child.on('close', (code) => code === 0 ? resolve() : reject(new Error(`${editor} exited with ${code}`)));
-    child.on('error', reject);
-  });
+  await editFile(filePath);
 }
