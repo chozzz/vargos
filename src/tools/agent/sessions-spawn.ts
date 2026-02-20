@@ -20,6 +20,7 @@ export const sessionsSpawnTool: Tool = {
   name: 'sessions_spawn',
   description: 'Spawn a background sub-agent run in an isolated session and announce result back',
   parameters: SessionsSpawnParameters,
+  formatCall: (args) => `task=${String(args.task || '').slice(0, 80)}`,
   execute: async (args: unknown, context: ToolContext) => {
     const params = SessionsSpawnParameters.parse(args);
     if (!context.call) return errorResult('Gateway not available');

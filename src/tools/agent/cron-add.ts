@@ -16,6 +16,7 @@ export const cronAddTool: Tool = {
   name: 'cron_add',
   description: 'Schedule a recurring task to run on a cron schedule. Spawns a subagent at each interval.',
   parameters: CronAddParameters,
+  formatCall: (args) => `${args.name || ''} ${args.schedule || ''}`,
   execute: async (args: unknown, context: ToolContext) => {
     const params = CronAddParameters.parse(args);
     if (!context.call) return errorResult('Gateway not available');

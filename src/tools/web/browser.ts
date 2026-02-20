@@ -37,6 +37,13 @@ export class BrowserTool extends BaseTool {
     });
   }
 
+  formatCall = (args: Record<string, unknown>) => {
+    const action = String(args.action || '');
+    const url = args.url ? ` ${String(args.url).slice(0, 80)}` : '';
+    const ref = args.ref ? ` ref=${args.ref}` : '';
+    return `${action}${url}${ref}`;
+  };
+
   async executeImpl(args: z.infer<typeof BrowserParameters>, context: ToolContext): Promise<ToolResult> {
     const service = getBrowserService();
 

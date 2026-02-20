@@ -15,6 +15,7 @@ export const sessionsHistoryTool: Tool = {
   name: 'sessions_history',
   description: 'Fetch message history for a session',
   parameters: SessionsHistoryParameters,
+  formatCall: (args) => String(args.sessionKey || ''),
   execute: async (args: unknown, context: ToolContext) => {
     const params = SessionsHistoryParameters.parse(args);
     if (!context.call) return errorResult('Gateway not available');

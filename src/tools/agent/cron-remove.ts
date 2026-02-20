@@ -13,6 +13,7 @@ export const cronRemoveTool: Tool = {
   name: 'cron_remove',
   description: 'Remove a scheduled recurring task by its ID. Use cron_list to find task IDs.',
   parameters: CronRemoveParameters,
+  formatCall: (args) => String(args.id || ''),
   execute: async (args: unknown, context: ToolContext) => {
     const { id } = CronRemoveParameters.parse(args);
     if (!context.call) return errorResult('Gateway not available');

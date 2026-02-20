@@ -19,6 +19,7 @@ export const editTool: Tool = {
   name: 'edit',
   description: 'Make surgical edits to a file by replacing exact text. The oldText must match exactly including whitespace.',
   parameters: EditParameters,
+  formatCall: (args) => String(args.path || ''),
   execute: async (args: unknown, context: ToolContext) => {
     const params = EditParameters.parse(args);
     const resolvedPath = expandTilde(params.path);

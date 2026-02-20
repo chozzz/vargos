@@ -18,6 +18,7 @@ export const memorySearchTool: Tool = {
   // Mandatory recall description
   description: 'Mandatory recall step: semantically search MEMORY.md + memory/*.md (and optional session transcripts) before answering questions about prior work, decisions, dates, people, preferences, or todos; returns top snippets with path + lines.',
   parameters: MemorySearchParameters,
+  formatCall: (args) => String(args.query || '').slice(0, 80),
   execute: async (args: unknown, context: ToolContext) => {
     const params = MemorySearchParameters.parse(args);
     
