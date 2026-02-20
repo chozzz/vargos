@@ -107,19 +107,21 @@ export class FileSessionService extends EventEmitter implements ISessionService 
     if (lines.length === 0) return null;
 
     const rawSession = JSON.parse(lines[0]) as Session;
+    if (!rawSession.sessionKey) return null; // Not a valid session file
+
     const session: Session = {
       ...rawSession,
       createdAt: new Date(rawSession.createdAt),
       updatedAt: new Date(rawSession.updatedAt),
     };
 
-    const messages = lines.slice(1).map(line => {
-      const rawMsg = JSON.parse(line) as SessionMessage;
-      return {
-        ...rawMsg,
-        timestamp: new Date(rawMsg.timestamp),
-      };
-    });
+    const messages = lines.slice(1)
+      .map(line => {
+        const rawMsg = JSON.parse(line) as SessionMessage;
+        if (!rawMsg.role) return null; // Skip non-message lines (e.g. Pi SDK format)
+        return { ...rawMsg, timestamp: new Date(rawMsg.timestamp) };
+      })
+      .filter((m): m is SessionMessage => m !== null);
 
     return { session, messages };
   }
