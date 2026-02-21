@@ -34,9 +34,9 @@ Sessions persist conversation history and provide isolation between different in
 Each session key maps to an independent conversation. Sessions do **not** share history:
 
 - Cron jobs fire on `cron:<taskId>:<timestamp>` — every execution is a fresh session
-- Cron results are broadcast to channels via `channel.send`, but the broadcast is one-way — it doesn't inject into the recipient's session
-- Replying from WhatsApp to a cron broadcast starts a new turn on `whatsapp:<userId>`, which has no context of the cron output
-- Cross-session context is only possible through workspace files (e.g., memory files, MEMORY.md)
+- Cron results are delivered only to explicit `notify` targets configured per task — no delivery if unset
+- Notifications inject the result into the recipient's channel session for context, then send via `channel.send`
+- Cross-session context is also possible through workspace files (e.g., memory files, MEMORY.md)
 
 ## Storage
 

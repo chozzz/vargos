@@ -12,6 +12,7 @@
 import { ServiceClient } from '../gateway/service-client.js';
 import { createLogger } from '../lib/logger.js';
 import { stripHeartbeatToken } from '../lib/heartbeat.js';
+import { parseTarget } from '../lib/channel-target.js';
 import { type PiAgentRuntime, type PiAgentConfig, type PiAgentRunResult } from './runtime.js';
 
 const log = createLogger('agent');
@@ -148,13 +149,14 @@ export class AgentService extends ServiceClient {
   }
 
   private async handleCronTrigger(payload: Record<string, unknown>): Promise<void> {
-    const { taskId, task, sessionKey } = payload as {
+    const { taskId, task, sessionKey, notify } = payload as {
       taskId: string;
       task: string;
       sessionKey: string;
+      notify?: string[];
     };
 
-    log.info(`cron trigger: ${taskId} → ${sessionKey}`);
+    log.info(`cron trigger: ${taskId} → ${sessionKey}${notify?.length ? ` (notify: ${notify.length} targets)` : ''}`);
 
     // Create session so storeResponse can persist the result
     await this.call('sessions', 'session.create', {
@@ -174,39 +176,35 @@ export class AgentService extends ServiceClient {
 
     const result = await this.runAgent({ sessionKey, task });
 
-    // Broadcast to all configured channels
-    if (result.success && result.response) {
-      const cleaned = stripHeartbeatToken(result.response);
-      if (cleaned === null) return; // pure HEARTBEAT_OK → skip broadcast
-      await this.broadcastToChannels(cleaned, taskId);
+    // Deliver to explicitly configured notify targets only
+    if (!notify?.length) return;
+    if (!result.success || !result.response) {
+      log.info(`cron ${taskId}: skipping notify (success=${result.success} response=${!!result.response})`);
+      return;
     }
-  }
+    const cleaned = stripHeartbeatToken(result.response);
+    if (cleaned === null) {
+      log.info(`cron ${taskId}: skipping notify (heartbeat-ok)`);
+      return;
+    }
 
-  private async broadcastToChannels(text: string, taskId?: string): Promise<void> {
-    const config = await loadConfig(this.dataDir);
-    if (!config?.channels) return;
+    log.info(`notify: ${cleaned.length} chars to ${notify.length} targets`);
+    for (const target of notify) {
+      const parsed = parseTarget(target);
+      if (!parsed) continue;
+      const { channel, userId } = parsed;
 
-    const channelCount = Object.keys(config.channels).length;
-    log.info(`broadcast: ${text.length} chars to ${channelCount} channels`);
+      // Inject into recipient's channel session for context
+      await this.call('sessions', 'session.addMessage', {
+        sessionKey: target,
+        content: cleaned,
+        role: 'assistant',
+        metadata: { source: 'cron', taskId },
+      }).catch(() => {});
 
-    for (const [channel, entry] of Object.entries(config.channels)) {
-      if (entry.enabled === false) continue;
-      if (!entry.allowFrom?.length) continue;
-
-      for (const userId of entry.allowFrom) {
-        // Inject cron output into recipient's channel session so they have context
-        const sessionKey = `${channel}:${userId}`;
-        await this.call('sessions', 'session.addMessage', {
-          sessionKey,
-          content: text,
-          role: 'assistant',
-          metadata: { source: 'cron', taskId },
-        }).catch(() => {}); // session may not exist yet — best effort
-
-        await this.call('channel', 'channel.send', { channel, userId, text }).catch((err) =>
-          log.error(`Failed to broadcast to ${channel}:${userId}: ${err}`),
-        );
-      }
+      await this.call('channel', 'channel.send', { channel, userId, text: cleaned }).catch((err) =>
+        log.error(`Failed to notify ${target}: ${err}`),
+      );
     }
   }
 
