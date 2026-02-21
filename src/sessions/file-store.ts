@@ -200,19 +200,25 @@ export class FileSessionService extends EventEmitter implements ISessionService 
     const sessions: Session[] = [];
 
     for (const file of files) {
-      const content = await fs.readFile(file, 'utf-8');
-      const lines = content.trim().split('\n').filter(Boolean);
-      if (lines.length === 0) continue;
+      try {
+        const content = await fs.readFile(file, 'utf-8');
+        const lines = content.trim().split('\n').filter(Boolean);
+        if (lines.length === 0) continue;
 
-      const rawSession = JSON.parse(lines[0]) as Session;
-      const session: Session = {
-        ...rawSession,
-        createdAt: new Date(rawSession.createdAt),
-        updatedAt: new Date(rawSession.updatedAt),
-      };
-      if (options.kind && session.kind !== options.kind) continue;
-      
-      sessions.push(session);
+        const rawSession = JSON.parse(lines[0]) as Session;
+        if (!rawSession.sessionKey) continue;
+
+        const session: Session = {
+          ...rawSession,
+          createdAt: new Date(rawSession.createdAt),
+          updatedAt: new Date(rawSession.updatedAt),
+        };
+        if (options.kind && session.kind !== options.kind) continue;
+
+        sessions.push(session);
+      } catch {
+        // Skip corrupt or unreadable session files
+      }
     }
 
     // Sort by updatedAt descending
