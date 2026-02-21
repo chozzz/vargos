@@ -210,14 +210,14 @@ export async function start(): Promise<void> {
     onPersist: async (tasks) => {
       const current = await loadConfig(dataDir);
       if (!current) return;
-      current.cron = { tasks: tasks.map((t) => ({ name: t.name, schedule: t.schedule, task: t.task, enabled: t.enabled })) };
+      current.cron = { tasks: tasks.map((t) => ({ name: t.name, schedule: t.schedule, task: t.task, enabled: t.enabled, notify: t.notify })) };
       await saveConfig(dataDir, current);
     },
   });
   await cron.connect();
 
   for (const t of config.cron?.tasks ?? []) {
-    cron.addTask({ name: t.name, schedule: t.schedule, task: t.task, description: t.task.slice(0, 100), enabled: t.enabled ?? true });
+    cron.addTask({ name: t.name, schedule: t.schedule, task: t.task, description: t.task.slice(0, 100), enabled: t.enabled ?? true, notify: t.notify });
   }
 
   // ── Agent service ─────────────────────────────────────────────────────────

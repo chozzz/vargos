@@ -143,4 +143,46 @@ describe('CronService', () => {
     expect((trigger!.payload as any).task).toBe('analyze workspace');
     expect((trigger!.payload as any).sessionKey).toMatch(/^cron:/);
   });
+
+  it('includes notify in cron.trigger event', async () => {
+    const notify = ['whatsapp:61423000000', 'telegram:123'];
+    const task = await subscriber.call<CronTask>('cron', 'cron.add', {
+      name: 'notify-test',
+      schedule: '0 * * * *',
+      description: 'test notify',
+      task: 'send report',
+      enabled: false,
+      notify,
+    });
+
+    expect(task.notify).toEqual(notify);
+
+    await subscriber.call('cron', 'cron.run', { id: task.id });
+    await new Promise((r) => setTimeout(r, 100));
+
+    const trigger = subscriber.events.find((e) =>
+      e.event === 'cron.trigger' && (e.payload as any).taskId === task.id,
+    );
+    expect(trigger).toBeDefined();
+    expect((trigger!.payload as any).notify).toEqual(notify);
+  });
+
+  it('updates notify via cron.update', async () => {
+    const task = await subscriber.call<CronTask>('cron', 'cron.add', {
+      name: 'update-notify',
+      schedule: '0 * * * *',
+      description: 'test',
+      task: 'do stuff',
+      enabled: false,
+    });
+
+    expect(task.notify).toBeUndefined();
+
+    const updated = await subscriber.call<CronTask>('cron', 'cron.update', {
+      id: task.id,
+      notify: ['whatsapp:61400000000'],
+    });
+
+    expect(updated.notify).toEqual(['whatsapp:61400000000']);
+  });
 });

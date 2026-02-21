@@ -1,7 +1,10 @@
 import chalk from 'chalk';
-import { select, text, isCancel } from '@clack/prompts';
+import { select, text, multiselect, isCancel } from '@clack/prompts';
 import { connectToGateway, type CliClient } from './client.js';
 import { formatSchedule } from '../lib/schedule.js';
+import { normalizeTarget } from '../lib/channel-target.js';
+import { resolveDataDir } from '../config/paths.js';
+import { loadConfig } from '../config/pi-config.js';
 import type { CronTask } from '../cron/types.js';
 import type { Session, SessionMessage } from '../sessions/types.js';
 
@@ -73,6 +76,9 @@ function printTasks(tasks: CronTask[]): void {
       : task.schedule;
     console.log(`      ${LABEL('Schedule')}  ${scheduleDisplay}`);
     console.log(`      ${LABEL('Task')}      ${truncateAtWord(task.task.replace(/\n/g, ' ').trim(), 80)}`);
+    if (task.notify?.length) {
+      console.log(`      ${LABEL('Notify')}    ${task.notify.join(', ')}`);
+    }
     console.log(`      ${LABEL('ID')}        ${DIM(task.id)}`);
     console.log();
   }
@@ -85,6 +91,7 @@ async function editTask(client: CliClient, task: CronTask): Promise<void> {
       { value: 'name', label: 'Name', hint: task.name },
       { value: 'schedule', label: 'Schedule', hint: formatSchedule(task.schedule) },
       { value: 'task', label: 'Task', hint: truncateAtWord(task.task.replace(/\n/g, ' ').trim(), 50) },
+      { value: 'notify', label: 'Notify', hint: task.notify?.length ? task.notify.join(', ') : 'none' },
       { value: 'enabled', label: task.enabled ? 'Disable' : 'Enable', hint: task.enabled ? 'on → off' : 'off → on' },
     ],
   });
@@ -120,6 +127,10 @@ async function editTask(client: CliClient, task: CronTask): Promise<void> {
     if (isCancel(val)) return;
     updates.task = val;
     updates.description = (val as string).slice(0, 100);
+  } else if (field === 'notify') {
+    const targets = await promptNotifyTargets(task.notify);
+    if (targets === null) return;
+    updates.notify = targets;
   } else if (field === 'enabled') {
     updates.enabled = !task.enabled;
   }
@@ -172,16 +183,22 @@ export async function add(): Promise<void> {
 
   const client = await connectToGateway();
   try {
+    const notify = await promptNotifyTargets();
+
     const created = await client.call<CronTask>('cron', 'cron.add', {
       name,
       schedule: finalSchedule,
       description: task.slice(0, 100),
       task,
       enabled: true,
+      notify: notify?.length ? notify : undefined,
     });
     console.log(chalk.green(`\n  Created task: ${created.name}`));
     console.log(`  ${LABEL('ID')}        ${DIM(created.id)}`);
     console.log(`  ${LABEL('Schedule')}  ${formatSchedule(finalSchedule)}`);
+    if (created.notify?.length) {
+      console.log(`  ${LABEL('Notify')}    ${created.notify.join(', ')}`);
+    }
     console.log();
   } catch (err) {
     console.error(chalk.red(`  Error: ${err instanceof Error ? err.message : String(err)}`));
@@ -307,6 +324,37 @@ export async function logs(args?: string[]): Promise<void> {
   } finally {
     await client.disconnect();
   }
+}
+
+// -- Notify helpers --
+
+/** Build flat list of "channel:userId" from config channels */
+async function getChannelTargets(): Promise<string[]> {
+  const config = await loadConfig(resolveDataDir());
+  if (!config?.channels) return [];
+  const targets: string[] = [];
+  for (const [channel, entry] of Object.entries(config.channels)) {
+    if (entry.enabled === false) continue;
+    for (const userId of entry.allowFrom ?? []) {
+      targets.push(normalizeTarget(`${channel}:${userId}`));
+    }
+  }
+  return targets;
+}
+
+/** Prompt user to select notify targets; returns null on cancel, empty array to clear */
+async function promptNotifyTargets(current?: string[]): Promise<string[] | null> {
+  const targets = await getChannelTargets();
+  if (targets.length === 0) return [];
+
+  const selected = await multiselect({
+    message: 'Notify channels (space to toggle, enter to confirm)',
+    options: targets.map((t) => ({ value: t, label: t })),
+    initialValues: current?.filter((c) => targets.includes(c)) ?? [],
+    required: false,
+  });
+  if (isCancel(selected)) return null;
+  return selected as string[];
 }
 
 // -- Helpers --

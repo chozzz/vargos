@@ -10,6 +10,7 @@ const CronAddParameters = z.object({
   schedule: z.string().describe('Cron expression (e.g., "0 * * * *" for hourly)'),
   task: z.string().describe('Task description to execute'),
   enabled: z.boolean().optional().default(true).describe('Whether to enable immediately'),
+  notify: z.array(z.string()).optional().describe('Channel targets to notify (e.g., ["whatsapp:614...", "telegram:123"])'),
 });
 
 export const cronAddTool: Tool = {
@@ -28,6 +29,7 @@ export const cronAddTool: Tool = {
         description: params.task.slice(0, 100),
         task: params.task,
         enabled: params.enabled,
+        notify: params.notify,
       });
 
       return textResult(

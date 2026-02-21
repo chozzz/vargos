@@ -78,6 +78,7 @@ export interface CronTaskConfig {
   schedule: string;
   task: string;
   enabled?: boolean;
+  notify?: string[];
 }
 
 export interface CronConfig {

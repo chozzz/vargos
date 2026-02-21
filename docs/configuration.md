@@ -83,7 +83,8 @@ Priority: `config.paths.dataDir` > `VARGOS_DATA_DIR` env > `~/.vargos`
         "name": "daily-report",
         "schedule": "0 9 * * *",   // cron expression
         "task": "Generate a summary of recent changes",
-        "enabled": true             // default: true
+        "enabled": true,            // default: true
+        "notify": ["whatsapp:614..."]  // optional — channel targets
       }
     ]
   },
@@ -127,6 +128,7 @@ User-defined scheduled tasks are persisted in `config.json` and loaded at gatewa
 | `schedule` | string | yes | Cron expression (e.g. `0 */6 * * *`) |
 | `task` | string | yes | Prompt/description for the agent |
 | `enabled` | boolean | no | Whether active (default: `true`) |
+| `notify` | string[] | no | Channel targets to deliver results (e.g. `["whatsapp:614..."]`) |
 
 Built-in tasks (vargos analysis, heartbeat) are not stored in config — they're registered at boot.
 

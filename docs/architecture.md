@@ -251,7 +251,8 @@ Scheduled task execution. Fires events that the agent service subscribes to.
 | Method | Params | Description |
 |--------|--------|-------------|
 | `cron.list` | — | List scheduled tasks |
-| `cron.add` | `{ name, schedule, task, description }` | Add task |
+| `cron.add` | `{ name, schedule, task, description, notify? }` | Add task |
+| `cron.update` | `{ id, ...fields }` | Update task fields |
 | `cron.remove` | `{ id }` | Remove task |
 | `cron.run` | `{ id }` | Trigger task immediately |
 
@@ -259,7 +260,7 @@ Scheduled task execution. Fires events that the agent service subscribes to.
 
 | Event | Payload | Description |
 |-------|---------|-------------|
-| `cron.trigger` | `{ taskId, task, sessionKey }` | Task fired |
+| `cron.trigger` | `{ taskId, task, sessionKey, notify? }` | Task fired |
 
 ---
 
@@ -312,11 +313,13 @@ Gateway pings services periodically. If a service disconnects, its routes and su
 ```
 1. Cron service fires:
    { type: "event", source: "cron", event: "cron.trigger",
-     payload: { taskId: "daily-analysis", task: "Review workspace", sessionKey: "cron:daily" } }
+     payload: { taskId: "daily-analysis", task: "Review workspace",
+                sessionKey: "cron:daily:1708300000", notify: ["whatsapp:614..."] } }
 
 2. Agent service receives, starts execution
 3. Agent calls tools as needed via gateway
 4. Agent stores result in session via gateway
+5. If notify targets set, agent sends result to each via channel.send
 ```
 
 ### Browser UI → Live Agent Streaming
