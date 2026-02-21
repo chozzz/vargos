@@ -3,13 +3,16 @@
  */
 
 import { Tool } from './types.js';
+import { getLogger } from '../lib/logger.js';
+
+const logger = getLogger('tools:registry');
 
 export class ToolRegistry {
   private tools = new Map<string, Tool>();
 
   register(tool: Tool): void {
     if (!tool || !tool.name) {
-      console.error('Attempted to register invalid tool:', tool);
+      logger.error('Attempted to register invalid tool:', tool);
       throw new Error(`Invalid tool: ${JSON.stringify(tool)}`);
     }
     this.tools.set(tool.name, tool);

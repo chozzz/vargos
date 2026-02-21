@@ -282,7 +282,7 @@ export class MemoryContext {
       await this.storage?.deleteChunksByPath(sessionPath);
 
       // Index messages (skip header line)
-      let chunks: MemoryChunk[] = [];
+      const chunks: MemoryChunk[] = [];
       for (let i = 1; i < lines.length; i++) {
         try {
           const msg = JSON.parse(lines[i]) as { role?: string; content?: string; timestamp?: string };
@@ -480,7 +480,7 @@ export class MemoryContext {
     const queryEmbedding = await this.generateEmbedding(query);
 
     // Vector search: delegate to storage when it supports native similarity
-    let vectorResults: Map<string, number> = new Map();
+    const vectorResults: Map<string, number> = new Map();
     if (queryEmbedding && this.storage?.searchSimilar) {
       const hits = await this.storage.searchSimilar(queryEmbedding, maxResults * 2, minScore);
       for (const { chunk, score } of hits) {
