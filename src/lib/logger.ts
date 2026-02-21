@@ -36,3 +36,9 @@ export function createLogger(scope: string) {
     },
   };
 }
+
+/**
+ * Convenience alias for createLogger
+ * Maintains compatibility with existing code
+ */
+export const getLogger = createLogger;

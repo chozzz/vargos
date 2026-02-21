@@ -19,6 +19,24 @@ interface ExecResult {
   exitCode: number;
 }
 
+/**
+ * Sanitize command output for safe JSON transmission
+ * - Strips ANSI escape codes (colors, cursor movements)
+ * - Removes control characters except common whitespace
+ * - Preserves printable text and newlines
+ */
+function sanitizeOutput(input: string): string {
+  // Strip ANSI escape codes: ESC[...m, ESC[...H, etc.
+  let sanitized = input.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
+  // Strip other ANSI sequences (OSC, etc.)
+  sanitized = sanitized.replace(/\x1b\][0-9;]*\x07/g, '');
+  // Remove control characters except \n, \r, \t
+  sanitized = sanitized.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '');
+  // Remove null bytes and other problematic chars
+  sanitized = sanitized.replace(/\x00/g, '');
+  return sanitized;
+}
+
 function execCommand(
   command: string,
   cwd: string,
@@ -58,8 +76,8 @@ function execCommand(
     child.on('close', (exitCode) => {
       clearTimeout(timeout);
       resolve({
-        stdout,
-        stderr,
+        stdout: sanitizeOutput(stdout),
+        stderr: sanitizeOutput(stderr),
         exitCode: exitCode ?? (killed ? -1 : 0),
       });
     });
@@ -67,8 +85,8 @@ function execCommand(
     child.on('error', (err) => {
       clearTimeout(timeout);
       resolve({
-        stdout,
-        stderr: `${stderr}\nProcess error: ${err.message}`,
+        stdout: sanitizeOutput(stdout),
+        stderr: sanitizeOutput(`${stderr}\nProcess error: ${err.message}`),
         exitCode: -1,
       });
     });

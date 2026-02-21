@@ -82,7 +82,7 @@ export function validateConfig(config: VargosConfig): ValidationResult {
   return { valid: errors.length === 0, errors, warnings };
 }
 
-function validateProfile(name: string, profile: ModelProfile, errors: string[], warnings: string[]): void {
+function validateProfile(name: string, profile: ModelProfile, errors: string[], _warnings: string[]): void {
   if (!profile.provider) {
     errors.push(`models.${name}: missing provider`);
   }

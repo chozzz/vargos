@@ -10,7 +10,6 @@ import { createInterface } from 'node:readline';
 import { glob } from 'tinyglobby';
 import {
   type IMemoryService,
-  type MemoryEntry,
   type MemoryWriteOptions,
   type SearchOptions,
   type SearchResult,
