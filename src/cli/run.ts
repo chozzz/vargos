@@ -1,13 +1,15 @@
 import chalk from 'chalk';
+import { text, isCancel } from '@clack/prompts';
 import { connectToGateway } from './client.js';
 
 const SESSION_KEY = 'cli:run';
 
 export async function run(args?: string[]): Promise<void> {
-  const task = args?.join(' ') || '';
+  let task = args?.join(' ') || '';
   if (!task) {
-    console.error(chalk.red('  Usage: vargos run <task>'));
-    process.exit(1);
+    const input = await text({ message: 'Task', placeholder: 'Describe what you want the agent to do' });
+    if (isCancel(input) || !input?.trim()) return;
+    task = input.trim();
   }
 
   const client = await connectToGateway();
