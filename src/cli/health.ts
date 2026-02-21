@@ -1,4 +1,3 @@
-import chalk from 'chalk';
 import { resolveDataDir, resolveGatewayUrl } from '../config/paths.js';
 import { loadConfig, resolveModel } from '../config/pi-config.js';
 import { validateConfig } from '../config/validate.js';

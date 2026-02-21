@@ -10,7 +10,7 @@
  */
 
 import { ServiceClient } from '../gateway/service-client.js';
-import type { ChannelAdapter, ChannelType, ChannelConfig } from './types.js';
+import type { ChannelAdapter } from './types.js';
 import { deliverReply } from './delivery.js';
 import { createLogger } from '../lib/logger.js';
 

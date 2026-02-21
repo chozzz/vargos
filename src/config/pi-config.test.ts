@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { loadConfig, saveConfig, resolveModel, type VargosConfig, type ModelProfile } from './pi-config.js';
+import { loadConfig, saveConfig, resolveModel, type VargosConfig } from './pi-config.js';
 
 let tmpDir: string;
 
