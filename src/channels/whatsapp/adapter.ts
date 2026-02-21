@@ -34,7 +34,7 @@ export class WhatsAppAdapter implements ChannelAdapter {
 
   constructor(allowFrom?: string[], onInboundMessage?: OnInboundMessageFn) {
     this.allowFrom = allowFrom?.length
-      ? new Set(allowFrom.flatMap(p => [p, p.replace(/^\+/, '')]))
+      ? new Set(allowFrom.map(p => p.replace(/^\+/, '')))
       : null;
     this.onInboundMessage = onInboundMessage;
     this.debouncer = createMessageDebouncer(

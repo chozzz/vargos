@@ -84,7 +84,7 @@ export class CronService extends ServiceClient {
 
     const job = new CronJob(
       task.schedule,
-      () => this.onTaskFire(fullTask),
+      () => this.fireById(id),
       null,
       false,
       'UTC',
@@ -107,12 +107,13 @@ export class CronService extends ServiceClient {
     if (updates.description !== undefined) updated.description = updates.description;
     if (updates.task !== undefined) updated.task = updates.task;
     if (updates.enabled !== undefined) updated.enabled = updates.enabled;
+    if (updates.notify !== undefined) updated.notify = updates.notify;
 
     // Schedule change requires a new CronJob
     if (updates.schedule !== undefined && updates.schedule !== entry.task.schedule) {
       updated.schedule = updates.schedule;
       entry.job.stop();
-      const job = new CronJob(updated.schedule, () => this.onTaskFire(updated), null, this.running && updated.enabled, 'UTC');
+      const job = new CronJob(updated.schedule, () => this.fireById(id), null, this.running && updated.enabled, 'UTC');
       this.jobs.set(id, { task: updated, job });
     } else {
       entry.task = updated;
@@ -161,6 +162,12 @@ export class CronService extends ServiceClient {
     this.hooks.set(taskId, hook);
   }
 
+  private fireById(id: string): void {
+    const entry = this.jobs.get(id);
+    if (!entry) return;
+    this.onTaskFire(entry.task).catch((err) => log.error(`task fire error: ${err}`));
+  }
+
   private async onTaskFire(task: CronTask): Promise<void> {
     const hook = this.hooks.get(task.id);
     if (hook) {
@@ -169,7 +176,7 @@ export class CronService extends ServiceClient {
     }
     log.info(`task fired: ${task.name} (${task.id})`);
     const sessionKey = `cron:${task.id}:${Date.now()}`;
-    this.emit('cron.trigger', { taskId: task.id, task: task.task, name: task.name, sessionKey });
+    this.emit('cron.trigger', { taskId: task.id, task: task.task, name: task.name, sessionKey, notify: task.notify });
   }
 
   private async triggerTask(id: string): Promise<boolean> {
