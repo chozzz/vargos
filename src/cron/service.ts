@@ -87,7 +87,7 @@ export class CronService extends ServiceClient {
       () => this.fireById(id),
       null,
       false,
-      'UTC',
+      'Australia/Sydney',
     );
 
     this.jobs.set(id, { task: fullTask, job });
@@ -113,7 +113,7 @@ export class CronService extends ServiceClient {
     if (updates.schedule !== undefined && updates.schedule !== entry.task.schedule) {
       updated.schedule = updates.schedule;
       entry.job.stop();
-      const job = new CronJob(updated.schedule, () => this.fireById(id), null, this.running && updated.enabled, 'UTC');
+      const job = new CronJob(updated.schedule, () => this.fireById(id), null, this.running && updated.enabled, 'Australia/Sydney');
       this.jobs.set(id, { task: updated, job });
     } else {
       entry.task = updated;
