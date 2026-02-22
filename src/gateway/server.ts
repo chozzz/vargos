@@ -123,9 +123,18 @@ export class GatewayServer {
   }
 
   private handleRequest(caller: WebSocket, frame: RequestFrame): void {
-    // Special: service registration handshake
+    // Special: gateway-handled methods
     if (frame.method === 'gateway.register') {
       this.handleRegister(caller, frame);
+      return;
+    }
+
+    if (frame.method === 'gateway.inspect') {
+      const response: ResponseFrame = {
+        type: 'res', id: frame.id, ok: true,
+        payload: this.registry.list(),
+      };
+      caller.send(serializeFrame(response));
       return;
     }
 
