@@ -107,7 +107,7 @@ describe('buildSystemPrompt', () => {
       expect(result).toContain('## Heartbeats');
     });
 
-    it('includes Channel section when channel is set', async () => {
+    it('includes Channel section with behavioral rules when channel is set', async () => {
       const dir = await makeTmpDir();
       const result = await buildSystemPrompt({
         mode: 'full',
@@ -117,6 +117,8 @@ describe('buildSystemPrompt', () => {
       });
       expect(result).toContain('## Channel');
       expect(result).toContain('whatsapp');
+      expect(result).toContain('Execute tools immediately');
+      expect(result).toContain('All tools listed in ## Tooling above are available');
     });
 
     it('includes Current Date & Time when userTimezone is set', async () => {

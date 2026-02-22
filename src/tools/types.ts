@@ -36,6 +36,8 @@ export interface Tool {
   name: string;
   description: string;
   parameters: z.ZodSchema;
+  /** Raw JSON Schema for parameters — used by tool.list when available (MCP bridge tools) */
+  jsonSchema?: unknown;
   execute: (args: unknown, context: ToolContext) => Promise<ToolResult>;
   /** Compact one-line summary for logging, e.g. "read(/path/to/file)" */
   formatCall?: (args: Record<string, unknown>) => string;
