@@ -21,7 +21,17 @@ Bare `vargos` opens an interactive menu with breadcrumb navigation. Select comma
 | `vargos gateway stop` | Stop running gateway |
 | `vargos gateway restart` | Restart gateway |
 | `vargos gateway status` | Check gateway process status |
+| `vargos channels send <target> <msg>` | Send a message to a channel target |
+| `vargos sessions list` | List all sessions |
+| `vargos sessions history <key>` | Show session transcript |
 | `vargos health` | Config + connectivity check |
+
+## Session Commands
+
+| Command | Description |
+|---------|-------------|
+| `vargos sessions list` | Show all sessions with kind, label, last activity |
+| `vargos sessions history <key>` | Show session transcript |
 
 ## Config Commands
 
@@ -35,6 +45,12 @@ Bare `vargos` opens an interactive menu with breadcrumb navigation. Select comma
 | `vargos config context edit` | Edit context files |
 | `vargos config heartbeat show` | Display heartbeat config |
 | `vargos config heartbeat edit` | Configure heartbeat schedule |
+
+## Channel Commands
+
+| Command | Description |
+|---------|-------------|
+| `vargos channels send <target> <message>` | Send a message to a channel (e.g. `whatsapp:61400000000 "Hello"`) |
 
 ## Cron Commands
 

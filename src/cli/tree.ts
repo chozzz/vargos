@@ -241,7 +241,21 @@ export function buildTree(): MenuNode[] {
         },
       ],
     },
-{
+    {
+      key: 'channels',
+      kind: 'group',
+      label: 'Channels',
+      children: [
+        {
+          key: 'send',
+          kind: 'leaf',
+          label: 'Send',
+          hint: 'Send a message to a channel target',
+          action: async (args) => { const m = await import('./channels.js'); await m.send(args); },
+        },
+      ],
+    },
+    {
       key: 'sessions',
       kind: 'group',
       label: 'Sessions',

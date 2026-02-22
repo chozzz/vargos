@@ -10,30 +10,32 @@ Sessions persist conversation history and provide isolation between different in
 | `cli:run` | `cli:run` | CLI `vargos run` | full | 50 turns |
 | `whatsapp:<userId>` | `whatsapp:61423222658` | WhatsApp adapter | full | 30 turns |
 | `telegram:<chatId>` | `telegram:123456` | Telegram adapter | full | 30 turns |
-| `cron:<taskId>:<timestamp>` | `cron:cron-abc:1708300000` | Cron service | minimal | 10 turns |
-| `agent:<id>:subagent:<rand>` | `agent:default:subagent:1708-x7k` | `sessions_spawn` tool | minimal | 10 turns |
+| `cron:<taskId>` | `cron:cron-abc` | Cron service | minimal | 10 turns |
+| `<parent>:subagent:<rand>` | `cli:chat:subagent:1708-x7k` | `sessions_spawn` tool | full | inherits root |
 | `mcp:default` | `mcp:default` | MCP bridge | full | 50 turns |
 
 ## Behaviors Driven by Session Key
 
 **Prompt mode** (`src/agent/prompt.ts`):
-- `full` — all workspace files injected (AGENTS.md, SOUL.md, USER.md, TOOLS.md, MEMORY.md, HEARTBEAT.md)
-- `minimal` — AGENTS.md + TOOLS.md only (subagents, cron jobs)
+- `full` — all workspace files injected (subagents, channels, CLI)
+- `minimal` — cron jobs only
 
 **History limit** (`src/agent/history.ts`):
-- Channels (whatsapp/telegram): 30 turns — tighter to fit context windows
-- Subagents/cron: 10 turns — short-lived tasks
+- Derived from the root session key (before `:subagent:`)
+- Channels (whatsapp/telegram): 30 turns
+- Cron: 10 turns
 - Everything else: 50 turns
+- Subagents inherit the limit of their root session
 
-**Subagent detection** (`src/lib/errors.ts`):
-- Matches `agent:*`, `*:subagent:*`, or any key containing `subagent`
-- Subagents cannot use: `sessions_list`, `sessions_history`, `sessions_send`, `sessions_spawn`, `cron_add`, `cron_list`, `cron_remove`
+**Subagent spawning** (`src/lib/errors.ts`):
+- Subagents can spawn children up to depth 3 (depth-limited, not flat-denied)
+- All tools are available to subagents — no deny list
 
 ## Session Isolation
 
 Each session key maps to an independent conversation. Sessions do **not** share history:
 
-- Cron jobs fire on `cron:<taskId>:<timestamp>` — every execution is a fresh session
+- Cron jobs use `cron:<taskId>` — persistent sessions that accumulate context across executions
 - Cron results are delivered only to explicit `notify` targets configured per task — no delivery if unset
 - Notifications inject the result into the recipient's channel session for context, then send via `channel.send`
 - Cross-session context is also possible through workspace files (e.g., memory files, MEMORY.md)
@@ -53,8 +55,8 @@ The Pi SDK runs in-memory only — no session files from the LLM runtime. All pe
 - **Chat sessions** (`cli:chat`) persist across restarts — resume where you left off
 - **Run sessions** (`cli:run`) reuse the same key, so history accumulates across runs
 - **Channel sessions** (`whatsapp:*`, `telegram:*`) are keyed by sender ID — one session per contact
-- **Cron sessions** (`cron:*:*`) include a timestamp, so each execution is isolated
-- **Subagent sessions** (`agent:*:subagent:*`) include a random suffix, always fresh
+- **Cron sessions** (`cron:*`) are keyed by task ID — history accumulates across executions (limited to 10 turns)
+- **Subagent sessions** (`*:subagent:*`) include a random suffix, always fresh. On completion, parent is re-triggered and result delivered through the channel
 
 ## Message Queue
 
