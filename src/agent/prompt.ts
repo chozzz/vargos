@@ -5,7 +5,6 @@
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { isSubagentSessionKey } from '../lib/errors.js';
 import { toolRegistry } from '../tools/registry.js';
 
 export interface SystemPromptOptions {
@@ -240,9 +239,6 @@ function buildToolNarrationSection(): string {
   ].join('\n');
 }
 
-// Subagents only need these files to save tokens
-const SUBAGENT_ALLOWLIST = new Set(['AGENTS.md', 'TOOLS.md']);
-
 /**
  * Load and inject bootstrap files.
  * Uses 70/20 head/tail truncation to preserve both beginning and end of large files.
@@ -258,7 +254,6 @@ async function loadBootstrapFiles(
 
   for (const filename of BOOTSTRAP_FILES) {
     if (filename === 'BOOTSTRAP.md' && !isFirstRun) continue;
-    if (mode === 'minimal' && !SUBAGENT_ALLOWLIST.has(filename)) continue;
 
     let content: string;
 
@@ -305,7 +300,7 @@ async function loadBootstrapFiles(
 
   if (lines.length === 0) return null;
 
-  const label = mode === 'minimal' ? 'Subagent Context' : 'Project Context';
+  const label = 'Project Context';
   return [`## ${label}`, '', ...lines].join('\n');
 }
 
@@ -450,20 +445,11 @@ async function checkFirstRun(workspaceDir: string): Promise<boolean> {
 }
 
 /**
- * Resolve prompt mode based on session key
+ * Resolve prompt mode based on session key.
+ * Only cron stays minimal — subagents get the full prompt.
  */
 export function resolvePromptMode(sessionKey: string): 'full' | 'minimal' | 'none' {
-  // Subagents get minimal prompt
-  if (isSubagentSessionKey(sessionKey)) {
-    return 'minimal';
-  }
-  // Cron jobs get minimal
-  if (sessionKey.startsWith('cron:')) {
-    return 'minimal';
-  }
-  // Main sessions get full prompt
+  const root = sessionKey.split(':subagent:')[0];
+  if (root.startsWith('cron:')) return 'minimal';
   return 'full';
 }
-
-// Re-export for backward compatibility
-export { isSubagentSessionKey } from '../lib/errors.js';

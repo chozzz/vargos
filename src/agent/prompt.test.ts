@@ -26,13 +26,17 @@ describe('resolvePromptMode', () => {
     expect(resolvePromptMode('chat:main')).toBe('full');
   });
 
-  it('returns minimal for subagent keys', () => {
-    expect(resolvePromptMode('whatsapp:123:subagent:1708-x7k')).toBe('minimal');
-    expect(resolvePromptMode('cli:chat:subagent:1708-abc')).toBe('minimal');
+  it('returns full for subagent keys', () => {
+    expect(resolvePromptMode('whatsapp:123:subagent:1708-x7k')).toBe('full');
+    expect(resolvePromptMode('cli:chat:subagent:1708-abc')).toBe('full');
   });
 
   it('returns minimal for cron: prefix', () => {
     expect(resolvePromptMode('cron:daily')).toBe('minimal');
+  });
+
+  it('returns minimal for cron subagent sessions', () => {
+    expect(resolvePromptMode('cron:daily:subagent:abc')).toBe('minimal');
   });
 
   it('returns full for channel sessions', () => {
@@ -207,13 +211,12 @@ describe('buildSystemPrompt', () => {
       expect(result).toContain('[...truncated, read AGENTS.md for full content...]');
     });
 
-    it('minimal mode only loads AGENTS.md and TOOLS.md', async () => {
+    it('minimal mode loads all bootstrap files', async () => {
       const dir = await makeTmpDir();
       await fs.writeFile(path.join(dir, 'AGENTS.md'), '# Agents OK');
       await fs.writeFile(path.join(dir, 'TOOLS.md'), '# Tools OK');
       await fs.writeFile(path.join(dir, 'SOUL.md'), '# Soul persona');
       await fs.writeFile(path.join(dir, 'USER.md'), '# User prefs');
-      await fs.writeFile(path.join(dir, 'MEMORY.md'), '# Memory data');
 
       const result = await buildSystemPrompt({
         mode: 'minimal',
@@ -222,9 +225,8 @@ describe('buildSystemPrompt', () => {
       });
       expect(result).toContain('# Agents OK');
       expect(result).toContain('# Tools OK');
-      expect(result).not.toContain('# Soul persona');
-      expect(result).not.toContain('# User prefs');
-      expect(result).not.toContain('# Memory data');
+      expect(result).toContain('# Soul persona');
+      expect(result).toContain('# User prefs');
     });
   });
 });

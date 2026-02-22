@@ -242,6 +242,27 @@ export function buildTree(): MenuNode[] {
       ],
     },
 {
+      key: 'sessions',
+      kind: 'group',
+      label: 'Sessions',
+      children: [
+        {
+          key: 'list',
+          kind: 'leaf',
+          label: 'List',
+          hint: 'Show all sessions',
+          action: async () => { const m = await import('./sessions.js'); await m.list(); },
+        },
+        {
+          key: 'history',
+          kind: 'leaf',
+          label: 'History',
+          hint: 'Show session transcript',
+          action: async (args) => { const m = await import('./sessions.js'); await m.history(args); },
+        },
+      ],
+    },
+    {
       key: 'health',
       kind: 'leaf',
       label: 'Health',

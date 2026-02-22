@@ -4,7 +4,7 @@
 
 import { z } from 'zod';
 import { Tool, ToolContext, textResult, errorResult } from '../types.js';
-import { isSubagentSessionKey } from '../../lib/errors.js';
+import { canSpawnSubagent } from '../../lib/errors.js';
 import { createLogger } from '../../lib/logger.js';
 
 const log = createLogger('sessions-spawn');
@@ -26,8 +26,8 @@ export const sessionsSpawnTool: Tool = {
     if (!context.call) return errorResult('Gateway not available');
 
     try {
-      if (isSubagentSessionKey(context.sessionKey)) {
-        return errorResult('Sub-agents cannot spawn other sub-agents.');
+      if (!canSpawnSubagent(context.sessionKey)) {
+        return errorResult('Maximum sub-agent nesting depth reached.');
       }
 
       const childKey = `${context.sessionKey}:subagent:${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
