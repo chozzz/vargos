@@ -214,6 +214,20 @@ export function buildTree(): MenuNode[] {
       ],
     },
     {
+      key: 'debug',
+      kind: 'group',
+      label: 'Debug',
+      children: [
+        {
+          key: 'inspect',
+          kind: 'leaf',
+          label: 'Inspect',
+          hint: 'Show registered services, methods, events, tools',
+          action: async () => { const m = await import('./debug.js'); await m.inspect(); },
+        },
+      ],
+    },
+    {
       key: 'health',
       kind: 'leaf',
       label: 'Health',
