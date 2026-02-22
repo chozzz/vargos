@@ -17,6 +17,8 @@ interface ExecResult {
   stdout: string;
   stderr: string;
   exitCode: number;
+  stdoutTruncated: boolean;
+  stderrTruncated: boolean;
 }
 
 /**
@@ -51,6 +53,8 @@ function execCommand(
     let stdout = '';
     let stderr = '';
     let killed = false;
+    let stdoutTruncated = false;
+    let stderrTruncated = false;
 
     const timeout = setTimeout(() => {
       killed = true;
@@ -58,18 +62,20 @@ function execCommand(
     }, timeoutMs);
 
     child.stdout?.on('data', (data) => {
+      if (stdoutTruncated) return;
       stdout += data.toString();
-      // Truncate if too large
       if (stdout.length > 100000) {
-        stdout = stdout.slice(0, 100000) + '\n... (truncated)';
+        stdout = stdout.slice(0, 100000);
+        stdoutTruncated = true;
       }
     });
 
     child.stderr?.on('data', (data) => {
+      if (stderrTruncated) return;
       stderr += data.toString();
-      // Truncate if too large
       if (stderr.length > 100000) {
-        stderr = stderr.slice(0, 100000) + '\n... (truncated)';
+        stderr = stderr.slice(0, 100000);
+        stderrTruncated = true;
       }
     });
 
@@ -79,6 +85,8 @@ function execCommand(
         stdout: sanitizeOutput(stdout),
         stderr: sanitizeOutput(stderr),
         exitCode: exitCode ?? (killed ? -1 : 0),
+        stdoutTruncated,
+        stderrTruncated,
       });
     });
 
@@ -88,6 +96,8 @@ function execCommand(
         stdout: sanitizeOutput(stdout),
         stderr: sanitizeOutput(`${stderr}\nProcess error: ${err.message}`),
         exitCode: -1,
+        stdoutTruncated,
+        stderrTruncated,
       });
     });
   });
@@ -112,8 +122,12 @@ export const execTool: Tool = {
 
     try {
       const result = await execCommand(params.command, context.workingDir, timeoutMs);
+      const truncated = result.stdoutTruncated || result.stderrTruncated;
 
       let output = '';
+      if (truncated) {
+        output += '[WARNING: Output truncated at 100K chars — results may be incomplete]\n\n';
+      }
       if (result.stdout) {
         output += `STDOUT:\n${result.stdout}\n`;
       }
@@ -122,11 +136,13 @@ export const execTool: Tool = {
       }
       output += `Exit code: ${result.exitCode}`;
 
+      const metadata = truncated ? { truncated: true } : undefined;
+
       if (result.exitCode !== 0) {
-        return { content: [{ type: 'text', text: output }], isError: true };
+        return { content: [{ type: 'text', text: output }], isError: true, metadata };
       }
 
-      return textResult(output);
+      return textResult(output, metadata);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return errorResult(`Execution failed: ${message}`);

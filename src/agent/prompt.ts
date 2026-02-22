@@ -114,25 +114,6 @@ export async function buildSystemPrompt(options: SystemPromptOptions): Promise<s
  * Build tooling section with detailed descriptions
  */
 async function buildToolingSection(toolNames: string[]): Promise<string> {
-  // Core tool descriptions
-  const coreToolDescriptions: Record<string, string> = {
-    read: 'Read file contents',
-    write: 'Create or overwrite files',
-    edit: 'Make precise edits to files by replacing exact text',
-    exec: 'Execute shell commands (git, gh, npm, curl, etc.). Use for cloning repos, running builds, managing git workflows',
-    process: 'Manage long-running background exec sessions (start, poll, log, kill)',
-    browser: 'Control web browser for automation (navigate, click, screenshot)',
-    'web_fetch': 'Fetch and extract readable content from URLs',
-    'memory_search': 'Search indexed memory files with hybrid vector+text',
-    'memory_get': 'Get specific lines from memory files',
-    'sessions_list': 'List sessions with filters',
-    'sessions_history': 'Fetch message history for a session',
-    'sessions_send': 'Send message to another session',
-    'sessions_spawn': 'Spawn a sub-agent in isolated session',
-    'cron_add': 'Schedule recurring tasks',
-    'cron_list': 'List scheduled cron jobs',
-  };
-
   const { external } = toolRegistry.getGroups();
   const externalNames = new Set<string>();
   for (const tools of external.values()) {
@@ -147,7 +128,7 @@ async function buildToolingSection(toolNames: string[]): Promise<string> {
 
   for (const name of toolNames) {
     if (externalNames.has(name)) continue;
-    const desc = coreToolDescriptions[name] || toolRegistry.get(name)?.description || 'Available tool';
+    const desc = toolRegistry.get(name)?.description || 'Available tool';
     lines.push(`- ${name}: ${desc}`);
   }
 
