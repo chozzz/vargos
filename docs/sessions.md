@@ -11,6 +11,7 @@ Sessions persist conversation history and provide isolation between different in
 | `whatsapp:<userId>` | `whatsapp:61423222658` | WhatsApp adapter | full | 30 turns |
 | `telegram:<chatId>` | `telegram:123456` | Telegram adapter | full | 30 turns |
 | `cron:<taskId>` | `cron:cron-abc` | Cron service | minimal | 10 turns |
+| `webhook:<hookId>` | `webhook:github` | Webhook service | minimal | 10 turns |
 | `<parent>:subagent:<rand>` | `cli:chat:subagent:1708-x7k` | `sessions_spawn` tool | full | inherits root |
 | `mcp:default` | `mcp:default` | MCP bridge | full | 50 turns |
 
@@ -56,6 +57,7 @@ The Pi SDK runs in-memory only — no session files from the LLM runtime. All pe
 - **Run sessions** (`cli:run`) reuse the same key, so history accumulates across runs
 - **Channel sessions** (`whatsapp:*`, `telegram:*`) are keyed by sender ID — one session per contact
 - **Cron sessions** (`cron:*`) are keyed by task ID — history accumulates across executions (limited to 10 turns)
+- **Webhook sessions** (`webhook:*`) are keyed by hook ID — history accumulates across fires (limited to 10 turns)
 - **Subagent sessions** (`*:subagent:*`) include a random suffix, always fresh. On completion, parent is re-triggered and result delivered through the channel
 
 ## Message Queue

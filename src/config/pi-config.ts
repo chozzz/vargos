@@ -4,6 +4,7 @@
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import type { WebhookHook } from '../webhooks/types.js';
 
 const PI_AGENT_DIR = 'agent';
 const CONFIG_FILE = 'config.json';
@@ -116,6 +117,12 @@ export interface CompactionConfig {
   safeguard?: CompactionSafeguardConfig;
 }
 
+export interface WebhooksConfig {
+  port?: number;      // default 9002
+  host?: string;      // default 127.0.0.1
+  hooks: WebhookHook[];
+}
+
 export interface VargosConfig {
   models: Record<string, ModelProfile>;
   agent: AgentRef;
@@ -128,6 +135,7 @@ export interface VargosConfig {
   mcpServers?: Record<string, McpServerEntry>;
   paths?: PathsConfig;
   storage?: StorageConfig;
+  webhooks?: WebhooksConfig;
 }
 
 /**

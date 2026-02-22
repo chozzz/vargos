@@ -87,6 +87,28 @@ export function validateConfig(config: VargosConfig): ValidationResult {
     }
   }
 
+  // Webhook validation
+  if (config.webhooks) {
+    if (config.webhooks.port !== undefined) {
+      if (!Number.isInteger(config.webhooks.port) || config.webhooks.port < 1 || config.webhooks.port > 65535) {
+        errors.push('webhooks.port must be an integer 1-65535');
+      }
+    }
+    const hookIds = new Set<string>();
+    for (const hook of config.webhooks.hooks ?? []) {
+      if (!hook.id || !hook.token) {
+        errors.push('webhooks.hooks: each hook requires id and token');
+      }
+      if (hook.id && !/^[a-z0-9_-]+$/i.test(hook.id)) {
+        errors.push(`webhooks.hooks.${hook.id}: id must match [a-z0-9_-]+`);
+      }
+      if (hook.id && hookIds.has(hook.id)) {
+        errors.push(`webhooks.hooks: duplicate hook id "${hook.id}"`);
+      }
+      if (hook.id) hookIds.add(hook.id);
+    }
+  }
+
   // Compaction validation
   if (config.compaction) {
     const cp = config.compaction.contextPruning;

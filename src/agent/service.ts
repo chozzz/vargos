@@ -46,7 +46,7 @@ export class AgentService extends ServiceClient {
       service: 'agent',
       methods: ['agent.run', 'agent.abort', 'agent.status', 'agent.stats'],
       events: ['run.started', 'run.delta', 'run.completed'],
-      subscriptions: ['message.received', 'cron.trigger'],
+      subscriptions: ['message.received', 'cron.trigger', 'webhook.trigger'],
       gatewayUrl: config.gatewayUrl,
     });
     this.runtime = config.runtime;
@@ -97,6 +97,12 @@ export class AgentService extends ServiceClient {
       case 'cron.trigger':
         this.handleCronTrigger(p).catch((err) =>
           log.error(`Error handling cron trigger: ${err}`),
+        );
+        break;
+
+      case 'webhook.trigger':
+        this.handleWebhookTrigger(p).catch((err) =>
+          log.error(`Error handling webhook trigger: ${err}`),
         );
         break;
     }
@@ -265,6 +271,43 @@ export class AgentService extends ServiceClient {
           await this.call('sessions', 'session.addMessage', {
             sessionKey: target, content: cleaned, role: 'assistant',
             metadata: { source: 'cron', taskId },
+          }).catch(() => {});
+        }
+      }
+
+      await this.deliverToChannel(parsed.channel, parsed.userId, result);
+    }
+  }
+
+  private async handleWebhookTrigger(payload: Record<string, unknown>): Promise<void> {
+    const { hookId, task, sessionKey, notify } = payload as {
+      hookId: string;
+      task: string;
+      sessionKey: string;
+      notify?: string[];
+    };
+
+    log.info(`webhook trigger: ${hookId} → ${sessionKey}${notify?.length ? ` (notify: ${notify.length} targets)` : ''}`);
+
+    await this.call('sessions', 'session.addMessage', {
+      sessionKey, content: task, role: 'user',
+      metadata: { source: 'webhook', hookId },
+    }).catch(() => {});
+
+    const result = await this.runAgent({ sessionKey, task });
+
+    if (!notify?.length) return;
+
+    for (const target of notify) {
+      const parsed = parseTarget(target);
+      if (!parsed) continue;
+
+      if (result.success && result.response) {
+        const cleaned = stripHeartbeatToken(result.response);
+        if (cleaned) {
+          await this.call('sessions', 'session.addMessage', {
+            sessionKey: target, content: cleaned, role: 'assistant',
+            metadata: { source: 'webhook', hookId },
           }).catch(() => {});
         }
       }

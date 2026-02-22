@@ -70,7 +70,7 @@ export function limitHistoryTurns(
  */
 export function getHistoryLimit(sessionKey: string): number {
   const root = sessionKey.split(':subagent:')[0];
-  if (root.startsWith('cron:')) return 10;
+  if (root.startsWith('cron:') || root.startsWith('webhook:')) return 10;
   if (root.startsWith('whatsapp:') || root.startsWith('telegram:')) return 30;
   return 50;
 }

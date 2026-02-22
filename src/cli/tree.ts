@@ -256,6 +256,27 @@ export function buildTree(): MenuNode[] {
       ],
     },
     {
+      key: 'webhooks',
+      kind: 'group',
+      label: 'Webhooks',
+      children: [
+        {
+          key: 'list',
+          kind: 'leaf',
+          label: 'List',
+          hint: 'Show configured webhooks',
+          action: async () => { const m = await import('./webhooks.js'); await m.list(); },
+        },
+        {
+          key: 'status',
+          kind: 'leaf',
+          label: 'Status',
+          hint: 'Show webhook fire stats',
+          action: async () => { const m = await import('./webhooks.js'); await m.status(); },
+        },
+      ],
+    },
+    {
       key: 'sessions',
       kind: 'group',
       label: 'Sessions',
