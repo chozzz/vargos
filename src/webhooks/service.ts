@@ -4,11 +4,12 @@
  * Methods: webhook.list, webhook.status
  * Events:  webhook.trigger
  *
- * Follows the same fire-and-forget pattern as cron: create session,
- * emit event, let the agent service handle execution + delivery.
+ * Fire-and-forget: receive HTTP, transform, emit event.
+ * Agent service subscribes and handles execution + delivery.
  */
 
 import http from 'node:http';
+import { timingSafeEqual } from 'node:crypto';
 import { ServiceClient } from '../gateway/service-client.js';
 import { createLogger } from '../lib/logger.js';
 import { passthroughTransform, loadTransform } from './transform.js';
@@ -17,6 +18,7 @@ import type { WebhookHook, WebhookStatus } from './types.js';
 const log = createLogger('webhook');
 
 const MAX_BODY = 1024 * 1024; // 1MB
+const HOOK_ID_RE = /^[a-z0-9_-]+$/i;
 
 export interface WebhookServiceConfig {
   gatewayUrl?: string;
@@ -48,10 +50,16 @@ export class WebhookService extends ServiceClient {
     this.httpHost = config.host ?? '127.0.0.1';
   }
 
-  async handleMethod(method: string, params: unknown): Promise<unknown> {
+  async handleMethod(method: string, _params: unknown): Promise<unknown> {
     switch (method) {
       case 'webhook.list':
-        return Array.from(this.hooks.values());
+        // Strip tokens — never expose secrets over gateway
+        return Array.from(this.hooks.values()).map((h) => ({
+          id: h.id,
+          description: h.description,
+          transform: h.transform,
+          notify: h.notify,
+        }));
       case 'webhook.status':
         return this.getStatuses();
       default:
@@ -68,6 +76,8 @@ export class WebhookService extends ServiceClient {
   async startHttp(): Promise<void> {
     return new Promise((resolve, reject) => {
       this.server = http.createServer((req, res) => this.handleRequest(req, res));
+      this.server.headersTimeout = 10_000;
+      this.server.requestTimeout = 30_000;
       this.server.on('error', reject);
       this.server.listen(this.httpPort, this.httpHost, () => {
         log.info(`http listening on ${this.httpHost}:${this.httpPort}`);
@@ -77,17 +87,15 @@ export class WebhookService extends ServiceClient {
   }
 
   async stopHttp(): Promise<void> {
-    if (!this.server) return;
-    return new Promise((resolve) => {
-      this.server!.close(() => resolve());
-      this.server = null;
-    });
+    const srv = this.server;
+    if (!srv) return;
+    this.server = null;
+    return new Promise((resolve) => srv.close(() => resolve()));
   }
 
   // ── Request handling ─────────────────────────────────────────────────────
 
   private handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
-    // Only POST /hooks/:hookId
     if (req.method !== 'POST' || !req.url?.startsWith('/hooks/')) {
       res.writeHead(404, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Not found' }));
@@ -95,6 +103,12 @@ export class WebhookService extends ServiceClient {
     }
 
     const hookId = req.url.slice('/hooks/'.length).split('?')[0];
+    if (!HOOK_ID_RE.test(hookId)) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid hook ID' }));
+      return;
+    }
+
     const hook = this.hooks.get(hookId);
     if (!hook) {
       res.writeHead(404, { 'Content-Type': 'application/json' });
@@ -102,9 +116,11 @@ export class WebhookService extends ServiceClient {
       return;
     }
 
-    // Bearer token auth
-    const auth = req.headers.authorization;
-    if (!auth || auth !== `Bearer ${hook.token}`) {
+    // Timing-safe bearer token comparison
+    const auth = req.headers.authorization ?? '';
+    const expected = `Bearer ${hook.token}`;
+    if (auth.length !== expected.length ||
+        !timingSafeEqual(Buffer.from(auth), Buffer.from(expected))) {
       res.writeHead(401, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Unauthorized' }));
       return;
@@ -113,13 +129,23 @@ export class WebhookService extends ServiceClient {
     // Read body with size cap
     const chunks: Buffer[] = [];
     let size = 0;
+    let destroyed = false;
+
+    req.on('error', () => {
+      if (!res.writableEnded) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Request error' }));
+      }
+    });
 
     req.on('data', (chunk: Buffer) => {
+      if (destroyed) return;
       size += chunk.length;
       if (size > MAX_BODY) {
+        destroyed = true;
+        req.destroy();
         res.writeHead(413, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Payload too large' }));
-        req.destroy();
         return;
       }
       chunks.push(chunk);
@@ -128,7 +154,6 @@ export class WebhookService extends ServiceClient {
     req.on('end', () => {
       if (res.writableEnded) return;
 
-      // Respond 200 immediately — processing is async
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true }));
 
@@ -153,16 +178,6 @@ export class WebhookService extends ServiceClient {
       : passthroughTransform(payload);
 
     const sessionKey = `webhook:${hook.id}`;
-
-    // Create persistent session (ignore if exists — accumulates context)
-    await this.call('sessions', 'session.create', {
-      sessionKey,
-      kind: 'webhook',
-      metadata: { hookId: hook.id },
-    }).catch((err: unknown) => {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (!msg.includes('already exists')) log.error(`Failed to create webhook session: ${msg}`);
-    });
 
     // Update stats
     const s = this.stats.get(hook.id);

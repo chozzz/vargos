@@ -2,16 +2,26 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { GatewayServer } from '../gateway/server.js';
 import { ServiceClient } from '../gateway/service-client.js';
 import { WebhookService } from './service.js';
+import { passthroughTransform, loadTransform } from './transform.js';
 import type { WebhookHook, WebhookStatus } from './types.js';
 
 const PORT = 19807;
 const HTTP_PORT = 19808;
 const GATEWAY_URL = `ws://127.0.0.1:${PORT}`;
+const BASE = `http://127.0.0.1:${HTTP_PORT}`;
 
 const TEST_HOOKS: WebhookHook[] = [
   { id: 'github', token: 'secret-gh', description: 'GitHub pushes' },
   { id: 'stripe', token: 'secret-stripe', notify: ['whatsapp:61400000000'], description: 'Stripe events' },
 ];
+
+function post(hookId: string, token: string, body: unknown = {}) {
+  return fetch(`${BASE}/hooks/${hookId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+}
 
 class TestSubscriber extends ServiceClient {
   events: Array<{ event: string; payload: unknown }> = [];
@@ -31,7 +41,6 @@ class TestSubscriber extends ServiceClient {
   }
 }
 
-// Stub session service so session.create calls don't fail
 class StubSessionService extends ServiceClient {
   constructor() {
     super({
@@ -80,10 +89,16 @@ describe('WebhookService', () => {
     await gateway.stop();
   });
 
-  it('lists hooks via gateway', async () => {
-    const hooks = await subscriber.call<WebhookHook[]>('webhook', 'webhook.list', {});
+  // ── Gateway methods ────────────────────────────────────────────────────
+
+  it('lists hooks via gateway without exposing tokens', async () => {
+    const hooks = await subscriber.call<Array<Record<string, unknown>>>('webhook', 'webhook.list', {});
     expect(hooks).toHaveLength(2);
     expect(hooks.map(h => h.id)).toEqual(['github', 'stripe']);
+    // Tokens must never be returned
+    for (const h of hooks) {
+      expect(h).not.toHaveProperty('token');
+    }
   });
 
   it('returns status with zero fires initially', async () => {
@@ -93,21 +108,15 @@ describe('WebhookService', () => {
     expect(statuses[0].lastFired).toBeUndefined();
   });
 
+  // ── Successful fire ────────────────────────────────────────────────────
+
   it('fires webhook.trigger on valid POST', async () => {
-    const res = await fetch(`http://127.0.0.1:${HTTP_PORT}/hooks/github`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer secret-gh',
-      },
-      body: JSON.stringify({ ref: 'refs/heads/main' }),
-    });
+    const res = await post('github', 'secret-gh', { ref: 'refs/heads/main' });
 
     expect(res.status).toBe(200);
     const body = await res.json() as { ok: boolean };
     expect(body.ok).toBe(true);
 
-    // Wait for async event delivery
     await new Promise((r) => setTimeout(r, 200));
 
     const trigger = subscriber.events.find(e => e.event === 'webhook.trigger');
@@ -115,47 +124,12 @@ describe('WebhookService', () => {
     const p = trigger!.payload as Record<string, unknown>;
     expect(p.hookId).toBe('github');
     expect(p.sessionKey).toBe('webhook:github');
-    expect(typeof p.task).toBe('string');
     // Passthrough transform yields JSON
     expect(JSON.parse(p.task as string)).toEqual({ ref: 'refs/heads/main' });
   });
 
-  it('rejects with 401 on wrong bearer token', async () => {
-    const res = await fetch(`http://127.0.0.1:${HTTP_PORT}/hooks/github`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer wrong-token',
-      },
-      body: JSON.stringify({}),
-    });
-
-    expect(res.status).toBe(401);
-  });
-
-  it('returns 404 for unknown hook ID', async () => {
-    const res = await fetch(`http://127.0.0.1:${HTTP_PORT}/hooks/unknown`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer whatever',
-      },
-      body: JSON.stringify({}),
-    });
-
-    expect(res.status).toBe(404);
-  });
-
   it('updates fire stats after trigger', async () => {
-    await fetch(`http://127.0.0.1:${HTTP_PORT}/hooks/github`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer secret-gh',
-      },
-      body: JSON.stringify({ event: 'push' }),
-    });
-
+    await post('github', 'secret-gh', { event: 'push' });
     await new Promise((r) => setTimeout(r, 200));
 
     const statuses = await subscriber.call<WebhookStatus[]>('webhook', 'webhook.status', {});
@@ -166,15 +140,7 @@ describe('WebhookService', () => {
   });
 
   it('includes notify targets in webhook.trigger event', async () => {
-    await fetch(`http://127.0.0.1:${HTTP_PORT}/hooks/stripe`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer secret-stripe',
-      },
-      body: JSON.stringify({ type: 'payment_intent.succeeded' }),
-    });
-
+    await post('stripe', 'secret-stripe', { type: 'payment_intent.succeeded' });
     await new Promise((r) => setTimeout(r, 200));
 
     const trigger = subscriber.events.find(
@@ -182,5 +148,92 @@ describe('WebhookService', () => {
     );
     expect(trigger).toBeDefined();
     expect((trigger!.payload as any).notify).toEqual(['whatsapp:61400000000']);
+  });
+
+  // ── Auth rejection ─────────────────────────────────────────────────────
+
+  it('rejects with 401 on wrong bearer token', async () => {
+    const res = await post('github', 'wrong-token');
+    expect(res.status).toBe(401);
+  });
+
+  it('rejects with 401 when no Authorization header', async () => {
+    const res = await fetch(`${BASE}/hooks/github`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  // ── Route handling ─────────────────────────────────────────────────────
+
+  it('returns 404 for unknown hook ID', async () => {
+    const res = await post('unknown', 'whatever');
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 404 for GET request', async () => {
+    const res = await fetch(`${BASE}/hooks/github`);
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 404 for non-hooks path', async () => {
+    const res = await fetch(`${BASE}/other`, { method: 'POST' });
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 400 for malformed hook ID', async () => {
+    const res = await fetch(`${BASE}/hooks/bad%20id!`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer x' },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  // ── Body handling ──────────────────────────────────────────────────────
+
+  it('handles invalid JSON body gracefully', async () => {
+    const res = await fetch(`${BASE}/hooks/github`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer secret-gh' },
+      body: 'not json',
+    });
+    expect(res.status).toBe(200);
+
+    await new Promise((r) => setTimeout(r, 200));
+
+    // Still fires with empty payload
+    const trigger = subscriber.events.find(e => e.event === 'webhook.trigger');
+    expect(trigger).toBeDefined();
+    expect(JSON.parse((trigger!.payload as any).task)).toEqual({});
+  });
+});
+
+// ── Transform unit tests (no gateway needed) ─────────────────────────────
+
+describe('passthroughTransform', () => {
+  it('serializes object to formatted JSON', () => {
+    const result = passthroughTransform({ key: 'value' });
+    expect(JSON.parse(result)).toEqual({ key: 'value' });
+    expect(result).toContain('\n'); // pretty-printed
+  });
+
+  it('handles null and primitives', () => {
+    expect(passthroughTransform(null)).toBe('null');
+    expect(passthroughTransform(42)).toBe('42');
+  });
+});
+
+describe('loadTransform', () => {
+  it('rejects non-existent module', async () => {
+    await expect(loadTransform('./nonexistent-module-xyz.js'))
+      .rejects.toThrow();
+  });
+
+  it('rejects path escaping baseDir', async () => {
+    await expect(loadTransform('../../etc/passwd', '/home/safe'))
+      .rejects.toThrow('escapes data directory');
   });
 });
