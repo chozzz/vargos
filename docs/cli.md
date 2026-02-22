@@ -52,6 +52,13 @@ Bare `vargos` opens an interactive menu with breadcrumb navigation. Select comma
 |---------|-------------|
 | `vargos channels send <target> <message>` | Send a message to a channel (e.g. `whatsapp:61400000000 "Hello"`) |
 
+## Webhook Commands
+
+| Command | Description |
+|---------|-------------|
+| `vargos webhooks list` | Show configured webhooks |
+| `vargos webhooks status` | Show webhook fire stats |
+
 ## Cron Commands
 
 | Command | Description |

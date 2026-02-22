@@ -276,6 +276,23 @@ export async function start(): Promise<void> {
     }
   }
 
+  // ── Webhook service (optional) ──────────────────────────────────────────
+  let webhooks: import('../../webhooks/service.js').WebhookService | undefined;
+  if (config.webhooks?.hooks?.length) {
+    const { WebhookService } = await import('../../webhooks/service.js');
+    webhooks = new WebhookService({
+      gatewayUrl,
+      hooks: config.webhooks.hooks,
+      port: config.webhooks.port,
+      host: config.webhooks.host,
+    });
+    await webhooks.connect();
+    await webhooks.startHttp();
+    const whPort = config.webhooks.port ?? 9002;
+    const whHost = config.webhooks.host ?? '127.0.0.1';
+    services.push({ name: 'Webhooks', ok: true, detail: `http://${whHost}:${whPort} (${config.webhooks.hooks.length} hook${config.webhooks.hooks.length !== 1 ? 's' : ''})` });
+  }
+
   // ── MCP bridge ────────────────────────────────────────────────────────────
   const mcpBridge = new McpBridge({ gatewayUrl, version: VERSION });
   await mcpBridge.connect();
@@ -309,6 +326,10 @@ export async function start(): Promise<void> {
     await mcpClients.disconnectAll();
     await mcpBridge.stopHttp().catch(() => {});
     await mcpBridge.disconnect();
+    if (webhooks) {
+      await webhooks.stopHttp().catch(() => {});
+      await webhooks.disconnect();
+    }
     await agent.disconnect();
     await channels.stopAdapters();
     await channels.disconnect();
