@@ -154,6 +154,35 @@ describe('validateConfig', () => {
     expect(result.valid).toBe(true);
     expect(result.warnings).toEqual(expect.arrayContaining([expect.stringMatching(/fallback/)]));
   });
+
+  it('agent.media referencing unknown profile produces warning', () => {
+    const result = validateConfig({ ...validConfig(), agent: { primary: 'openai', media: { audio: 'missing' } } });
+    expect(result.valid).toBe(true);
+    expect(result.warnings).toEqual(expect.arrayContaining([expect.stringMatching(/agent\.media\.audio.*missing/)]));
+  });
+
+  it('agent.media referencing valid profile produces no warning', () => {
+    const result = validateConfig({
+      models: {
+        openai: { provider: 'openai', model: 'gpt-4o', apiKey: 'sk-test' },
+        whisper: { provider: 'openai', model: 'whisper-1', apiKey: 'sk-test' },
+      },
+      agent: { primary: 'openai', media: { audio: 'whisper' } },
+    });
+    expect(result.valid).toBe(true);
+    expect(result.warnings).toHaveLength(0);
+  });
+
+  it('agent.media with multiple invalid entries produces multiple warnings', () => {
+    const result = validateConfig({
+      ...validConfig(),
+      agent: { primary: 'openai', media: { audio: 'missing-a', image: 'missing-b' } },
+    });
+    expect(result.valid).toBe(true);
+    expect(result.warnings).toHaveLength(2);
+    expect(result.warnings[0]).toMatch(/agent\.media\.audio/);
+    expect(result.warnings[1]).toMatch(/agent\.media\.image/);
+  });
 });
 
 describe('LOCAL_PROVIDERS', () => {

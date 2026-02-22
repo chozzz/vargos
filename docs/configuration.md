@@ -45,7 +45,11 @@ Priority: `config.paths.dataDir` > `VARGOS_DATA_DIR` env > `~/.vargos`
   // Which profiles the agent uses
   "agent": {
     "primary": "anthropic",         // key from models map
-    "fallback": "openai"            // optional
+    "fallback": "openai",           // optional
+    "media": {                      // optional — media type → model profile
+      "audio": "whisper",
+      "image": "vision"
+    }
   },
 
   // Optional — all fields have sensible defaults
@@ -120,7 +124,41 @@ The `agent` field points into the `models` map:
 {
   "agent": {
     "primary": "anthropic",    // required — default model profile
-    "fallback": "openai"       // optional — used when primary fails
+    "fallback": "openai",      // optional — used when primary fails
+    "media": {                 // optional — media preprocessing
+      "audio": "whisper",
+      "image": "vision"
+    }
+  }
+}
+```
+
+## Media Processing
+
+When media arrives on a channel, the primary model may not support it. The `agent.media` map routes each media type to a dedicated model profile for preprocessing:
+
+| Media type | Supported providers | What happens |
+|-----------|-------------------|--------------|
+| `audio` | `openai` (Whisper) | Transcribed to text, replaces message content |
+| `image` | `openai`, `anthropic` | Description prepended to message content |
+
+Omitted types: images fall through to the primary model as-is (may support vision natively), other types get a "not configured" error sent back to the user.
+
+Example config with Whisper + Vision:
+
+```jsonc
+{
+  "models": {
+    "kimi": { "provider": "openrouter", "model": "moonshotai/kimi-k2.5" },
+    "whisper": { "provider": "openai", "model": "whisper-1", "apiKey": "sk-..." },
+    "vision": { "provider": "openai", "model": "gpt-4o-mini", "apiKey": "sk-..." }
+  },
+  "agent": {
+    "primary": "kimi",
+    "media": {
+      "audio": "whisper",
+      "image": "vision"
+    }
   }
 }
 ```
