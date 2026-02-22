@@ -160,7 +160,7 @@ abstract class ServiceClient {
   constructor(config: {
     service: string;
     methods: ServiceMethod[];    // typed string literals from gateway/methods.ts
-    events: ServiceEvent[];      // typed string literals from gateway/events.ts
+    events: ServiceEvent[];      // typed string literals from gateway/methods.ts
     subscriptions: ServiceEvent[];
     gatewayUrl?: string;
   }) {}

@@ -6,7 +6,7 @@
 import { text, log, isCancel } from '@clack/prompts';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { loadChannelConfigs, addChannelConfig } from './config.js';
+import { addChannelConfig } from './config.js';
 import { resolveChannelsDir, resolveDataDir } from '../config/paths.js';
 import { createWhatsAppSocket } from './whatsapp/session.js';
 import { TelegramAdapter } from './telegram/adapter.js';
@@ -120,28 +120,5 @@ export async function setupTelegram(): Promise<void> {
   } catch (err) {
     log.error(`Validation failed: ${err instanceof Error ? err.message : String(err)}`);
     log.warn('Check your bot token and try again.');
-  }
-}
-
-export async function viewChannels(): Promise<void> {
-  const channels = await loadChannelConfigs();
-
-  if (channels.length === 0) {
-    log.info('No channels configured');
-    return;
-  }
-
-  for (const ch of channels) {
-    const status = ch.enabled ? 'enabled' : 'disabled';
-    const parts = [status];
-    if (ch.type === 'telegram' && ch.botToken) {
-      parts.push(`token: ...${String(ch.botToken).slice(-6)}`);
-    }
-    if (ch.allowFrom?.length) {
-      parts.push(`allow: ${ch.allowFrom.join(', ')}`);
-    } else {
-      parts.push('allow: all');
-    }
-    log.info(`${ch.type}: ${parts.join(' | ')}`);
   }
 }

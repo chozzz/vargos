@@ -27,6 +27,7 @@ export interface ModelProfile {
 export interface AgentRef {
   primary: string;
   fallback?: string;
+  media?: Record<string, string>;  // media type → model profile name
 }
 
 /** @deprecated Use ModelProfile instead — kept for migration compatibility */
@@ -118,7 +119,7 @@ export function resolveModel(config: VargosConfig, name?: string): ModelProfile 
   return profile;
 }
 
-export function getConfigPath(dataDir: string): string {
+function getConfigPath(dataDir: string): string {
   return path.join(dataDir, CONFIG_FILE);
 }
 

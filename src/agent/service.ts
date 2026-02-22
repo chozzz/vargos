@@ -18,9 +18,10 @@ import { type PiAgentRuntime, type PiAgentConfig, type PiAgentRunResult } from '
 const log = createLogger('agent');
 import type { AgentStreamEvent } from './lifecycle.js';
 import { resolveWorkspaceDir, resolveDataDir } from '../config/paths.js';
-import { loadConfig, resolveModel } from '../config/pi-config.js';
+import { loadConfig, resolveModel, type VargosConfig } from '../config/pi-config.js';
 import { loadContextFiles } from '../config/workspace.js';
 import { LOCAL_PROVIDERS } from '../config/validate.js';
+import { transformMedia, type MediaAttachment } from '../lib/media-transform.js';
 
 export interface AgentServiceConfig {
   gatewayUrl?: string;
@@ -87,8 +88,8 @@ export class AgentService extends ServiceClient {
     }
   }
 
-  private async runAgent(params: AgentRunParams): Promise<PiAgentRunResult> {
-    const config = await this.buildRunConfig(params);
+  private async runAgent(params: AgentRunParams, vargosConfig?: VargosConfig | null): Promise<PiAgentRunResult> {
+    const config = await this.buildRunConfig(params, vargosConfig);
 
     this.emit('run.started', { sessionKey: params.sessionKey, runId: config.runId });
 
@@ -122,14 +123,20 @@ export class AgentService extends ServiceClient {
 
     log.info(`inbound message: ${channel}:${userId} → ${sessionKey}`);
 
+    const config = await loadConfig(this.dataDir);
     const images = metadata?.images as Array<{ data: string; mimeType: string }> | undefined;
+    const media = metadata?.media as MediaAttachment | undefined;
+
+    // Preprocess media → may rewrite task or bail early
+    const task = await this.preprocessMedia(media, content, config, channel, userId);
+    if (task === null) return;
 
     const result = await this.runAgent({
       sessionKey,
-      task: content,
+      task,
       channel,
       images,
-    });
+    }, config);
 
     log.info(`agent result: ${sessionKey} success=${result.success} (${result.response?.length ?? 0} chars)`);
 
@@ -152,6 +159,50 @@ export class AgentService extends ServiceClient {
       await this.call('channel', 'channel.send', { channel, userId, text: errMsg })
         .catch((err) => log.error(`Failed to send error reply: ${err}`));
     }
+  }
+
+  /** Transform media attachment before agent run. Returns rewritten task or null to bail. */
+  private async preprocessMedia(
+    media: MediaAttachment | undefined,
+    content: string,
+    config: VargosConfig | null,
+    channel: string,
+    userId: string,
+  ): Promise<string | null> {
+    if (!media) return content;
+
+    const mediaModelName = config?.agent?.media?.[media.type];
+
+    if (mediaModelName) {
+      try {
+        const profile = resolveModel(config!, mediaModelName);
+        const envKey = process.env[`${profile.provider.toUpperCase()}_API_KEY`];
+        const apiKey = envKey || profile.apiKey;
+        const transformed = await transformMedia(media, { ...profile, apiKey });
+        return media.type === 'audio'
+          ? transformed
+          : `[Image description: ${transformed}]\n\n${content}`;
+      } catch (err) {
+        log.error(`media transform failed: ${err}`);
+        const errMsg = err instanceof Error ? err.message : String(err);
+        await this.call('channel', 'channel.send', {
+          channel, userId,
+          text: `Failed to process ${media.type}: ${errMsg.slice(0, 200)}`,
+        }).catch((e) => log.error(`Failed to send transform error: ${e}`));
+        return null;
+      }
+    }
+
+    if (media.type !== 'image') {
+      await this.call('channel', 'channel.send', {
+        channel, userId,
+        text: `${media.type} processing requires a model. Set agent.media.${media.type} in config.json.`,
+      }).catch((err) => log.error(`Failed to send media error: ${err}`));
+      return null;
+    }
+
+    // Images without a transform model fall through — primary may support vision
+    return content;
   }
 
   private async handleCronTrigger(payload: Record<string, unknown>): Promise<void> {
@@ -214,8 +265,8 @@ export class AgentService extends ServiceClient {
     }
   }
 
-  private async buildRunConfig(params: AgentRunParams): Promise<PiAgentConfig> {
-    const config = await loadConfig(this.dataDir);
+  private async buildRunConfig(params: AgentRunParams, existing?: VargosConfig | null): Promise<PiAgentConfig> {
+    const config = existing ?? await loadConfig(this.dataDir);
     if (!config) throw new Error('No config.json — run: vargos config');
 
     const primary = resolveModel(config);

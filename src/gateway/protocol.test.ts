@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import type { AgentMethod, ToolMethod, SessionMethod, ChannelMethod, CronMethod, GatewayMethod, ServiceMethod } from './methods.js';
-import type { AgentEvent, SessionEvent, ChannelEvent, CronEvent, ServiceEvent } from './events.js';
+import type { AgentMethod, ToolMethod, SessionMethod, ChannelMethod, CronMethod, GatewayMethod, ServiceMethod,
+  AgentEvent, SessionEvent, ChannelEvent, CronEvent, ServiceEvent } from './methods.js';
 
 describe('contracts/methods', () => {
   it('agent methods are valid ServiceMethod values', () => {

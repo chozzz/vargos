@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { GatewayServer } from './server.js';
 import { ServiceClient, type ServiceClientConfig } from './service-client.js';
-import type { ServiceMethod } from './methods.js';
-import type { ServiceEvent } from './events.js';
+import type { ServiceMethod, ServiceEvent } from './methods.js';
 
 const PORT = 19801;
 const GATEWAY_URL = `ws://127.0.0.1:${PORT}`;
