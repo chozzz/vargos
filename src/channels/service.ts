@@ -69,12 +69,19 @@ export class ChannelService extends ServiceClient {
       if (!msg.includes('already exists')) throw err;
     });
 
-    // Store user message
+    // Store user message — strip base64 data from media to avoid session bloat
+    const sessionMeta: Record<string, unknown> = { type: 'task', channel, ...metadata };
+    if (sessionMeta.media && typeof sessionMeta.media === 'object') {
+      const { data: _data, ...rest } = sessionMeta.media as Record<string, unknown>;
+      sessionMeta.media = rest;
+    }
+    if (sessionMeta.images) delete sessionMeta.images;
+
     await this.call('sessions', 'session.addMessage', {
       sessionKey,
       content,
       role: 'user',
-      metadata: { type: 'task', channel, ...metadata },
+      metadata: sessionMeta,
     });
 
     log.info(`inbound: ${channel}:${userId} "${content.slice(0, 80)}"`);

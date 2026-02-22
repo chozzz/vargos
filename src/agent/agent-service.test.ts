@@ -28,13 +28,25 @@ function createMockRuntime() {
   } as any;
 }
 
+let mockConfig: any = {
+  models: { test: { provider: 'test', model: 'test-model', apiKey: 'test-key' } },
+  agent: { primary: 'test' },
+};
+
 vi.mock('../config/pi-config.js', () => ({
-  loadConfig: async () => ({
-    models: { test: { provider: 'test', model: 'test-model', apiKey: 'test-key' } },
-    agent: { primary: 'test' },
-  }),
-  resolveModel: (config: any) => config.models[config.agent.primary],
+  loadConfig: async () => mockConfig,
+  resolveModel: (config: any, name?: string) => {
+    const key = name ?? config.agent.primary;
+    const profile = config.models[key];
+    if (!profile) throw new Error(`Model profile "${key}" not found`);
+    return profile;
+  },
   getPiConfigPaths: () => ({ agentDir: '/tmp', authPath: '/tmp/auth.json', modelsPath: '/tmp/models.json' }),
+}));
+
+const mockTransformMedia = vi.fn();
+vi.mock('../lib/media-transform.js', () => ({
+  transformMedia: (...args: any[]) => mockTransformMedia(...args),
 }));
 
 vi.mock('../config/workspace.js', () => ({
@@ -95,6 +107,12 @@ describe('AgentService', () => {
   let caller: TestCaller;
 
   beforeEach(async () => {
+    mockConfig = {
+      models: { test: { provider: 'test', model: 'test-model', apiKey: 'test-key' } },
+      agent: { primary: 'test' },
+    };
+    mockTransformMedia.mockReset();
+
     gateway = new GatewayServer({ port: PORT, host: '127.0.0.1', requestTimeout: 5000, pingInterval: 60_000 });
     await gateway.start();
 
@@ -149,6 +167,151 @@ describe('AgentService', () => {
   it('returns agent status', async () => {
     const result = await caller.call<{ activeRuns: unknown[] }>('agent', 'agent.status', {});
     expect(result.activeRuns).toEqual([]);
+  });
+
+  it('sends error when non-image media has no transform model', async () => {
+    const channel = new MockChannelService();
+    await channel.connect();
+
+    try {
+      caller.emit('message.received', {
+        channel: 'whatsapp',
+        userId: '456',
+        sessionKey: 'whatsapp:456',
+        content: '[Voice message]',
+        metadata: {
+          media: { type: 'audio', data: 'base64data', mimeType: 'audio/ogg', path: '/tmp/audio.ogg' },
+        },
+      });
+
+      await new Promise((r) => setTimeout(r, 500));
+
+      expect(channel.sent.length).toBe(1);
+      expect(channel.sent[0].text).toContain('audio processing requires a model');
+      expect(channel.sent[0].text).toContain('agent.media.audio');
+    } finally {
+      await channel.disconnect();
+    }
+  });
+
+  it('sends error when media transform fails', async () => {
+    mockConfig = {
+      models: {
+        test: { provider: 'test', model: 'test-model', apiKey: 'test-key' },
+        whisper: { provider: 'openai', model: 'whisper-1', apiKey: 'sk-test' },
+      },
+      agent: { primary: 'test', media: { audio: 'whisper' } },
+    };
+    mockTransformMedia.mockRejectedValueOnce(new Error('Whisper API 401: Unauthorized'));
+
+    const channel = new MockChannelService();
+    await channel.connect();
+
+    try {
+      caller.emit('message.received', {
+        channel: 'whatsapp',
+        userId: '789',
+        sessionKey: 'whatsapp:789',
+        content: '[Voice message]',
+        metadata: {
+          media: { type: 'audio', data: 'base64data', mimeType: 'audio/ogg', path: '/tmp/audio.ogg' },
+        },
+      });
+
+      await new Promise((r) => setTimeout(r, 500));
+
+      expect(channel.sent.length).toBe(1);
+      expect(channel.sent[0].text).toContain('Failed to process audio');
+      expect(channel.sent[0].text).toContain('Whisper API 401');
+    } finally {
+      await channel.disconnect();
+    }
+  });
+
+  it('uses transcription as task when audio transform succeeds', async () => {
+    mockConfig = {
+      models: {
+        test: { provider: 'test', model: 'test-model', apiKey: 'test-key' },
+        whisper: { provider: 'openai', model: 'whisper-1', apiKey: 'sk-test' },
+      },
+      agent: { primary: 'test', media: { audio: 'whisper' } },
+    };
+    mockTransformMedia.mockResolvedValueOnce('What is the weather today?');
+
+    // Runtime that captures the task it receives
+    await agent.disconnect();
+    let capturedTask: string | undefined;
+    const spyRuntime = createMockRuntime();
+    spyRuntime.run = async (config: any) => {
+      capturedTask = config.task;
+      return { success: true, response: 'It is sunny', duration: 100 };
+    };
+    agent = new AgentService({ gatewayUrl: GATEWAY_URL, workspaceDir: '/tmp/workspace', dataDir: '/tmp/data', runtime: spyRuntime });
+    await agent.connect();
+
+    const channel = new MockChannelService();
+    await channel.connect();
+
+    try {
+      caller.emit('message.received', {
+        channel: 'whatsapp',
+        userId: '101',
+        sessionKey: 'whatsapp:101',
+        content: '[Voice message received]',
+        metadata: {
+          media: { type: 'audio', data: 'base64data', mimeType: 'audio/ogg', path: '/tmp/audio.ogg' },
+        },
+      });
+
+      await new Promise((r) => setTimeout(r, 500));
+
+      expect(mockTransformMedia).toHaveBeenCalledOnce();
+      expect(capturedTask).toBe('What is the weather today?');
+      expect(channel.sent.length).toBe(1);
+      expect(channel.sent[0].text).toBe('It is sunny');
+    } finally {
+      await channel.disconnect();
+    }
+  });
+
+  it('image without media config falls through to primary model', async () => {
+    // No agent.media configured — images should pass through
+    let capturedTask: string | undefined;
+    await agent.disconnect();
+    const spyRuntime = createMockRuntime();
+    spyRuntime.run = async (config: any) => {
+      capturedTask = config.task;
+      return { success: true, response: 'I see a cat', duration: 100 };
+    };
+    agent = new AgentService({ gatewayUrl: GATEWAY_URL, workspaceDir: '/tmp/workspace', dataDir: '/tmp/data', runtime: spyRuntime });
+    await agent.connect();
+
+    const channel = new MockChannelService();
+    await channel.connect();
+
+    try {
+      caller.emit('message.received', {
+        channel: 'telegram',
+        userId: '202',
+        sessionKey: 'telegram:202',
+        content: 'What is this?',
+        metadata: {
+          images: [{ data: 'base64img', mimeType: 'image/jpeg' }],
+          media: { type: 'image', data: 'base64img', mimeType: 'image/jpeg', path: '/tmp/img.jpg' },
+        },
+      });
+
+      await new Promise((r) => setTimeout(r, 500));
+
+      // Transform should NOT be called since no media model configured
+      expect(mockTransformMedia).not.toHaveBeenCalled();
+      // Original content passed through
+      expect(capturedTask).toBe('What is this?');
+      expect(channel.sent.length).toBe(1);
+      expect(channel.sent[0].text).toBe('I see a cat');
+    } finally {
+      await channel.disconnect();
+    }
   });
 
   it('sends error feedback to channel on failed run', async () => {

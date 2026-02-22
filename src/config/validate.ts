@@ -41,6 +41,14 @@ export function validateConfig(config: VargosConfig): ValidationResult {
     warnings.push(`agent.fallback "${config.agent.fallback}" not found in models`);
   }
 
+  if (config.agent.media) {
+    for (const [type, profileName] of Object.entries(config.agent.media)) {
+      if (!config.models[profileName]) {
+        warnings.push(`agent.media.${type} "${profileName}" not found in models`);
+      }
+    }
+  }
+
   // Validate each model profile
   for (const [name, profile] of Object.entries(config.models)) {
     validateProfile(name, profile, errors, warnings);
