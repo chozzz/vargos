@@ -87,6 +87,28 @@ export function validateConfig(config: VargosConfig): ValidationResult {
     }
   }
 
+  // Compaction validation
+  if (config.compaction) {
+    const cp = config.compaction.contextPruning;
+    if (cp) {
+      if (cp.keepLastAssistants !== undefined && (!Number.isInteger(cp.keepLastAssistants) || cp.keepLastAssistants < 0)) {
+        errors.push('compaction.contextPruning.keepLastAssistants must be a non-negative integer');
+      }
+      if (cp.softTrimRatio !== undefined && (cp.softTrimRatio < 0 || cp.softTrimRatio > 1)) {
+        errors.push('compaction.contextPruning.softTrimRatio must be between 0 and 1');
+      }
+      if (cp.hardClearRatio !== undefined && (cp.hardClearRatio < 0 || cp.hardClearRatio > 1)) {
+        errors.push('compaction.contextPruning.hardClearRatio must be between 0 and 1');
+      }
+    }
+    const sg = config.compaction.safeguard;
+    if (sg) {
+      if (sg.maxHistoryShare !== undefined && (sg.maxHistoryShare < 0 || sg.maxHistoryShare > 1)) {
+        errors.push('compaction.safeguard.maxHistoryShare must be between 0 and 1');
+      }
+    }
+  }
+
   return { valid: errors.length === 0, errors, warnings };
 }
 

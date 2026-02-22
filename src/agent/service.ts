@@ -290,6 +290,7 @@ export class AgentService extends ServiceClient {
       images: params.images,
       channel: params.channel,
       bootstrapOverrides: params.bootstrapOverrides,
+      compaction: config.compaction,
       runId,
     };
   }

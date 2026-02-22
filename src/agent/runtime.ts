@@ -12,10 +12,12 @@ import {
   SettingsManager,
   AuthStorage,
   ModelRegistry,
+  DefaultResourceLoader,
   type AgentSession,
   type AgentSessionEvent,
   type CompactionResult,
   type SessionMessageEntry,
+  type ExtensionFactory,
 } from '@mariozechner/pi-coding-agent';
 import { getVargosToolNames, createVargosCustomTools } from './extension.js';
 import { toolRegistry } from '../tools/registry.js';
@@ -28,10 +30,12 @@ import { buildSystemPrompt, resolvePromptMode } from './prompt.js';
 import { AgentLifecycle, type AgentStreamEvent } from './lifecycle.js';
 import { SessionMessageQueue } from './queue.js';
 import type { ISessionService, SessionMessage } from '../sessions/types.js';
-import { getPiConfigPaths } from '../config/pi-config.js';
+import { getPiConfigPaths, type CompactionConfig } from '../config/pi-config.js';
 import { loadContextFiles } from '../config/workspace.js';
 import { LOCAL_PROVIDERS } from '../config/validate.js';
 import { sanitizeHistory, limitHistoryTurns, getHistoryLimit, toAgentMessages } from './history.js';
+import { createContextPruningExtension } from './extensions/context-pruning.js';
+import { createCompactionSafeguardExtension } from './extensions/compaction-safeguard.js';
 
 const PROVIDER_BASE_URLS: Record<string, string> = {
   openrouter: 'https://openrouter.ai/api/v1',
@@ -103,6 +107,7 @@ export interface PiAgentConfig {
   images?: Array<{ data: string; mimeType: string }>;
   channel?: string;
   bootstrapOverrides?: Record<string, string>;
+  compaction?: CompactionConfig;
 }
 
 export interface PiAgentRunResult {
@@ -250,6 +255,29 @@ export class PiAgentRuntime {
       const vargosCustomTools = createVargosCustomTools(config.workspaceDir, config.sessionKey);
       log.debug(`Created ${vargosCustomTools.length} custom tools`);
 
+      // Build compaction extension factories
+      const extensionFactories: ExtensionFactory[] = [];
+      const compactionCfg = config.compaction;
+
+      if (compactionCfg?.contextPruning?.enabled !== false) {
+        extensionFactories.push(createContextPruningExtension(compactionCfg?.contextPruning));
+      }
+      if (compactionCfg?.safeguard?.enabled !== false) {
+        extensionFactories.push(createCompactionSafeguardExtension(compactionCfg?.safeguard));
+      }
+
+      // Resource loader with compaction extensions
+      const resourceLoader = new DefaultResourceLoader({
+        cwd: config.workspaceDir,
+        agentDir: piPaths.agentDir,
+        settingsManager: settings,
+        extensionFactories,
+        noSkills: true,
+        noPromptTemplates: true,
+        noThemes: true,
+      });
+      await resourceLoader.reload();
+
       // Create agent session with Vargos custom tools
       // We pass empty built-in tools and all Vargos tools as customTools
       log.debug(`Creating agent session: workspace=${config.workspaceDir}`);
@@ -263,6 +291,7 @@ export class PiAgentRuntime {
         model,
         tools: [], // No built-in Pi SDK tools - we use Vargos tools instead
         customTools: vargosCustomTools, // All Vargos MCP tools
+        resourceLoader,
       });
 
       // Build and inject system prompt every run (channels never hit storedMessages===0)

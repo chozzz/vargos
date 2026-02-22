@@ -105,6 +105,27 @@ export function buildTree(): MenuNode[] {
           ],
         },
         {
+          key: 'compaction',
+          kind: 'group',
+          label: 'Compaction',
+          children: [
+            {
+              key: 'show',
+              kind: 'leaf',
+              label: 'Show',
+              hint: 'Display compaction config',
+              action: async () => { const m = await import('./config/compaction.js'); await m.show(); },
+            },
+            {
+              key: 'edit',
+              kind: 'leaf',
+              label: 'Edit',
+              hint: 'Configure context pruning & safeguard',
+              action: async () => { const m = await import('./config/compaction.js'); await m.edit(); },
+            },
+          ],
+        },
+        {
           key: 'heartbeat',
           kind: 'group',
           label: 'Heartbeat',

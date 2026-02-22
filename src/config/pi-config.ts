@@ -93,10 +93,34 @@ export interface McpServerEntry {
   enabled?: boolean;
 }
 
+export interface ContextPruningConfig {
+  enabled?: boolean;            // default true
+  keepLastAssistants?: number;  // default 3
+  softTrimRatio?: number;       // default 0.3
+  hardClearRatio?: number;      // default 0.5
+  softTrim?: {
+    maxChars?: number;          // default 4000
+    headChars?: number;         // default 1500
+    tailChars?: number;         // default 1500
+  };
+  tools?: { allow?: string[]; deny?: string[] };
+}
+
+export interface CompactionSafeguardConfig {
+  enabled?: boolean;            // default true
+  maxHistoryShare?: number;     // default 0.5
+}
+
+export interface CompactionConfig {
+  contextPruning?: ContextPruningConfig;
+  safeguard?: CompactionSafeguardConfig;
+}
+
 export interface VargosConfig {
   models: Record<string, ModelProfile>;
   agent: AgentRef;
   channels?: Record<string, ChannelEntry>;
+  compaction?: CompactionConfig;
   cron?: CronConfig;
   gateway?: GatewayConfig;
   heartbeat?: HeartbeatConfig;
