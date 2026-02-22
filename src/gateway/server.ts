@@ -38,6 +38,7 @@ export class GatewayServer {
   private requestTimeout: number;
   private pingInterval: number;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
+  private startedAt = 0;
 
   // Track pending request forwarding: req.id → caller connection
   private pending = new Map<string, { caller: WebSocket; timer: ReturnType<typeof setTimeout> }>();
@@ -54,6 +55,7 @@ export class GatewayServer {
       this.wss = new WebSocketServer({ port: this.port, host: this.host });
 
       this.wss.on('listening', () => {
+        this.startedAt = Date.now();
         this.startPing();
         resolve();
       });
@@ -133,6 +135,21 @@ export class GatewayServer {
       const response: ResponseFrame = {
         type: 'res', id: frame.id, ok: true,
         payload: this.registry.list(),
+      };
+      caller.send(serializeFrame(response));
+      return;
+    }
+
+    if (frame.method === 'gateway.stats') {
+      const ephemeral = new Set(['debug-probe', 'health-check', 'status-probe']);
+      const services = this.registry.list().filter(s => !ephemeral.has(s.service));
+      const response: ResponseFrame = {
+        type: 'res', id: frame.id, ok: true,
+        payload: {
+          uptime: Date.now() - this.startedAt,
+          services: services.length,
+          pendingRequests: this.pending.size,
+        },
       };
       caller.send(serializeFrame(response));
       return;

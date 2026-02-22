@@ -2,6 +2,9 @@
 
 import { select, intro, outro, isCancel } from '@clack/prompts';
 import { isGroup, type MenuNode, type MenuLeaf } from './tree.js';
+import { resolveDataDir, resolveGatewayUrl } from '../config/paths.js';
+import { loadConfig } from '../config/pi-config.js';
+import { fetchStatus, renderStatus } from './status.js';
 
 function isVisible(node: MenuNode): boolean {
   return !(!isGroup(node) && (node as MenuLeaf & { key: string }).hidden);
@@ -12,9 +15,22 @@ type Choice = string; // node key, '__back__', or '__exit__'
 const BACK: Choice = '__back__';
 const EXIT: Choice = '__exit__';
 
+const out = (s: string) => process.stderr.write(s + '\n');
+
+async function resolveUrl(): Promise<string> {
+  const config = await loadConfig(resolveDataDir());
+  return resolveGatewayUrl(config?.gateway);
+}
+
+async function showStatus(gatewayUrl: string): Promise<void> {
+  const snap = await fetchStatus(gatewayUrl);
+  out(renderStatus(snap));
+}
+
 export async function runMenu(tree: MenuNode[]): Promise<void> {
+  const gatewayUrl = await resolveUrl();
   intro('Vargos');
-  await runSubmenu(tree, 'vargos');
+  await runSubmenu(tree, 'vargos', gatewayUrl);
   outro('Bye');
 }
 
@@ -24,11 +40,13 @@ function nodeMap(nodes: MenuNode[]): Map<string, MenuNode> {
   return map;
 }
 
-async function runSubmenu(nodes: MenuNode[], breadcrumb: string): Promise<void> {
+async function runSubmenu(nodes: MenuNode[], breadcrumb: string, gatewayUrl: string): Promise<void> {
   const lookup = nodeMap(nodes);
   const visible = nodes.filter(isVisible);
 
   while (true) {
+    await showStatus(gatewayUrl);
+
     const options = [
       ...visible.map((n) => ({
         value: n.key,

@@ -35,11 +35,16 @@ export class AgentService extends ServiceClient {
   private runtime: PiAgentRuntime;
   private workspaceDir: string;
   private dataDir: string;
+  private stats = {
+    totalTokens: { input: 0, output: 0 },
+    totalToolCalls: 0,
+    totalRuns: 0,
+  };
 
   constructor(config: AgentServiceConfig) {
     super({
       service: 'agent',
-      methods: ['agent.run', 'agent.abort', 'agent.status'],
+      methods: ['agent.run', 'agent.abort', 'agent.status', 'agent.stats'],
       events: ['run.started', 'run.delta', 'run.completed'],
       subscriptions: ['message.received', 'cron.trigger'],
       gatewayUrl: config.gatewayUrl,
@@ -64,6 +69,14 @@ export class AgentService extends ServiceClient {
       case 'agent.status': {
         const runs = this.runtime.listActiveRuns();
         return { activeRuns: runs };
+      }
+
+      case 'agent.stats': {
+        const activeRuns = this.runtime.listActiveRuns();
+        return {
+          ...this.stats,
+          activeRuns: activeRuns.length,
+        };
       }
 
       default:
@@ -92,13 +105,20 @@ export class AgentService extends ServiceClient {
   private async runAgent(params: AgentRunParams, vargosConfig?: VargosConfig | null): Promise<PiAgentRunResult> {
     const config = await this.buildRunConfig(params, vargosConfig);
 
+    this.stats.totalRuns++;
     this.emit('run.started', { sessionKey: params.sessionKey, runId: config.runId });
 
-    // Subscribe to streaming events
+    // Subscribe to streaming events (including tool call tracking)
     const streamCleanup = this.subscribeToStream(config.runId!);
 
     try {
       const result = await this.runtime.run(config);
+
+      // Accumulate token usage
+      if (result.tokensUsed) {
+        this.stats.totalTokens.input += result.tokensUsed.input;
+        this.stats.totalTokens.output += result.tokensUsed.output;
+      }
 
       this.emit('run.completed', {
         sessionKey: params.sessionKey,
@@ -329,6 +349,8 @@ export class AgentService extends ServiceClient {
       if (event.runId !== runId) return;
       if (event.type === 'assistant') {
         this.emit('run.delta', { runId, delta: event.content });
+      } else if (event.type === 'tool' && event.phase === 'start') {
+        this.stats.totalToolCalls++;
       }
     };
 

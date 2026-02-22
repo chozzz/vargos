@@ -4,9 +4,9 @@ import type { AgentMethod, ToolMethod, SessionMethod, ChannelMethod, CronMethod,
 
 describe('contracts/methods', () => {
   it('agent methods are valid ServiceMethod values', () => {
-    const methods: AgentMethod[] = ['agent.run', 'agent.abort', 'agent.status'];
+    const methods: AgentMethod[] = ['agent.run', 'agent.abort', 'agent.status', 'agent.stats'];
     const asService: ServiceMethod[] = methods;
-    expect(asService).toHaveLength(3);
+    expect(asService).toHaveLength(4);
   });
 
   it('tool methods are valid ServiceMethod values', () => {
@@ -37,9 +37,9 @@ describe('contracts/methods', () => {
   });
 
   it('gateway methods are valid ServiceMethod values', () => {
-    const methods: GatewayMethod[] = ['gateway.register'];
+    const methods: GatewayMethod[] = ['gateway.register', 'gateway.inspect', 'gateway.stats'];
     const asService: ServiceMethod[] = methods;
-    expect(asService).toHaveLength(1);
+    expect(asService).toHaveLength(3);
   });
 });
 
