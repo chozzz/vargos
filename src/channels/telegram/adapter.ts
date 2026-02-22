@@ -4,7 +4,7 @@
  * Text-only private chats, no SDK dependency
  */
 
-import type { ChannelAdapter, ChannelStatus, OnInboundMessageFn } from '../types.js';
+import type { OnInboundMessageFn } from '../types.js';
 import type {
   TelegramUpdate,
   TelegramResponse,
@@ -12,52 +12,33 @@ import type {
   TelegramMessage,
   TelegramFile,
 } from './types.js';
-import { createDedupeCache } from '../../lib/dedupe.js';
-import { createMessageDebouncer } from '../../lib/debounce.js';
+import { BaseChannelAdapter } from '../base-adapter.js';
 import { saveMedia } from '../../lib/media.js';
 import { resolveMediaDir } from '../../config/paths.js';
-import { createLogger } from '../../lib/logger.js';
-
-const log = createLogger('telegram');
 
 const API_BASE = 'https://api.telegram.org/bot';
 const API_FILE_BASE = 'https://api.telegram.org/file/bot';
 const POLL_TIMEOUT_S = 30;
 const RECONNECT_DELAY_MS = 5000;
 
-export class TelegramAdapter implements ChannelAdapter {
+export class TelegramAdapter extends BaseChannelAdapter {
   readonly type = 'telegram' as const;
-  status: ChannelStatus = 'disconnected';
 
   private botToken: string;
   private botUser: TelegramUser | null = null;
   private offset = 0;
   private polling = false;
   private abortController: AbortController | null = null;
-  private dedupe = createDedupeCache({ ttlMs: 120_000 });
-  private debouncer: ReturnType<typeof createMessageDebouncer>;
-  private allowFrom: Set<string> | null;
-  private onInboundMessage?: OnInboundMessageFn;
-  private typingIntervals = new Map<string, ReturnType<typeof setInterval>>();
 
   constructor(botToken: string, allowFrom?: string[], onInboundMessage?: OnInboundMessageFn) {
+    super('telegram', allowFrom, onInboundMessage);
     this.botToken = botToken;
-    this.allowFrom = allowFrom?.length ? new Set(allowFrom) : null;
-    this.onInboundMessage = onInboundMessage;
-    this.debouncer = createMessageDebouncer(
-      (chatId, messages) => {
-        this.handleBatch(chatId, messages).catch((err) => {
-          log.debug(`handleBatch error for ${chatId}: ${err}`);
-        });
-      },
-      { delayMs: 1500 },
-    );
   }
 
   async initialize(): Promise<void> {
     const me = await this.apiCall<TelegramUser>('getMe');
     this.botUser = me;
-    log.debug(`bot verified: @${me.username} (${me.first_name})`);
+    this.log.debug(`bot verified: @${me.username} (${me.first_name})`);
   }
 
   async start(): Promise<void> {
@@ -65,23 +46,21 @@ export class TelegramAdapter implements ChannelAdapter {
     this.polling = true;
     this.abortController = new AbortController();
     this.status = 'connected';
-    log.debug('long-polling started');
+    this.log.debug('long-polling started');
 
     this.pollLoop().catch((err) => {
-      log.debug(`poll loop exited: ${err}`);
+      this.log.debug(`poll loop exited: ${err}`);
       this.status = 'error';
     });
   }
 
   async stop(): Promise<void> {
     this.polling = false;
-    this.debouncer.cancelAll();
-    for (const interval of this.typingIntervals.values()) clearInterval(interval);
-    this.typingIntervals.clear();
+    this.cleanupTimers();
     this.abortController?.abort();
     this.abortController = null;
     this.status = 'disconnected';
-    log.debug('stopped');
+    this.log.debug('stopped');
   }
 
   async send(chatId: string, text: string): Promise<void> {
@@ -92,19 +71,8 @@ export class TelegramAdapter implements ChannelAdapter {
     });
   }
 
-  startTyping(recipientId: string): void {
-    if (this.typingIntervals.has(recipientId)) return;
-    const typing = () => this.apiCall('sendChatAction', { chat_id: recipientId, action: 'typing' }).catch(() => {});
-    typing();
-    this.typingIntervals.set(recipientId, setInterval(typing, 4000));
-  }
-
-  stopTyping(recipientId: string): void {
-    const interval = this.typingIntervals.get(recipientId);
-    if (interval) {
-      clearInterval(interval);
-      this.typingIntervals.delete(recipientId);
-    }
+  protected async sendTypingIndicator(recipientId: string): Promise<void> {
+    await this.apiCall('sendChatAction', { chat_id: recipientId, action: 'typing' });
   }
 
   private async pollLoop(): Promise<void> {
@@ -122,7 +90,7 @@ export class TelegramAdapter implements ChannelAdapter {
         }
       } catch (err) {
         if (!this.polling) break;
-        log.debug(`poll error: ${err}`);
+        this.log.debug(`poll error: ${err}`);
         await sleep(RECONNECT_DELAY_MS);
       }
     }
@@ -144,12 +112,12 @@ export class TelegramAdapter implements ChannelAdapter {
 
     if (msg.photo || msg.voice || msg.audio) {
       this.handleMedia(chatId, msg).catch((err) => {
-        log.debug(`handleMedia error for ${chatId}: ${err}`);
+        this.log.debug(`handleMedia error for ${chatId}: ${err}`);
       });
       return;
     }
 
-    log.debug(`received from ${chatId}: ${msg.text!.slice(0, 80)}`);
+    this.log.debug(`received from ${chatId}: ${msg.text!.slice(0, 80)}`);
     this.debouncer.push(chatId, msg.text!);
   }
 
@@ -164,56 +132,48 @@ export class TelegramAdapter implements ChannelAdapter {
     return Buffer.from(await res.arrayBuffer());
   }
 
-  private async routeToService(chatId: string, content: string, metadata?: Record<string, unknown>): Promise<void> {
-    if (!this.onInboundMessage) {
-      log.error('No inbound message handler — cannot process message');
-      return;
-    }
-    await this.onInboundMessage('telegram', chatId, content, metadata);
-  }
-
   private async handleMedia(chatId: string, msg: TelegramMessage): Promise<void> {
     const sessionKey = `telegram:${chatId}`;
 
     // Photo — pick largest (last in array)
     if (msg.photo?.length) {
       const largest = msg.photo[msg.photo.length - 1];
-      log.debug(`received photo from ${chatId}`);
+      this.log.debug(`received photo from ${chatId}`);
 
       try {
         const buffer = await this.downloadFile(largest.file_id);
         const mimeType = 'image/jpeg';
         const savedPath = await saveMedia({ buffer, sessionKey, mimeType, mediaDir: resolveMediaDir() });
+        const base64 = buffer.toString('base64');
         const caption = msg.caption || 'User sent an image.';
-        const images = [{ data: buffer.toString('base64'), mimeType }];
-        await this.routeToService(chatId, `${caption}\n\n[Image saved: ${savedPath}]`, { images });
+        const images = [{ data: base64, mimeType }];
+        const media = { type: 'image', data: base64, mimeType, path: savedPath };
+        await this.routeToService(chatId, `${caption}\n\n[Image saved: ${savedPath}]`, { images, media });
       } catch (err) {
-        log.debug(`photo download failed for ${chatId}: ${err}`);
+        this.log.debug(`photo download failed for ${chatId}: ${err}`);
       }
       return;
     }
 
     // Voice / audio
     const fileId = msg.voice?.file_id ?? msg.audio?.file_id;
-    const mimeType = msg.voice?.mime_type ?? msg.audio?.mime_type ?? 'audio/ogg';
+    // Strip codec params (e.g. "audio/ogg; codecs=opus" → "audio/ogg")
+    const rawMime = (msg.voice?.mime_type ?? msg.audio?.mime_type)?.split(';')[0].trim();
+    const mimeType = rawMime || 'audio/ogg';
     const duration = msg.voice?.duration ?? msg.audio?.duration;
     const label = msg.voice ? 'Voice message' : 'Audio message';
 
-    log.debug(`received ${label.toLowerCase()} from ${chatId} (${duration}s)`);
+    this.log.debug(`received ${label.toLowerCase()} from ${chatId} (${duration}s)`);
 
     try {
       const buffer = await this.downloadFile(fileId!);
       const savedPath = await saveMedia({ buffer, sessionKey, mimeType, mediaDir: resolveMediaDir() });
-      await this.routeToService(chatId, `${msg.caption || `[${label}, ${duration}s]`}\n\n[${label} saved: ${savedPath}]`);
+      const base64 = buffer.toString('base64');
+      const media = { type: 'audio', data: base64, mimeType, path: savedPath };
+      await this.routeToService(chatId, `${msg.caption || `[${label}, ${duration}s]`}\n\n[${label} saved: ${savedPath}]`, { media });
     } catch (err) {
-      log.debug(`audio download failed for ${chatId}: ${err}`);
+      this.log.debug(`audio download failed for ${chatId}: ${err}`);
     }
-  }
-
-  private async handleBatch(chatId: string, messages: string[]): Promise<void> {
-    const text = messages.join('\n');
-    log.debug(`batch for telegram:${chatId}: "${text.slice(0, 80)}"`);
-    await this.routeToService(chatId, text);
   }
 
   private async apiCall<T>(method: string, params?: Record<string, unknown>): Promise<T> {

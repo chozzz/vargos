@@ -126,7 +126,6 @@ Adapters are wired directly in `cli/gateway/start.ts` via the channel factory. B
 Storage backends live in their domain directories:
 
 - **FileSessionService** (`sessions/file-store.ts`) — JSONL files in `~/.vargos/sessions/`, one per session
-- **FileMemoryService** (`memory/file-service.ts`) — markdown files with term-frequency search
 
 Memory search uses `MemoryContext` (`memory/context.ts`) for hybrid scoring: vector similarity (0.7 weight) + text matching (0.3 weight). Optional embedding providers: OpenAI `text-embedding-3-small` or character trigram fallback.
 
