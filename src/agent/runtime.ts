@@ -556,64 +556,6 @@ export class PiAgentRuntime {
   }
 
   /**
-   * Run a subagent and announce result back
-   */
-  async runSubagent(
-    config: PiAgentConfig,
-    parentSessionKey: string
-  ): Promise<PiAgentRunResult> {
-    const result = await this.run(config);
-    await this.announceResult(parentSessionKey, config.sessionKey, result);
-    return result;
-  }
-
-  /**
-   * Announce subagent result to parent
-   */
-  private async announceResult(
-    parentSessionKey: string,
-    childSessionKey: string,
-    result: PiAgentRunResult
-  ): Promise<void> {
-    const sessions = this.sessionService;
-
-    // Check parent exists
-    const parentSession = await sessions.get(parentSessionKey);
-    if (!parentSession) {
-      log.error(`Parent ${parentSessionKey} not found, skipping announcement`);
-      return;
-    }
-
-    const status = result.success ? '✅ success' : '❌ error';
-    const summary = result.success
-      ? result.response?.slice(0, 500) ?? '(no response)'
-      : result.error ?? '(unknown error)';
-
-    const message = [
-      `## Sub-agent Complete`,
-      ``,
-      `**Session:** ${childSessionKey}`,
-      `**Status:** ${status}`,
-      `**Duration:** ${result.duration ? `${(result.duration / 1000).toFixed(1)}s` : 'unknown'}`,
-      ``,
-      `**Result:**`,
-      summary,
-    ].join('\n');
-
-    await sessions.addMessage({
-      sessionKey: parentSessionKey,
-      content: message,
-      role: 'system',
-      metadata: {
-        type: 'subagent_announce',
-        childSessionKey,
-        success: result.success,
-        duration: result.duration,
-      },
-    });
-  }
-
-  /**
    * Find the last assistant message in Pi SDK session entries
    */
   private findLastAssistantMessage(

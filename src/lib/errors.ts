@@ -1,28 +1,18 @@
 /**
  * Common utilities for error handling and tool execution
- * Extracted to reduce code duplication
  */
 
-/**
- * Check if session key is a subagent
- */
+/** Check if session key is a subagent */
 export function isSubagentSessionKey(sessionKey: string): boolean {
   return sessionKey.includes(':subagent:');
 }
 
-/**
- * Tools that subagents are not allowed to use
- */
-export const SUBAGENT_DENIED_TOOLS = [
-  'sessions_list',
-  'sessions_history',
-  'sessions_send',
-  'sessions_spawn',
-] as const;
+/** Count nesting depth of subagent session keys */
+export function getSubagentDepth(sessionKey: string): number {
+  return (sessionKey.match(/:subagent:/g) || []).length;
+}
 
-/**
- * Check if a tool is allowed for subagent sessions
- */
-export function isToolAllowedForSubagent(toolName: string): boolean {
-  return !SUBAGENT_DENIED_TOOLS.includes(toolName as typeof SUBAGENT_DENIED_TOOLS[number]);
+/** Check if a session can spawn another subagent (depth-limited) */
+export function canSpawnSubagent(sessionKey: string, maxDepth = 3): boolean {
+  return getSubagentDepth(sessionKey) < maxDepth;
 }

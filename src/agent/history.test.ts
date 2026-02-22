@@ -114,12 +114,20 @@ describe('getHistoryLimit', () => {
     expect(getHistoryLimit('cli:main')).toBe(50);
   });
 
-  it('returns 10 for subagent sessions', () => {
-    expect(getHistoryLimit('cli:main:subagent:abc')).toBe(10);
+  it('returns 50 for subagent sessions (inherits from root)', () => {
+    expect(getHistoryLimit('cli:main:subagent:abc')).toBe(50);
+  });
+
+  it('returns 30 for channel subagent sessions (inherits from root)', () => {
+    expect(getHistoryLimit('whatsapp:user123:subagent:abc')).toBe(30);
   });
 
   it('returns 10 for cron sessions', () => {
     expect(getHistoryLimit('cron:heartbeat')).toBe(10);
+  });
+
+  it('returns 10 for cron subagent sessions', () => {
+    expect(getHistoryLimit('cron:heartbeat:subagent:abc')).toBe(10);
   });
 
   it('returns 50 for unknown session types', () => {

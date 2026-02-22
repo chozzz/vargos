@@ -13,6 +13,7 @@ import { ServiceClient } from '../gateway/service-client.js';
 import { createLogger } from '../lib/logger.js';
 import { stripHeartbeatToken } from '../lib/heartbeat.js';
 import { parseTarget } from '../lib/channel-target.js';
+import { isSubagentSessionKey } from '../lib/errors.js';
 import { type PiAgentRuntime, type PiAgentConfig, type PiAgentRunResult } from './runtime.js';
 
 const log = createLogger('agent');
@@ -106,6 +107,12 @@ export class AgentService extends ServiceClient {
         response: result.response?.slice(0, 500),
       });
 
+      // If sub-agent completed, announce to parent and re-trigger
+      if (isSubagentSessionKey(params.sessionKey) && result.success && !params.retrigger) {
+        this.handleSubagentCompletion(params.sessionKey, result)
+          .catch(err => log.error(`subagent completion failed: ${err}`));
+      }
+
       return result;
     } finally {
       streamCleanup();
@@ -140,18 +147,9 @@ export class AgentService extends ServiceClient {
 
     log.info(`agent result: ${sessionKey} success=${result.success} (${result.response?.length ?? 0} chars)`);
 
-    // Reply back through the channel (strip HEARTBEAT_OK token)
-    if (result.success && result.response) {
-      const cleaned = stripHeartbeatToken(result.response);
-      if (cleaned === null) return; // pure HEARTBEAT_OK → skip delivery
-      await this.call('channel', 'channel.send', {
-        channel,
-        userId,
-        text: cleaned,
-      }).catch((err) =>
-        log.error(`Failed to send reply: ${err}`),
-      );
-      log.info(`reply sent: ${channel}:${userId}`);
+    // Reply back through the channel
+    if (result.success) {
+      await this.deliverToChannel(channel, userId, result);
     } else if (!result.success) {
       const errMsg = result.error
         ? `Something went wrong: ${result.error.slice(0, 200)}`
@@ -235,34 +233,65 @@ export class AgentService extends ServiceClient {
 
     // Deliver to explicitly configured notify targets only
     if (!notify?.length) return;
-    if (!result.success || !result.response) {
-      log.info(`cron ${taskId}: skipping notify (success=${result.success} response=${!!result.response})`);
-      return;
-    }
-    const cleaned = stripHeartbeatToken(result.response);
-    if (cleaned === null) {
-      log.info(`cron ${taskId}: skipping notify (heartbeat-ok)`);
-      return;
-    }
 
-    log.info(`notify: ${cleaned.length} chars to ${notify.length} targets`);
     for (const target of notify) {
       const parsed = parseTarget(target);
       if (!parsed) continue;
-      const { channel, userId } = parsed;
 
       // Inject into recipient's channel session for context
-      await this.call('sessions', 'session.addMessage', {
-        sessionKey: target,
-        content: cleaned,
-        role: 'assistant',
-        metadata: { source: 'cron', taskId },
-      }).catch(() => {});
+      if (result.success && result.response) {
+        const cleaned = stripHeartbeatToken(result.response);
+        if (cleaned) {
+          await this.call('sessions', 'session.addMessage', {
+            sessionKey: target, content: cleaned, role: 'assistant',
+            metadata: { source: 'cron', taskId },
+          }).catch(() => {});
+        }
+      }
 
-      await this.call('channel', 'channel.send', { channel, userId, text: cleaned }).catch((err) =>
-        log.error(`Failed to notify ${target}: ${err}`),
-      );
+      await this.deliverToChannel(parsed.channel, parsed.userId, result);
     }
+  }
+
+  /** Send a successful agent result to a channel (strips heartbeat token) */
+  private async deliverToChannel(channel: string, userId: string, result: PiAgentRunResult): Promise<void> {
+    if (!result.success || !result.response) return;
+    const cleaned = stripHeartbeatToken(result.response);
+    if (cleaned === null) return;
+    await this.call('channel', 'channel.send', { channel, userId, text: cleaned })
+      .catch(err => log.error(`Failed to send reply: ${err}`));
+    log.info(`reply sent: ${channel}:${userId}`);
+  }
+
+  /** When a sub-agent completes, announce to parent and re-trigger if channel-rooted */
+  private async handleSubagentCompletion(sessionKey: string, result: PiAgentRunResult): Promise<void> {
+    // Get parent key from session metadata
+    const session = await this.call<{ metadata?: Record<string, unknown> }>('sessions', 'session.get', { sessionKey });
+    const parentKey = session?.metadata?.parentSessionKey as string | undefined;
+    if (!parentKey) return;
+
+    // Write announcement to parent session
+    const status = result.success ? 'success' : 'error';
+    const summary = result.response?.slice(0, 500) ?? '(no response)';
+    await this.call('sessions', 'session.addMessage', {
+      sessionKey: parentKey,
+      content: `## Sub-agent Complete\n\n**Session:** ${sessionKey}\n**Status:** ${status}\n**Duration:** ${result.duration ? `${(result.duration / 1000).toFixed(1)}s` : 'unknown'}\n\n**Result:**\n${summary}`,
+      role: 'system',
+      metadata: { type: 'subagent_announce', childSessionKey: sessionKey, success: result.success },
+    }).catch(err => log.error(`Failed to announce to parent: ${err}`));
+
+    // If root is a channel target, re-trigger parent to synthesize and deliver
+    const rootKey = parentKey.split(':subagent:')[0];
+    const target = parseTarget(rootKey);
+    if (!target) return;
+
+    log.info(`re-triggering parent ${parentKey} after sub-agent completion`);
+    const parentResult = await this.runAgent({
+      sessionKey: parentKey,
+      task: 'A sub-agent completed. Review the results above and continue.',
+      retrigger: true,
+    });
+    await this.deliverToChannel(target.channel, target.userId, parentResult);
   }
 
   private async buildRunConfig(params: AgentRunParams, existing?: VargosConfig | null): Promise<PiAgentConfig> {
@@ -320,4 +349,6 @@ interface AgentRunParams {
   images?: Array<{ data: string; mimeType: string }>;
   channel?: string;
   bootstrapOverrides?: Record<string, string>;
+  /** Set by handleSubagentCompletion to prevent recursive re-triggers */
+  retrigger?: boolean;
 }

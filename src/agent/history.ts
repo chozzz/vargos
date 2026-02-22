@@ -66,16 +66,12 @@ export function limitHistoryTurns(
 
 /**
  * Get history turn limit based on session type.
- * Channel DMs get tighter limits to stay within context windows.
+ * Subagents inherit from root session type. Cron stays tight.
  */
 export function getHistoryLimit(sessionKey: string): number {
-  // Check subagent/cron first — they can appear in any prefix (e.g. cli:main:subagent:abc)
-  if (sessionKey.includes('subagent') || sessionKey.startsWith('cron:')) {
-    return 10;
-  }
-  if (sessionKey.startsWith('whatsapp:') || sessionKey.startsWith('telegram:')) {
-    return 30;
-  }
+  const root = sessionKey.split(':subagent:')[0];
+  if (root.startsWith('cron:')) return 10;
+  if (root.startsWith('whatsapp:') || root.startsWith('telegram:')) return 30;
   return 50;
 }
 

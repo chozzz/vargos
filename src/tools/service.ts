@@ -8,7 +8,6 @@ import { zodToJsonSchema } from 'zod-to-json-schema';
 import { ServiceClient } from '../gateway/service-client.js';
 import { ToolRegistry } from './registry.js';
 import type { ToolContext } from './types.js';
-import { isSubagentSessionKey, isToolAllowedForSubagent } from '../lib/errors.js';
 
 export interface ToolsServiceConfig {
   registry: ToolRegistry;
@@ -59,11 +58,6 @@ export class ToolsService extends ServiceClient {
 
     const tool = this.registry.get(name);
     if (!tool) throw new Error(`Unknown tool: ${name}`);
-
-    // Subagent restrictions
-    if (context?.sessionKey && isSubagentSessionKey(context.sessionKey) && !isToolAllowedForSubagent(name)) {
-      throw new Error(`Tool '${name}' is not available to subagents`);
-    }
 
     const toolContext: ToolContext = {
       sessionKey: context?.sessionKey ?? 'default',
