@@ -167,6 +167,13 @@ export function buildTree(): MenuNode[] {
           hint: 'Gateway process status',
           action: async () => { const m = await import('./gateway/status.js'); await m.status(); },
         },
+        {
+          key: 'inspect',
+          kind: 'leaf',
+          label: 'Inspect',
+          hint: 'Show registered services, methods, events, tools',
+          action: async () => { const m = await import('./debug.js'); await m.inspect(); },
+        },
       ],
     },
     {
@@ -213,21 +220,7 @@ export function buildTree(): MenuNode[] {
         },
       ],
     },
-    {
-      key: 'debug',
-      kind: 'group',
-      label: 'Debug',
-      children: [
-        {
-          key: 'inspect',
-          kind: 'leaf',
-          label: 'Inspect',
-          hint: 'Show registered services, methods, events, tools',
-          action: async () => { const m = await import('./debug.js'); await m.inspect(); },
-        },
-      ],
-    },
-    {
+{
       key: 'health',
       kind: 'leaf',
       label: 'Health',
