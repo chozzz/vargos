@@ -175,7 +175,7 @@ export class CronService extends ServiceClient {
       if (!shouldFire) return;
     }
     log.info(`task fired: ${task.name} (${task.id})`);
-    const sessionKey = `cron:${task.id}:${Date.now()}`;
+    const sessionKey = `cron:${task.id}`;
     this.emit('cron.trigger', { taskId: task.id, task: task.task, name: task.name, sessionKey, notify: task.notify });
   }
 

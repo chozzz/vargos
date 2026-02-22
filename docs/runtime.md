@@ -51,8 +51,8 @@ The system prompt is built in layers (full mode):
 
 | Mode | When | Content |
 |------|------|---------|
-| `full` | Default (chat, channels) | All layers |
-| `minimal` | Subagents, cron tasks | Bootstrap files only (AGENTS.md + TOOLS.md) |
+| `full` | Default (chat, channels, subagents) | All layers |
+| `minimal` | Cron tasks | Bootstrap files only |
 | `none` | Custom prompts | No system prompt |
 
 ### Bootstrap Files
@@ -70,7 +70,7 @@ Loaded from the workspace directory, max 20,000 chars each:
 | `MEMORY.md` | Curated memories |
 | `BOOTSTRAP.md` | First-run only (when no other files exist) |
 
-Subagents receive only `AGENTS.md` and `TOOLS.md`.
+Subagents receive the full set of bootstrap files, same as their parent.
 
 ## Streaming Events
 
@@ -108,10 +108,12 @@ Supported providers: `anthropic`, `openai`, `google`, `openrouter`, `ollama`, `l
 
 `sessions_spawn` creates an isolated session and runs the agent:
 
-- Unique session key: `<parent>:subagent:<label>`
-- Minimal prompt mode (only AGENTS.md + TOOLS.md)
-- Cannot spawn further subagents (prevents recursion)
-- Result announced to parent session on completion
+- Unique session key: `<parent>:subagent:<timestamp>-<rand>`
+- Full prompt mode (same as parent)
+- History limit inherited from root session type
+- All tools available (no deny list)
+- Can spawn children up to depth 3 (depth-limited)
+- On completion: result announced to parent session, parent re-triggered if channel-rooted, reply delivered through the channel
 
 ## Thinking-Only Responses
 
