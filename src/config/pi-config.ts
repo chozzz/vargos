@@ -4,7 +4,6 @@
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { WebhookHook } from '../webhooks/types.js';
 
 const PI_AGENT_DIR = 'agent';
 const CONFIG_FILE = 'config.json';
@@ -115,6 +114,14 @@ export interface CompactionSafeguardConfig {
 export interface CompactionConfig {
   contextPruning?: ContextPruningConfig;
   safeguard?: CompactionSafeguardConfig;
+}
+
+export interface WebhookHook {
+  id: string;
+  token: string;
+  transform?: string;   // module path for custom transform
+  notify?: string[];     // channel:userId targets
+  description?: string;
 }
 
 export interface WebhooksConfig {

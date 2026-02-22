@@ -1,10 +1,4 @@
-export interface WebhookHook {
-  id: string;
-  token: string;
-  transform?: string;   // module path for custom transform
-  notify?: string[];     // channel:userId targets
-  description?: string;
-}
+export type { WebhookHook } from '../config/pi-config.js';
 
 export interface WebhookStatus {
   id: string;

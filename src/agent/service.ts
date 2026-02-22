@@ -289,6 +289,15 @@ export class AgentService extends ServiceClient {
 
     log.info(`webhook trigger: ${hookId} → ${sessionKey}${notify?.length ? ` (notify: ${notify.length} targets)` : ''}`);
 
+    await this.call('sessions', 'session.create', {
+      sessionKey,
+      kind: 'webhook',
+      metadata: { hookId },
+    }).catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!msg.includes('already exists')) log.error(`Failed to create webhook session: ${msg}`);
+    });
+
     await this.call('sessions', 'session.addMessage', {
       sessionKey, content: task, role: 'user',
       metadata: { source: 'webhook', hookId },
