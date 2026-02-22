@@ -88,6 +88,13 @@ Priority: `config.paths.dataDir` > `VARGOS_DATA_DIR` env > `~/.vargos`
       }
     ]
   },
+  "mcpServers": {                   // external MCP tool servers
+    "atlassian": {
+      "command": "uvx",
+      "args": ["mcp-atlassian"],
+      "env": { "JIRA_URL": "...", "JIRA_USERNAME": "...", "JIRA_API_TOKEN": "..." }
+    }
+  },
   "channels": { ... }              // see channels.md
 }
 ```
@@ -131,6 +138,38 @@ User-defined scheduled tasks are persisted in `config.json` and loaded at gatewa
 | `notify` | string[] | no | Channel targets to deliver results (e.g. `["whatsapp:614..."]`) |
 
 Built-in tasks (vargos analysis, heartbeat) are not stored in config — they're registered at boot.
+
+## External MCP Servers
+
+Connect to external MCP tool servers (Atlassian, GitHub, etc.). Servers are spawned at gateway boot, their tools are discovered automatically and available to the agent as `<server>:<tool_name>`.
+
+```jsonc
+{
+  "mcpServers": {
+    "atlassian": {
+      "command": "uvx",
+      "args": ["mcp-atlassian"],
+      "env": {
+        "JIRA_URL": "https://mycompany.atlassian.net",
+        "JIRA_USERNAME": "you@company.com",
+        "JIRA_API_TOKEN": "...",
+        "CONFLUENCE_URL": "https://mycompany.atlassian.net/wiki",
+        "CONFLUENCE_USERNAME": "you@company.com",
+        "CONFLUENCE_API_TOKEN": "..."
+      }
+    }
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `command` | string | yes | Executable to spawn (e.g. `uvx`, `npx`) |
+| `args` | string[] | no | Command arguments |
+| `env` | object | no | Environment variables passed to the process |
+| `enabled` | boolean | no | Whether to connect (default: `true`) |
+
+If a server fails to start, the gateway logs a warning and continues — it won't block boot.
 
 ## API Key Precedence
 

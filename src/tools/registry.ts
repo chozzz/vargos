@@ -29,6 +29,22 @@ export class ToolRegistry {
   has(name: string): boolean {
     return this.tools.has(name);
   }
+
+  getGroups(): { core: Tool[]; external: Map<string, Tool[]> } {
+    const core: Tool[] = [];
+    const external = new Map<string, Tool[]>();
+    for (const tool of this.tools.values()) {
+      const i = tool.name.indexOf('__');
+      if (i > 0) {
+        const prefix = tool.name.slice(0, i);
+        if (!external.has(prefix)) external.set(prefix, []);
+        external.get(prefix)!.push(tool);
+      } else {
+        core.push(tool);
+      }
+    }
+    return { core, external };
+  }
 }
 
 // Singleton instance — populated by extensions during boot

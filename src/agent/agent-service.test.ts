@@ -69,6 +69,26 @@ class TestCaller extends ServiceClient {
   }
 }
 
+/** Mock channel service that records channel.send calls */
+class MockChannelService extends ServiceClient {
+  sent: Array<{ channel: string; userId: string; text: string }> = [];
+
+  constructor() {
+    super({
+      service: 'channel',
+      methods: ['channel.send'],
+      events: [],
+      subscriptions: [],
+      gatewayUrl: GATEWAY_URL,
+    });
+  }
+  async handleMethod(_method: string, params: unknown): Promise<unknown> {
+    this.sent.push(params as { channel: string; userId: string; text: string });
+    return { delivered: true };
+  }
+  handleEvent(): void {}
+}
+
 describe('AgentService', () => {
   let gateway: GatewayServer;
   let agent: AgentService;
@@ -129,5 +149,40 @@ describe('AgentService', () => {
   it('returns agent status', async () => {
     const result = await caller.call<{ activeRuns: unknown[] }>('agent', 'agent.status', {});
     expect(result.activeRuns).toEqual([]);
+  });
+
+  it('sends error feedback to channel on failed run', async () => {
+    // Disconnect default agent and reconnect with a failing runtime
+    await agent.disconnect();
+
+    const failRuntime = createMockRuntime();
+    failRuntime.run = async () => ({ success: false, error: 'LLM timeout after 30s', duration: 30000 });
+
+    agent = new AgentService({ gatewayUrl: GATEWAY_URL, workspaceDir: '/tmp/workspace', dataDir: '/tmp/data', runtime: failRuntime });
+    await agent.connect();
+
+    const channel = new MockChannelService();
+    await channel.connect();
+
+    try {
+      // Emit message.received to trigger handleInboundMessage
+      caller.emit('message.received', {
+        channel: 'whatsapp',
+        userId: '123',
+        sessionKey: 'whatsapp:123',
+        content: 'Hello',
+      });
+
+      // Wait for async processing
+      await new Promise((r) => setTimeout(r, 500));
+
+      expect(channel.sent.length).toBe(1);
+      expect(channel.sent[0].channel).toBe('whatsapp');
+      expect(channel.sent[0].userId).toBe('123');
+      expect(channel.sent[0].text).toContain('Something went wrong');
+      expect(channel.sent[0].text).toContain('LLM timeout');
+    } finally {
+      await channel.disconnect();
+    }
   });
 });

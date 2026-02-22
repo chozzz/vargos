@@ -50,7 +50,7 @@ export class ToolsService extends ServiceClient {
     return this.registry.list().map((t) => ({
       name: t.name,
       description: t.description,
-      parameters: zodToJsonSchema(t.parameters),
+      parameters: t.jsonSchema ?? zodToJsonSchema(t.parameters),
     }));
   }
 

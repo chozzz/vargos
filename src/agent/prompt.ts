@@ -6,6 +6,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { isSubagentSessionKey } from '../lib/errors.js';
+import { toolRegistry } from '../tools/registry.js';
 
 export interface SystemPromptOptions {
   mode: 'full' | 'minimal' | 'none';
@@ -132,16 +133,39 @@ async function buildToolingSection(toolNames: string[]): Promise<string> {
     'cron_list': 'List scheduled cron jobs',
   };
 
+  const { external } = toolRegistry.getGroups();
+  const externalNames = new Set<string>();
+  for (const tools of external.values()) {
+    for (const t of tools) externalNames.add(t.name);
+  }
+
   const lines = [
     '## Tooling',
     '',
     'Available tools (use exactly as listed):',
   ];
 
-  // Add tools with descriptions
   for (const name of toolNames) {
-    const desc = coreToolDescriptions[name] || 'Available tool';
+    if (externalNames.has(name)) continue;
+    const desc = coreToolDescriptions[name] || toolRegistry.get(name)?.description || 'Available tool';
     lines.push(`- ${name}: ${desc}`);
+  }
+
+  if (external.size > 0) {
+    const toolNameSet = new Set(toolNames);
+    lines.push('');
+    lines.push('### Connected External Tools');
+    lines.push('');
+    lines.push('These tools are live — call them directly like any other tool.');
+    for (const [server, tools] of external) {
+      const visible = tools.filter(t => toolNameSet.has(t.name));
+      if (visible.length === 0) continue;
+      lines.push('');
+      lines.push(`**${server}** (${visible.length} tools):`);
+      for (const tool of visible) {
+        lines.push(`- ${tool.name}: ${tool.description}`);
+      }
+    }
   }
 
   lines.push(
@@ -312,7 +336,12 @@ function buildChannelSection(channel: string): string {
     '## Channel',
     '',
     `This message arrived via: ${channel}`,
-    'Respond appropriately for this medium (concise for chat, detailed for CLI).',
+    '',
+    'Channel rules:',
+    '- Execute tools immediately — never say "I\'ll search" or "Let me look" without actually calling the tool in the same response.',
+    '- All tools listed in ## Tooling above are available and working. Do not claim otherwise.',
+    '- Keep responses concise. No markdown tables — use plain text lists.',
+    '- If a tool call fails, report the error. Do not speculate about missing connections or configuration.',
   ].join('\n');
 }
 

@@ -85,6 +85,13 @@ export interface CronConfig {
   tasks?: CronTaskConfig[];
 }
 
+export interface McpServerEntry {
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
+  enabled?: boolean;
+}
+
 export interface VargosConfig {
   models: Record<string, ModelProfile>;
   agent: AgentRef;
@@ -93,6 +100,7 @@ export interface VargosConfig {
   gateway?: GatewayConfig;
   heartbeat?: HeartbeatConfig;
   mcp?: McpConfig;
+  mcpServers?: Record<string, McpServerEntry>;
   paths?: PathsConfig;
   storage?: StorageConfig;
 }

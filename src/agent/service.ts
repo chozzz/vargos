@@ -145,6 +145,12 @@ export class AgentService extends ServiceClient {
         log.error(`Failed to send reply: ${err}`),
       );
       log.info(`reply sent: ${channel}:${userId}`);
+    } else if (!result.success) {
+      const errMsg = result.error
+        ? `Something went wrong: ${result.error.slice(0, 200)}`
+        : 'Something went wrong — please try again.';
+      await this.call('channel', 'channel.send', { channel, userId, text: errMsg })
+        .catch((err) => log.error(`Failed to send error reply: ${err}`));
     }
   }
 

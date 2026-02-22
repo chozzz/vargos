@@ -173,6 +173,14 @@ export async function start(): Promise<void> {
     toolCounts[TOOL_GROUPS[i]] = toolRegistry.list().length - before;
   }
 
+  // ── External MCP servers ──────────────────────────────────────────────────
+  const { McpClientManager } = await import('../../mcp/client.js');
+  const mcpClients = new McpClientManager(toolRegistry);
+  const mcpServerCount = await mcpClients.connectAll(config.mcpServers);
+  if (mcpServerCount > 0) {
+    services.push({ name: 'MCP Servers', ok: true, detail: `${mcpServerCount} connected` });
+  }
+
   const tools = new ToolsService({ registry: toolRegistry, gatewayUrl });
   await tools.connect();
   setGatewayCall((target, method, params) => tools.call(target, method, params));
@@ -298,6 +306,7 @@ export async function start(): Promise<void> {
 
   // ── Shutdown ──────────────────────────────────────────────────────────────
   const teardown = async () => {
+    await mcpClients.disconnectAll();
     await mcpBridge.stopHttp().catch(() => {});
     await mcpBridge.disconnect();
     await agent.disconnect();

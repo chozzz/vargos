@@ -38,7 +38,9 @@ function createParamsSchema(zodSchema: import('zod').ZodSchema): ToolDefinition[
  * Wrap a Vargos MCP tool into Pi SDK ToolDefinition format
  */
 function wrapVargosTool(tool: Tool, workingDir: string, sessionKey: string = 'default'): ToolDefinition {
-  const parameters = createParamsSchema(tool.parameters);
+  const parameters = tool.jsonSchema
+    ? (tool.jsonSchema as ToolDefinition['parameters'])
+    : createParamsSchema(tool.parameters);
 
   return {
     name: tool.name,
