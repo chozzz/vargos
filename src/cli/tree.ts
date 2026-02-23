@@ -295,6 +295,13 @@ export function buildTree(): MenuNode[] {
           hint: 'Show session transcript',
           action: async (args) => { const m = await import('./sessions.js'); await m.history(args); },
         },
+        {
+          key: 'debug',
+          kind: 'leaf',
+          label: 'Debug',
+          hint: 'Show system prompt + processed history for a session',
+          action: async (args) => { const m = await import('./session-debug.js'); await m.sessionDebug(args); },
+        },
       ],
     },
     {
