@@ -12,6 +12,7 @@
 import { ServiceClient } from '../gateway/service-client.js';
 import type { ChannelAdapter } from './types.js';
 import { deliverReply } from './delivery.js';
+import { extractMediaPaths } from './media-extract.js';
 import { channelSessionKey } from '../sessions/keys.js';
 import { createLogger } from '../lib/logger.js';
 
@@ -104,6 +105,16 @@ export class ChannelService extends ServiceClient {
           log.error(`send failed: ${channel}:${userId}: ${err}`);
           throw err;
         }
+
+        // Detect and send any media file paths embedded in the text
+        if (adapter.sendMedia) {
+          const files = extractMediaPaths(text);
+          for (const { filePath, mimeType } of files) {
+            await adapter.sendMedia(userId, filePath, mimeType).catch((err: unknown) =>
+              log.error(`media send failed: ${filePath}: ${err}`));
+          }
+        }
+
         return { sent: true };
       }
 
