@@ -123,7 +123,7 @@ describe('WebhookService', () => {
     expect(trigger).toBeDefined();
     const p = trigger!.payload as Record<string, unknown>;
     expect(p.hookId).toBe('github');
-    expect(p.sessionKey).toBe('webhook:github');
+    expect(p.sessionKey).toMatch(/^webhook:github:\d+$/);
     // Passthrough transform yields JSON
     expect(JSON.parse(p.task as string)).toEqual({ ref: 'refs/heads/main' });
   });

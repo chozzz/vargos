@@ -1,8 +1,7 @@
 import chalk from 'chalk';
 import { text, isCancel } from '@clack/prompts';
 import { connectToGateway } from './client.js';
-
-const SESSION_KEY = 'cli:run';
+import { cliSessionKey } from '../sessions/keys.js';
 
 export async function run(args?: string[]): Promise<void> {
   let task = args?.join(' ') || '';
@@ -12,21 +11,22 @@ export async function run(args?: string[]): Promise<void> {
     task = input.trim();
   }
 
+  const sessionKey = cliSessionKey('run');
   const client = await connectToGateway();
   client.onDelta((delta) => process.stdout.write(delta));
   client.startThinking();
 
   try {
     await client.call('sessions', 'session.create', {
-      sessionKey: SESSION_KEY, kind: 'cli', metadata: {},
+      sessionKey, kind: 'cli', metadata: {},
     }).catch(() => {}); // ignore if already exists
 
     await client.call('sessions', 'session.addMessage', {
-      sessionKey: SESSION_KEY, content: task, role: 'user',
+      sessionKey, content: task, role: 'user',
     }).catch(() => {});
 
     const result = await client.call<{ success: boolean; error?: string }>(
-      'agent', 'agent.run', { sessionKey: SESSION_KEY, task }, 300_000,
+      'agent', 'agent.run', { sessionKey, task }, 300_000,
     );
     console.log('');
     if (!result.success) {

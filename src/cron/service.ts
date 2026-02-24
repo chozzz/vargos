@@ -11,6 +11,7 @@
 
 import { CronJob } from 'cron';
 import { ServiceClient } from '../gateway/service-client.js';
+import { cronSessionKey } from '../sessions/keys.js';
 import { createLogger } from '../lib/logger.js';
 import type { CronTask } from './types.js';
 
@@ -175,7 +176,7 @@ export class CronService extends ServiceClient {
       if (!shouldFire) return;
     }
     log.info(`task fired: ${task.name} (${task.id})`);
-    const sessionKey = `cron:${task.id}`;
+    const sessionKey = cronSessionKey(task.id);
     this.emit('cron.trigger', { taskId: task.id, task: task.task, name: task.name, sessionKey, notify: task.notify });
   }
 

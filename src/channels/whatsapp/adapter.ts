@@ -153,7 +153,7 @@ export class WhatsAppAdapter extends BaseChannelAdapter {
     }
 
     this.log.info(`received from ${msg.jid}: ${msg.text.slice(0, 80)}`);
-    this.debouncer.push(msg.jid, msg.text);
+    this.debouncer.push(this.buildUserId(msg.jid), msg.text);
   }
 
   private buildUserId(jid: string): string {

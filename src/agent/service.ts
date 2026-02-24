@@ -13,7 +13,7 @@ import { ServiceClient } from '../gateway/service-client.js';
 import { createLogger } from '../lib/logger.js';
 import { stripHeartbeatToken } from '../lib/heartbeat.js';
 import { parseTarget } from '../lib/channel-target.js';
-import { isSubagentSessionKey } from '../lib/errors.js';
+import { isSubagentSessionKey } from '../sessions/keys.js';
 import { type PiAgentRuntime, type PiAgentConfig, type PiAgentRunResult } from './runtime.js';
 
 const log = createLogger('agent');

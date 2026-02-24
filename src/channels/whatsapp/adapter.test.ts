@@ -133,6 +133,26 @@ describe('WhatsAppAdapter', () => {
     });
   });
 
+  describe('handleInbound — text path normalizes JID', () => {
+    it('strips @s.whatsapp.net before routing', async () => {
+      const onInbound = vi.fn().mockResolvedValue(undefined);
+      const a = new WhatsAppAdapter(undefined, onInbound);
+      (a as any).sock = sock;
+
+      // Simulate handleInbound with a text message
+      (a as any).handleInbound({
+        jid: '61423222658@s.whatsapp.net',
+        text: 'hello',
+        fromMe: false,
+        isGroup: false,
+        messageId: 'msg-1',
+      });
+
+      // Debouncer mock fires synchronously → routeToService called with normalized userId
+      expect(onInbound).toHaveBeenCalledWith('whatsapp', '61423222658', 'hello', undefined);
+    });
+  });
+
   describe('routeToService', () => {
     it('calls onInboundMessage callback', async () => {
       const onInbound = vi.fn().mockResolvedValue(undefined);

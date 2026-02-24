@@ -28,7 +28,7 @@ Sessions persist conversation history and provide isolation between different in
 - Everything else: 50 turns
 - Subagents inherit the limit of their root session
 
-**Subagent spawning** (`src/lib/errors.ts`):
+**Subagent spawning** (`src/sessions/keys.ts`):
 - Subagents can spawn children up to depth 3 (depth-limited, not flat-denied)
 - All tools are available to subagents — no deny list
 
@@ -36,7 +36,7 @@ Sessions persist conversation history and provide isolation between different in
 
 Each session key maps to an independent conversation. Sessions do **not** share history:
 
-- Cron jobs use `cron:<taskId>` — persistent sessions that accumulate context across executions
+- Cron jobs use `cron:<taskId>:<timestamp>` — fresh session per fire
 - Cron results are delivered only to explicit `notify` targets configured per task — no delivery if unset
 - Notifications inject the result into the recipient's channel session for context, then send via `channel.send`
 - Cross-session context is also possible through workspace files (e.g., memory files, MEMORY.md)

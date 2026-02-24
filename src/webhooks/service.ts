@@ -11,6 +11,7 @@
 import http from 'node:http';
 import { timingSafeEqual } from 'node:crypto';
 import { ServiceClient } from '../gateway/service-client.js';
+import { webhookSessionKey } from '../sessions/keys.js';
 import { createLogger } from '../lib/logger.js';
 import { passthroughTransform, loadTransform } from './transform.js';
 import type { WebhookHook, WebhookStatus } from './types.js';
@@ -177,7 +178,7 @@ export class WebhookService extends ServiceClient {
       ? await loadTransform(hook.transform).then((fn) => fn(payload))
       : passthroughTransform(payload);
 
-    const sessionKey = `webhook:${hook.id}`;
+    const sessionKey = webhookSessionKey(hook.id);
 
     // Update stats
     const s = this.stats.get(hook.id);
