@@ -73,8 +73,15 @@ Helper factories: `textResult()`, `errorResult()`, `imageResult()`.
 | `sessions_history` | Full message history for a session |
 | `sessions_send` | Post a message into another session |
 | `sessions_spawn` | Spawn background subagent in isolated session |
+| `sessions_delete` | Delete a session and its message history |
 | `cron_add` | Schedule recurring task via cron expression |
 | `cron_list` | List all scheduled cron tasks |
+| `cron_remove` | Remove a scheduled recurring task |
+| `cron_update` | Update a scheduled cron task |
+| `cron_run` | Trigger immediate execution of a scheduled task |
+| `agent_status` | Show currently active agent runs |
+| `channel_status` | Show connection status of messaging channels |
+| `config_read` | Read current config (API keys masked) |
 | `process` | Manage background processes (list, poll, write stdin, kill) |
 
 ### Memory (`tools/memory/`)
@@ -83,6 +90,7 @@ Helper factories: `textResult()`, `errorResult()`, `imageResult()`.
 |------|-------------|
 | `memory_search` | Hybrid vector + text search over memory files and session transcripts |
 | `memory_get` | Read specific lines from a memory file |
+| `memory_write` | Write or append to a memory file (auto-indexed for search) |
 
 ### Web (`tools/web/`)
 
