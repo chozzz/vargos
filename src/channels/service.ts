@@ -12,6 +12,7 @@
 import { ServiceClient } from '../gateway/service-client.js';
 import type { ChannelAdapter } from './types.js';
 import { deliverReply } from './delivery.js';
+import { channelSessionKey } from '../sessions/keys.js';
 import { createLogger } from '../lib/logger.js';
 
 const log = createLogger('channels');
@@ -57,7 +58,7 @@ export class ChannelService extends ServiceClient {
    * Emits message.received for the agent service to pick up.
    */
   async onInboundMessage(channel: string, userId: string, content: string, metadata?: Record<string, unknown>): Promise<void> {
-    const sessionKey = `${channel}:${userId}`;
+    const sessionKey = channelSessionKey(channel, userId);
 
     // Create session if needed
     await this.call('sessions', 'session.create', {

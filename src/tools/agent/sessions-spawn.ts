@@ -4,7 +4,7 @@
 
 import { z } from 'zod';
 import { Tool, ToolContext, textResult, errorResult } from '../types.js';
-import { canSpawnSubagent } from '../../lib/errors.js';
+import { canSpawnSubagent, subagentSessionKey } from '../../sessions/keys.js';
 import { createLogger } from '../../lib/logger.js';
 
 const log = createLogger('sessions-spawn');
@@ -30,7 +30,7 @@ export const sessionsSpawnTool: Tool = {
         return errorResult('Maximum sub-agent nesting depth reached.');
       }
 
-      const childKey = `${context.sessionKey}:subagent:${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const childKey = subagentSessionKey(context.sessionKey);
 
       // Create child session + add task
       await context.call('sessions', 'session.create', {

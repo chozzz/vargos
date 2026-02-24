@@ -168,7 +168,7 @@ describe('session lifecycle edge cases', () => {
       const subagentKey = 'agent:test:subagent:1234567890-abcde';
       await sessions.create({ sessionKey: subagentKey, kind: 'subagent', metadata: {} });
 
-      const { isSubagentSessionKey } = await import('../lib/errors.js');
+      const { isSubagentSessionKey } = await import('./keys.js');
       expect(isSubagentSessionKey(subagentKey)).toBe(true);
       expect(isSubagentSessionKey('main:session')).toBe(false);
     });

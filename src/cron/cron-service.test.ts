@@ -141,7 +141,7 @@ describe('CronService', () => {
     expect(trigger).toBeDefined();
     expect((trigger!.payload as any).taskId).toBe(task.id);
     expect((trigger!.payload as any).task).toBe('analyze workspace');
-    expect((trigger!.payload as any).sessionKey).toBe(`cron:${task.id}`);
+    expect((trigger!.payload as any).sessionKey).toMatch(new RegExp(`^cron:${task.id}:\\d+$`));
   });
 
   it('includes notify in cron.trigger event', async () => {
