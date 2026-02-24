@@ -1,0 +1,63 @@
+name: Bug Report
+description: Report a bug in Vargos
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened? What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Minimal steps to reproduce the issue.
+      placeholder: |
+        1. Run `vargos gateway start`
+        2. Run `vargos chat`
+        3. Send "..."
+        4. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / Error Output
+      description: Paste relevant logs or error messages.
+      render: shell
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Gateway
+        - Agent / Runtime
+        - CLI
+        - Channels (WhatsApp / Telegram)
+        - Webhooks
+        - Cron
+        - Memory
+        - MCP
+        - Sessions
+        - Tools
+        - Config
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: node-version
+    attributes:
+      label: Node.js Version
+      placeholder: "e.g. 20.11.0"
+
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      placeholder: "e.g. Ubuntu 22.04, macOS 14.3, WSL2"
