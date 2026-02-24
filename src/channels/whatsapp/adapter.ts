@@ -91,6 +91,25 @@ export class WhatsAppAdapter extends BaseChannelAdapter {
     await this.sock.sendMessage(this.toJid(jid), { text });
   }
 
+  async sendMedia(recipientId: string, filePath: string, mimeType: string, caption?: string): Promise<void> {
+    if (!this.sock) throw new Error('WhatsApp not connected');
+    const buffer = readFileSync(filePath);
+    const jid = this.toJid(recipientId);
+    const fileName = path.basename(filePath);
+    const [mediaType] = mimeType.split('/');
+
+    if (mediaType === 'image') {
+      await this.sock.sendMessage(jid, { image: buffer, caption });
+    } else if (mediaType === 'video') {
+      await this.sock.sendMessage(jid, { video: buffer, caption });
+    } else if (mediaType === 'audio') {
+      await this.sock.sendMessage(jid, { audio: buffer, mimetype: mimeType });
+    } else {
+      await this.sock.sendMessage(jid, { document: buffer, mimetype: mimeType, fileName });
+    }
+    this.log.info(`sendMedia: ${recipientId} ${mimeType} ${fileName}`);
+  }
+
   protected async sendTypingIndicator(recipientId: string): Promise<void> {
     await this.sock?.sendPresenceUpdate('composing', this.toJid(recipientId));
   }

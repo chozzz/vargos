@@ -4,6 +4,8 @@
  * Text-only private chats, no SDK dependency
  */
 
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import type { OnInboundMessageFn } from '../types.js';
 import type {
   TelegramUpdate,
@@ -69,6 +71,37 @@ export class TelegramAdapter extends BaseChannelAdapter {
       text,
       parse_mode: 'Markdown',
     });
+  }
+
+  async sendMedia(recipientId: string, filePath: string, mimeType: string, caption?: string): Promise<void> {
+    const [mediaType] = mimeType.split('/');
+    const methodMap: Record<string, { method: string; field: string }> = {
+      image: { method: 'sendPhoto', field: 'photo' },
+      video: { method: 'sendVideo', field: 'video' },
+      audio: { method: 'sendAudio', field: 'audio' },
+    };
+    const { method, field } = methodMap[mediaType] ?? { method: 'sendDocument', field: 'document' };
+
+    const buffer = readFileSync(filePath);
+    const fileName = path.basename(filePath);
+    const blob = new Blob([buffer], { type: mimeType });
+
+    const form = new FormData();
+    form.append('chat_id', recipientId);
+    form.append(field, blob, fileName);
+    if (caption) form.append('caption', caption);
+
+    const url = `${API_BASE}${this.botToken}/${method}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      body: form,
+      signal: this.abortController?.signal,
+    });
+
+    if (!res.ok) {
+      throw new Error(`Telegram API ${method} failed: ${res.status} ${res.statusText}`);
+    }
+    this.log.debug(`sendMedia: ${recipientId} ${mimeType} ${fileName}`);
   }
 
   protected async sendTypingIndicator(recipientId: string): Promise<void> {

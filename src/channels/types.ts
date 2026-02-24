@@ -38,6 +38,9 @@ export interface ChannelAdapter {
   /** Send a text message to a specific recipient */
   send(recipientId: string, text: string): Promise<void>;
 
+  /** Send a media file to a specific recipient (optional) */
+  sendMedia?(recipientId: string, filePath: string, mimeType: string, caption?: string): Promise<void>;
+
   /** Start typing indicator for a recipient */
   startTyping(recipientId: string): void;
 
