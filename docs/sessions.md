@@ -7,13 +7,15 @@ Sessions persist conversation history and provide isolation between different in
 | Format | Example | Created By | Prompt Mode | History Limit |
 |--------|---------|-----------|-------------|---------------|
 | `cli:chat` | `cli:chat` | CLI `vargos chat` | full | 50 turns |
-| `cli:run` | `cli:run` | CLI `vargos run` | full | 50 turns |
+| `cli:run:<timestamp>` | `cli:run:1708865234567` | CLI `vargos run` | full | 50 turns |
 | `whatsapp:<userId>` | `whatsapp:61423222658` | WhatsApp adapter | full | 30 turns |
 | `telegram:<chatId>` | `telegram:123456` | Telegram adapter | full | 30 turns |
-| `cron:<taskId>` | `cron:cron-abc` | Cron service | minimal | 10 turns |
-| `webhook:<hookId>` | `webhook:github` | Webhook service | minimal | 10 turns |
-| `<parent>:subagent:<rand>` | `cli:chat:subagent:1708-x7k` | `sessions_spawn` tool | full | inherits root |
+| `cron:<taskId>:<timestamp>` | `cron:daily-report:1708865234567` | Cron service | minimal | 10 turns |
+| `webhook:<hookId>:<timestamp>` | `webhook:github-pr:1708865234567` | Webhook service | minimal | 10 turns |
+| `<parent>:subagent:<timestamp>-<rand>` | `cli:chat:subagent:1708865240123-x7k2q` | `sessions_spawn` tool | full | inherits root |
 | `mcp:default` | `mcp:default` | MCP bridge | full | 50 turns |
+
+Session key construction is centralized in `src/sessions/keys.ts`. Builder functions: `channelSessionKey()`, `cronSessionKey()`, `webhookSessionKey()`, `cliSessionKey()`, `subagentSessionKey()`.
 
 ## Behaviors Driven by Session Key
 
@@ -54,11 +56,11 @@ The Pi SDK runs in-memory only — no session files from the LLM runtime. All pe
 ## Lifecycle
 
 - **Chat sessions** (`cli:chat`) persist across restarts — resume where you left off
-- **Run sessions** (`cli:run`) reuse the same key, so history accumulates across runs
+- **Run sessions** (`cli:run:<ts>`) use a unique timestamp key per invocation — each run is a fresh session
 - **Channel sessions** (`whatsapp:*`, `telegram:*`) are keyed by sender ID — one session per contact
-- **Cron sessions** (`cron:*`) are keyed by task ID — history accumulates across executions (limited to 10 turns)
-- **Webhook sessions** (`webhook:*`) are keyed by hook ID — history accumulates across fires (limited to 10 turns)
-- **Subagent sessions** (`*:subagent:*`) include a random suffix, always fresh. On completion, parent is re-triggered and result delivered through the channel
+- **Cron sessions** (`cron:<taskId>:<ts>`) get a fresh session per fire via timestamp suffix
+- **Webhook sessions** (`webhook:<hookId>:<ts>`) get a fresh session per fire via timestamp suffix
+- **Subagent sessions** (`*:subagent:*`) include timestamp + random suffix, always fresh
 
 ## Message Queue
 

@@ -28,13 +28,13 @@ src/
   gateway/       WS server, router, event bus, registry, ServiceClient base, methods/events
 
   # Domain modules (each owns its types, service, implementation)
-  agent/         Agent service, Pi runtime, lifecycle, prompt, queue, history
-  sessions/      Session service, file-store, types
+  agent/         Agent service, Pi runtime, lifecycle, prompt, queue, history, context-pruning, compaction
+  sessions/      Session service, file-store, keys, types
   channels/      Channel service, delivery, factory, whatsapp/, telegram/
   cron/          Cron service, tasks/heartbeat
   memory/        Memory service, context, sqlite/postgres storage, types
   tools/         Tool service, registry, base, fs/, web/, agent/, memory/
-  services/      Shared services (browser, process)
+  services/      Shared services (browser, process, webhooks)
 
   # Edge layers
   mcp/           MCP-to-gateway RPC bridge (stdio + HTTP)
@@ -77,12 +77,12 @@ cli/           → everything (composition root)
                         │  Auth + Scopes       │
                         └──────────┬──────────┘
                                    │ WebSocket
-            ┌──────────┬───────────┼───────────┬──────────┐
-            ↕          ↕           ↕           ↕          ↕
-        ┌───────┐  ┌────────┐  ┌───────┐  ┌───────┐  ┌──────┐
-        │ Agent │  │Channel │  │ Tools │  │ Cron  │  │  UI  │
-        │Service│  │Service │  │Service│  │Service│  │Client│
-        └───────┘  └────────┘  └───────┘  └───────┘  └──────┘
+       ┌──────────┬────────┬───────┼───────┬──────────┬──────────┐
+       ↕          ↕        ↕       ↕       ↕          ↕          ↕
+   ┌───────┐ ┌────────┐ ┌─────┐ ┌─────┐ ┌──────┐ ┌────────┐ ┌──────┐
+   │ Agent │ │Channel │ │Tools│ │Cron │ │Webhk │ │Sessions│ │  UI  │
+   │Service│ │Service │ │Svc  │ │Svc  │ │Svc   │ │Service │ │Client│
+   └───────┘ └────────┘ └─────┘ └─────┘ └──────┘ └────────┘ └──────┘
 ```
 
 The gateway is a **dumb router** — it knows nothing about agents, tools, or channels. It routes frames between services based on a registration table. Adding a service means connecting and registering, nothing else. See [extensions.md](./extensions.md) for tool implementations and channel adapters.
@@ -232,10 +232,11 @@ Manages session state, history, and lifecycle.
 | Method | Params | Description |
 |--------|--------|-------------|
 | `session.list` | `{ kind?, limit? }` | List sessions |
-| `session.history` | `{ sessionKey, limit? }` | Get transcript |
-| `session.send` | `{ sessionKey, content }` | Inject message |
+| `session.get` | `{ sessionKey }` | Get session metadata |
 | `session.create` | `{ sessionKey, kind, metadata }` | Create session |
 | `session.delete` | `{ sessionKey }` | Delete session |
+| `session.addMessage` | `{ sessionKey, role, content }` | Append message |
+| `session.getMessages` | `{ sessionKey, limit? }` | Get transcript |
 
 **Events emitted:**
 
@@ -261,6 +262,37 @@ Scheduled task execution. Fires events that the agent service subscribes to.
 | Event | Payload | Description |
 |-------|---------|-------------|
 | `cron.trigger` | `{ taskId, task, sessionKey, notify? }` | Task fired |
+
+### Webhook Service
+
+Receives inbound HTTP triggers and fires agent tasks. See [webhooks.md](./webhooks.md) for configuration.
+
+| Method | Params | Description |
+|--------|--------|-------------|
+| `webhook.list` | — | List configured hooks (tokens stripped) |
+| `webhook.status` | — | Get fire stats for all hooks |
+
+**Events emitted:**
+
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `webhook.trigger` | `{ hookId, task, sessionKey, notify }` | Webhook fired |
+
+**Subscribes to:** nothing (HTTP-driven)
+
+### Gateway Methods
+
+Built-in methods handled by the gateway itself:
+
+| Method | Params | Description |
+|--------|--------|-------------|
+| `gateway.register` | `{ service, version, methods, events, subscriptions }` | Service handshake |
+| `gateway.inspect` | — | Show registered services, methods, events, tools |
+| `gateway.stats` | — | Gateway statistics |
+
+### Memory
+
+Memory is not a gateway service — it operates at the library level. Memory tools (`memory_search`, `memory_get`, `memory_write`) call `MemoryContext` directly. Hybrid search combines vector similarity (0.7 weight) + text matching (0.3 weight) over memory files and session transcripts.
 
 ---
 

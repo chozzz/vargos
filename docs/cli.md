@@ -21,9 +21,13 @@ Bare `vargos` opens an interactive menu with breadcrumb navigation. Select comma
 | `vargos gateway stop` | Stop running gateway |
 | `vargos gateway restart` | Restart gateway |
 | `vargos gateway status` | Check gateway process status |
+| `vargos gateway inspect` | Show registered services, methods, events, tools |
 | `vargos channels send <target> <msg>` | Send a message to a channel target |
 | `vargos sessions list` | List all sessions |
 | `vargos sessions history <key>` | Show session transcript |
+| `vargos sessions debug <key>` | Show system prompt + processed history |
+| `vargos webhooks list` | Show configured webhooks |
+| `vargos webhooks status` | Show webhook fire stats |
 | `vargos health` | Config + connectivity check |
 
 ## Session Commands
@@ -32,6 +36,7 @@ Bare `vargos` opens an interactive menu with breadcrumb navigation. Select comma
 |---------|-------------|
 | `vargos sessions list` | Show all sessions with kind, label, last activity |
 | `vargos sessions history <key>` | Show session transcript |
+| `vargos sessions debug <key>` | Show system prompt + processed history for a session |
 
 ## Config Commands
 
@@ -45,6 +50,9 @@ Bare `vargos` opens an interactive menu with breadcrumb navigation. Select comma
 | `vargos config context edit` | Edit context files |
 | `vargos config heartbeat show` | Display heartbeat config |
 | `vargos config heartbeat edit` | Configure heartbeat schedule |
+| `vargos config heartbeat tasks` | Edit HEARTBEAT.md in $EDITOR |
+| `vargos config compaction show` | Display compaction config |
+| `vargos config compaction edit` | Configure context pruning & safeguard |
 
 ## Channel Commands
 
@@ -78,6 +86,7 @@ vargos gateway start      # Start (exits if already running)
 vargos gateway status     # Shows PID and uptime
 vargos gateway restart    # Stop + start
 vargos gateway stop       # Graceful shutdown
+vargos gateway inspect    # Show registered services, methods, events, tools
 ```
 
 ## Chat Mode

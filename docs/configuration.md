@@ -99,6 +99,8 @@ Priority: `config.paths.dataDir` > `VARGOS_DATA_DIR` env > `~/.vargos`
       "env": { "JIRA_URL": "...", "JIRA_USERNAME": "...", "JIRA_API_TOKEN": "..." }
     }
   },
+  "webhooks": { ... },              // see below
+  "compaction": { ... },            // see below
   "channels": { ... }              // see channels.md
 }
 ```
@@ -242,6 +244,73 @@ vargos config context edit       # Edit context in $EDITOR
 vargos config heartbeat show     # Display heartbeat config
 vargos config heartbeat edit     # Configure heartbeat schedule
 ```
+
+## Webhooks
+
+Inbound HTTP triggers that fire agent tasks. See [webhooks.md](./webhooks.md) for full details.
+
+```jsonc
+{
+  "webhooks": {
+    "port": 9002,                    // default: 9002
+    "host": "127.0.0.1",            // default: 127.0.0.1
+    "hooks": [
+      {
+        "id": "github-pr",          // URL-safe identifier
+        "token": "secret-token",    // Bearer token for auth
+        "description": "GitHub PR webhooks",
+        "transform": "./transforms/github.js",  // optional custom transform
+        "notify": ["whatsapp:614..."]            // optional channel targets
+      }
+    ]
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `port` | number | no | HTTP server port (default: `9002`) |
+| `host` | string | no | Bind address (default: `127.0.0.1`) |
+| `hooks` | array | yes | Hook definitions |
+| `hooks[].id` | string | yes | URL-safe identifier (`[a-z0-9_-]+`) |
+| `hooks[].token` | string | yes | Bearer token for authentication |
+| `hooks[].transform` | string | no | Module path for custom payload transform |
+| `hooks[].notify` | string[] | no | Channel targets for result delivery |
+| `hooks[].description` | string | no | Human-readable description |
+
+## Compaction
+
+Controls how the agent manages context window usage. Two independent systems:
+
+```jsonc
+{
+  "compaction": {
+    "contextPruning": {
+      "enabled": true,               // default: true
+      "keepLastAssistants": 3,       // always keep N recent assistant messages
+      "softTrimRatio": 0.3,          // trigger soft trim at 30% of context window
+      "hardClearRatio": 0.5,         // trigger hard clear at 50%
+      "softTrim": {
+        "maxChars": 4000,            // max chars per old message
+        "headChars": 1500,           // chars from start when truncating
+        "tailChars": 1500            // chars from end when truncating
+      },
+      "tools": {
+        "allow": ["read", "edit"],   // only keep these tool calls
+        "deny": ["exec"]             // strip these tool calls
+      }
+    },
+    "safeguard": {
+      "enabled": true,               // default: true
+      "maxHistoryShare": 0.5         // max ratio of context window for history
+    }
+  }
+}
+```
+
+**Context pruning** trims old messages to free context space. Soft trim truncates long messages; hard clear removes old messages entirely. Recent assistant messages are always preserved.
+
+**Safeguard** caps the total history size relative to the context window, ensuring the system prompt always fits.
 
 ## Migration
 
