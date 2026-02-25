@@ -1,26 +1,35 @@
 import chalk from 'chalk';
+import { select, isCancel } from '@clack/prompts';
 import { connectToGateway } from './client.js';
 import { loadAndValidate } from './boot.js';
 import { buildSystemPrompt, resolvePromptMode } from '../agent/prompt.js';
 import { toAgentMessages, sanitizeHistory, limitHistoryTurns, getHistoryLimit } from '../agent/history.js';
 import { loadContextFiles } from '../config/workspace.js';
-import type { SessionMessage } from '../sessions/types.js';
+import type { Session, SessionMessage } from '../sessions/types.js';
 
 const DIM = chalk.dim;
 const BOLD = chalk.bold;
 const LABEL = chalk.gray;
 
 export async function sessionDebug(args?: string[]): Promise<void> {
-  const sessionKey = args?.[0];
-  if (!sessionKey) {
-    console.error(chalk.red('  Usage: vargos sessions debug <session-key>'));
-    process.exit(1);
-  }
+  const { workspaceDir } = await loadAndValidate();
+  const client = await connectToGateway();
 
-  const [client, { workspaceDir }] = await Promise.all([
-    connectToGateway(),
-    loadAndValidate(),
-  ]);
+  let sessionKey = args?.[0];
+  if (!sessionKey) {
+    const sessions = await client.call<Session[]>('sessions', 'session.list', {});
+    if (sessions.length === 0) {
+      console.log(chalk.yellow('  No sessions.'));
+      await client.disconnect();
+      return;
+    }
+    const choice = await select({
+      message: 'Select session',
+      options: sessions.map(s => ({ value: s.sessionKey, label: s.sessionKey, hint: s.label || s.kind })),
+    });
+    if (isCancel(choice)) { await client.disconnect(); return; }
+    sessionKey = choice;
+  }
 
   try {
     const [tools, messages, contextFiles] = await Promise.all([

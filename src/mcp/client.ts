@@ -65,10 +65,17 @@ export class McpClientManager {
   }
 
   private async connectOne(name: string, entry: McpServerEntry): Promise<number> {
+    const envs = {
+      ...process.env,
+      FASTMCP_SHOW_SERVER_BANNER: '0',
+      ...entry.env
+    } as Record<string, string>;
+
     const transport = new StdioClientTransport({
       command: entry.command,
       args: entry.args,
-      env: { ...process.env, ...entry.env } as Record<string, string>,
+      env: envs,
+      stderr: 'pipe',
     });
 
     let resolveTools: ((count: number) => void) | undefined;
@@ -95,6 +102,10 @@ export class McpClientManager {
     );
 
     await client.connect(transport);
+    transport.stderr?.on('data', (chunk: Buffer) => {
+      const line = chunk.toString().trim();
+      if (line) log.debug(`${name}: ${line}`);
+    });
     this.connections.push({ name, client, transport });
 
     const { tools } = await client.listTools();

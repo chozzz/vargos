@@ -95,9 +95,18 @@ export function renderReady(data: {
 }
 
 export function renderNextSteps(): void {
+  const cmds: [string, string][] = [
+    ['vargos chat', 'Interactive session'],
+    ['vargos run "task"', 'One-shot task'],
+    ['vargos cron list', 'Scheduled tasks'],
+    ['vargos sessions list', 'Past sessions'],
+    ['vargos health', 'System health'],
+  ];
+  const maxCmd = Math.max(...cmds.map(([c]) => c.length));
   out('');
-  out(`  ${URL('vargos chat')}${DIM('          Interactive session')}`);
-  out(`  ${URL('vargos run "task"')}${DIM('    One-shot task')}`);
+  for (const [cmd, desc] of cmds) {
+    out(`  ${URL(cmd)}${DIM(' '.repeat(maxCmd - cmd.length + 4) + desc)}`);
+  }
   out('');
 }
 
