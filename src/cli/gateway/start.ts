@@ -100,13 +100,6 @@ export async function start(): Promise<void> {
 
   initPaths(config.paths);
 
-  // ── Banner ────────────────────────────────────────────────────────────────
-  renderBanner({
-    version: VERSION,
-    profile: { name: primaryName, provider: primary.provider, model: primary.model },
-    dataDir,
-  });
-
   // ── Gateway ───────────────────────────────────────────────────────────────
   const gatewayHost = config.gateway?.host ?? '127.0.0.1';
   const gatewayPort = config.gateway?.port ?? 9000;
@@ -312,6 +305,11 @@ export async function start(): Promise<void> {
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
+  renderBanner({
+    version: VERSION,
+    profile: { name: primaryName, provider: primary.provider, model: primary.model },
+    dataDir,
+  });
   renderServices(services);
   renderMcp(mcpUrl, openapiUrl);
   renderReady({
