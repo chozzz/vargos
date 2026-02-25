@@ -7,11 +7,16 @@ const filter = DEBUG && DEBUG !== '1'
   ? new Set(DEBUG.split(','))
   : null;
 
-const bootTime = Date.now();
-
 function ts(): string {
-  const delta = ((Date.now() - bootTime) / 1000).toFixed(1);
-  return `+${delta}s`;
+  const now = new Date();
+  const Y = now.getFullYear();
+  const M = String(now.getMonth() + 1).padStart(2, '0');
+  const D = String(now.getDate()).padStart(2, '0');
+  const h = String(now.getHours()).padStart(2, '0');
+  const m = String(now.getMinutes()).padStart(2, '0');
+  const s = String(now.getSeconds()).padStart(2, '0');
+  const ms = String(Math.floor(now.getMilliseconds() / 100));
+  return `${Y}-${M}-${D} ${h}:${m}:${s}.${ms}`;
 }
 
 export function createLogger(scope: string) {
