@@ -1,4 +1,5 @@
 import chalk from 'chalk';
+import { pick } from './pick.js';
 import { connectToGateway } from './client.js';
 import type { Session, SessionMessage } from '../sessions/types.js';
 
@@ -35,18 +36,14 @@ export async function history(args?: string[]): Promise<void> {
       console.error(chalk.red('  Usage: vargos sessions history <session-key>'));
       process.exit(1);
     }
-    const { select, isCancel } = await import('@clack/prompts');
     const sessions = await client.call<Session[]>('sessions', 'session.list', {});
     if (sessions.length === 0) {
       console.log(chalk.yellow('  No sessions.'));
       await client.disconnect();
       return;
     }
-    const choice = await select({
-      message: 'Select session',
-      options: sessions.map(s => ({ value: s.sessionKey, label: s.sessionKey, hint: s.label || s.kind })),
-    });
-    if (isCancel(choice)) { await client.disconnect(); return; }
+    const choice = await pick('Select session', sessions.map(s => ({ value: s.sessionKey, label: s.sessionKey, hint: s.label || s.kind })));
+    if (choice === null) { await client.disconnect(); return; }
     sessionKey = choice;
   }
 

@@ -1,5 +1,5 @@
-import { select, confirm, isCancel } from '@clack/prompts';
 import chalk from 'chalk';
+import { pick, pickConfirm } from '../pick.js';
 import { resolveDataDir } from '../../config/paths.js';
 import { loadConfig, saveConfig } from '../../config/pi-config.js';
 import type { CompactionConfig } from '../../config/pi-config.js';
@@ -14,7 +14,6 @@ export async function show(): Promise<void> {
 
   console.log(`\n  ${BOLD('Compaction')}\n`);
 
-  // Context Pruning
   const cpEnabled = c?.contextPruning?.enabled !== false;
   console.log(`    ${LABEL('Context Pruning')}  ${cpEnabled ? chalk.green('enabled') : chalk.yellow('disabled')}`);
   if (cpEnabled) {
@@ -30,7 +29,6 @@ export async function show(): Promise<void> {
     }
   }
 
-  // Compaction Safeguard
   const sgEnabled = c?.safeguard?.enabled !== false;
   console.log(`    ${LABEL('Safeguard')}       ${sgEnabled ? chalk.green('enabled') : chalk.yellow('disabled')}`);
   if (sgEnabled) {
@@ -52,26 +50,18 @@ export async function edit(): Promise<void> {
   const existing = config.compaction ?? {};
   const updated: CompactionConfig = { ...existing };
 
-  // Context Pruning toggle
-  const cpEnabled = await confirm({
-    message: 'Enable context pruning?',
-    initialValue: existing.contextPruning?.enabled !== false,
-  });
-  if (isCancel(cpEnabled)) return;
+  const cpEnabled = await pickConfirm('Enable context pruning?', existing.contextPruning?.enabled !== false);
+  if (cpEnabled === null) return;
 
   if (!cpEnabled) {
     updated.contextPruning = { ...existing.contextPruning, enabled: false };
   } else {
-    const preset = await select({
-      message: 'Pruning aggressiveness',
-      options: [
-        { value: 'conservative', label: 'Conservative — trim only very large results' },
-        { value: 'balanced', label: 'Balanced (recommended)' },
-        { value: 'aggressive', label: 'Aggressive — trim early, save context' },
-      ],
-      initialValue: 'balanced',
-    });
-    if (isCancel(preset)) return;
+    const preset = await pick('Pruning aggressiveness', [
+      { value: 'conservative', label: 'Conservative — trim only very large results' },
+      { value: 'balanced', label: 'Balanced (recommended)' },
+      { value: 'aggressive', label: 'Aggressive — trim early, save context' },
+    ], 'balanced');
+    if (preset === null) return;
 
     const presets: Record<string, { softTrimRatio: number; hardClearRatio: number }> = {
       conservative: { softTrimRatio: 0.5, hardClearRatio: 0.7 },
@@ -88,12 +78,8 @@ export async function edit(): Promise<void> {
     };
   }
 
-  // Safeguard toggle
-  const sgEnabled = await confirm({
-    message: 'Enable compaction safeguard?',
-    initialValue: existing.safeguard?.enabled !== false,
-  });
-  if (isCancel(sgEnabled)) return;
+  const sgEnabled = await pickConfirm('Enable compaction safeguard?', existing.safeguard?.enabled !== false);
+  if (sgEnabled === null) return;
 
   if (!sgEnabled) {
     updated.safeguard = { ...existing.safeguard, enabled: false };

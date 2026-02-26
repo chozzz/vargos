@@ -1,67 +1,16 @@
-/** Interactive menu using raw readline — avoids @clack rendering bugs */
+/** Interactive menu using custom readline prompts — no @clack dependency */
 
 import chalk from 'chalk';
-import { emitKeypressEvents } from 'node:readline';
 import { isGroup, type MenuNode } from './tree.js';
 import { resolveDataDir, resolveGatewayUrl } from '../config/paths.js';
 import { loadConfig } from '../config/pi-config.js';
 import { fetchStatus, renderStatus } from './status.js';
+import { pick } from './pick.js';
 
-const BACK = '__back__';
-const EXIT = '__exit__';
+const BACK = '__back__' as const;
+const EXIT = '__exit__' as const;
 
 const write = (s: string) => process.stderr.write(s);
-
-/** Minimal arrow-key select — full control over rendering and cleanup */
-function menuSelect(message: string, options: { label: string; hint?: string; value: string }[]): Promise<string | null> {
-  return new Promise((resolve) => {
-    let cursor = 0;
-    let resolved = false;
-    const lines = options.length + 1;
-
-    emitKeypressEvents(process.stdin);
-    if (process.stdin.isTTY) process.stdin.setRawMode(true);
-
-    const draw = (clear = false) => {
-      if (clear) write(`\x1B[${lines}A\x1B[J`);
-      write(`${chalk.cyan('◆')}  ${message}\n`);
-      for (let i = 0; i < options.length; i++) {
-        const o = options[i];
-        const active = i === cursor;
-        const bullet = active ? chalk.green('●') : chalk.dim('○');
-        const text = active ? `${o.label}${o.hint ? chalk.dim(` (${o.hint})`) : ''}` : chalk.dim(o.label);
-        write(`${chalk.cyan('│')}  ${bullet} ${text}\n`);
-      }
-    };
-
-    const finish = (value: string | null) => {
-      if (resolved) return;
-      resolved = true;
-      process.stdin.removeListener('keypress', onKey);
-      if (process.stdin.isTTY) process.stdin.setRawMode(false);
-      write(`\x1B[${lines}A\x1B[J`);
-      if (value && value !== BACK) {
-        const picked = options.find(o => o.value === value);
-        write(`${chalk.green('◇')}  ${message}\n${chalk.gray('│')}  ${chalk.dim(picked?.label ?? value)}\n`);
-      } else {
-        write(`${chalk.green('◇')}  ${message}\n`);
-      }
-      resolve(value);
-    };
-
-    const onKey = (_ch: string | undefined, key?: { name: string; ctrl?: boolean }) => {
-      if (!key || resolved) return;
-      if (key.name === 'up') { cursor = (cursor - 1 + options.length) % options.length; draw(true); }
-      else if (key.name === 'down') { cursor = (cursor + 1) % options.length; draw(true); }
-      else if (key.name === 'return') finish(options[cursor].value);
-      else if (key.name === 'escape') finish(BACK);
-      else if (key.ctrl && key.name === 'c') finish(null);
-    };
-
-    process.stdin.on('keypress', onKey);
-    draw();
-  });
-}
 
 interface Level { nodes: MenuNode[]; breadcrumb: string }
 
@@ -87,9 +36,8 @@ export async function runMenu(tree: MenuNode[]): Promise<void> {
       { value: EXIT, label: 'Exit' },
     ];
 
-    // Clear any leftover lines from @clack prompts used by actions
     write('\x1B[J');
-    const choice = await menuSelect(breadcrumb, options);
+    const choice = await pick(breadcrumb, options);
 
     if (choice === null || choice === EXIT) break;
     if (choice === BACK) {
@@ -103,7 +51,7 @@ export async function runMenu(tree: MenuNode[]): Promise<void> {
     if (isGroup(node)) {
       stack.push({ nodes: node.children, breadcrumb: `${breadcrumb} > ${node.label}` });
     } else {
-      await node.action();
+      try { await node.action(); } catch { /* action cancelled or failed */ }
     }
   }
 

@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { select, text, confirm, isCancel } from '@clack/prompts';
 import chalk from 'chalk';
+import { pick, pickText, pickConfirm } from '../pick.js';
 import { resolveDataDir, resolveWorkspaceDir } from '../../config/paths.js';
 import { editFile } from '../../lib/editor.js';
 import { loadConfig, saveConfig } from '../../config/pi-config.js';
@@ -19,7 +19,6 @@ export async function show(): Promise<void> {
 
   if (!config?.heartbeat?.enabled) {
     console.log(`    ${LABEL('Status')}      ${chalk.yellow('disabled')}`);
-    // Show configured values even when disabled
     if (config?.heartbeat) {
       const hb = config.heartbeat;
       const schedule = hb.every ?? '*/30 * * * *';
@@ -61,12 +60,8 @@ export async function edit(): Promise<void> {
 
   const hb = config.heartbeat ?? {};
 
-  // Toggle enabled
-  const enabled = await confirm({
-    message: 'Enable heartbeat?',
-    initialValue: hb.enabled ?? false,
-  });
-  if (isCancel(enabled)) return;
+  const enabled = await pickConfirm('Enable heartbeat?', hb.enabled ?? false);
+  if (enabled === null) return;
 
   if (!enabled) {
     config.heartbeat = { ...hb, enabled: false };
@@ -75,50 +70,38 @@ export async function edit(): Promise<void> {
     return;
   }
 
-  // Schedule
-  const schedule = await select({
-    message: 'Poll frequency',
-    options: [
-      { value: '*/15 * * * *', label: 'Every 15 minutes' },
-      { value: '*/30 * * * *', label: 'Every 30 minutes (recommended)' },
-      { value: '0 * * * *', label: 'Every hour' },
-      { value: '0 */6 * * *', label: 'Every 6 hours' },
-    ],
-    initialValue: hb.every ?? '*/30 * * * *',
-  });
-  if (isCancel(schedule)) return;
+  const schedule = await pick('Poll frequency', [
+    { value: '*/15 * * * *', label: 'Every 15 minutes' },
+    { value: '*/30 * * * *', label: 'Every 30 minutes (recommended)' },
+    { value: '0 * * * *', label: 'Every hour' },
+    { value: '0 */6 * * *', label: 'Every 6 hours' },
+  ], hb.every ?? '*/30 * * * *');
+  if (schedule === null) return;
 
-  // Active hours
-  const useActiveHours = await confirm({
-    message: 'Restrict to active hours?',
-    initialValue: !!hb.activeHours,
-  });
-  if (isCancel(useActiveHours)) return;
+  const useActiveHours = await pickConfirm('Restrict to active hours?', !!hb.activeHours);
+  if (useActiveHours === null) return;
 
   let activeHours: ActiveHoursConfig | undefined;
   if (useActiveHours) {
-    const start = await text({
-      message: 'Start time (HH:MM)',
-      defaultValue: hb.activeHours?.start ?? '08:00',
+    const start = await pickText('Start time (HH:MM)', {
+      initial: hb.activeHours?.start ?? '08:00',
       placeholder: '08:00',
       validate: (v) => /^\d{2}:\d{2}$/.test(v ?? '') ? undefined : 'Use HH:MM format',
     });
-    if (isCancel(start)) return;
+    if (start === null) return;
 
-    const end = await text({
-      message: 'End time (HH:MM)',
-      defaultValue: hb.activeHours?.end ?? '22:00',
+    const end = await pickText('End time (HH:MM)', {
+      initial: hb.activeHours?.end ?? '22:00',
       placeholder: '22:00',
       validate: (v) => /^\d{2}:\d{2}$/.test(v ?? '') ? undefined : 'Use HH:MM format',
     });
-    if (isCancel(end)) return;
+    if (end === null) return;
 
-    const timezone = await text({
-      message: 'Timezone (IANA)',
-      defaultValue: hb.activeHours?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+    const timezone = await pickText('Timezone (IANA)', {
+      initial: hb.activeHours?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
       placeholder: 'Australia/Sydney',
     });
-    if (isCancel(timezone)) return;
+    if (timezone === null) return;
 
     activeHours = { start, end, timezone };
   }
@@ -128,7 +111,7 @@ export async function edit(): Promise<void> {
     every: schedule,
   };
   if (activeHours) updated.activeHours = activeHours;
-  if (hb.prompt) updated.prompt = hb.prompt; // preserve custom prompt
+  if (hb.prompt) updated.prompt = hb.prompt;
 
   config.heartbeat = updated;
   await saveConfig(dataDir, config);
