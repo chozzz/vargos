@@ -4,6 +4,7 @@
  */
 
 import { promises as fs } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { toolRegistry } from '../tools/registry.js';
 
@@ -92,13 +93,8 @@ export async function buildSystemPrompt(options: SystemPromptOptions): Promise<s
     sections.push(buildChannelSection(options.channel));
   }
 
-  // 6. Current Date & Time
-  if (userTimezone) {
-    sections.push(buildTimeSection(userTimezone));
-  }
-
-  // 7. Runtime info
-  sections.push(buildRuntimeSection(repoRoot, model, thinking));
+  // 6. System info — date/time, OS, runtime
+  sections.push(buildSystemSection({ userTimezone, repoRoot, model, thinking }));
 
   // 8. Extra prompt if provided
   if (options.extraSystemPrompt) {
@@ -322,45 +318,33 @@ function buildChannelSection(channel: string): string {
 }
 
 /**
- * Build time section
+ * Build system & runtime section — current time, OS, host, model info
  */
-function buildTimeSection(timezone: string): string {
-  return [
-    '## Current Date & Time',
+function buildSystemSection(options: {
+  userTimezone?: string;
+  repoRoot?: string;
+  model?: string;
+  thinking?: 'off' | 'low' | 'medium' | 'high';
+}): string {
+  const now = new Date();
+  const tz = options.userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  const lines = [
+    '## System',
     '',
-    `Timezone: ${timezone}`,
-    '',
-    `Use session_status when you need the current time; the status card includes a timestamp line.`,
-  ].join('\n');
-}
+    `Date: ${now.toISOString().slice(0, 10)}`,
+    `Time: ${now.toLocaleTimeString('en-GB', { timeZone: tz, hour12: false })} (${tz})`,
+    `OS: ${process.platform} ${process.arch}`,
+    `Host: ${os.hostname()}`,
+  ];
 
-/**
- * Build runtime section
- */
-function buildRuntimeSection(
-  repoRoot?: string,
-  model?: string,
-  thinking?: 'off' | 'low' | 'medium' | 'high'
-): string {
-  const info: string[] = [];
+  const info: string[] = ['host=vargos'];
+  if (options.repoRoot) info.push(`repo=${options.repoRoot}`);
+  if (options.model) info.push(`model=${options.model}`);
+  if (options.thinking && options.thinking !== 'off') info.push(`thinking=${options.thinking}`);
+  lines.push(`Runtime: ${info.join(', ')}`);
 
-  if (repoRoot) {
-    info.push(`repo=${repoRoot}`);
-  }
-  if (model) {
-    info.push(`model=${model}`);
-  }
-  if (thinking && thinking !== 'off') {
-    info.push(`thinking=${thinking}`);
-  }
-
-  const infoStr = info.length > 0 ? ` (${info.join(', ')})` : '';
-
-  return [
-    '## Runtime',
-    '',
-    `host=vargos${infoStr}`,
-  ].join('\n');
+  return lines.join('\n');
 }
 
 /**

@@ -125,7 +125,7 @@ describe('buildSystemPrompt', () => {
       expect(result).toContain('All tools listed in ## Tooling above are available');
     });
 
-    it('includes Current Date & Time when userTimezone is set', async () => {
+    it('includes system section with date, time, and OS', async () => {
       const dir = await makeTmpDir();
       const result = await buildSystemPrompt({
         mode: 'full',
@@ -133,8 +133,10 @@ describe('buildSystemPrompt', () => {
         toolNames: [],
         userTimezone: 'Asia/Tokyo',
       });
-      expect(result).toContain('## Current Date & Time');
+      expect(result).toContain('## System');
       expect(result).toContain('Asia/Tokyo');
+      expect(result).toContain('Date:');
+      expect(result).toContain(`OS: ${process.platform}`);
     });
 
     it('includes model in runtime section', async () => {
