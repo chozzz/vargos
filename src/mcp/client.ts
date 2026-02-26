@@ -129,13 +129,12 @@ export class McpClientManager {
   }
 
   async disconnectAll(): Promise<void> {
-    for (const conn of this.connections) {
-      try {
-        await conn.client.close();
-      } catch {
-        // already closed
-      }
-    }
+    await Promise.allSettled(
+      this.connections.map(async (conn) => {
+        try { await conn.client.close(); } catch { /* already closed */ }
+        try { await conn.transport.close(); } catch { /* already closed */ }
+      }),
+    );
     this.connections.length = 0;
   }
 }
