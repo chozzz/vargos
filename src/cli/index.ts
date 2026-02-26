@@ -13,9 +13,7 @@ function printTree(nodes: ReturnType<typeof buildTree>, indent = '', isLast: boo
     const node = nodes[i];
     const last = i === nodes.length - 1;
     const connector = last ? '└─' : '├─';
-    const hint = !isGroup(node) && (node as { hint?: string }).hint
-      ? `  ${chalk.dim((node as { hint?: string }).hint!)}`
-      : '';
+    const hint = node.hint ? `  ${chalk.dim(node.hint)}` : '';
 
     console.log(`${indent}${connector} ${node.key}${hint}`);
 

@@ -17,6 +17,11 @@ export async function sessionDebug(args?: string[]): Promise<void> {
 
   let sessionKey = args?.[0];
   if (!sessionKey) {
+    if (!process.stdin.isTTY) {
+      console.error(chalk.red('  Usage: vargos sessions debug <session-key>'));
+      await client.disconnect();
+      process.exit(1);
+    }
     const sessions = await client.call<Session[]>('sessions', 'session.list', {});
     if (sessions.length === 0) {
       console.log(chalk.yellow('  No sessions.'));
