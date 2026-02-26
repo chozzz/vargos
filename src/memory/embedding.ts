@@ -7,6 +7,8 @@ export async function generateEmbedding(
   text: string,
   config: EmbeddingConfig,
 ): Promise<number[] | undefined> {
+  if (config.provider === 'none') return undefined;
+
   if (config.provider === 'openai' && config.openaiApiKey) {
     try {
       const response = await fetch('https://api.openai.com/v1/embeddings', {
