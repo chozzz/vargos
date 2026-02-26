@@ -123,6 +123,12 @@ export interface WebhooksConfig {
   hooks: WebhookHook[];
 }
 
+export interface EmbeddingConfig {
+  provider: 'openai';
+  model?: string;    // default: text-embedding-3-small
+  apiKey?: string;
+}
+
 export interface VargosConfig {
   models: Record<string, ModelProfile>;
   agent: AgentRef;
@@ -134,6 +140,7 @@ export interface VargosConfig {
   mcp?: McpConfig;
   mcpServers?: Record<string, McpServerEntry>;
   paths?: PathsConfig;
+  embedding?: EmbeddingConfig;
   storage?: StorageConfig;
   webhooks?: WebhooksConfig;
 }

@@ -200,8 +200,9 @@ export async function start(): Promise<void> {
   await initializeMemoryContext({
     memoryDir: workspaceDir,
     cacheDir: path.join(dataDir, 'cache'),
-    embeddingProvider: apiKey && primary.provider === 'openai' ? 'openai' : 'none',
-    openaiApiKey: apiKey,
+    embeddingProvider: config.embedding?.provider ?? 'none',
+    openaiApiKey: config.embedding?.apiKey,
+    embeddingModel: config.embedding?.model,
     chunkSize: 400,
     chunkOverlap: 80,
     hybridWeight: { vector: 0.7, text: 0.3 },

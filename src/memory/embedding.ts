@@ -1,6 +1,7 @@
 export interface EmbeddingConfig {
   provider: 'openai' | 'local' | 'none';
   openaiApiKey?: string;
+  model?: string;
 }
 
 export async function generateEmbedding(
@@ -19,7 +20,7 @@ export async function generateEmbedding(
         },
         body: JSON.stringify({
           input: text.slice(0, 8000),
-          model: 'text-embedding-3-small',
+          model: config.model ?? 'text-embedding-3-small',
         }),
       });
 
