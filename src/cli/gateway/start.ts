@@ -192,11 +192,13 @@ export async function start(): Promise<void> {
     config.cron = {
       tasks: [
         {
+          id: 'vargos-morning-analysis',
           name: 'Vargos Morning Analysis (AEST)',
           schedule: '0 23 * * *',
           task: 'Analyze the Vargos codebase for improvements. Review scalability, code quality, architecture patterns, and feature gaps. Present suggestions with effort/impact ratings. Store findings in memory/vargos-suggestions/. Wait for user approval before implementing.',
         },
         {
+          id: 'vargos-evening-analysis',
           name: 'Vargos Evening Analysis (AEST)',
           schedule: '0 11 * * *',
           task: 'Analyze the Vargos codebase for improvements. Review scalability, code quality, architecture patterns, and feature gaps. Present suggestions with effort/impact ratings. Store findings in memory/vargos-suggestions/. Wait for user approval before implementing.',
@@ -211,14 +213,14 @@ export async function start(): Promise<void> {
     onPersist: async (tasks) => {
       const current = await loadConfig(dataDir);
       if (!current) return;
-      current.cron = { tasks: tasks.map((t) => ({ name: t.name, schedule: t.schedule, task: t.task, enabled: t.enabled, notify: t.notify })) };
+      current.cron = { tasks: tasks.map((t) => ({ id: t.id, name: t.name, schedule: t.schedule, task: t.task, enabled: t.enabled, notify: t.notify })) };
       await saveConfig(dataDir, current);
     },
   });
   await cron.connect();
 
   for (const t of config.cron?.tasks ?? []) {
-    cron.addTask({ name: t.name, schedule: t.schedule, task: t.task, description: t.task.slice(0, 100), enabled: t.enabled ?? true, notify: t.notify });
+    cron.addTask(t);
   }
 
   // ── Agent service ─────────────────────────────────────────────────────────

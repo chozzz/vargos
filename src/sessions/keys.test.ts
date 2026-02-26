@@ -22,9 +22,10 @@ describe('channelSessionKey', () => {
 });
 
 describe('cronSessionKey', () => {
-  it('includes task ID and timestamp', () => {
-    vi.spyOn(Date, 'now').mockReturnValue(1700000000000);
-    expect(cronSessionKey('cron-abc')).toBe('cron:cron-abc:1700000000000');
+  it('includes task ID and date', () => {
+    vi.useFakeTimers({ now: new Date('2024-11-14T12:00:00Z') });
+    expect(cronSessionKey('cron-abc')).toBe('cron:cron-abc:2024-11-14');
+    vi.useRealTimers();
   });
 });
 
@@ -55,8 +56,8 @@ describe('parseSessionKey', () => {
     expect(parseSessionKey('whatsapp:61423222658')).toEqual({ type: 'whatsapp', id: '61423222658' });
   });
 
-  it('parses cron key with timestamp', () => {
-    expect(parseSessionKey('cron:task-1:1700000000000')).toEqual({ type: 'cron', id: 'task-1:1700000000000' });
+  it('parses cron key with date', () => {
+    expect(parseSessionKey('cron:task-1:2024-11-14')).toEqual({ type: 'cron', id: 'task-1:2024-11-14' });
   });
 
   it('parses subagent key — returns root type', () => {

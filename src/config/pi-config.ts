@@ -4,6 +4,7 @@
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import type { CronTaskInput } from '../cron/types.js';
 
 const PI_AGENT_DIR = 'agent';
 const CONFIG_FILE = 'config.json';
@@ -74,16 +75,8 @@ export interface HeartbeatConfig {
   prompt?: string;                // custom heartbeat prompt override
 }
 
-export interface CronTaskConfig {
-  name: string;
-  schedule: string;
-  task: string;
-  enabled?: boolean;
-  notify?: string[];
-}
-
 export interface CronConfig {
-  tasks?: CronTaskConfig[];
+  tasks?: CronTaskInput[];
 }
 
 export interface McpServerEntry {

@@ -144,12 +144,12 @@ async function editTask(client: CliClient, task: CronTask): Promise<void> {
 }
 
 export async function add(): Promise<void> {
-  const name = await text({
-    message: 'Task name',
+  const id = await text({
+    message: 'Task ID',
     placeholder: 'daily-report',
-    validate: (v) => (v?.trim() ? undefined : 'Name is required'),
+    validate: (v) => (v?.trim() ? undefined : 'ID is required'),
   });
-  if (isCancel(name)) return;
+  if (isCancel(id)) return;
 
   const schedule = await select({
     message: 'Schedule',
@@ -186,9 +186,8 @@ export async function add(): Promise<void> {
     const notify = await promptNotifyTargets();
 
     const created = await client.call<CronTask>('cron', 'cron.add', {
-      name,
+      id,
       schedule: finalSchedule,
-      description: task.slice(0, 100),
       task,
       enabled: true,
       notify: notify?.length ? notify : undefined,
