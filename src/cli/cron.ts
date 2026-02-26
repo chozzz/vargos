@@ -1,5 +1,5 @@
 import chalk from 'chalk';
-import { select, text, multiselect, isCancel } from '@clack/prompts';
+import { pick, pickText, pickMulti } from './pick.js';
 import { connectToGateway, type CliClient } from './client.js';
 import { formatSchedule } from '../lib/schedule.js';
 import { normalizeTarget } from '../lib/channel-target.js';
@@ -25,34 +25,30 @@ export async function list(): Promise<void> {
 
     printTasks(tasks);
 
-    // Interactive mode: offer actions on tasks
     if (!process.stdin.isTTY) return;
 
-    const action = await select({
-      message: 'Action',
-      options: [
-        { value: 'edit', label: 'Edit', hint: 'Edit a task' },
-        { value: 'trigger', label: 'Trigger', hint: 'Run a task now' },
-        { value: 'remove', label: 'Remove', hint: 'Remove a task' },
-        { value: 'done', label: 'Done' },
-      ],
-    });
-    if (isCancel(action) || action === 'done') return;
+    const action = await pick('Action', [
+      { value: 'edit', label: 'Edit', hint: 'Edit a task' },
+      { value: 'trigger', label: 'Trigger', hint: 'Run a task now' },
+      { value: 'remove', label: 'Remove', hint: 'Remove a task' },
+      { value: 'done', label: 'Done' },
+    ]);
+    if (action === null || action === 'done') return;
 
     const taskOptions = tasks.map((t) => ({ value: t.id, label: t.name, hint: formatSchedule(t.schedule) }));
 
     if (action === 'edit') {
-      const picked = await select({ message: 'Select task to edit', options: taskOptions });
-      if (isCancel(picked)) return;
+      const picked = await pick('Select task to edit', taskOptions);
+      if (picked === null) return;
       await editTask(client, tasks.find((t) => t.id === picked)!);
     } else if (action === 'trigger') {
-      const picked = await select({ message: 'Select task to trigger', options: taskOptions });
-      if (isCancel(picked)) return;
+      const picked = await pick('Select task to trigger', taskOptions);
+      if (picked === null) return;
       await client.call('cron', 'cron.run', { id: picked });
       console.log(chalk.green(`  Triggered task: ${picked}`));
     } else if (action === 'remove') {
-      const picked = await select({ message: 'Select task to remove', options: taskOptions });
-      if (isCancel(picked)) return;
+      const picked = await pick('Select task to remove', taskOptions);
+      if (picked === null) return;
       const removed = await client.call<boolean>('cron', 'cron.remove', { id: picked });
       if (removed) {
         console.log(chalk.green(`  Removed task: ${picked}`));
@@ -84,49 +80,46 @@ function printTasks(tasks: CronTask[]): void {
   }
 }
 
+const SCHEDULE_OPTIONS = [
+  { value: '*/30 * * * *', label: 'Every 30 minutes' },
+  { value: '0 * * * *', label: 'Every hour' },
+  { value: '0 */6 * * *', label: 'Every 6 hours' },
+  { value: '0 9,21 * * *', label: 'Daily at 9am & 9pm' },
+  { value: '__custom__', label: 'Custom cron expression' },
+];
+
+async function pickSchedule(current?: string): Promise<string | null> {
+  const val = await pick('Schedule', SCHEDULE_OPTIONS, current);
+  if (val === null) return null;
+  if (val !== '__custom__') return val;
+  return pickText('Cron expression', { initial: current, placeholder: '0 */2 * * *', validate: (v) => (v?.trim() ? undefined : 'Required') });
+}
+
 async function editTask(client: CliClient, task: CronTask): Promise<void> {
-  const field = await select({
-    message: `Editing: ${task.name}`,
-    options: [
-      { value: 'name', label: 'Name', hint: task.name },
-      { value: 'schedule', label: 'Schedule', hint: formatSchedule(task.schedule) },
-      { value: 'task', label: 'Task', hint: truncateAtWord(task.task.replace(/\n/g, ' ').trim(), 50) },
-      { value: 'notify', label: 'Notify', hint: task.notify?.length ? task.notify.join(', ') : 'none' },
-      { value: 'enabled', label: task.enabled ? 'Disable' : 'Enable', hint: task.enabled ? 'on → off' : 'off → on' },
-    ],
-  });
-  if (isCancel(field)) return;
+  const field = await pick(`Editing: ${task.name}`, [
+    { value: 'name', label: 'Name', hint: task.name },
+    { value: 'schedule', label: 'Schedule', hint: formatSchedule(task.schedule) },
+    { value: 'task', label: 'Task', hint: truncateAtWord(task.task.replace(/\n/g, ' ').trim(), 50) },
+    { value: 'notify', label: 'Notify', hint: task.notify?.length ? task.notify.join(', ') : 'none' },
+    { value: 'enabled', label: task.enabled ? 'Disable' : 'Enable', hint: task.enabled ? 'on → off' : 'off → on' },
+  ]);
+  if (field === null) return;
 
   const updates: Record<string, unknown> = {};
 
   if (field === 'name') {
-    const val = await text({ message: 'New name', initialValue: task.name, validate: (v) => (v?.trim() ? undefined : 'Required') });
-    if (isCancel(val)) return;
+    const val = await pickText('New name', { initial: task.name, validate: (v) => (v?.trim() ? undefined : 'Required') });
+    if (val === null) return;
     updates.name = val;
   } else if (field === 'schedule') {
-    const val = await select({
-      message: 'New schedule',
-      options: [
-        { value: '*/30 * * * *', label: 'Every 30 minutes' },
-        { value: '0 * * * *', label: 'Every hour' },
-        { value: '0 */6 * * *', label: 'Every 6 hours' },
-        { value: '0 9,21 * * *', label: 'Daily at 9am & 9pm' },
-        { value: '__custom__', label: 'Custom cron expression' },
-      ],
-    });
-    if (isCancel(val)) return;
-    let schedule: string = val;
-    if (val === '__custom__') {
-      const custom = await text({ message: 'Cron expression', initialValue: task.schedule, validate: (v) => (v?.trim() ? undefined : 'Required') });
-      if (isCancel(custom)) return;
-      schedule = custom;
-    }
-    updates.schedule = schedule;
+    const val = await pickSchedule(task.schedule);
+    if (val === null) return;
+    updates.schedule = val;
   } else if (field === 'task') {
-    const val = await text({ message: 'New task prompt', initialValue: task.task, validate: (v) => (v?.trim() ? undefined : 'Required') });
-    if (isCancel(val)) return;
+    const val = await pickText('New task prompt', { initial: task.task, validate: (v) => (v?.trim() ? undefined : 'Required') });
+    if (val === null) return;
     updates.task = val;
-    updates.description = (val as string).slice(0, 100);
+    updates.description = val.slice(0, 100);
   } else if (field === 'notify') {
     const targets = await promptNotifyTargets(task.notify);
     if (targets === null) return;
@@ -148,42 +141,17 @@ export async function add(): Promise<void> {
     console.error(chalk.red('  Use the cron_add tool or config.json to add tasks non-interactively.'));
     process.exit(1);
   }
-  const id = await text({
-    message: 'Task ID',
-    placeholder: 'daily-report',
-    validate: (v) => (v?.trim() ? undefined : 'ID is required'),
-  });
-  if (isCancel(id)) return;
+  const id = await pickText('Task ID', { placeholder: 'daily-report', validate: (v) => (v?.trim() ? undefined : 'ID is required') });
+  if (id === null) return;
 
-  const schedule = await select({
-    message: 'Schedule',
-    options: [
-      { value: '*/30 * * * *', label: 'Every 30 minutes' },
-      { value: '0 * * * *', label: 'Every hour' },
-      { value: '0 */6 * * *', label: 'Every 6 hours' },
-      { value: '0 9,21 * * *', label: 'Daily at 9am & 9pm' },
-      { value: '__custom__', label: 'Custom cron expression' },
-    ],
-  });
-  if (isCancel(schedule)) return;
+  const schedule = await pickSchedule();
+  if (schedule === null) return;
 
-  let finalSchedule: string = schedule;
-  if (schedule === '__custom__') {
-    const custom = await text({
-      message: 'Cron expression',
-      placeholder: '0 */2 * * *',
-      validate: (v) => (v?.trim() ? undefined : 'Expression is required'),
-    });
-    if (isCancel(custom)) return;
-    finalSchedule = custom;
-  }
-
-  const task = await text({
-    message: 'Task description (prompt for the agent)',
+  const task = await pickText('Task description (prompt for the agent)', {
     placeholder: 'Generate a daily summary of recent changes',
     validate: (v) => (v?.trim() ? undefined : 'Task is required'),
   });
-  if (isCancel(task)) return;
+  if (task === null) return;
 
   const client = await connectToGateway();
   try {
@@ -191,14 +159,14 @@ export async function add(): Promise<void> {
 
     const created = await client.call<CronTask>('cron', 'cron.add', {
       id,
-      schedule: finalSchedule,
+      schedule,
       task,
       enabled: true,
       notify: notify?.length ? notify : undefined,
     });
     console.log(chalk.green(`\n  Created task: ${created.name}`));
     console.log(`  ${LABEL('ID')}        ${DIM(created.id)}`);
-    console.log(`  ${LABEL('Schedule')}  ${formatSchedule(finalSchedule)}`);
+    console.log(`  ${LABEL('Schedule')}  ${formatSchedule(schedule)}`);
     if (created.notify?.length) {
       console.log(`  ${LABEL('Notify')}    ${created.notify.join(', ')}`);
     }
@@ -227,15 +195,10 @@ export async function remove(args?: string[]): Promise<void> {
         return;
       }
 
-      const picked = await select({
-        message: 'Select task to remove',
-        options: tasks.map((t) => ({
-          value: t.id,
-          label: t.name,
-          hint: formatSchedule(t.schedule),
-        })),
-      });
-      if (isCancel(picked)) return;
+      const picked = await pick('Select task to remove', tasks.map((t) => ({
+        value: t.id, label: t.name, hint: formatSchedule(t.schedule),
+      })));
+      if (picked === null) return;
       taskId = picked;
     }
 
@@ -269,15 +232,10 @@ export async function trigger(args?: string[]): Promise<void> {
         return;
       }
 
-      const picked = await select({
-        message: 'Select task to trigger',
-        options: tasks.map((t) => ({
-          value: t.id,
-          label: t.name,
-          hint: formatSchedule(t.schedule),
-        })),
-      });
-      if (isCancel(picked)) return;
+      const picked = await pick('Select task to trigger', tasks.map((t) => ({
+        value: t.id, label: t.name, hint: formatSchedule(t.schedule),
+      })));
+      if (picked === null) return;
       taskId = picked;
     }
 
@@ -339,7 +297,6 @@ export async function logs(args?: string[]): Promise<void> {
 
 // -- Notify helpers --
 
-/** Build flat list of "channel:userId" from config channels */
 async function getChannelTargets(): Promise<string[]> {
   const config = await loadConfig(resolveDataDir());
   if (!config?.channels) return [];
@@ -353,19 +310,14 @@ async function getChannelTargets(): Promise<string[]> {
   return targets;
 }
 
-/** Prompt user to select notify targets; returns null on cancel, empty array to clear */
 async function promptNotifyTargets(current?: string[]): Promise<string[] | null> {
   const targets = await getChannelTargets();
   if (targets.length === 0) return [];
-
-  const selected = await multiselect({
-    message: 'Notify channels (space to toggle, enter to confirm)',
-    options: targets.map((t) => ({ value: t, label: t })),
-    initialValues: current?.filter((c) => targets.includes(c)) ?? [],
-    required: false,
-  });
-  if (isCancel(selected)) return null;
-  return selected as string[];
+  return pickMulti(
+    'Notify channels (space to toggle, enter to confirm)',
+    targets.map((t) => ({ value: t, label: t })),
+    current?.filter((c) => targets.includes(c)) ?? [],
+  );
 }
 
 // -- Helpers --
@@ -383,4 +335,3 @@ function formatAge(mtimeMs: number): string {
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
   return `${Math.floor(seconds / 86400)}d`;
 }
-

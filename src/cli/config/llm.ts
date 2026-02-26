@@ -1,5 +1,5 @@
-import { select, text, isCancel } from '@clack/prompts';
 import chalk from 'chalk';
+import { pick, pickText } from '../pick.js';
 import { loadAndValidate } from '../boot.js';
 import { resolveDataDir } from '../../config/paths.js';
 import { loadConfig, saveConfig, resolveModel, type ModelProfile, type VargosConfig } from '../../config/pi-config.js';
@@ -36,18 +36,15 @@ export async function edit(): Promise<void> {
     return;
   }
 
-  const profileNames = Object.keys(existing.models);
+  const action = await pick('What would you like to do?', [
+    { value: 'switch', label: 'Switch active model' },
+    { value: 'add', label: 'Add new model profile' },
+    { value: 'edit', label: 'Edit existing profile' },
+    { value: 'remove', label: 'Remove a profile' },
+  ]);
+  if (action === null) return;
 
-  const action = await select({
-    message: 'What would you like to do?',
-    options: [
-      { value: 'switch', label: 'Switch active model' },
-      { value: 'add', label: 'Add new model profile' },
-      { value: 'edit', label: 'Edit existing profile' },
-      { value: 'remove', label: 'Remove a profile' },
-    ],
-  });
-  if (isCancel(action)) process.exit(0);
+  const profileNames = Object.keys(existing.models);
 
   switch (action) {
     case 'switch': await switchActive(existing, dataDir); break;
@@ -64,16 +61,12 @@ async function switchActive(config: VargosConfig, dataDir: string): Promise<void
     return;
   }
 
-  const choice = await select({
-    message: 'Select primary model',
-    options: names.map((name) => {
-      const p = config.models[name];
-      const current = name === config.agent.primary ? ' (current)' : '';
-      return { value: name, label: `${name} — ${p.provider}/${p.model}${current}` };
-    }),
-    initialValue: config.agent.primary,
-  });
-  if (isCancel(choice)) return;
+  const choice = await pick('Select primary model', names.map((name) => {
+    const p = config.models[name];
+    const current = name === config.agent.primary ? ' (current)' : '';
+    return { value: name, label: `${name} — ${p.provider}/${p.model}${current}` };
+  }), config.agent.primary);
+  if (choice === null) return;
 
   config.agent.primary = choice;
   await saveConfig(dataDir, config);
@@ -85,20 +78,18 @@ async function addProfile(config: VargosConfig, dataDir: string): Promise<void> 
   const profile = await promptProfile();
   if (!profile) return;
 
-  const name = await text({
-    message: 'Profile name',
+  const name = await pickText('Profile name', {
     placeholder: profile.provider,
-    defaultValue: profile.provider,
+    initial: profile.provider,
     validate: (v) => {
       if (!v?.trim()) return 'Name required';
       if (config.models[v!]) return `"${v}" already exists`;
     },
   });
-  if (isCancel(name)) return;
+  if (name === null) return;
 
   config.models[name] = profile;
 
-  // If this is the only profile, auto-set as primary
   if (Object.keys(config.models).length === 1) {
     config.agent.primary = name;
   }
@@ -108,14 +99,11 @@ async function addProfile(config: VargosConfig, dataDir: string): Promise<void> 
 }
 
 async function editProfile(config: VargosConfig, dataDir: string, names: string[]): Promise<void> {
-  const name = await select({
-    message: 'Which profile?',
-    options: names.map((n) => {
-      const p = config.models[n];
-      return { value: n, label: `${n} — ${p.provider}/${p.model}` };
-    }),
-  });
-  if (isCancel(name)) return;
+  const name = await pick('Which profile?', names.map((n) => {
+    const p = config.models[n];
+    return { value: n, label: `${n} — ${p.provider}/${p.model}` };
+  }));
+  if (name === null) return;
 
   const existing = config.models[name];
   const profile = await promptProfile(existing);
@@ -132,16 +120,13 @@ async function removeProfile(config: VargosConfig, dataDir: string, names: strin
     return;
   }
 
-  const name = await select({
-    message: 'Which profile to remove?',
-    options: names
-      .filter((n) => n !== config.agent.primary)
-      .map((n) => {
-        const p = config.models[n];
-        return { value: n, label: `${n} — ${p.provider}/${p.model}` };
-      }),
-  });
-  if (isCancel(name)) return;
+  const name = await pick('Which profile to remove?', names
+    .filter((n) => n !== config.agent.primary)
+    .map((n) => {
+      const p = config.models[n];
+      return { value: n, label: `${n} — ${p.provider}/${p.model}` };
+    }));
+  if (name === null) return;
 
   delete config.models[name];
   if (config.agent.fallback === name) delete config.agent.fallback;
@@ -149,50 +134,37 @@ async function removeProfile(config: VargosConfig, dataDir: string, names: strin
   console.log(chalk.green(`\n  Removed "${name}"\n`));
 }
 
-/** Shared profile prompt — pre-fills from existing profile if editing */
 async function promptProfile(existing?: ModelProfile): Promise<ModelProfile | null> {
-  const provider = await select({
-    message: 'Provider',
-    options: [
-      { value: 'openai', label: 'OpenAI' },
-      { value: 'anthropic', label: 'Anthropic' },
-      { value: 'google', label: 'Google' },
-      { value: 'openrouter', label: 'OpenRouter' },
-      { value: 'ollama', label: 'Ollama (local)' },
-      { value: 'lmstudio', label: 'LM Studio (local)' },
-    ],
-    initialValue: existing?.provider,
-  });
-  if (isCancel(provider)) return null;
+  const provider = await pick('Provider', [
+    { value: 'openai', label: 'OpenAI' },
+    { value: 'anthropic', label: 'Anthropic' },
+    { value: 'google', label: 'Google' },
+    { value: 'openrouter', label: 'OpenRouter' },
+    { value: 'ollama', label: 'Ollama (local)' },
+    { value: 'lmstudio', label: 'LM Studio (local)' },
+  ], existing?.provider);
+  if (provider === null) return null;
 
-  const model = await text({
-    message: 'Model',
-    defaultValue: existing?.provider === provider ? existing.model : DEFAULT_MODELS[provider],
+  const model = await pickText('Model', {
+    initial: existing?.provider === provider ? existing.model : DEFAULT_MODELS[provider],
     placeholder: DEFAULT_MODELS[provider],
   });
-  if (isCancel(model)) return null;
+  if (model === null) return null;
 
   const profile: ModelProfile = { provider, model };
 
   if (LOCAL_PROVIDERS.has(provider)) {
     const defaultUrl = provider === 'ollama' ? 'http://localhost:11434' : 'http://localhost:1234';
-    const baseUrl = await text({
-      message: 'Base URL',
-      defaultValue: existing?.baseUrl ?? defaultUrl,
-      placeholder: defaultUrl,
-    });
-    if (isCancel(baseUrl)) return null;
+    const baseUrl = await pickText('Base URL', { initial: existing?.baseUrl ?? defaultUrl, placeholder: defaultUrl });
+    if (baseUrl === null) return null;
     profile.baseUrl = baseUrl;
   } else {
-    // Pre-fill from existing profile for same provider, or from existing if editing
     const currentKey = existing?.provider === provider ? existing.apiKey : undefined;
-    const apiKey = await text({
-      message: 'API Key',
-      defaultValue: currentKey,
+    const apiKey = await pickText('API Key', {
+      initial: currentKey,
       placeholder: currentKey ? maskSecret(currentKey) : 'sk-...',
     });
-    if (isCancel(apiKey)) return null;
-    // Keep existing key if user pressed Enter without typing
+    if (apiKey === null) return null;
     profile.apiKey = apiKey || currentKey;
   }
 

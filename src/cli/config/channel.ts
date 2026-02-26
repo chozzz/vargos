@@ -1,5 +1,5 @@
-import { select, isCancel } from '@clack/prompts';
 import chalk from 'chalk';
+import { pick } from '../pick.js';
 import { loadAndValidate } from '../boot.js';
 import { maskSecret } from '../../lib/mask.js';
 
@@ -23,14 +23,11 @@ export async function show(): Promise<void> {
 }
 
 export async function edit(): Promise<void> {
-  const channel = await select({
-    message: 'Channel to set up',
-    options: [
-      { value: 'whatsapp', label: 'WhatsApp (scan QR code)' },
-      { value: 'telegram', label: 'Telegram (paste bot token)' },
-    ],
-  });
-  if (isCancel(channel)) return;
+  const channel = await pick('Channel to set up', [
+    { value: 'whatsapp', label: 'WhatsApp (scan QR code)' },
+    { value: 'telegram', label: 'Telegram (paste bot token)' },
+  ]);
+  if (channel === null) return;
 
   const { setupWhatsApp, setupTelegram } = await import('../../channels/onboard.js');
   if (channel === 'whatsapp') await setupWhatsApp();

@@ -3,7 +3,8 @@
  * Used by first-run wizard and `vargos config channel edit`
  */
 
-import { text, log, isCancel } from '@clack/prompts';
+import chalk from 'chalk';
+import { pickText } from '../cli/pick.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { addChannelConfig } from './config.js';
@@ -13,12 +14,17 @@ import { TelegramAdapter } from './telegram/adapter.js';
 import type { ChannelConfig } from './types.js';
 import type { WASocket } from '@whiskeysockets/baileys';
 
+const log = {
+  info: (msg: string) => console.log(chalk.blue(`  ℹ ${msg}`)),
+  step: (msg: string) => console.log(chalk.cyan(`  ◆ ${msg}`)),
+  success: (msg: string) => console.log(chalk.green(`  ✓ ${msg}`)),
+  warn: (msg: string) => console.log(chalk.yellow(`  ⚠ ${msg}`)),
+  error: (msg: string) => console.log(chalk.red(`  ✗ ${msg}`)),
+};
+
 async function promptAllowFrom(label: string, example: string): Promise<string[]> {
-  const input = await text({
-    message: `Allowed ${label} (comma-separated, empty = accept all)`,
-    placeholder: example,
-  });
-  if (isCancel(input)) return [];
+  const input = await pickText(`Allowed ${label} (comma-separated, empty = accept all)`, { placeholder: example });
+  if (input === null) return [];
   if (!input) return [];
   return input.split(',').map((s) => s.trim()).filter(Boolean);
 }
@@ -26,7 +32,6 @@ async function promptAllowFrom(label: string, example: string): Promise<string[]
 export async function setupWhatsApp(): Promise<void> {
   log.info('WhatsApp Setup');
 
-  // Clear stale auth state so a fresh QR is generated
   const authDir = path.join(resolveChannelsDir(), 'whatsapp');
   try {
     await fs.rm(authDir, { recursive: true, force: true });
@@ -101,8 +106,8 @@ export async function setupTelegram(): Promise<void> {
   log.step('2. Send /newbot and follow the prompts');
   log.step('3. Copy the bot token');
 
-  const token = await text({ message: 'Bot token', placeholder: '123456:ABC-...' });
-  if (isCancel(token) || !token) {
+  const token = await pickText('Bot token', { placeholder: '123456:ABC-...' });
+  if (token === null || !token) {
     log.warn('Skipped');
     return;
   }

@@ -1,5 +1,5 @@
 import chalk from 'chalk';
-import { select, isCancel } from '@clack/prompts';
+import { pick } from './pick.js';
 import { connectToGateway } from './client.js';
 import { loadAndValidate } from './boot.js';
 import { buildSystemPrompt, resolvePromptMode } from '../agent/prompt.js';
@@ -28,11 +28,8 @@ export async function sessionDebug(args?: string[]): Promise<void> {
       await client.disconnect();
       return;
     }
-    const choice = await select({
-      message: 'Select session',
-      options: sessions.map(s => ({ value: s.sessionKey, label: s.sessionKey, hint: s.label || s.kind })),
-    });
-    if (isCancel(choice)) { await client.disconnect(); return; }
+    const choice = await pick('Select session', sessions.map(s => ({ value: s.sessionKey, label: s.sessionKey, hint: s.label || s.kind })));
+    if (choice === null) { await client.disconnect(); return; }
     sessionKey = choice;
   }
 
@@ -46,7 +43,6 @@ export async function sessionDebug(args?: string[]): Promise<void> {
     const toolNames = tools.map(t => t.name);
     const mode = resolvePromptMode(sessionKey);
 
-    // Build system prompt
     const systemPrompt = await buildSystemPrompt({
       mode,
       workspaceDir,
@@ -54,20 +50,17 @@ export async function sessionDebug(args?: string[]): Promise<void> {
       contextFiles,
     });
 
-    // Run history pipeline
     const converted = toAgentMessages(messages);
     const sanitized = sanitizeHistory(converted);
     const limit = getHistoryLimit(sessionKey);
     const limited = limitHistoryTurns(sanitized, limit);
 
-    // Print system prompt
     console.log();
     console.log(`  ${BOLD('System Prompt')} ${DIM(`(mode=${mode}, ${systemPrompt.length} chars, ${toolNames.length} tools)`)}`);
     console.log(`  ${DIM('─'.repeat(70))}`);
     console.log(systemPrompt);
     console.log();
 
-    // Print history pipeline stats
     console.log(`  ${BOLD('History')} ${DIM(`(limit=${limit} turns)`)}`);
     console.log(`  ${LABEL('stored')} ${messages.length} → ${LABEL('converted')} ${converted.length} → ${LABEL('sanitized')} ${sanitized.length} → ${LABEL('limited')} ${limited.length}`);
     console.log(`  ${DIM('─'.repeat(70))}`);
