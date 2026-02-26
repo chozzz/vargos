@@ -86,6 +86,7 @@ export function buildTree(): MenuNode[] {
       configGroup('llm', 'Display current LLM config', 'Change provider, model, API key'),
       configGroup('channel', 'Display channel config', 'Configure channels'),
       configGroup('context', 'Display context files', 'Edit context files'),
+      configGroup('embedding', 'Display embedding config', 'Configure embedding model'),
       configGroup('compaction', 'Display compaction config', 'Configure context pruning & safeguard'),
       configGroup('heartbeat', 'Display heartbeat config', 'Configure heartbeat schedule', [
         leaf('tasks', 'Edit HEARTBEAT.md in $EDITOR', './config/heartbeat.js', 'tasks'),

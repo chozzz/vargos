@@ -27,6 +27,7 @@ export interface MemoryContextConfig {
   chunkOverlap?: number;
   embeddingProvider?: 'openai' | 'local' | 'none';
   openaiApiKey?: string;
+  embeddingModel?: string;
   hybridWeight?: {
     vector: number;
     text: number;
@@ -163,6 +164,7 @@ export class MemoryContext {
       const embed = (text: string) => generateEmbedding(text, {
         provider: this.config.embeddingProvider,
         openaiApiKey: this.config.openaiApiKey,
+        model: this.config.embeddingModel,
       });
 
       const sessionChunks = await indexSessions(this.config.sessionsDir, embed);
@@ -210,6 +212,7 @@ export class MemoryContext {
           chunk.embedding = await generateEmbedding(chunk.content, {
             provider: this.config.embeddingProvider,
             openaiApiKey: this.config.openaiApiKey,
+            model: this.config.embeddingModel,
           });
         }
       }
@@ -254,6 +257,7 @@ export class MemoryContext {
     const embeddingConfig = {
       provider: this.config.embeddingProvider,
       openaiApiKey: this.config.openaiApiKey,
+      model: this.config.embeddingModel,
     };
     const queryEmbedding = await generateEmbedding(query, embeddingConfig);
 
