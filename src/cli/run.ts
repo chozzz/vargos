@@ -6,6 +6,10 @@ import { cliSessionKey } from '../sessions/keys.js';
 export async function run(args?: string[]): Promise<void> {
   let task = args?.join(' ') || '';
   if (!task) {
+    if (!process.stdin.isTTY) {
+      console.error(chalk.red('  Usage: vargos run <task>'));
+      process.exit(1);
+    }
     const input = await text({ message: 'Task', placeholder: 'Describe what you want the agent to do' });
     if (isCancel(input) || !input?.trim()) return;
     task = input.trim();

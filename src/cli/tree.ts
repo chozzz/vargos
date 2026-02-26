@@ -2,315 +2,97 @@
 
 export interface MenuGroup {
   kind: 'group';
+  key: string;
   label: string;
+  hint?: string;
   children: MenuNode[];
 }
 
 export interface MenuLeaf {
   kind: 'leaf';
+  key: string;
   label: string;
   hint?: string;
-  hidden?: boolean;
   action: (args?: string[]) => Promise<void>;
 }
 
-export type MenuNode = (MenuGroup | MenuLeaf) & { key: string };
+export type MenuNode = MenuGroup | MenuLeaf;
 
-export function isGroup(node: MenuNode): node is MenuGroup & { key: string } {
+export function isGroup(node: MenuNode): node is MenuGroup {
   return node.kind === 'group';
 }
 
+// -- Factories --
+
+function leaf(key: string, hint: string, mod: string, fn: string): MenuNode {
+  return {
+    key, kind: 'leaf', label: key[0].toUpperCase() + key.slice(1), hint,
+    action: async (args) => { const m = await import(mod); await m[fn](args); },
+  };
+}
+
+function group(key: string, children: MenuNode[]): MenuNode {
+  return { key, kind: 'group', label: key[0].toUpperCase() + key.slice(1), children };
+}
+
+function configGroup(key: string, showHint: string, editHint: string, extra?: MenuNode[]): MenuNode {
+  const mod = `./config/${key}.js`;
+  return group(key, [
+    leaf('show', showHint, mod, 'show'),
+    leaf('edit', editHint, mod, 'edit'),
+    ...(extra ?? []),
+  ]);
+}
+
+// -- Tree --
+
 export function buildTree(): MenuNode[] {
   return [
-    {
-      key: 'chat',
-      kind: 'leaf',
-      label: 'Chat',
-      hint: 'Interactive chat session',
-      action: async () => { const m = await import('./chat.js'); await m.chat(); },
-    },
-    {
-      key: 'run',
-      kind: 'leaf',
-      label: 'Run',
-      hint: 'One-shot task',
-      action: async (args) => { const m = await import('./run.js'); await m.run(args); },
-    },
-    {
-      key: 'config',
-      kind: 'group',
-      label: 'Config',
-      children: [
-        {
-          key: 'llm',
-          kind: 'group',
-          label: 'LLM',
-          children: [
-            {
-              key: 'show',
-              kind: 'leaf',
-              label: 'Show',
-              hint: 'Display current LLM config',
-              action: async () => { const m = await import('./config/llm.js'); await m.show(); },
-            },
-            {
-              key: 'edit',
-              kind: 'leaf',
-              label: 'Edit',
-              hint: 'Change provider, model, API key',
-              action: async () => { const m = await import('./config/llm.js'); await m.edit(); },
-            },
-          ],
-        },
-        {
-          key: 'channel',
-          kind: 'group',
-          label: 'Channel',
-          children: [
-            {
-              key: 'show',
-              kind: 'leaf',
-              label: 'Show',
-              hint: 'Display channel config',
-              action: async () => { const m = await import('./config/channel.js'); await m.show(); },
-            },
-            {
-              key: 'edit',
-              kind: 'leaf',
-              label: 'Edit',
-              hint: 'Configure channels',
-              action: async () => { const m = await import('./config/channel.js'); await m.edit(); },
-            },
-          ],
-        },
-        {
-          key: 'context',
-          kind: 'group',
-          label: 'Context',
-          children: [
-            {
-              key: 'show',
-              kind: 'leaf',
-              label: 'Show',
-              hint: 'Display context files',
-              action: async () => { const m = await import('./config/context.js'); await m.show(); },
-            },
-            {
-              key: 'edit',
-              kind: 'leaf',
-              label: 'Edit',
-              hint: 'Edit context files',
-              action: async () => { const m = await import('./config/context.js'); await m.edit(); },
-            },
-          ],
-        },
-        {
-          key: 'compaction',
-          kind: 'group',
-          label: 'Compaction',
-          children: [
-            {
-              key: 'show',
-              kind: 'leaf',
-              label: 'Show',
-              hint: 'Display compaction config',
-              action: async () => { const m = await import('./config/compaction.js'); await m.show(); },
-            },
-            {
-              key: 'edit',
-              kind: 'leaf',
-              label: 'Edit',
-              hint: 'Configure context pruning & safeguard',
-              action: async () => { const m = await import('./config/compaction.js'); await m.edit(); },
-            },
-          ],
-        },
-        {
-          key: 'heartbeat',
-          kind: 'group',
-          label: 'Heartbeat',
-          children: [
-            {
-              key: 'show',
-              kind: 'leaf',
-              label: 'Show',
-              hint: 'Display heartbeat config',
-              action: async () => { const m = await import('./config/heartbeat.js'); await m.show(); },
-            },
-            {
-              key: 'edit',
-              kind: 'leaf',
-              label: 'Edit',
-              hint: 'Configure heartbeat schedule',
-              action: async () => { const m = await import('./config/heartbeat.js'); await m.edit(); },
-            },
-            {
-              key: 'tasks',
-              kind: 'leaf',
-              label: 'Tasks',
-              hint: 'Edit HEARTBEAT.md in $EDITOR',
-              action: async () => { const m = await import('./config/heartbeat.js'); await m.tasks(); },
-            },
-          ],
-        },
-      ],
-    },
-    {
-      key: 'gateway',
-      kind: 'group',
-      label: 'Gateway',
-      children: [
-        {
-          key: 'start',
-          kind: 'leaf',
-          label: 'Start',
-          hint: 'Start gateway + all services',
-          action: async () => { const m = await import('./gateway/start.js'); await m.start(); },
-        },
-        {
-          key: 'stop',
-          kind: 'leaf',
-          label: 'Stop',
-          hint: 'Stop running gateway',
-          action: async () => { const m = await import('./gateway/stop.js'); await m.stop(); },
-        },
-        {
-          key: 'restart',
-          kind: 'leaf',
-          label: 'Restart',
-          hint: 'Restart running gateway',
-          action: async () => { const m = await import('./gateway/restart.js'); await m.restart(); },
-        },
-        {
-          key: 'status',
-          kind: 'leaf',
-          label: 'Status',
-          hint: 'Gateway process status',
-          action: async () => { const m = await import('./gateway/status.js'); await m.status(); },
-        },
-        {
-          key: 'inspect',
-          kind: 'leaf',
-          label: 'Inspect',
-          hint: 'Show registered services, methods, events, tools',
-          action: async () => { const m = await import('./debug.js'); await m.inspect(); },
-        },
-      ],
-    },
-    {
-      key: 'cron',
-      kind: 'group',
-      label: 'Cron',
-      children: [
-        {
-          key: 'list',
-          kind: 'leaf',
-          label: 'List',
-          hint: 'Show scheduled tasks',
-          action: async () => { const m = await import('./cron.js'); await m.list(); },
-        },
-        {
-          key: 'add',
-          kind: 'leaf',
-          label: 'Add',
-          hint: 'Add a scheduled task',
-          action: async () => { const m = await import('./cron.js'); await m.add(); },
-        },
-        {
-          key: 'remove',
-          kind: 'leaf',
-          label: 'Remove',
-          hint: 'Remove a scheduled task',
-          hidden: true,
-          action: async (args) => { const m = await import('./cron.js'); await m.remove(args); },
-        },
-        {
-          key: 'trigger',
-          kind: 'leaf',
-          label: 'Trigger',
-          hint: 'Manually trigger a task',
-          hidden: true,
-          action: async (args) => { const m = await import('./cron.js'); await m.trigger(args); },
-        },
-        {
-          key: 'logs',
-          kind: 'leaf',
-          label: 'Logs',
-          hint: 'View past cron executions',
-          action: async (args) => { const m = await import('./cron.js'); await m.logs(args); },
-        },
-      ],
-    },
-    {
-      key: 'channels',
-      kind: 'group',
-      label: 'Channels',
-      children: [
-        {
-          key: 'send',
-          kind: 'leaf',
-          label: 'Send',
-          hint: 'Send a message to a channel target',
-          action: async (args) => { const m = await import('./channels.js'); await m.send(args); },
-        },
-      ],
-    },
-    {
-      key: 'webhooks',
-      kind: 'group',
-      label: 'Webhooks',
-      children: [
-        {
-          key: 'list',
-          kind: 'leaf',
-          label: 'List',
-          hint: 'Show configured webhooks',
-          action: async () => { const m = await import('./webhooks.js'); await m.list(); },
-        },
-        {
-          key: 'status',
-          kind: 'leaf',
-          label: 'Status',
-          hint: 'Show webhook fire stats',
-          action: async () => { const m = await import('./webhooks.js'); await m.status(); },
-        },
-      ],
-    },
-    {
-      key: 'sessions',
-      kind: 'group',
-      label: 'Sessions',
-      children: [
-        {
-          key: 'list',
-          kind: 'leaf',
-          label: 'List',
-          hint: 'Show all sessions',
-          action: async () => { const m = await import('./sessions.js'); await m.list(); },
-        },
-        {
-          key: 'history',
-          kind: 'leaf',
-          label: 'History',
-          hint: 'Show session transcript',
-          action: async (args) => { const m = await import('./sessions.js'); await m.history(args); },
-        },
-        {
-          key: 'debug',
-          kind: 'leaf',
-          label: 'Debug',
-          hint: 'Show system prompt + processed history for a session',
-          action: async (args) => { const m = await import('./session-debug.js'); await m.sessionDebug(args); },
-        },
-      ],
-    },
-    {
-      key: 'health',
-      kind: 'leaf',
-      label: 'Health',
-      hint: 'Check system health',
-      action: async () => { const m = await import('./health.js'); await m.health(); },
-    },
+    leaf('chat', 'Interactive chat session', './chat.js', 'chat'),
+    leaf('run', 'One-shot task', './run.js', 'run'),
+
+    group('gateway', [
+      leaf('start', 'Start gateway + all services', './gateway/start.js', 'start'),
+      leaf('stop', 'Stop running gateway', './gateway/stop.js', 'stop'),
+      leaf('restart', 'Restart running gateway', './gateway/restart.js', 'restart'),
+      leaf('status', 'Gateway process status', './gateway/status.js', 'status'),
+      leaf('inspect', 'Show registered services, methods, events, tools', './debug.js', 'inspect'),
+    ]),
+
+    group('sessions', [
+      leaf('list', 'Show all sessions', './sessions.js', 'list'),
+      leaf('history', 'Show session transcript', './sessions.js', 'history'),
+      leaf('debug', 'Show system prompt + processed history', './session-debug.js', 'sessionDebug'),
+    ]),
+
+    group('channels', [
+      leaf('send', 'Send a message to a channel target', './channels.js', 'send'),
+    ]),
+
+    group('cron', [
+      leaf('list', 'Show scheduled tasks', './cron.js', 'list'),
+      leaf('add', 'Add a scheduled task', './cron.js', 'add'),
+      leaf('remove', 'Remove a scheduled task', './cron.js', 'remove'),
+      leaf('trigger', 'Manually trigger a task', './cron.js', 'trigger'),
+      leaf('logs', 'View past cron executions', './cron.js', 'logs'),
+    ]),
+
+    group('webhooks', [
+      leaf('list', 'Show configured webhooks', './webhooks.js', 'list'),
+      leaf('status', 'Show webhook fire stats', './webhooks.js', 'status'),
+    ]),
+
+    group('config', [
+      configGroup('llm', 'Display current LLM config', 'Change provider, model, API key'),
+      configGroup('channel', 'Display channel config', 'Configure channels'),
+      configGroup('context', 'Display context files', 'Edit context files'),
+      configGroup('compaction', 'Display compaction config', 'Configure context pruning & safeguard'),
+      configGroup('heartbeat', 'Display heartbeat config', 'Configure heartbeat schedule', [
+        leaf('tasks', 'Edit HEARTBEAT.md in $EDITOR', './config/heartbeat.js', 'tasks'),
+      ]),
+    ]),
+
+    leaf('health', 'Check system health', './health.js', 'health'),
   ];
 }
 

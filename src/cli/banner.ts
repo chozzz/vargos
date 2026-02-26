@@ -98,8 +98,13 @@ export function renderNextSteps(): void {
   const cmds: [string, string][] = [
     ['vargos chat', 'Interactive session'],
     ['vargos run "task"', 'One-shot task'],
-    ['vargos cron list', 'Scheduled tasks'],
+    ['vargos gateway status', 'Gateway & service info'],
     ['vargos sessions list', 'Past sessions'],
+    ['vargos sessions debug <key>', 'Inspect system prompt & history'],
+    ['vargos channels send <target> "msg"', 'Send via channel'],
+    ['vargos cron list', 'Scheduled tasks'],
+    ['vargos cron trigger <id>', 'Run a task now'],
+    ['vargos config llm show', 'View LLM config'],
     ['vargos health', 'System health'],
   ];
   const maxCmd = Math.max(...cmds.map(([c]) => c.length));

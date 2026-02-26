@@ -144,6 +144,10 @@ async function editTask(client: CliClient, task: CronTask): Promise<void> {
 }
 
 export async function add(): Promise<void> {
+  if (!process.stdin.isTTY) {
+    console.error(chalk.red('  Use the cron_add tool or config.json to add tasks non-interactively.'));
+    process.exit(1);
+  }
   const id = await text({
     message: 'Task ID',
     placeholder: 'daily-report',
@@ -213,6 +217,10 @@ export async function remove(args?: string[]): Promise<void> {
     let taskId = args?.[0];
 
     if (!taskId) {
+      if (!process.stdin.isTTY) {
+        console.error(chalk.red('  Usage: vargos cron remove <task-id>'));
+        process.exit(1);
+      }
       const tasks = await client.call<CronTask[]>('cron', 'cron.list', {});
       if (tasks.length === 0) {
         console.log(chalk.yellow('  No scheduled tasks to remove.'));
@@ -251,6 +259,10 @@ export async function trigger(args?: string[]): Promise<void> {
     let taskId = args?.[0];
 
     if (!taskId) {
+      if (!process.stdin.isTTY) {
+        console.error(chalk.red('  Usage: vargos cron trigger <task-id>'));
+        process.exit(1);
+      }
       const tasks = await client.call<CronTask[]>('cron', 'cron.list', {});
       if (tasks.length === 0) {
         console.log(chalk.yellow('  No scheduled tasks.'));
