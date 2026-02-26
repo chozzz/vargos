@@ -1,5 +1,4 @@
 import path from 'node:path';
-import { promises as fs } from 'node:fs';
 import { createRequire } from 'node:module';
 import { GatewayServer } from '../../gateway/server.js';
 import { ToolsService } from '../../tools/service.js';
@@ -16,12 +15,14 @@ import { initializeMemoryContext, getMemoryContext } from '../../memory/context.
 import { resolveDataDir, resolveWorkspaceDir, resolveCacheDir, resolveGatewayUrl, initPaths } from '../../config/paths.js';
 import type { MemoryStorage } from '../../memory/types.js';
 import { loadConfig, saveConfig } from '../../config/pi-config.js';
+import type { VargosConfig } from '../../config/pi-config.js';
 import { validateConfig, checkLocalProvider } from '../../config/validate.js';
 import { initializeWorkspace, isWorkspaceInitialized } from '../../config/workspace.js';
 import type { ExtensionContext } from '../../tools/extension.js';
 import { setGatewayCall } from '../../agent/extension.js';
 import { extractLoaderArgs } from '../../lib/loader-args.js';
 import { acquireLock, releaseLock } from '../lock.js';
+import { writePidFile, removePidFile } from '../pid.js';
 import {
   renderBanner,
   renderServices,
@@ -34,17 +35,95 @@ import {
 const require = createRequire(import.meta.url);
 const { version: VERSION } = require('../../../package.json');
 
-/** Local PID file for stop/restart commands on the same machine */
-async function writePidFile(dataDir: string): Promise<void> {
-  await fs.writeFile(path.join(dataDir, 'vargos.pid'), String(process.pid));
-}
-
-async function removePidFile(dataDir: string): Promise<void> {
-  try { await fs.unlink(path.join(dataDir, 'vargos.pid')); } catch { /* gone */ }
-}
-
-// Tool groups for display — maps extension module to label
 const TOOL_GROUPS = ['fs', 'web', 'agent', 'memory'] as const;
+
+const DEFAULT_CRON_TASKS = [
+  {
+    id: 'vargos-morning-analysis',
+    name: 'Vargos Morning Analysis (AEST)',
+    schedule: '0 23 * * *',
+    task: 'Analyze the Vargos codebase for improvements. Review scalability, code quality, architecture patterns, and feature gaps. Present suggestions with effort/impact ratings. Store findings in memory/vargos-suggestions/. Wait for user approval before implementing.',
+  },
+  {
+    id: 'vargos-evening-analysis',
+    name: 'Vargos Evening Analysis (AEST)',
+    schedule: '0 11 * * *',
+    task: 'Analyze the Vargos codebase for improvements. Review scalability, code quality, architecture patterns, and feature gaps. Present suggestions with effort/impact ratings. Store findings in memory/vargos-suggestions/. Wait for user approval before implementing.',
+  },
+];
+
+interface BootedServices {
+  gateway: GatewayServer;
+  sessions: SessionsService;
+  tools: ToolsService;
+  cron: CronService;
+  agent: AgentService;
+  channels: ChannelService;
+  mcpBridge: McpBridge;
+  mcpClients: import('../../mcp/client.js').McpClientManager;
+  webhooks?: import('../../webhooks/service.js').WebhookService;
+}
+
+async function resolveMemoryStorage(config: VargosConfig, dataDir: string): Promise<MemoryStorage> {
+  const storageType = config.storage?.type ?? 'postgres';
+  if (storageType === 'postgres' && config.storage?.url) {
+    const { MemoryPostgresStorage } = await import('../../memory/postgres-storage.js');
+    return new MemoryPostgresStorage({ url: config.storage.url });
+  }
+  const { MemorySQLiteStorage } = await import('../../memory/sqlite-storage.js');
+  return new MemorySQLiteStorage({ dbPath: path.join(resolveCacheDir(), 'memory.db') });
+}
+
+async function initTools(
+  extensionCtx: ExtensionContext,
+  gatewayUrl: string,
+): Promise<{ tools: ToolsService; toolCounts: Record<string, number> }> {
+  const toolCounts: Record<string, number> = {};
+  const extensionModules = await Promise.all([
+    import('../../tools/fs/index.js'),
+    import('../../tools/web/index.js'),
+    import('../../tools/agent/index.js'),
+    import('../../tools/memory/index.js'),
+  ]);
+  for (let i = 0; i < extensionModules.length; i++) {
+    const before = toolRegistry.list().length;
+    await extensionModules[i].default.register(extensionCtx);
+    toolCounts[TOOL_GROUPS[i]] = toolRegistry.list().length - before;
+  }
+
+  const tools = new ToolsService({ registry: toolRegistry, gatewayUrl });
+  await tools.connect();
+  setGatewayCall((target, method, params) => tools.call(target, method, params));
+
+  return { tools, toolCounts };
+}
+
+async function seedDefaultCronTasks(config: VargosConfig, dataDir: string): Promise<void> {
+  if (config.cron?.tasks) return;
+  config.cron = { tasks: DEFAULT_CRON_TASKS };
+  await saveConfig(dataDir, config);
+}
+
+async function teardown(services: BootedServices, dataDir: string): Promise<void> {
+  await services.mcpClients.disconnectAll();
+  await services.mcpBridge.stopHttp().catch(() => {});
+  await services.mcpBridge.disconnect();
+  if (services.webhooks) {
+    await services.webhooks.stopHttp().catch(() => {});
+    await services.webhooks.disconnect();
+  }
+  await services.agent.disconnect();
+  await services.channels.stopAdapters();
+  await services.channels.disconnect();
+  services.cron.stopAll();
+  await services.cron.disconnect();
+  await services.tools.disconnect();
+  await services.sessions.disconnect();
+  await getMemoryContext().close().catch(() => {});
+  await services.gateway.stop();
+  await removePidFile(dataDir);
+  await releaseLock();
+}
 
 export async function start(): Promise<void> {
   const bootStart = Date.now();
@@ -52,7 +131,6 @@ export async function start(): Promise<void> {
   const dataDir = resolveDataDir();
   const workspaceDir = resolveWorkspaceDir();
 
-  // ── Gateway lock ─────────────────────────────────────────────────────────
   const lockHolder = await acquireLock(dataDir);
   if (lockHolder) {
     log(`\n  Another instance running (host: ${lockHolder.host}, PID: ${lockHolder.pid}) — exiting.\n`);
@@ -60,7 +138,6 @@ export async function start(): Promise<void> {
   }
   await writePidFile(dataDir);
 
-  // ── Config ────────────────────────────────────────────────────────────────
   if (!(await isWorkspaceInitialized(workspaceDir))) {
     await initializeWorkspace({ workspaceDir });
   }
@@ -100,7 +177,6 @@ export async function start(): Promise<void> {
 
   initPaths(config.paths);
 
-  // ── Gateway ───────────────────────────────────────────────────────────────
   const gatewayHost = config.gateway?.host ?? '127.0.0.1';
   const gatewayPort = config.gateway?.port ?? 9000;
   const gatewayUrl = resolveGatewayUrl(config.gateway);
@@ -108,30 +184,19 @@ export async function start(): Promise<void> {
   const gateway = new GatewayServer({ port: gatewayPort, host: gatewayHost });
   await gateway.start();
 
-  const services: ServiceStatus[] = [];
-  services.push({ name: 'Gateway', ok: true, detail: gatewayUrl });
+  const serviceStatuses: ServiceStatus[] = [];
+  serviceStatuses.push({ name: 'Gateway', ok: true, detail: gatewayUrl });
 
-  // ── Sessions service ──────────────────────────────────────────────────────
   const fileSessionService = new FileSessionService({ baseDir: dataDir });
   const sessions = new SessionsService({ sessionService: fileSessionService, gatewayUrl });
   await sessions.initialize();
   await sessions.connect();
-  services.push({ name: 'Sessions', ok: true });
+  serviceStatuses.push({ name: 'Sessions', ok: true });
 
-  // ── Memory context ────────────────────────────────────────────────────────
   const envKey = process.env[`${primary.provider.toUpperCase()}_API_KEY`];
   const apiKey = envKey || primary.apiKey;
 
-  let memoryStorage: MemoryStorage;
-  const storageType = config.storage?.type ?? 'postgres';
-  if (storageType === 'postgres' && config.storage?.url) {
-    const { MemoryPostgresStorage } = await import('../../memory/postgres-storage.js');
-    memoryStorage = new MemoryPostgresStorage({ url: config.storage.url });
-  } else {
-    const { MemorySQLiteStorage } = await import('../../memory/sqlite-storage.js');
-    memoryStorage = new MemorySQLiteStorage({ dbPath: path.join(resolveCacheDir(), 'memory.db') });
-  }
-
+  const memoryStorage = await resolveMemoryStorage(config, dataDir);
   await initializeMemoryContext({
     memoryDir: workspaceDir,
     cacheDir: path.join(dataDir, 'cache'),
@@ -144,69 +209,30 @@ export async function start(): Promise<void> {
     sessionsDir: path.join(dataDir, 'sessions'),
     enableFileWatcher: process.env.NODE_ENV === 'development',
   });
-  services.push({ name: 'Memory', ok: true });
+  serviceStatuses.push({ name: 'Memory', ok: true });
 
-  // ── Tools service ─────────────────────────────────────────────────────────
   const extensionCtx: ExtensionContext = {
     registerTool: (tool) => toolRegistry.register(tool),
     paths: { dataDir, workspaceDir },
   };
 
-  // Track tool count per extension group
-  const toolCounts: Record<string, number> = {};
-  const extensionModules = await Promise.all([
-    import('../../tools/fs/index.js'),
-    import('../../tools/web/index.js'),
-    import('../../tools/agent/index.js'),
-    import('../../tools/memory/index.js'),
-  ]);
-  for (let i = 0; i < extensionModules.length; i++) {
-    const before = toolRegistry.list().length;
-    await extensionModules[i].default.register(extensionCtx);
-    toolCounts[TOOL_GROUPS[i]] = toolRegistry.list().length - before;
-  }
+  const { tools, toolCounts } = await initTools(extensionCtx, gatewayUrl);
 
-  // ── External MCP servers ──────────────────────────────────────────────────
   const { McpClientManager } = await import('../../mcp/client.js');
   const mcpClients = new McpClientManager(toolRegistry);
   const mcpServerCount = await mcpClients.connectAll(config.mcpServers);
   if (mcpServerCount > 0) {
-    services.push({ name: 'MCP Servers', ok: true, detail: `${mcpServerCount} connected` });
+    serviceStatuses.push({ name: 'MCP Servers', ok: true, detail: `${mcpServerCount} connected` });
   }
-
-  const tools = new ToolsService({ registry: toolRegistry, gatewayUrl });
-  await tools.connect();
-  setGatewayCall((target, method, params) => tools.call(target, method, params));
 
   const totalTools = toolRegistry.list().length;
   const groupSummary = TOOL_GROUPS
     .filter(g => toolCounts[g] > 0)
     .map(g => `${g}: ${toolCounts[g]}`)
     .join(', ');
-  services.push({ name: 'Tools', ok: true, detail: `${totalTools} (${groupSummary})` });
+  serviceStatuses.push({ name: 'Tools', ok: true, detail: `${totalTools} (${groupSummary})` });
 
-  // ── Cron service ──────────────────────────────────────────────────────────
-
-  // Seed default cron tasks on first boot
-  if (!config.cron?.tasks) {
-    config.cron = {
-      tasks: [
-        {
-          id: 'vargos-morning-analysis',
-          name: 'Vargos Morning Analysis (AEST)',
-          schedule: '0 23 * * *',
-          task: 'Analyze the Vargos codebase for improvements. Review scalability, code quality, architecture patterns, and feature gaps. Present suggestions with effort/impact ratings. Store findings in memory/vargos-suggestions/. Wait for user approval before implementing.',
-        },
-        {
-          id: 'vargos-evening-analysis',
-          name: 'Vargos Evening Analysis (AEST)',
-          schedule: '0 11 * * *',
-          task: 'Analyze the Vargos codebase for improvements. Review scalability, code quality, architecture patterns, and feature gaps. Present suggestions with effort/impact ratings. Store findings in memory/vargos-suggestions/. Wait for user approval before implementing.',
-        },
-      ],
-    };
-    await saveConfig(dataDir, config);
-  }
+  await seedDefaultCronTasks(config, dataDir);
 
   const cron = new CronService({
     gatewayUrl,
@@ -223,24 +249,20 @@ export async function start(): Promise<void> {
     cron.addTask(t);
   }
 
-  // ── Agent service ─────────────────────────────────────────────────────────
   const runtime = new PiAgentRuntime({ sessionService: fileSessionService });
   const agent = new AgentService({ gatewayUrl, workspaceDir, dataDir, runtime });
   await agent.connect();
-  services.push({ name: 'Agent', ok: true });
+  serviceStatuses.push({ name: 'Agent', ok: true });
 
-  // ── Heartbeat (optional) ────────────────────────────────────────────────
   if (config.heartbeat?.enabled) {
     const { createHeartbeatTask } = await import('../../cron/tasks/heartbeat.js');
     createHeartbeatTask(cron, config.heartbeat, workspaceDir, () => runtime.listActiveRuns().length);
   }
 
-  // Start all cron jobs after all tasks (config + heartbeat) are registered
   cron.startAll();
   const cronCount = cron.listTasks().length;
-  services.push({ name: 'Cron', ok: true, detail: `${cronCount} task${cronCount !== 1 ? 's' : ''}` });
+  serviceStatuses.push({ name: 'Cron', ok: true, detail: `${cronCount} task${cronCount !== 1 ? 's' : ''}` });
 
-  // ── Channel service ───────────────────────────────────────────────────────
   const channels = new ChannelService({ gatewayUrl });
   await channels.connect();
 
@@ -255,7 +277,6 @@ export async function start(): Promise<void> {
         await channels.addAdapter(adapter);
         await adapter.initialize();
         await adapter.start();
-        // Wait for adapter to leave 'connecting' (up to 3s)
         if (adapter.status === 'connecting') {
           await new Promise<void>((resolve) => {
             let done = false;
@@ -264,14 +285,13 @@ export async function start(): Promise<void> {
             const deadline = setTimeout(finish, 3000);
           });
         }
-        services.push({ name: 'Channel', ok: true, detail: `${type} ${adapter.status}` });
+        serviceStatuses.push({ name: 'Channel', ok: true, detail: `${type} ${adapter.status}` });
       } catch (err) {
-        services.push({ name: 'Channel', ok: false, detail: `${type} (${err instanceof Error ? err.message : String(err)})` });
+        serviceStatuses.push({ name: 'Channel', ok: false, detail: `${type} (${err instanceof Error ? err.message : String(err)})` });
       }
     }
   }
 
-  // ── Webhook service (optional) ──────────────────────────────────────────
   let webhooks: import('../../webhooks/service.js').WebhookService | undefined;
   if (config.webhooks?.hooks?.length) {
     const { WebhookService } = await import('../../webhooks/service.js');
@@ -285,10 +305,9 @@ export async function start(): Promise<void> {
     await webhooks.startHttp();
     const whPort = config.webhooks.port ?? 9002;
     const whHost = config.webhooks.host ?? '127.0.0.1';
-    services.push({ name: 'Webhooks', ok: true, detail: `http://${whHost}:${whPort} (${config.webhooks.hooks.length} hook${config.webhooks.hooks.length !== 1 ? 's' : ''})` });
+    serviceStatuses.push({ name: 'Webhooks', ok: true, detail: `http://${whHost}:${whPort} (${config.webhooks.hooks.length} hook${config.webhooks.hooks.length !== 1 ? 's' : ''})` });
   }
 
-  // ── MCP bridge ────────────────────────────────────────────────────────────
   const mcpBridge = new McpBridge({ gatewayUrl, version: VERSION });
   await mcpBridge.connect();
 
@@ -306,13 +325,12 @@ export async function start(): Promise<void> {
     await mcpBridge.startStdio();
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────
   renderBanner({
     version: VERSION,
     profile: { name: primaryName, provider: primary.provider, model: primary.model },
     dataDir,
   });
-  renderServices(services);
+  renderServices(serviceStatuses);
   renderMcp(mcpUrl, openapiUrl);
   renderReady({
     services: gateway.registry.list().length,
@@ -321,33 +339,13 @@ export async function start(): Promise<void> {
   });
   renderNextSteps();
 
-  // ── Shutdown ──────────────────────────────────────────────────────────────
-  const teardown = async () => {
-    await mcpClients.disconnectAll();
-    await mcpBridge.stopHttp().catch(() => {});
-    await mcpBridge.disconnect();
-    if (webhooks) {
-      await webhooks.stopHttp().catch(() => {});
-      await webhooks.disconnect();
-    }
-    await agent.disconnect();
-    await channels.stopAdapters();
-    await channels.disconnect();
-    cron.stopAll();
-    await cron.disconnect();
-    await tools.disconnect();
-    await sessions.disconnect();
-    await getMemoryContext().close().catch(() => {});
-    await gateway.stop();
-  };
+  const booted: BootedServices = { gateway, sessions, tools, cron, agent, channels, mcpBridge, mcpClients, webhooks };
 
   const shutdown = async () => {
     log('\n  Shutting down...');
     const forceExit = setTimeout(() => process.exit(1), 5_000);
     forceExit.unref();
-    await teardown();
-    await removePidFile(dataDir);
-    await releaseLock();
+    await teardown(booted, dataDir);
     process.exit(0);
   };
 
@@ -356,9 +354,7 @@ export async function start(): Promise<void> {
 
   process.on('SIGUSR2', async () => {
     log('\n  Restarting...');
-    await teardown();
-    await removePidFile(dataDir);
-    await releaseLock();
+    await teardown(booted, dataDir);
     const { spawn } = await import('node:child_process');
     spawn(process.execPath, [...extractLoaderArgs(process.execArgv), ...process.argv.slice(1)], {
       detached: true,

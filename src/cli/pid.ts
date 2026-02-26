@@ -2,6 +2,14 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { resolveDataDir } from '../config/paths.js';
 
+export async function writePidFile(dataDir: string): Promise<void> {
+  await fs.writeFile(path.join(dataDir, 'vargos.pid'), String(process.pid));
+}
+
+export async function removePidFile(dataDir: string): Promise<void> {
+  try { await fs.unlink(path.join(dataDir, 'vargos.pid')); } catch { /* gone */ }
+}
+
 export async function readGatewayPid(): Promise<number | null> {
   try {
     const pidFile = path.join(resolveDataDir(), 'vargos.pid');
