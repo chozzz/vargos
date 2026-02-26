@@ -343,6 +343,8 @@ export async function start(): Promise<void> {
 
   const shutdown = async () => {
     log('\n  Shutting down...');
+    const forceExit = setTimeout(() => process.exit(1), 5_000);
+    forceExit.unref();
     await teardown();
     await removePidFile(dataDir);
     await releaseLock();
