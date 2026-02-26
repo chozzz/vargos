@@ -49,14 +49,13 @@ describe('CronService', () => {
 
   it('adds and lists tasks via gateway', async () => {
     const task = await subscriber.call<CronTask>('cron', 'cron.add', {
-      name: 'test',
+      id: 'test',
       schedule: '0 * * * *',
-      description: 'hourly test',
       task: 'do stuff',
       enabled: false,
     });
 
-    expect(task.id).toBeTruthy();
+    expect(task.id).toBe('test');
     expect(task.name).toBe('test');
 
     const tasks = await subscriber.call<CronTask[]>('cron', 'cron.list');
@@ -66,9 +65,8 @@ describe('CronService', () => {
 
   it('removes tasks via gateway', async () => {
     const task = await subscriber.call<CronTask>('cron', 'cron.add', {
-      name: 'removable',
+      id: 'removable',
       schedule: '0 * * * *',
-      description: 'will be removed',
       task: 'nothing',
       enabled: false,
     });
@@ -92,9 +90,8 @@ describe('CronService', () => {
 
   it('updates task fields via gateway', async () => {
     const task = await subscriber.call<CronTask>('cron', 'cron.add', {
-      name: 'original',
+      id: 'original',
       schedule: '0 * * * *',
-      description: 'original desc',
       task: 'original task',
       enabled: true,
     });
@@ -106,7 +103,7 @@ describe('CronService', () => {
       task: 'updated task',
     });
 
-    expect(updated.id).toBe(task.id);
+    expect(updated.id).toBe('original');
     expect(updated.name).toBe('renamed');
     expect(updated.schedule).toBe('*/5 * * * *');
     expect(updated.task).toBe('updated task');
@@ -125,9 +122,8 @@ describe('CronService', () => {
 
   it('emits cron.trigger on manual run', async () => {
     const task = await subscriber.call<CronTask>('cron', 'cron.add', {
-      name: 'trigger-test',
+      id: 'trigger-test',
       schedule: '0 * * * *',
-      description: 'test trigger',
       task: 'analyze workspace',
       enabled: false,
     });
@@ -141,15 +137,14 @@ describe('CronService', () => {
     expect(trigger).toBeDefined();
     expect((trigger!.payload as any).taskId).toBe(task.id);
     expect((trigger!.payload as any).task).toBe('analyze workspace');
-    expect((trigger!.payload as any).sessionKey).toMatch(new RegExp(`^cron:${task.id}:\\d+$`));
+    expect((trigger!.payload as any).sessionKey).toMatch(new RegExp(`^cron:${task.id}:\\d{4}-\\d{2}-\\d{2}$`));
   });
 
   it('includes notify in cron.trigger event', async () => {
     const notify = ['whatsapp:61423000000', 'telegram:123'];
     const task = await subscriber.call<CronTask>('cron', 'cron.add', {
-      name: 'notify-test',
+      id: 'notify-test',
       schedule: '0 * * * *',
-      description: 'test notify',
       task: 'send report',
       enabled: false,
       notify,
@@ -169,9 +164,8 @@ describe('CronService', () => {
 
   it('updates notify via cron.update', async () => {
     const task = await subscriber.call<CronTask>('cron', 'cron.add', {
-      name: 'update-notify',
+      id: 'update-notify',
       schedule: '0 * * * *',
-      description: 'test',
       task: 'do stuff',
       enabled: false,
     });

@@ -4,7 +4,7 @@
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { CronTask } from '../types.js';
+import type { CronTask, CronTaskInput } from '../types.js';
 import type { HeartbeatConfig } from '../../config/pi-config.js';
 import {
   isHeartbeatContentEffectivelyEmpty,
@@ -12,7 +12,7 @@ import {
 } from '../../lib/heartbeat.js';
 
 interface CronScheduler {
-  addTask(task: Omit<CronTask, 'id'>, opts?: { ephemeral?: boolean }): CronTask;
+  addTask(task: CronTaskInput, opts?: { ephemeral?: boolean }): CronTask;
   onBeforeFire(taskId: string, hook: (task: CronTask) => Promise<boolean>): void;
 }
 
@@ -30,6 +30,7 @@ export function createHeartbeatTask(
   getActiveRunCount: () => number,
 ): CronTask {
   const task = scheduler.addTask({
+    id: 'heartbeat',
     name: 'Heartbeat',
     schedule: config.every ?? '*/30 * * * *',
     description: 'Periodic heartbeat poll — checks HEARTBEAT.md for pending tasks',

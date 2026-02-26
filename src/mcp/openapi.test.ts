@@ -81,8 +81,8 @@ describe('buildOpenApiSpec', () => {
 });
 
 describe('GET /openapi.json', () => {
-  const GW_PORT = 19807;
-  const MCP_PORT = 19808;
+  const GW_PORT = 19809;
+  const MCP_PORT = 19810;
   const GW_URL = `ws://127.0.0.1:${GW_PORT}`;
 
   let gateway: GatewayServer;

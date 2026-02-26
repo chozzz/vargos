@@ -13,11 +13,11 @@ import { CronJob } from 'cron';
 import { ServiceClient } from '../gateway/service-client.js';
 import { cronSessionKey } from '../sessions/keys.js';
 import { createLogger } from '../lib/logger.js';
-import type { CronTask } from './types.js';
+import type { CronTask, CronTaskInput } from './types.js';
 
 const log = createLogger('cron');
 
-export type { CronTask };
+export type { CronTask, CronTaskInput };
 
 export interface CronServiceConfig {
   gatewayUrl?: string;
@@ -50,7 +50,7 @@ export class CronService extends ServiceClient {
         return this.listTasks();
 
       case 'cron.add': {
-        const task = this.addTask(p as Omit<CronTask, 'id'>);
+        const task = this.addTask(p as CronTaskInput);
         this.persist();
         return task;
       }
@@ -62,7 +62,7 @@ export class CronService extends ServiceClient {
       }
 
       case 'cron.update': {
-        const task = this.updateTask(p.id as string, p as Partial<Omit<CronTask, 'id'>>);
+        const task = this.updateTask(p.id as string, p as Partial<CronTask>);
         this.persist();
         return task;
       }
@@ -79,26 +79,30 @@ export class CronService extends ServiceClient {
     // Cron service subscribes to nothing
   }
 
-  addTask(task: Omit<CronTask, 'id'>, opts?: { ephemeral?: boolean }): CronTask {
-    const id = `cron-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    const fullTask: CronTask = { ...task, id };
+  addTask(task: CronTaskInput, opts?: { ephemeral?: boolean }): CronTask {
+    const fullTask: CronTask = {
+      ...task,
+      name: task.name ?? task.id,
+      description: task.description ?? task.task.slice(0, 100),
+      enabled: task.enabled ?? true,
+    };
 
     const job = new CronJob(
       task.schedule,
-      () => this.fireById(id),
+      () => this.fireById(task.id),
       null,
       false,
       'Australia/Sydney',
     );
 
-    this.jobs.set(id, { task: fullTask, job });
-    if (opts?.ephemeral) this.ephemeralIds.add(id);
+    this.jobs.set(task.id, { task: fullTask, job });
+    if (opts?.ephemeral) this.ephemeralIds.add(task.id);
     if (this.running && task.enabled) job.start();
-    log.info(`task added: ${fullTask.name} (${fullTask.schedule}) id=${id}`);
+    log.info(`task added: ${fullTask.name} (${fullTask.schedule}) id=${task.id}`);
     return fullTask;
   }
 
-  updateTask(id: string, updates: Partial<Omit<CronTask, 'id'>>): CronTask {
+  updateTask(id: string, updates: Partial<CronTask>): CronTask {
     const entry = this.jobs.get(id);
     if (!entry) throw new Error(`No task with id: ${id}`);
     log.info(`task updated: ${id}`);

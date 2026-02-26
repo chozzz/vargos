@@ -10,7 +10,7 @@ export function channelSessionKey(channel: string, userId: string): string {
 }
 
 export function cronSessionKey(taskId: string): string {
-  return `cron:${taskId}:${Date.now()}`;
+  return `cron:${taskId}:${new Date().toISOString().slice(0, 10)}`;
 }
 
 export function webhookSessionKey(hookId: string): string {
