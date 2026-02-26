@@ -23,7 +23,7 @@ const log = createLogger('memory');
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export interface SearchResult {
+interface ContextSearchResult {
   chunk: MemoryChunk;
   score: number;
   citation: string;
@@ -470,7 +470,7 @@ export class MemoryContext {
       maxResults?: number;
       minScore?: number;
     } = {}
-  ): Promise<SearchResult[]> {
+  ): Promise<ContextSearchResult[]> {
     // Sync before search
     await this.sync();
     

@@ -39,9 +39,3 @@ export interface ISessionService {
   initialize(): Promise<void>;
   close(): Promise<void>;
 }
-
-export interface ServiceConfig {
-  fileMemoryDir?: string;
-  openaiApiKey?: string;
-  workspaceDir?: string;
-}
