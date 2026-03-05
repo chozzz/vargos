@@ -283,6 +283,7 @@ export class PiAgentRuntime {
           if (msg.stopReason === 'error' && msg.errorMessage) {
             log.error(`agent error: ${msg.errorMessage}`);
             if (msg.usage) log.error(`usage: in=${msg.usage.input} out=${msg.usage.output}`);
+            this.lifecycle.errorRun(runId, msg.errorMessage);
             return { success: false, error: msg.errorMessage, duration: Date.now() - startedAt };
           }
           if (msg.content) {
@@ -308,6 +309,7 @@ export class PiAgentRuntime {
 
       const hint = 'Empty response — model returned nothing useful.';
       log.error(hint);
+      this.lifecycle.errorRun(runId, hint);
       return { success: false, error: hint, duration: Date.now() - startedAt };
     }
 
