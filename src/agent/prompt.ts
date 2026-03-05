@@ -67,10 +67,8 @@ export async function buildSystemPrompt(options: SystemPromptOptions): Promise<s
     sections.push(buildMemorySection());
   }
 
-  // 3.5 Heartbeat protocol
-  if (mode === 'full') {
-    sections.push(buildHeartbeatSection());
-  }
+  // 3.5 Heartbeat protocol (included in all modes — heartbeat runs use minimal)
+  sections.push(buildHeartbeatSection());
 
   // 4. Project Context - Injected bootstrap files
   const bootstrapContent = await loadBootstrapFiles(workspaceDir, mode, options.bootstrapOverrides);

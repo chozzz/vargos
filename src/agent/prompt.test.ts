@@ -174,14 +174,14 @@ describe('buildSystemPrompt', () => {
       expect(result).not.toContain('## Memory Recall');
     });
 
-    it('does NOT include Heartbeats', async () => {
+    it('includes Heartbeats section', async () => {
       const dir = await makeTmpDir();
       const result = await buildSystemPrompt({
         mode: 'minimal',
         workspaceDir: dir,
         toolNames: [],
       });
-      expect(result).not.toContain('## Heartbeats');
+      expect(result).toContain('## Heartbeats');
     });
   });
 
