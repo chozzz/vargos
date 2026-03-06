@@ -26,6 +26,8 @@ const BrowserParameters = z.object({
   fullPage: z.boolean().optional().describe('Full page screenshot (default: false)'),
   script: z.string().optional().describe('JavaScript to evaluate'),
   maxChars: z.number().optional().describe('Max chars for snapshot'),
+  restoreFrom: z.string().optional().describe('Restore auth state from a previous session ID (for start/open)'),
+  saveState: z.boolean().optional().describe('Save auth state (cookies/storage) on close'),
 });
 
 export class BrowserTool extends BaseTool {
@@ -49,8 +51,9 @@ export class BrowserTool extends BaseTool {
 
     switch (args.action) {
       case 'start': {
-        const session = await service.createSession();
-        return textResult(`Browser session started: ${session.id}`, { sessionId: session.id });
+        const session = await service.createSession({ restoreFrom: args.restoreFrom });
+        const restored = args.restoreFrom ? ' (auth restored)' : '';
+        return textResult(`Browser session started: ${session.id}${restored}`, { sessionId: session.id });
       }
 
       case 'stop': {
@@ -63,7 +66,10 @@ export class BrowserTool extends BaseTool {
         if (sessions.length === 0) {
           return textResult('No active browser sessions');
         }
-        const lines = sessions.map(s => `${s.id}: ${s.url ?? 'no page'} (started ${new Date(s.startedAt).toISOString()})`);
+        const lines = sessions.map(s => {
+          const idle = Math.round(s.idleMs / 1000);
+          return `${s.id}: ${s.url ?? 'no page'} (idle ${idle}s)`;
+        });
         return textResult(lines.join('\n'));
       }
 
@@ -71,9 +77,10 @@ export class BrowserTool extends BaseTool {
         if (!args.url) {
           return errorResult('url required for open action');
         }
-        const session = await service.createSession();
+        const session = await service.createSession({ restoreFrom: args.restoreFrom });
         const result = await service.navigate(session.id, args.url);
-        return textResult(`Opened ${result.url}\nTitle: ${result.title}`, { sessionId: session.id });
+        const restored = args.restoreFrom ? ' (auth restored)' : '';
+        return textResult(`Opened ${result.url}\nTitle: ${result.title}${restored}`, { sessionId: session.id });
       }
 
       case 'navigate': {
@@ -133,6 +140,7 @@ export class BrowserTool extends BaseTool {
           return errorResult(`Session not found: ${args.sessionId}`);
         }
         await session.page.keyboard.press(args.key);
+        service.touch(args.sessionId);
         return textResult(`Pressed key: ${args.key}`);
       }
 
@@ -172,8 +180,9 @@ export class BrowserTool extends BaseTool {
         if (!args.sessionId) {
           return errorResult('sessionId required for close action');
         }
-        await service.closeSession(args.sessionId);
-        return textResult(`Closed browser session ${args.sessionId}`);
+        await service.closeSession(args.sessionId, { saveState: args.saveState });
+        const saved = args.saveState ? ' (auth state saved)' : '';
+        return textResult(`Closed browser session ${args.sessionId}${saved}`);
       }
 
       default: {
