@@ -36,6 +36,7 @@ export function createHeartbeatTask(
     description: 'Periodic heartbeat poll — checks HEARTBEAT.md for pending tasks',
     task: config.prompt ?? DEFAULT_PROMPT,
     enabled: true,
+    notify: config.notify,
   }, { ephemeral: true });
 
   scheduler.onBeforeFire(task.id, async () => {
