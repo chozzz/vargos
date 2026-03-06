@@ -73,6 +73,7 @@ export interface HeartbeatConfig {
   every?: string;                 // cron expression, default: "*/30 * * * *"
   activeHours?: ActiveHoursConfig;
   prompt?: string;                // custom heartbeat prompt override
+  notify?: string[];              // channel targets, e.g. ["whatsapp:61423222658"]
 }
 
 export interface CronConfig {
