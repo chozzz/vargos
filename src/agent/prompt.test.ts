@@ -26,9 +26,9 @@ describe('resolvePromptMode', () => {
     expect(resolvePromptMode('chat:main')).toBe('full');
   });
 
-  it('returns full for subagent keys', () => {
-    expect(resolvePromptMode('whatsapp:123:subagent:1708-x7k')).toBe('full');
-    expect(resolvePromptMode('cli:chat:subagent:1708-abc')).toBe('full');
+  it('returns minimal-subagent for subagent keys', () => {
+    expect(resolvePromptMode('whatsapp:123:subagent:1708-x7k')).toBe('minimal-subagent');
+    expect(resolvePromptMode('cli:chat:subagent:1708-abc')).toBe('minimal-subagent');
   });
 
   it('returns minimal for cron: prefix', () => {
@@ -41,6 +41,10 @@ describe('resolvePromptMode', () => {
 
   it('returns full for channel sessions', () => {
     expect(resolvePromptMode('telegram:user')).toBe('full');
+  });
+
+  it('returns minimal-subagent for nested subagents', () => {
+    expect(resolvePromptMode('whatsapp:123:subagent:a:subagent:b')).toBe('minimal-subagent');
   });
 });
 
@@ -124,7 +128,7 @@ describe('buildSystemPrompt', () => {
       expect(result).toContain('## Channel');
       expect(result).toContain('whatsapp');
       expect(result).toContain('Execute tools immediately');
-      expect(result).toContain('All tools listed in ## Tooling above are available');
+      expect(result).toContain('All tools listed above are available');
     });
 
     it('includes system section with date, time, and OS', async () => {
@@ -184,6 +188,66 @@ describe('buildSystemPrompt', () => {
         toolNames: [],
       });
       expect(result).toContain('## Heartbeats');
+    });
+  });
+
+  describe('orchestration', () => {
+    it('includes Orchestration section in full mode', async () => {
+      const dir = await makeTmpDir();
+      const result = await buildSystemPrompt({
+        mode: 'full',
+        workspaceDir: dir,
+        toolNames: [],
+      });
+      expect(result).toContain('## Orchestration');
+      expect(result).toContain('Delegate via sessions_spawn');
+    });
+
+    it('includes focused worker section for subagent sessionKey', async () => {
+      const dir = await makeTmpDir();
+      const result = await buildSystemPrompt({
+        mode: 'full',
+        workspaceDir: dir,
+        toolNames: [],
+        sessionKey: 'whatsapp:123:subagent:abc',
+      });
+      expect(result).toContain('## Role: Focused Worker');
+      expect(result).not.toContain('## Orchestration');
+    });
+  });
+
+  describe('mode=minimal-subagent', () => {
+    it('does NOT include Memory Recall or Heartbeats', async () => {
+      const dir = await makeTmpDir();
+      const result = await buildSystemPrompt({
+        mode: 'minimal-subagent',
+        workspaceDir: dir,
+        toolNames: [],
+      });
+      expect(result).not.toContain('## Memory Recall');
+      expect(result).not.toContain('## Heartbeats');
+    });
+
+    it('still includes Identity and Tooling', async () => {
+      const dir = await makeTmpDir();
+      const result = await buildSystemPrompt({
+        mode: 'minimal-subagent',
+        workspaceDir: dir,
+        toolNames: ['exec'],
+      });
+      expect(result).toContain('## Identity');
+      expect(result).toContain('## Tooling');
+    });
+
+    it('loads bootstrap files', async () => {
+      const dir = await makeTmpDir();
+      await fs.writeFile(path.join(dir, 'AGENTS.md'), '# Sub Agents');
+      const result = await buildSystemPrompt({
+        mode: 'minimal-subagent',
+        workspaceDir: dir,
+        toolNames: [],
+      });
+      expect(result).toContain('# Sub Agents');
     });
   });
 

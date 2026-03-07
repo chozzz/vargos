@@ -185,6 +185,47 @@ describe('validateConfig', () => {
   });
 });
 
+describe('subagent config validation', () => {
+  it('accepts valid subagent config', () => {
+    const config = validConfig();
+    config.agent.subagents = { maxChildren: 10, maxSpawnDepth: 3, runTimeoutSeconds: 300 };
+    const result = validateConfig(config);
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('rejects maxChildren outside 1-50', () => {
+    const config = validConfig();
+    config.agent.subagents = { maxChildren: 0 };
+    expect(validateConfig(config).errors).toContain('agent.subagents.maxChildren must be an integer 1-50');
+
+    config.agent.subagents = { maxChildren: 51 };
+    expect(validateConfig(config).errors).toContain('agent.subagents.maxChildren must be an integer 1-50');
+  });
+
+  it('rejects maxSpawnDepth outside 1-5', () => {
+    const config = validConfig();
+    config.agent.subagents = { maxSpawnDepth: 0 };
+    expect(validateConfig(config).errors).toContain('agent.subagents.maxSpawnDepth must be an integer 1-5');
+
+    config.agent.subagents = { maxSpawnDepth: 6 };
+    expect(validateConfig(config).errors).toContain('agent.subagents.maxSpawnDepth must be an integer 1-5');
+  });
+
+  it('rejects negative runTimeoutSeconds', () => {
+    const config = validConfig();
+    config.agent.subagents = { runTimeoutSeconds: -1 };
+    expect(validateConfig(config).errors).toContain('agent.subagents.runTimeoutSeconds must be a non-negative number');
+  });
+
+  it('warns on missing subagent model profile', () => {
+    const config = validConfig();
+    config.agent.subagents = { model: 'nonexistent' };
+    const result = validateConfig(config);
+    expect(result.warnings).toContain('agent.subagents.model "nonexistent" not found in models');
+  });
+});
+
 describe('LOCAL_PROVIDERS', () => {
   it('contains ollama and lmstudio', () => {
     expect(LOCAL_PROVIDERS.has('ollama')).toBe(true);

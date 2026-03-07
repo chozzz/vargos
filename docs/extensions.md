@@ -72,7 +72,7 @@ Helper factories: `textResult()`, `errorResult()`, `imageResult()`.
 | `sessions_list` | List sessions with optional kind filter |
 | `sessions_history` | Full message history for a session |
 | `sessions_send` | Post a message into another session |
-| `sessions_spawn` | Spawn background subagent in isolated session |
+| `sessions_spawn` | Spawn background subagent with optional role/persona |
 | `sessions_delete` | Delete a session and its message history |
 | `cron_add` | Schedule recurring task via cron expression |
 | `cron_list` | List all scheduled cron tasks |

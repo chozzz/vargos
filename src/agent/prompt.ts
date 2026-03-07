@@ -7,9 +7,12 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { toolRegistry } from '../tools/registry.js';
+import { isSubagentSessionKey } from '../lib/subagent.js';
+
+export type PromptMode = 'full' | 'minimal' | 'minimal-subagent' | 'none';
 
 export interface SystemPromptOptions {
-  mode: 'full' | 'minimal' | 'none';
+  mode: PromptMode;
   workspaceDir: string;
   toolNames: string[];
   extraSystemPrompt?: string;
@@ -19,6 +22,7 @@ export interface SystemPromptOptions {
   thinking?: 'off' | 'low' | 'medium' | 'high';
   channel?: string;
   bootstrapOverrides?: Record<string, string>;
+  sessionKey?: string;
 }
 
 // Bootstrap files to inject (in priority order)
@@ -56,21 +60,28 @@ export async function buildSystemPrompt(options: SystemPromptOptions): Promise<s
     sections.push(await buildCodebaseContextSection(workspaceDir));
   }
 
-  // 3. Memory recall guidance (full mode only)
+  // 2.7 Orchestration guidance (full mode + subagent worker guidance)
+  if (mode === 'full' || mode === 'minimal-subagent') {
+    sections.push(buildOrchestrationSection(options.sessionKey));
+  }
+
+  // 3. Memory recall guidance (full mode, non-subagent)
   if (mode === 'full') {
     sections.push(buildMemorySection());
   }
 
-  // 3.5 Heartbeat protocol (all modes — heartbeat runs use minimal)
-  sections.push(buildHeartbeatSection());
+  // 3.5 Heartbeat protocol (full + minimal — heartbeat runs use minimal)
+  if (mode !== 'minimal-subagent') {
+    sections.push(buildHeartbeatSection());
+  }
 
   // 4. Bootstrap files (AGENTS.md, SOUL.md, TOOLS.md)
-  const bootstrapContent = await loadBootstrapFiles(workspaceDir, mode, options.bootstrapOverrides);
+  const bootstrapContent = await loadBootstrapFiles(workspaceDir, options.bootstrapOverrides);
   if (bootstrapContent) {
     sections.push(bootstrapContent);
   }
 
-  // 4.7 Tool narration guidance
+  // 4.7 Tool narration guidance (full mode only)
   if (mode === 'full') {
     sections.push(buildToolNarrationSection());
   }
@@ -135,7 +146,6 @@ async function buildToolingSection(toolNames: string[]): Promise<string> {
     '',
     'Use tools naturally to complete tasks. When using tools, wait for results before proceeding.',
     'Tool names are case-sensitive. Call tools exactly as listed.',
-    'If a task is more complex or takes longer, spawn a sub-agent with sessions_spawn.',
     '',
     '### Shell & Git',
     '',
@@ -213,7 +223,6 @@ function buildToolNarrationSection(): string {
  */
 async function loadBootstrapFiles(
   workspaceDir: string,
-  mode: 'full' | 'minimal',
   overrides?: Record<string, string>,
 ): Promise<string | null> {
   const lines: string[] = [];
@@ -274,10 +283,12 @@ function buildChannelSection(channel: string): string {
     `This message arrived via: ${channel}`,
     '',
     'Channel rules:',
-    '- Execute tools immediately — never say "I\'ll search" or "Let me look" without actually calling the tool in the same response.',
-    '- All tools listed in ## Tooling above are available and working. Do not claim otherwise.',
-    '- Keep responses concise. No markdown tables — use plain text lists.',
-    '- If a tool call fails, report the error. Do not speculate about missing connections or configuration.',
+    '- Be short and direct. 1-3 sentences for simple answers. No filler, no preamble.',
+    '- No markdown formatting — no tables, no headers, no bold, no code blocks. Plain text only.',
+    '- Never output code to the user. Use the exec tool to run it yourself.',
+    '- Execute tools immediately — never say "I\'ll search" or "Let me look" without calling the tool.',
+    '- All tools listed above are available. Do not claim otherwise.',
+    '- If a tool fails, report the error briefly. Do not speculate.',
   ].join('\n');
 }
 
@@ -371,11 +382,55 @@ async function buildCodebaseContextSection(workspaceDir: string): Promise<string
 }
 
 /**
- * Resolve prompt mode based on session key.
- * Only cron stays minimal — subagents get the full prompt.
+ * Orchestration guidance — when to delegate vs act directly
  */
-export function resolvePromptMode(sessionKey: string): 'full' | 'minimal' | 'none' {
+function buildOrchestrationSection(sessionKey?: string): string {
+  // Subagents should not orchestrate — they execute
+  if (sessionKey && isSubagentSessionKey(sessionKey)) {
+    return [
+      '## Role: Focused Worker',
+      '',
+      'You are a sub-agent. Complete the assigned task directly.',
+      'Do not spawn further sub-agents unless the task explicitly requires parallel work.',
+      'Return a clear, concise result — your output will be synthesized by the parent agent.',
+    ].join('\n');
+  }
+
+  return [
+    '## Orchestration',
+    '',
+    'Act directly when:',
+    '- The request is conversational (greetings, opinions, quick questions)',
+    '- A single tool call or short sequence completes the task',
+    '- The user asks for your direct judgment (summarize, explain, advise)',
+    '',
+    'Delegate via sessions_spawn when:',
+    '- The task has two or more independent phases that can run in parallel',
+    '- Execution will take more than a minute (research, file processing, builds)',
+    '- The task touches multiple domains (e.g., fetch + analyze + write)',
+    '',
+    'When orchestrating:',
+    '1. Tell the user your plan in one sentence before spawning',
+    '2. Spawn one sub-agent per focused subtask — not one per micro-step',
+    '3. Use `role` to set each sub-agent\'s expertise — any persona, not limited to predefined roles',
+    '4. After sub-agents complete, review all results and synthesize a response',
+    '5. Report what was done and what it means, not raw output',
+    '',
+    'Example:',
+    '  sessions_spawn({ task: "Review auth module for security issues", role: "You are a security engineer. Focus on auth flows, token handling, and input validation." })',
+    '',
+    'Do not spawn sub-agents for: time/date questions, status checks, single file reads,',
+    'calculations, or tasks completable in one or two tool calls.',
+  ].join('\n');
+}
+
+/**
+ * Resolve prompt mode based on session key.
+ * Cron stays minimal. Subagents get a stripped-down prompt.
+ */
+export function resolvePromptMode(sessionKey: string): PromptMode {
   const root = sessionKey.split(':subagent:')[0];
   if (root.startsWith('cron:')) return 'minimal';
+  if (isSubagentSessionKey(sessionKey)) return 'minimal-subagent';
   return 'full';
 }
