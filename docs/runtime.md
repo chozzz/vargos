@@ -33,19 +33,17 @@ Store response → end run
 
 The system prompt is built in layers (full mode):
 
-1. **Identity** — "You are Vargos, an AI Agentic Assistant"
+1. **Identity** — delegates persona to SOUL.md
 2. **Tooling** — available tools with descriptions
 3. **Workspace** — working directory path
 4. **Project Context** — codebase detection (Vargos repo vs generic)
 5. **Memory Recall** — how to use `memory_search` + `memory_get`
 6. **Heartbeats** — heartbeat polling protocol
-7. **Bootstrap Files** — project-specific context (see below)
-8. **Behavior** — override rules (placed after bootstrap to take precedence)
-9. **Tool Call Style** — suppress verbose narration
-10. **Channel** — channel-specific instructions (if applicable)
-11. **Date/Time** — timezone info
-12. **Runtime** — host, model, thinking mode
-13. **Additional Context** — extra system prompt if provided
+7. **Bootstrap Files** — AGENTS.md, SOUL.md, TOOLS.md, HEARTBEAT.md
+8. **Tool Call Style** — suppress verbose narration
+9. **Channel** — channel-specific instructions (if applicable)
+10. **System** — date/time, host, model, thinking mode
+11. **Additional Context** — extra system prompt if provided
 
 ### Prompt Modes
 
@@ -57,18 +55,16 @@ The system prompt is built in layers (full mode):
 
 ### Bootstrap Files
 
-Loaded from the workspace directory, max 20,000 chars each:
+Loaded from the workspace directory, max 20,000 chars each (70/20 head/tail truncation):
 
 | File | Purpose |
 |------|---------|
-| `ARCHITECTURE.md` | Project structure |
-| `AGENTS.md` | Workspace rules |
-| `SOUL.md` | Persona (embodied if present) |
-| `TOOLS.md` | Tool usage notes |
-| `USER.md` | User profile |
-| `HEARTBEAT.md` | Heartbeat task definitions |
-| `MEMORY.md` | Curated memories |
-| `BOOTSTRAP.md` | First-run only (when no other files exist) |
+| `AGENTS.md` | Workspace rules, memory conventions, communication etiquette |
+| `SOUL.md` | Persona, identity, boundaries, user profile |
+| `TOOLS.md` | Environment-specific notes (IPs, devices, commands) |
+| `HEARTBEAT.md` | Periodic maintenance tasks for heartbeat cron |
+
+`MEMORY.md` is not auto-injected — the agent retrieves it on-demand via `memory_search` / `memory_get`.
 
 Subagents receive the full set of bootstrap files, same as their parent.
 
