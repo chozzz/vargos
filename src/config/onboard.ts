@@ -10,7 +10,7 @@ import pg from 'pg';
 import { loadConfig, saveConfig, type ModelProfile, type StorageConfig, type VargosConfig } from './pi-config.js';
 import { LOCAL_PROVIDERS } from './validate.js';
 
-const PLACEHOLDERS = ['[Your name]', '[Preferred name]', '[they/them, he/him, she/her, etc.]', '[e.g., UTC, EST, PST]'];
+const SOUL_PLACEHOLDERS = ['[Your name]', '[Preferred name]', '[they/them, he/him, she/her, etc.]', '[e.g., UTC, EST, PST]'];
 
 const DEFAULT_MODELS: Record<string, string> = {
   openai: 'gpt-4o', anthropic: 'claude-3-5-sonnet-20241022',
@@ -30,8 +30,8 @@ function getProviderLink(provider: string): string {
 
 async function hasPlaceholderIdentity(workspaceDir: string): Promise<boolean> {
   try {
-    const content = await fs.readFile(path.join(workspaceDir, 'USER.md'), 'utf-8');
-    return PLACEHOLDERS.some((p) => content.includes(p));
+    const content = await fs.readFile(path.join(workspaceDir, 'SOUL.md'), 'utf-8');
+    return SOUL_PLACEHOLDERS.some((p) => content.includes(p));
   } catch {
     return false;
   }
@@ -62,29 +62,28 @@ async function setupIdentity(workspaceDir: string): Promise<void> {
   const agentVibe = await text({ message: 'Agent vibe', placeholder: 'chill, professional' });
   if (isCancel(agentVibe)) return;
 
-  // Patch USER.md
-  const userPath = path.join(workspaceDir, 'USER.md');
-  let userContent = await fs.readFile(userPath, 'utf-8');
-  if (name) userContent = userContent.replace('[Your name]', name);
-  if (preferred) userContent = userContent.replace('[Preferred name]', preferred);
-  if (pronouns) userContent = userContent.replace('[they/them, he/him, she/her, etc.]', pronouns);
-  if (timezone) userContent = userContent.replace('[e.g., UTC, EST, PST]', timezone);
-  await fs.writeFile(userPath, userContent, 'utf-8');
-  log.success('Updated USER.md');
+  // Patch SOUL.md — identity, user info, and vibe all live here now
+  const soulPath = path.join(workspaceDir, 'SOUL.md');
+  try {
+    let content = await fs.readFile(soulPath, 'utf-8');
 
-  // Patch SOUL.md
-  if (agentName || agentVibe) {
-    const soulPath = path.join(workspaceDir, 'SOUL.md');
-    try {
-      let soulContent = await fs.readFile(soulPath, 'utf-8');
-      const vibeLines: string[] = [];
-      if (agentName) vibeLines.push(`Your name is ${agentName}.`);
-      if (agentVibe) vibeLines.push(`Your vibe: ${agentVibe}.`);
-      soulContent = soulContent.replace(/## Vibe\n\n/, `## Vibe\n\n${vibeLines.join('\n')}\n\n`);
-      await fs.writeFile(soulPath, soulContent, 'utf-8');
-      log.success('Updated SOUL.md');
-    } catch { /* SOUL.md missing — skip */ }
-  }
+    // User info placeholders (in "Your Human" section)
+    if (name) content = content.replace('[Your name]', name);
+    if (preferred) content = content.replace('[Preferred name]', preferred);
+    if (pronouns) content = content.replace('[they/them, he/him, she/her, etc.]', pronouns);
+    if (timezone) content = content.replace('[e.g., UTC, EST, PST]', timezone);
+
+    // Agent identity (prepend to Vibe section)
+    const vibeLines: string[] = [];
+    if (agentName) vibeLines.push(`Your name is ${agentName}.`);
+    if (agentVibe) vibeLines.push(`Your vibe: ${agentVibe}.`);
+    if (vibeLines.length > 0) {
+      content = content.replace(/## Vibe\n\n/, `## Vibe\n\n${vibeLines.join('\n')}\n\n`);
+    }
+
+    await fs.writeFile(soulPath, content, 'utf-8');
+    log.success('Updated SOUL.md');
+  } catch { /* SOUL.md missing — skip */ }
 }
 
 // ── Step 2: LLM config ───────────────────────────────────────────────────────
