@@ -310,6 +310,97 @@ describe('AgentService', () => {
     }
   });
 
+  it('retries once on empty cron response then notifies', async () => {
+    await agent.disconnect();
+
+    let runCount = 0;
+    const retryRuntime = createMockRuntime();
+    retryRuntime.run = async () => {
+      runCount++;
+      // First call: thinking-only (empty response), second: real response
+      if (runCount === 1) return { success: true, response: '', duration: 100 };
+      return { success: true, response: 'Sprint suggestion: MP-12345', duration: 100 };
+    };
+
+    agent = new AgentService({ gatewayUrl: GATEWAY_URL, workspaceDir: '/tmp/workspace', dataDir: '/tmp/data', runtime: retryRuntime });
+    await agent.connect();
+
+    // Mock sessions service for session.create / session.addMessage
+    const sessions = new (class extends ServiceClient {
+      constructor() {
+        super({ service: 'sessions', methods: ['session.create', 'session.addMessage', 'session.getMessages'], events: [], subscriptions: [], gatewayUrl: GATEWAY_URL });
+      }
+      async handleMethod() { return {}; }
+      handleEvent() {}
+    })();
+    await sessions.connect();
+
+    const channel = new MockChannelService();
+    await channel.connect();
+
+    try {
+      caller.emit('cron.trigger', {
+        taskId: 'daily-breville-sprint-picker',
+        task: 'Find easiest sprint ticket',
+        sessionKey: 'cron:daily-breville-sprint-picker:2026-03-08',
+        notify: ['whatsapp:123'],
+      });
+
+      await new Promise((r) => setTimeout(r, 1000));
+
+      expect(runCount).toBe(2);
+      expect(channel.sent.length).toBe(1);
+      expect(channel.sent[0].text).toBe('Sprint suggestion: MP-12345');
+    } finally {
+      await sessions.disconnect();
+      await channel.disconnect();
+    }
+  });
+
+  it('does not retry when cron response is successful', async () => {
+    await agent.disconnect();
+
+    let runCount = 0;
+    const okRuntime = createMockRuntime();
+    okRuntime.run = async () => {
+      runCount++;
+      return { success: true, response: 'All good', duration: 100 };
+    };
+
+    agent = new AgentService({ gatewayUrl: GATEWAY_URL, workspaceDir: '/tmp/workspace', dataDir: '/tmp/data', runtime: okRuntime });
+    await agent.connect();
+
+    const sessions = new (class extends ServiceClient {
+      constructor() {
+        super({ service: 'sessions', methods: ['session.create', 'session.addMessage', 'session.getMessages'], events: [], subscriptions: [], gatewayUrl: GATEWAY_URL });
+      }
+      async handleMethod() { return {}; }
+      handleEvent() {}
+    })();
+    await sessions.connect();
+
+    const channel = new MockChannelService();
+    await channel.connect();
+
+    try {
+      caller.emit('cron.trigger', {
+        taskId: 'test-cron',
+        task: 'Do something',
+        sessionKey: 'cron:test:2026-03-08',
+        notify: ['whatsapp:456'],
+      });
+
+      await new Promise((r) => setTimeout(r, 1000));
+
+      expect(runCount).toBe(1);
+      expect(channel.sent.length).toBe(1);
+      expect(channel.sent[0].text).toBe('All good');
+    } finally {
+      await sessions.disconnect();
+      await channel.disconnect();
+    }
+  });
+
   it('sends error feedback to channel on failed run', async () => {
     // Disconnect default agent and reconnect with a failing runtime
     await agent.disconnect();

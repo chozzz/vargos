@@ -290,7 +290,13 @@ export class AgentService extends ServiceClient {
       metadata: { source: kind, [idKey]: triggerId },
     }).catch(() => {});
 
-    const result = await this.runAgent({ sessionKey, task });
+    let result = await this.runAgent({ sessionKey, task });
+
+    // Retry once on empty response (e.g. thinking-only from weaker models)
+    if (result.success && !result.response) {
+      log.info(`empty response for ${kind}:${triggerId} — retrying once`);
+      result = await this.runAgent({ sessionKey, task });
+    }
 
     if (!notify?.length) return;
 
