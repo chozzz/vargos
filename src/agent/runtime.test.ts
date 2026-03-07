@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractTextContent, isThinkingOnlyContent } from './runtime.js';
+import { extractTextContent, isThinkingOnlyContent, isRetryableError } from './runtime.js';
 
 describe('extractTextContent', () => {
   it('returns string content as-is', () => {
@@ -93,5 +93,53 @@ describe('isThinkingOnlyContent', () => {
     expect(isThinkingOnlyContent([
       { type: 'text', text: 'Hello world' },
     ])).toBe(false);
+  });
+});
+
+describe('isRetryableError', () => {
+  it('returns false for undefined/empty', () => {
+    expect(isRetryableError(undefined)).toBe(false);
+    expect(isRetryableError('')).toBe(false);
+  });
+
+  it('retries network connection lost', () => {
+    expect(isRetryableError('Network connection lost.')).toBe(true);
+    expect(isRetryableError('network connection lost')).toBe(true);
+  });
+
+  it('retries JSON parse errors', () => {
+    expect(isRetryableError('Unexpected end of JSON input')).toBe(true);
+    expect(isRetryableError('Unexpected token after JSON at position 0')).toBe(true);
+    expect(isRetryableError('something after JSON data')).toBe(true);
+  });
+
+  it('retries Node.js network errors', () => {
+    expect(isRetryableError('read ECONNRESET')).toBe(true);
+    expect(isRetryableError('connect ECONNREFUSED 127.0.0.1:443')).toBe(true);
+    expect(isRetryableError('connect ETIMEDOUT')).toBe(true);
+    expect(isRetryableError('socket hang up')).toBe(true);
+    expect(isRetryableError('fetch failed')).toBe(true);
+  });
+
+  it('retries HTTP 502/503/529 errors', () => {
+    expect(isRetryableError('Request failed with status 502')).toBe(true);
+    expect(isRetryableError('503 Service Unavailable')).toBe(true);
+    expect(isRetryableError('Error 529: overloaded')).toBe(true);
+  });
+
+  it('retries abort errors', () => {
+    expect(isRetryableError('The operation was aborted')).toBe(true);
+  });
+
+  it('retries generic network error', () => {
+    expect(isRetryableError('network error')).toBe(true);
+  });
+
+  it('does not retry non-transient errors', () => {
+    expect(isRetryableError('Invalid API key')).toBe(false);
+    expect(isRetryableError('Rate limit exceeded')).toBe(false);
+    expect(isRetryableError('Model not found')).toBe(false);
+    expect(isRetryableError('Context length exceeded')).toBe(false);
+    expect(isRetryableError('Permission denied')).toBe(false);
   });
 });
