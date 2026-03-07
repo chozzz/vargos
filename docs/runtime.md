@@ -39,7 +39,7 @@ The system prompt is built in layers (full mode):
 4. **Project Context** — codebase detection (Vargos repo vs generic)
 5. **Memory Recall** — how to use `memory_search` + `memory_get`
 6. **Heartbeats** — heartbeat polling protocol
-7. **Bootstrap Files** — AGENTS.md, SOUL.md, TOOLS.md, HEARTBEAT.md
+7. **Bootstrap Files** — AGENTS.md, SOUL.md, TOOLS.md
 8. **Tool Call Style** — suppress verbose narration
 9. **Channel** — channel-specific instructions (if applicable)
 10. **System** — date/time, host, model, thinking mode
@@ -62,9 +62,8 @@ Loaded from the workspace directory, max 20,000 chars each (70/20 head/tail trun
 | `AGENTS.md` | Workspace rules, memory conventions, communication etiquette |
 | `SOUL.md` | Persona, identity, boundaries, user profile |
 | `TOOLS.md` | Environment-specific notes (IPs, devices, commands) |
-| `HEARTBEAT.md` | Periodic maintenance tasks for heartbeat cron |
 
-`MEMORY.md` is not auto-injected — the agent retrieves it on-demand via `memory_search` / `memory_get`.
+`MEMORY.md` and `HEARTBEAT.md` are not auto-injected. Memory is retrieved on-demand via `memory_search` / `memory_get`. Heartbeat tasks are read by the heartbeat cron via tool call.
 
 Subagents receive the full set of bootstrap files, same as their parent.
 
