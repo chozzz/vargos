@@ -20,7 +20,6 @@ const log = createLogger('agent');
 import type { AgentStreamEvent } from './lifecycle.js';
 import { resolveWorkspaceDir, resolveDataDir } from '../config/paths.js';
 import { loadConfig, resolveModel, type VargosConfig } from '../config/pi-config.js';
-import { loadContextFiles } from '../config/workspace.js';
 import { LOCAL_PROVIDERS } from '../config/validate.js';
 import { transformMedia, type MediaAttachment } from '../lib/media-transform.js';
 
@@ -387,7 +386,6 @@ export class AgentService extends ServiceClient {
       baseUrl: primary.baseUrl,
       maxTokens: primary.maxTokens,
       contextWindow: primary.contextWindow,
-      contextFiles: await loadContextFiles(this.workspaceDir),
       images: params.images,
       channel: params.channel,
       bootstrapOverrides: params.bootstrapOverrides,

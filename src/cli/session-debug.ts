@@ -4,7 +4,6 @@ import { connectToGateway } from './client.js';
 import { loadAndValidate } from './boot.js';
 import { buildSystemPrompt, resolvePromptMode } from '../agent/prompt.js';
 import { toAgentMessages, sanitizeHistory, limitHistoryTurns, getHistoryLimit } from '../agent/history.js';
-import { loadContextFiles } from '../config/workspace.js';
 import type { Session, SessionMessage } from '../sessions/types.js';
 
 const DIM = chalk.dim;
@@ -34,10 +33,9 @@ export async function sessionDebug(args?: string[]): Promise<void> {
   }
 
   try {
-    const [tools, messages, contextFiles] = await Promise.all([
+    const [tools, messages] = await Promise.all([
       client.call<Array<{ name: string }>>('tools', 'tool.list', {}),
       client.call<SessionMessage[]>('sessions', 'session.getMessages', { sessionKey }),
-      loadContextFiles(workspaceDir),
     ]);
 
     const toolNames = tools.map(t => t.name);
@@ -47,7 +45,6 @@ export async function sessionDebug(args?: string[]): Promise<void> {
       mode,
       workspaceDir,
       toolNames,
-      contextFiles,
     });
 
     const converted = toAgentMessages(messages);
