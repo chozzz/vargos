@@ -24,11 +24,20 @@ export interface ModelProfile {
   contextWindow?: number;
 }
 
+/** Subagent limits and defaults */
+export interface SubagentConfig {
+  maxChildren?: number;         // max active children per parent session (default: 10)
+  maxSpawnDepth?: number;       // max nesting depth (default: 3)
+  runTimeoutSeconds?: number;   // per-subagent timeout in seconds (default: 300)
+  model?: string;               // optional model profile for subagents
+}
+
 /** Agent references into the models map */
 export interface AgentRef {
   primary: string;
   fallback?: string;
   media?: Record<string, string>;  // media type → model profile name
+  subagents?: SubagentConfig;
 }
 
 /** @deprecated Use ModelProfile instead — kept for migration compatibility */

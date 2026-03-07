@@ -12,12 +12,23 @@ import type { SessionMessage } from '../sessions/types.js';
 
 /**
  * Convert FileSessionService messages to Pi SDK AgentMessage format.
- * Skips system messages (compaction notes, subagent announcements) — only user/assistant matter for LLM context.
+ * Keeps user, assistant, and subagent_announce system messages.
+ * Subagent announcements are injected as user messages so the parent LLM can see results.
  */
 export function toAgentMessages(messages: SessionMessage[]): AgentMessage[] {
   return messages
-    .filter(m => m.role === 'user' || m.role === 'assistant')
+    .filter(m => {
+      if (m.role === 'user' || m.role === 'assistant') return true;
+      // Inject subagent announcements so parent can see results
+      if (m.role === 'system' && m.metadata?.type === 'subagent_announce') return true;
+      return false;
+    })
     .map(m => {
+      // Convert subagent_announce system messages to user messages for the LLM
+      if (m.role === 'system' && m.metadata?.type === 'subagent_announce') {
+        const ts = m.timestamp instanceof Date ? m.timestamp.getTime() : Number(m.timestamp);
+        return { role: 'user', content: m.content, timestamp: ts } as AgentMessage;
+      }
       const ts = m.timestamp instanceof Date ? m.timestamp.getTime() : Number(m.timestamp);
       if (m.role === 'user') {
         return { role: 'user', content: m.content, timestamp: ts } as AgentMessage;

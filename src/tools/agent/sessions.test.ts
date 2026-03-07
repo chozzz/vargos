@@ -106,5 +106,32 @@ describe('session tools', () => {
       expect(getFirstTextContent(result.content)).toContain('Spawned');
       expect(getFirstTextContent(result.content)).toContain('Analyze codebase for bugs');
     });
+
+    it('should pass role as bootstrapOverrides to agent.run', async () => {
+      const ctx = createMockContext();
+      await sessionsSpawnTool.execute({
+        task: 'Review API design',
+        role: 'You are a senior architect. Focus on API contracts.',
+      }, ctx);
+
+      const agentRunCall = ctx.call!.mock.calls.find(
+        (c: unknown[]) => c[0] === 'agent' && c[1] === 'agent.run',
+      );
+      expect(agentRunCall).toBeDefined();
+      expect(agentRunCall![2]).toMatchObject({
+        bootstrapOverrides: { 'SOUL.md': 'You are a senior architect. Focus on API contracts.' },
+      });
+    });
+
+    it('should not include bootstrapOverrides when role is omitted', async () => {
+      const ctx = createMockContext();
+      await sessionsSpawnTool.execute({ task: 'Simple task' }, ctx);
+
+      const agentRunCall = ctx.call!.mock.calls.find(
+        (c: unknown[]) => c[0] === 'agent' && c[1] === 'agent.run',
+      );
+      expect(agentRunCall).toBeDefined();
+      expect(agentRunCall![2]).not.toHaveProperty('bootstrapOverrides');
+    });
   });
 });

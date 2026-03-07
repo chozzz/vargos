@@ -53,6 +53,12 @@ export class AgentService extends ServiceClient {
     this.dataDir = config.dataDir ?? resolveDataDir();
   }
 
+  async disconnect(): Promise<void> {
+    for (const timer of this.retriggerTimers.values()) clearTimeout(timer);
+    this.retriggerTimers.clear();
+    return super.disconnect();
+  }
+
   async handleMethod(method: string, params: unknown): Promise<unknown> {
     const p = params as Record<string, unknown>;
 
@@ -61,6 +67,11 @@ export class AgentService extends ServiceClient {
         return this.runAgent(p as unknown as AgentRunParams);
 
       case 'agent.abort': {
+        // Support abort by runId or sessionKey
+        if (p.sessionKey) {
+          const count = this.runtime.abortSessionRuns(p.sessionKey as string, p.reason as string | undefined);
+          return { aborted: count > 0, count };
+        }
         const success = this.runtime.abortRun(p.runId as string, p.reason as string | undefined);
         return { aborted: success };
       }
@@ -175,7 +186,7 @@ export class AgentService extends ServiceClient {
     // Reply back through the channel
     if (result.success) {
       await this.deliverToChannel(channel, userId, result);
-    } else if (!result.success) {
+    } else {
       const errMsg = result.error
         ? `Something went wrong: ${result.error.slice(0, 200)}`
         : 'Something went wrong — please try again.';
@@ -235,47 +246,8 @@ export class AgentService extends ServiceClient {
       sessionKey: string;
       notify?: string[];
     };
-
     log.info(`cron trigger: ${taskId} → ${sessionKey}${notify?.length ? ` (notify: ${notify.length} targets)` : ''}`);
-
-    // Create session so storeResponse can persist the result
-    await this.call('sessions', 'session.create', {
-      sessionKey,
-      kind: 'cron',
-      metadata: { taskId },
-    }).catch((err: unknown) => {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (!msg.includes('already exists')) log.error(`Failed to create cron session: ${msg}`);
-    });
-
-    // Store the user task so history loading picks it up
-    await this.call('sessions', 'session.addMessage', {
-      sessionKey, content: task, role: 'user',
-      metadata: { source: 'cron', taskId },
-    }).catch(() => {});
-
-    const result = await this.runAgent({ sessionKey, task });
-
-    // Deliver to explicitly configured notify targets only
-    if (!notify?.length) return;
-
-    for (const target of notify) {
-      const parsed = parseTarget(target);
-      if (!parsed) continue;
-
-      // Inject into recipient's channel session for context
-      if (result.success && result.response) {
-        const cleaned = stripHeartbeatToken(result.response);
-        if (cleaned) {
-          await this.call('sessions', 'session.addMessage', {
-            sessionKey: target, content: cleaned, role: 'assistant',
-            metadata: { source: 'cron', taskId },
-          }).catch(() => {});
-        }
-      }
-
-      await this.deliverToChannel(parsed.channel, parsed.userId, result);
-    }
+    await this.handleTriggeredRun({ kind: 'cron', triggerId: taskId, task, sessionKey, notify });
   }
 
   private async handleWebhookTrigger(payload: Record<string, unknown>): Promise<void> {
@@ -285,21 +257,37 @@ export class AgentService extends ServiceClient {
       sessionKey: string;
       notify?: string[];
     };
-
     log.info(`webhook trigger: ${hookId} → ${sessionKey}${notify?.length ? ` (notify: ${notify.length} targets)` : ''}`);
+    await this.handleTriggeredRun({ kind: 'webhook', triggerId: hookId, task, sessionKey, notify });
+  }
+
+  private async handleTriggeredRun({
+    kind,
+    triggerId,
+    task,
+    sessionKey,
+    notify,
+  }: {
+    kind: string;
+    triggerId: string;
+    task: string;
+    sessionKey: string;
+    notify?: string[];
+  }): Promise<void> {
+    const idKey = kind === 'cron' ? 'taskId' : 'hookId';
 
     await this.call('sessions', 'session.create', {
       sessionKey,
-      kind: 'webhook',
-      metadata: { hookId },
+      kind,
+      metadata: { [idKey]: triggerId },
     }).catch((err: unknown) => {
       const msg = err instanceof Error ? err.message : String(err);
-      if (!msg.includes('already exists')) log.error(`Failed to create webhook session: ${msg}`);
+      if (!msg.includes('already exists')) log.error(`Failed to create ${kind} session: ${msg}`);
     });
 
     await this.call('sessions', 'session.addMessage', {
       sessionKey, content: task, role: 'user',
-      metadata: { source: 'webhook', hookId },
+      metadata: { source: kind, [idKey]: triggerId },
     }).catch(() => {});
 
     const result = await this.runAgent({ sessionKey, task });
@@ -315,7 +303,7 @@ export class AgentService extends ServiceClient {
         if (cleaned) {
           await this.call('sessions', 'session.addMessage', {
             sessionKey: target, content: cleaned, role: 'assistant',
-            metadata: { source: 'webhook', hookId },
+            metadata: { source: kind, [idKey]: triggerId },
           }).catch(() => {});
         }
       }
@@ -334,35 +322,47 @@ export class AgentService extends ServiceClient {
     log.info(`reply sent: ${channel}:${userId}`);
   }
 
-  /** When a sub-agent completes, announce to parent and re-trigger if channel-rooted */
+  // Debounce timers for batched subagent re-triggers
+  private retriggerTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private static RETRIGGER_DEBOUNCE_MS = 3000;
+
+  /** When a sub-agent completes, announce to parent and batch re-trigger */
   private async handleSubagentCompletion(sessionKey: string, result: PiAgentRunResult): Promise<void> {
-    // Get parent key from session metadata
     const session = await this.call<{ metadata?: Record<string, unknown> }>('sessions', 'session.get', { sessionKey });
     const parentKey = session?.metadata?.parentSessionKey as string | undefined;
     if (!parentKey) return;
 
-    // Write announcement to parent session
+    // Write announcement to parent session (visible to LLM via history injection)
     const status = result.success ? 'success' : 'error';
     const summary = result.response?.slice(0, 500) ?? '(no response)';
     await this.call('sessions', 'session.addMessage', {
       sessionKey: parentKey,
-      content: `## Sub-agent Complete\n\n**Session:** ${sessionKey}\n**Status:** ${status}\n**Duration:** ${result.duration ? `${(result.duration / 1000).toFixed(1)}s` : 'unknown'}\n\n**Result:**\n${summary}`,
+      content: `[Subagent Complete] session=${sessionKey} status=${status} duration=${result.duration ? `${(result.duration / 1000).toFixed(1)}s` : 'unknown'}\n\n${summary}`,
       role: 'system',
       metadata: { type: 'subagent_announce', childSessionKey: sessionKey, success: result.success },
     }).catch(err => log.error(`Failed to announce to parent: ${err}`));
 
-    // If root is a channel target, re-trigger parent to synthesize and deliver
+    // Debounced re-trigger: wait for other subagents to complete before waking parent
     const rootKey = parentKey.split(':subagent:')[0];
     const target = parseTarget(rootKey);
     if (!target) return;
 
-    log.info(`re-triggering parent ${parentKey} after sub-agent completion`);
-    const parentResult = await this.runAgent({
-      sessionKey: parentKey,
-      task: 'A sub-agent completed. Review the results above and continue.',
-      retrigger: true,
-    });
-    await this.deliverToChannel(target.channel, target.userId, parentResult);
+    // Clear any existing debounce timer for this parent
+    const existing = this.retriggerTimers.get(parentKey);
+    if (existing) clearTimeout(existing);
+
+    const timer = setTimeout(async () => {
+      this.retriggerTimers.delete(parentKey);
+      log.info(`re-triggering parent ${parentKey} after sub-agent completions`);
+      const parentResult = await this.runAgent({
+        sessionKey: parentKey,
+        task: 'One or more sub-agents completed. Review all results above and synthesize a response.',
+        retrigger: true,
+      });
+      await this.deliverToChannel(target.channel, target.userId, parentResult);
+    }, AgentService.RETRIGGER_DEBOUNCE_MS);
+
+    this.retriggerTimers.set(parentKey, timer);
   }
 
   private async buildRunConfig(params: AgentRunParams, existing?: VargosConfig | null): Promise<PiAgentConfig> {

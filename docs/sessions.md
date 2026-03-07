@@ -12,7 +12,7 @@ Sessions persist conversation history and provide isolation between different in
 | `telegram:<chatId>` | `telegram:123456` | Telegram adapter | full | 30 turns |
 | `cron:<taskId>:<timestamp>` | `cron:daily-report:1708865234567` | Cron service | minimal | 10 turns |
 | `webhook:<hookId>:<timestamp>` | `webhook:github-pr:1708865234567` | Webhook service | minimal | 10 turns |
-| `<parent>:subagent:<timestamp>-<rand>` | `cli:chat:subagent:1708865240123-x7k2q` | `sessions_spawn` tool | full | inherits root |
+| `<parent>:subagent:<timestamp>-<rand>` | `cli:chat:subagent:1708865240123-x7k2q` | `sessions_spawn` tool | minimal-subagent | inherits root |
 | `mcp:default` | `mcp:default` | MCP bridge | full | 50 turns |
 
 Session key construction is centralized in `src/sessions/keys.ts`. Builder functions: `channelSessionKey()`, `cronSessionKey()`, `webhookSessionKey()`, `cliSessionKey()`, `subagentSessionKey()`.
@@ -20,8 +20,9 @@ Session key construction is centralized in `src/sessions/keys.ts`. Builder funct
 ## Behaviors Driven by Session Key
 
 **Prompt mode** (`src/agent/prompt.ts`):
-- `full` — all workspace files injected (subagents, channels, CLI)
-- `minimal` — cron jobs only
+- `full` — all sections, orchestration guidance, memory recall (channels, CLI)
+- `minimal` — cron jobs only (tooling, workspace, heartbeat, bootstrap files)
+- `minimal-subagent` — subagents (tooling, workspace, bootstrap files, focused worker guidance; no memory, heartbeats, or codebase context)
 
 **History limit** (`src/agent/history.ts`):
 - Derived from the root session key (before `:subagent:`)
@@ -31,8 +32,28 @@ Session key construction is centralized in `src/sessions/keys.ts`. Builder funct
 - Subagents inherit the limit of their root session
 
 **Subagent spawning** (`src/sessions/keys.ts`):
-- Subagents can spawn children up to depth 3 (depth-limited, not flat-denied)
-- All tools are available to subagents — no deny list
+- Depth limit: `agent.subagents.maxSpawnDepth` (default 3)
+- Breadth limit: `agent.subagents.maxChildren` (default 10) active children per parent
+- Run timeout: `agent.subagents.runTimeoutSeconds` (default 300)
+
+## Subagent Lifecycle
+
+1. Parent agent calls `sessions_spawn` tool with a task description and optional `role` (persona override)
+2. Spawn tool enforces depth + breadth limits, creates child session
+3. Child agent runs in background (fire-and-forget)
+4. On completion, result is announced to parent as a `system` message with `metadata.type = 'subagent_announce'`
+5. Re-trigger is debounced (3s) — if multiple subagents complete close together, parent is re-triggered once
+6. Parent sees subagent results in history (injected as `user` messages by `toAgentMessages`)
+7. Parent synthesizes results and delivers to user
+
+**Announce format:**
+```
+[Subagent Complete] session=<childKey> status=success|error duration=5.2s
+
+<result summary, max 500 chars>
+```
+
+**Timeout behavior:** If a subagent exceeds `runTimeoutSeconds`, the spawn tool aborts it via `agent.abort`. The parent receives a timeout announcement.
 
 ## Session Isolation
 

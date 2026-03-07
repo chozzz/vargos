@@ -49,6 +49,12 @@ Priority: `config.paths.dataDir` > `VARGOS_DATA_DIR` env > `~/.vargos`
     "media": {                      // optional — media type → model profile
       "audio": "whisper",
       "image": "vision"
+    },
+    "subagents": {                  // optional — sub-agent limits
+      "maxChildren": 10,            // max active children per parent (default: 10)
+      "maxSpawnDepth": 3,           // max nesting depth (default: 3)
+      "runTimeoutSeconds": 300,     // per-subagent timeout (default: 300 = 5 min)
+      "model": "openai"             // optional — cheaper model for workers
     }
   },
 
@@ -130,10 +136,27 @@ The `agent` field points into the `models` map:
     "media": {                 // optional — media preprocessing
       "audio": "whisper",
       "image": "vision"
+    },
+    "subagents": {             // optional — sub-agent limits
+      "maxChildren": 10,       // max active per parent (1-50, default: 10)
+      "maxSpawnDepth": 3,      // max nesting depth (1-5, default: 3)
+      "runTimeoutSeconds": 300, // timeout per sub-agent (default: 300)
+      "model": "openai"        // optional — model profile for workers
     }
   }
 }
 ```
+
+### Sub-agent Limits
+
+| Field | Type | Range | Default | Description |
+|-------|------|-------|---------|-------------|
+| `maxChildren` | number | 1-50 | 10 | Max active children per parent session |
+| `maxSpawnDepth` | number | 1-5 | 3 | Max nesting depth (main → sub → sub-sub) |
+| `runTimeoutSeconds` | number | ≥ 0 | 300 | Per-subagent run timeout (0 = no timeout) |
+| `model` | string | — | (inherit) | Model profile name for sub-agents |
+
+Sub-agents use the primary model by default. Set `model` to a cheaper profile to reduce cost for worker tasks. The `sessions_spawn` tool can override model and role per-spawn. The `role` parameter overrides SOUL.md for that sub-agent, allowing the parent to assign specialized personas (architect, reviewer, security engineer, etc.).
 
 ## Media Processing
 

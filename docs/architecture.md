@@ -354,6 +354,31 @@ Gateway pings services periodically. If a service disconnects, its routes and su
 5. If notify targets set, agent sends result to each via channel.send
 ```
 
+### Sub-agent Orchestration
+
+```
+1. User sends complex task via WhatsApp
+2. Agent analyzes task, decides to delegate
+3. Agent calls sessions_spawn (tool) for each subtask:
+   → sessions.create (child session)
+   → sessions.addMessage (task as user message)
+   → agent.run (fire-and-forget, with optional role override via bootstrapOverrides)
+4. Each sub-agent runs independently:
+   → Uses tools as needed
+   → Result announced to parent session as system message (type: subagent_announce)
+5. After all sub-agents complete (debounced 3s):
+   → Parent agent re-triggered with "Review all results and synthesize"
+   → Parent sees subagent_announce messages in history (injected as user messages)
+   → Parent synthesizes and delivers final response via channel.send
+```
+
+Limits enforced by `sessions_spawn`:
+- **Depth:** `agent.subagents.maxSpawnDepth` (default 3)
+- **Breadth:** `agent.subagents.maxChildren` (default 10) per parent session
+- **Timeout:** `agent.subagents.runTimeoutSeconds` (default 300s) per sub-agent
+
+Sub-agents get a `minimal-subagent` system prompt (no memory recall, heartbeats, or codebase context) to reduce token cost.
+
 ### Browser UI → Live Agent Streaming
 
 ```
