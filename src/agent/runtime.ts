@@ -28,6 +28,29 @@ import { buildPiSession } from './session-setup.js';
 
 export { PROVIDER_BASE_URLS, resolveProviderBaseUrl } from './session-setup.js';
 
+const RETRYABLE_PATTERNS = [
+  'after JSON',
+  'Unexpected',
+  'Network connection lost',
+  'network error',
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'ETIMEDOUT',
+  'socket hang up',
+  'fetch failed',
+  'abort',
+  '502',
+  '503',
+  '529',
+];
+
+/** Check if an error message indicates a transient/retryable failure. */
+export function isRetryableError(message: string | undefined): boolean {
+  if (!message) return false;
+  const lower = message.toLowerCase();
+  return RETRYABLE_PATTERNS.some(p => lower.includes(p.toLowerCase()));
+}
+
 /**
  * Extract plain text from Pi SDK content (string, array of content blocks, or object).
  * Skips thinking/reasoning blocks — only returns visible text.
@@ -248,8 +271,7 @@ export class PiAgentRuntime {
 
       lastError = lastAssistantEntry.errorMessage;
 
-      // Only retry on JSON parse errors (transient API/provider issues)
-      if (!lastError?.includes('after JSON') && !lastError?.includes('Unexpected')) break;
+      if (!isRetryableError(lastError)) break;
 
       if (attempt === API_RETRY_LIMIT) {
         log.error(`exhausted ${API_RETRY_LIMIT + 1} attempts: ${lastError}`);
@@ -295,10 +317,27 @@ export class PiAgentRuntime {
 
     if (!response.trim()) {
       if (rawContent && isThinkingOnlyContent(rawContent)) {
-        log.info(`thinking-only response for ${sessionKey} — skipping delivery`);
+        const hadToolCalls = sessionEntries.some(e => {
+          if ((e as { type: string }).type !== 'message') return false;
+          const msg = (e as SessionMessageEntry).message;
+          if (!msg || msg.role !== 'assistant' || !Array.isArray(msg.content)) return false;
+          return (msg.content as Array<{ type?: string }>).some(b => b?.type === 'tool_use');
+        });
+        const fallback = hadToolCalls
+          ? 'I completed the task but couldn\'t generate a summary. Check the results directly.'
+          : undefined;
+
+        log.info(`thinking-only response for ${sessionKey}${hadToolCalls ? ' (had tool calls, sending fallback)' : ' — skipping delivery'}`);
+
+        if (fallback) {
+          await this.storeResponse(sessionKey, fallback).catch((e) =>
+            log.error(`failed to store fallback for ${sessionKey}: ${e instanceof Error ? e.message : e}`),
+          );
+        }
+
         const duration = Date.now() - startedAt;
         this.lifecycle.endRun(runId, tokenSummary(inputTokens, outputTokens));
-        return { success: true, duration };
+        return { success: true, response: fallback, tokensUsed: tokenSummary(inputTokens, outputTokens), duration };
       }
 
       const hint = 'Empty response — model returned nothing useful.';
