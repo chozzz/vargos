@@ -12,7 +12,6 @@ export interface SystemPromptOptions {
   mode: 'full' | 'minimal' | 'none';
   workspaceDir: string;
   toolNames: string[];
-  contextFiles?: Array<{ name: string; content: string }>;
   extraSystemPrompt?: string;
   userTimezone?: string;
   repoRoot?: string;
@@ -65,7 +64,7 @@ export async function buildSystemPrompt(options: SystemPromptOptions): Promise<s
   // 3.5 Heartbeat protocol (all modes — heartbeat runs use minimal)
   sections.push(buildHeartbeatSection());
 
-  // 4. Bootstrap files (AGENTS.md, SOUL.md, TOOLS.md, HEARTBEAT.md)
+  // 4. Bootstrap files (AGENTS.md, SOUL.md, TOOLS.md)
   const bootstrapContent = await loadBootstrapFiles(workspaceDir, mode, options.bootstrapOverrides);
   if (bootstrapContent) {
     sections.push(bootstrapContent);
@@ -346,12 +345,15 @@ async function buildCodebaseContextSection(workspaceDir: string): Promise<string
         'Key Components:',
         '- src/cli/ - CLI entry point, interactive menu, config/gateway actions',
         '- src/gateway/ - WebSocket gateway server, protocol, router, event bus',
-        '- src/services/ - Gateway services (agent, tools, sessions, channels, cron)',
+        '- src/agent/ - Agent runtime, lifecycle, prompt builder, session setup',
+        '- src/tools/ - Tool registry, extensions (fs, web, agent, memory)',
+        '- src/sessions/ - Session storage (JSONL), types, key parsing',
+        '- src/channels/ - Channel adapters (WhatsApp, Telegram)',
+        '- src/cron/ - Cron scheduler, heartbeat task',
         '- src/mcp/ - MCP bridge (MCP protocol ↔ gateway RPC)',
-        '- src/runtime/ - Agent runtime, lifecycle, message queue, prompt builder',
-        '- src/extensions/ - Built-in tools, channel adapters, file services',
+        '- src/memory/ - Hybrid semantic + text search over workspace markdown',
         '',
-        'See CLAUDE.md and ARCHITECTURE.md for full structure.',
+        'See CLAUDE.md for full structure.',
       ].join('\n');
     }
   } catch {

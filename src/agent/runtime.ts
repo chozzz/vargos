@@ -22,7 +22,6 @@ import { AgentLifecycle, type AgentStreamEvent } from './lifecycle.js';
 import { SessionMessageQueue } from './queue.js';
 import type { ISessionService, SessionMessage } from '../sessions/types.js';
 import { type CompactionConfig } from '../config/pi-config.js';
-import { loadContextFiles } from '../config/workspace.js';
 import { sanitizeHistory, limitHistoryTurns, getHistoryLimit, toAgentMessages } from './history.js';
 import { getVargosToolNames } from './extension.js';
 import { buildPiSession } from './session-setup.js';
@@ -72,7 +71,6 @@ export interface PiAgentConfig {
   baseUrl?: string;
   maxTokens?: number;
   contextWindow?: number;
-  contextFiles?: Array<{ name: string; content: string }>;
   extraSystemPrompt?: string;
   userTimezone?: string;
   runId?: string;
@@ -195,15 +193,11 @@ export class PiAgentRuntime {
   }
 
   private async injectSystemPrompt(session: AgentSession, config: PiAgentConfig): Promise<void> {
-    const contextFiles = config.contextFiles !== undefined
-      ? config.contextFiles
-      : await loadContextFiles(config.workspaceDir);
     const promptMode = resolvePromptMode(config.sessionKey);
     const systemPromptText = await buildSystemPrompt({
       mode: promptMode,
       workspaceDir: config.workspaceDir,
       toolNames: getVargosToolNames(),
-      contextFiles,
       extraSystemPrompt: config.extraSystemPrompt,
       userTimezone: config.userTimezone,
       repoRoot: config.workspaceDir,

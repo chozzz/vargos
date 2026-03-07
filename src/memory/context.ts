@@ -305,7 +305,10 @@ export class MemoryContext {
     from?: number;
     lines?: number;
   }): Promise<{ path: string; text: string }> {
-    const fullPath = path.join(this.config.memoryDir, params.relPath);
+    const fullPath = path.resolve(this.config.memoryDir, params.relPath);
+    if (!fullPath.startsWith(path.resolve(this.config.memoryDir))) {
+      throw new Error('Path traversal denied');
+    }
     const content = await fs.readFile(fullPath, 'utf-8');
 
     const lines = content.split('\n');

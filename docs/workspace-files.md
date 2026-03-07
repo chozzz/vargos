@@ -36,8 +36,8 @@ Files larger than 20,000 characters are truncated using a 70/20 head/tail strate
 
 | Mode | Bootstrap Files | Other Sections | Used By |
 |------|----------------|----------------|---------|
-| `full` | All 4 files | Identity, Tooling, Workspace, Codebase Context, Memory Recall, Heartbeat, Tool Narration, Channel, System | Main sessions (CLI, channels) |
-| `minimal` | All 4 files | Identity, Tooling, Workspace, Heartbeat, System | Cron jobs, subagents |
+| `full` | All 3 files | Identity, Tooling, Workspace, Codebase Context, Memory Recall, Heartbeat, Tool Narration, Channel, System | Main sessions (CLI, channels) |
+| `minimal` | All 3 files | Identity, Tooling, Workspace, Heartbeat, System | Cron jobs, subagents |
 | `none` | None | "You are a helpful assistant." | Bare fallback |
 
 ## Key Design Decisions
