@@ -25,8 +25,14 @@ afterEach(async () => {
 });
 
 describe('CONTEXT_FILE_NAMES', () => {
-  it('has 7 entries', () => {
-    expect(CONTEXT_FILE_NAMES).toHaveLength(7);
+  it('has 5 entries', () => {
+    expect(CONTEXT_FILE_NAMES).toHaveLength(5);
+  });
+
+  it('does not include USER.md or BOOTSTRAP.md', () => {
+    const names = [...CONTEXT_FILE_NAMES];
+    expect(names).not.toContain('USER.md');
+    expect(names).not.toContain('BOOTSTRAP.md');
   });
 });
 

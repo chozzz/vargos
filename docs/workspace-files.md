@@ -8,35 +8,41 @@ Templates live in `docs/templates/`. They're copied once on first boot — after
 
 | File | Purpose | Injected |
 |------|---------|----------|
-| **AGENTS.md** | Workspace rules and operating procedures: what to do at session start (read SOUL.md, USER.md, recent memory), memory persistence, safety boundaries, when to speak vs stay silent, tool usage. The agent's operating manual. | Every session (full mode). Subagents too (minimal mode). |
-| **SOUL.md** | Personality and identity — tone, values, boundaries, communication style. Agent embodies this persona; prompt builder adds "embody its persona" when present. Agent may evolve it but should notify the user on changes. | Full mode only. |
-| **USER.md** | Profile of the human: name, preferred name, pronouns, timezone, communication preferences. Used to personalize interactions. | Full mode only. |
-| **TOOLS.md** | Environment-specific notes: device names, SSH hosts, camera locations, voice preferences — anything tools need for the local setup. Keeps env details separate from tool definitions. | Every session (full and minimal). |
-| **MEMORY.md** | Curated long-term memory across sessions: decisions, lessons, people, context that survives restarts. Agent updates as it learns. Security: only in main (direct) sessions, never shared/group. | Full mode only. |
-| **HEARTBEAT.md** | Periodic task list for heartbeat cron. When `config.heartbeat.enabled`, agent is polled and reads this for pending tasks; responds `HEARTBEAT_OK` if nothing to do. For maintenance, growth goals, monitoring. | Full mode only; also read during heartbeat poll. |
-| **BOOTSTRAP.md** | First-run checklist: read SOUL.md, USER.md, AGENTS.md, then delete. One-time only. | First run only (when no other context files exist). |
+| **AGENTS.md** | Workspace rules: session start protocol, memory conventions, external-vs-internal policy, communication etiquette. The agent's operating manual. | Every session (full + minimal). |
+| **SOUL.md** | Identity, personality, boundaries, user profile. Agent embodies this persona. Contains the "Your Human" section (name, timezone, preferences) — previously in USER.md. | Every session (full + minimal). |
+| **TOOLS.md** | Environment-specific notes: device names, SSH hosts, service IPs, quick commands. Keeps env details separate from tool definitions. | Every session (full + minimal). |
+| **HEARTBEAT.md** | Periodic task list for heartbeat cron. Split into `## Tasks` (executable) and `## Notes` (advisory). Empty or comment-only = heartbeat skipped. | Every session (full + minimal). |
+| **MEMORY.md** | Curated long-term memory. Not auto-injected — agent retrieves via `memory_search` / `memory_get` when needed. | Not injected. Tool-accessible. |
+
+### Removed Files
+
+- **USER.md** — Merged into SOUL.md's "Your Human" section. One file for the complete agent-user relationship.
+- **BOOTSTRAP.md** — Removed. First-run onboarding is handled by the setup wizard, not a self-deleting file.
+- **ARCHITECTURE.md** — Never existed as a template. Codebase context is handled by `buildCodebaseContextSection()` in prompt.ts.
 
 ## Prompt Injection Order
 
-The prompt builder (`src/agent/prompt.ts`) injects files in this order:
+The prompt builder (`src/agent/prompt.ts`) injects bootstrap files in this order:
 
-| Order | File | Note |
-|-------|------|------|
-| 1 | ARCHITECTURE.md | If present — not a template, project-specific |
-| 2 | AGENTS.md | |
-| 3 | SOUL.md | |
-| 4 | TOOLS.md | |
-| 5 | USER.md | |
-| 6 | HEARTBEAT.md | |
-| 7 | MEMORY.md | |
-| 8 | BOOTSTRAP.md | First run only |
+| Order | File |
+|-------|------|
+| 1 | AGENTS.md |
+| 2 | SOUL.md |
+| 3 | TOOLS.md |
+| 4 | HEARTBEAT.md |
 
 Files larger than 20,000 characters are truncated using a 70/20 head/tail strategy — the middle is dropped to preserve both the beginning and end.
 
 ## Prompt Modes
 
-| Mode | Files Injected | Used By |
-|------|----------------|---------|
-| `full` | All files | Main sessions (CLI, channels) |
-| `minimal` | AGENTS.md, TOOLS.md only | Subagents, cron jobs |
-| `none` | None | Bare "helpful assistant" fallback |
+| Mode | Bootstrap Files | Other Sections | Used By |
+|------|----------------|----------------|---------|
+| `full` | All 4 files | Identity, Tooling, Workspace, Codebase Context, Memory Recall, Heartbeat, Tool Narration, Channel, System | Main sessions (CLI, channels) |
+| `minimal` | All 4 files | Identity, Tooling, Workspace, Heartbeat, System | Cron jobs, subagents |
+| `none` | None | "You are a helpful assistant." | Bare fallback |
+
+## Key Design Decisions
+
+- **MEMORY.md is not auto-injected.** Research shows semantic memory should be retrieved on-demand, not bulk-loaded into every session. The agent uses `memory_search` and `memory_get` tools when context requires it.
+- **Identity is delegated to SOUL.md.** The hardcoded identity section says "Your name and personality are defined in SOUL.md" — single source of truth, no conflicts.
+- **All bootstrap files load in all modes.** Previously, minimal mode skipped some files. Now the same 4 lean files load everywhere for consistent behavior.
