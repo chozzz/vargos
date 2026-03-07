@@ -354,15 +354,38 @@ export class AgentService extends ServiceClient {
     const timer = setTimeout(async () => {
       this.retriggerTimers.delete(parentKey);
       log.info(`re-triggering parent ${parentKey} after sub-agent completions`);
+      const retriggerTask = await this.buildRetriggerTask(parentKey);
       const parentResult = await this.runAgent({
         sessionKey: parentKey,
-        task: 'One or more sub-agents completed. Review all results above and synthesize a response.',
+        task: retriggerTask,
         retrigger: true,
       });
       await this.deliverToChannel(target.channel, target.userId, parentResult);
     }, AgentService.RETRIGGER_DEBOUNCE_MS);
 
     this.retriggerTimers.set(parentKey, timer);
+  }
+
+  /** Build a re-trigger prompt that includes the original user task for continuity */
+  private async buildRetriggerTask(parentKey: string): Promise<string> {
+    const fallback = 'Sub-agents completed. Review results above. If your original plan has remaining steps, continue executing them. Otherwise, synthesize a final response for the user.';
+    try {
+      const messages = await this.call<Array<{ role: string; content: string }>>(
+        'sessions', 'session.getMessages', { sessionKey: parentKey, limit: 50 },
+      );
+      // Find the last user message that isn't a subagent_announce injection
+      const lastUserMsg = [...(messages ?? [])].reverse().find(
+        m => m.role === 'user' && !m.content.startsWith('[Subagent Complete]'),
+      );
+      if (!lastUserMsg) return fallback;
+
+      return (
+        `Sub-agents completed. Your original task was:\n\n> ${lastUserMsg.content.slice(0, 500)}\n\n` +
+        'Review all sub-agent results above. If your plan has remaining steps, continue executing them (spawn more sub-agents as needed). Otherwise, synthesize a final response for the user.'
+      );
+    } catch {
+      return fallback;
+    }
   }
 
   private async buildRunConfig(params: AgentRunParams, existing?: VargosConfig | null): Promise<PiAgentConfig> {
