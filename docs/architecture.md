@@ -183,7 +183,7 @@ Wraps the Pi agent runtime. Handles agent execution, streaming, and subagent spa
 
 | Method | Params | Description |
 |--------|--------|-------------|
-| `agent.run` | `{ sessionKey, task, model?, images?, channel? }` | Execute agent on session |
+| `agent.run` | `{ sessionKey, task, model?, images?, channel?, bootstrapOverrides? }` | Execute agent on session |
 | `agent.abort` | `{ sessionKey }` | Cancel running agent |
 | `agent.status` | `{ sessionKey }` | Check if agent is running |
 
