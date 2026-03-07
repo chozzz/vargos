@@ -17,9 +17,10 @@ interface CronScheduler {
 }
 
 const DEFAULT_PROMPT = [
-  'This is a heartbeat poll. Read HEARTBEAT.md if it exists.',
-  'Follow any tasks listed strictly.',
-  'Do not infer tasks from previous sessions or memory.',
+  'This is a heartbeat poll. Read HEARTBEAT.md for tasks.',
+  'Also review AGENTS.md, SOUL.md, and TOOLS.md for staleness —',
+  'update or compact anything outdated, redundant, or no longer accurate.',
+  'Follow HEARTBEAT.md tasks strictly. Do not infer tasks from previous sessions.',
   'If nothing needs attention, reply with exactly: HEARTBEAT_OK',
 ].join(' ');
 
