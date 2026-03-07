@@ -419,6 +419,12 @@ function buildOrchestrationSection(sessionKey?: string): string {
     'Example:',
     '  sessions_spawn({ task: "Review auth module for security issues", role: "You are a security engineer. Focus on auth flows, token handling, and input validation." })',
     '',
+    'For large iterative tasks (process N items, scan N files, summarize N days):',
+    '- Spawn a batch of sub-agents (up to the concurrency limit), not one mega-agent',
+    '- Each sub-agent handles one item or a small group',
+    '- On re-trigger, check progress and continue with the next batch until done',
+    '- Report progress to the user between batches',
+    '',
     'Do not spawn sub-agents for: time/date questions, status checks, single file reads,',
     'calculations, or tasks completable in one or two tool calls.',
   ].join('\n');
