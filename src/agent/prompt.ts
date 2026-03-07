@@ -27,7 +27,6 @@ const BOOTSTRAP_FILES = [
   'AGENTS.md',
   'SOUL.md',
   'TOOLS.md',
-  'HEARTBEAT.md',
 ];
 
 const DEFAULT_BOOTSTRAP_MAX_CHARS = 20000;

@@ -11,8 +11,8 @@ Templates live in `docs/templates/`. They're copied once on first boot — after
 | **AGENTS.md** | Workspace rules: session start protocol, memory conventions, external-vs-internal policy, communication etiquette. The agent's operating manual. | Every session (full + minimal). |
 | **SOUL.md** | Identity, personality, boundaries, user profile. Agent embodies this persona. Contains the "Your Human" section (name, timezone, preferences) — previously in USER.md. | Every session (full + minimal). |
 | **TOOLS.md** | Environment-specific notes: device names, SSH hosts, service IPs, quick commands. Keeps env details separate from tool definitions. | Every session (full + minimal). |
-| **HEARTBEAT.md** | Periodic task list for heartbeat cron. Split into `## Tasks` (executable) and `## Notes` (advisory). Empty or comment-only = heartbeat skipped. | Every session (full + minimal). |
-| **MEMORY.md** | Curated long-term memory. Not auto-injected — agent retrieves via `memory_search` / `memory_get` when needed. | Not injected. Tool-accessible. |
+| **HEARTBEAT.md** | Periodic task list for heartbeat cron. Split into `## Tasks` (executable) and `## Notes` (advisory). Empty or comment-only = heartbeat skipped. | Not injected. Read by heartbeat cron. |
+| **MEMORY.md** | Curated long-term memory. Agent retrieves via `memory_search` / `memory_get` when needed. | Not injected. Tool-accessible. |
 
 ### Removed Files
 
@@ -29,7 +29,6 @@ The prompt builder (`src/agent/prompt.ts`) injects bootstrap files in this order
 | 1 | AGENTS.md |
 | 2 | SOUL.md |
 | 3 | TOOLS.md |
-| 4 | HEARTBEAT.md |
 
 Files larger than 20,000 characters are truncated using a 70/20 head/tail strategy — the middle is dropped to preserve both the beginning and end.
 
@@ -43,6 +42,6 @@ Files larger than 20,000 characters are truncated using a 70/20 head/tail strate
 
 ## Key Design Decisions
 
-- **MEMORY.md is not auto-injected.** Research shows semantic memory should be retrieved on-demand, not bulk-loaded into every session. The agent uses `memory_search` and `memory_get` tools when context requires it.
+- **Only 3 files are auto-injected** (AGENTS, SOUL, TOOLS). MEMORY.md and HEARTBEAT.md are accessed on-demand — memory via `memory_search` tools, heartbeat via the cron task reading the file directly.
 - **Identity is delegated to SOUL.md.** The hardcoded identity section says "Your name and personality are defined in SOUL.md" — single source of truth, no conflicts.
-- **All bootstrap files load in all modes.** Previously, minimal mode skipped some files. Now the same 4 lean files load everywhere for consistent behavior.
+- **Bootstrap files load in all modes.** The same 3 lean files load in both full and minimal mode for consistent behavior.
