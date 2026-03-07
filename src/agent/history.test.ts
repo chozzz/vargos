@@ -304,7 +304,7 @@ describe('toAgentMessages', () => {
     expect(m.content).toEqual([{ type: 'text', text: 'hi back' }]);
   });
 
-  it('filters out system messages', () => {
+  it('filters out regular system messages', () => {
     const result = toAgentMessages([
       sessionMsg('user', 'a'),
       sessionMsg('system', 'compaction note'),
@@ -313,5 +313,44 @@ describe('toAgentMessages', () => {
     expect(result.length).toBe(2);
     const roles = result.map(m => (m as unknown as { role: string }).role);
     expect(roles).toEqual(['user', 'assistant']);
+  });
+
+  it('injects subagent_announce system messages as user messages', () => {
+    const announce: SessionMessage = {
+      id: 'ann-1',
+      sessionKey: 'test:session',
+      role: 'system',
+      content: '[Subagent Complete] status=success\n\nDone.',
+      timestamp: new Date('2025-01-01T00:00:00Z'),
+      metadata: { type: 'subagent_announce', childSessionKey: 'test:subagent:abc' },
+    };
+    const result = toAgentMessages([
+      sessionMsg('user', 'do stuff'),
+      announce,
+      sessionMsg('assistant', 'ok synthesized'),
+    ]);
+    expect(result.length).toBe(3);
+    const roles = result.map(m => (m as unknown as { role: string }).role);
+    expect(roles).toEqual(['user', 'user', 'assistant']);
+    const announceMsg = result[1] as unknown as { role: string; content: string };
+    expect(announceMsg.content).toContain('Subagent Complete');
+  });
+
+  it('still filters non-announce system messages', () => {
+    const announce: SessionMessage = {
+      id: 'ann-2',
+      sessionKey: 'test:session',
+      role: 'system',
+      content: 'Result here',
+      timestamp: new Date('2025-01-01T00:00:00Z'),
+      metadata: { type: 'subagent_announce' },
+    };
+    const result = toAgentMessages([
+      sessionMsg('user', 'a'),
+      sessionMsg('system', 'some other system msg'),
+      announce,
+      sessionMsg('assistant', 'b'),
+    ]);
+    expect(result.length).toBe(3);
   });
 });

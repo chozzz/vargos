@@ -54,6 +54,23 @@ export function validateConfig(config: VargosConfig): ValidationResult {
     validateProfile(name, profile, errors, warnings);
   }
 
+  // Subagent validation
+  if (config.agent.subagents) {
+    const sa = config.agent.subagents;
+    if (sa.maxChildren !== undefined && (!Number.isInteger(sa.maxChildren) || sa.maxChildren < 1 || sa.maxChildren > 50)) {
+      errors.push('agent.subagents.maxChildren must be an integer 1-50');
+    }
+    if (sa.maxSpawnDepth !== undefined && (!Number.isInteger(sa.maxSpawnDepth) || sa.maxSpawnDepth < 1 || sa.maxSpawnDepth > 5)) {
+      errors.push('agent.subagents.maxSpawnDepth must be an integer 1-5');
+    }
+    if (sa.runTimeoutSeconds !== undefined && (typeof sa.runTimeoutSeconds !== 'number' || sa.runTimeoutSeconds < 0)) {
+      errors.push('agent.subagents.runTimeoutSeconds must be a non-negative number');
+    }
+    if (sa.model && !config.models[sa.model]) {
+      warnings.push(`agent.subagents.model "${sa.model}" not found in models`);
+    }
+  }
+
   // Channel validation
   if (config.channels) {
     for (const [type, ch] of Object.entries(config.channels)) {

@@ -476,6 +476,10 @@ export class PiAgentRuntime {
     return this.lifecycle.abortRun(runId, reason);
   }
 
+  abortSessionRuns(sessionKey: string, reason?: string): number {
+    return this.lifecycle.abortSessionRuns(sessionKey, reason);
+  }
+
   listActiveRuns(): Array<{ runId: string; sessionKey: string; duration: number }> {
     return this.lifecycle.listActiveRuns();
   }

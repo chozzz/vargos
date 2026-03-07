@@ -49,8 +49,9 @@ The system prompt is built in layers (full mode):
 
 | Mode | When | Content |
 |------|------|---------|
-| `full` | Default (chat, channels, subagents) | All layers |
-| `minimal` | Cron tasks | Bootstrap files only |
+| `full` | Default (chat, channels) | All layers including orchestration guidance |
+| `minimal` | Cron tasks | Bootstrap files + heartbeat |
+| `minimal-subagent` | Sub-agent sessions | Bootstrap files + focused worker guidance (no memory, heartbeats, codebase context) |
 | `none` | Custom prompts | No system prompt |
 
 ### Bootstrap Files
@@ -65,7 +66,7 @@ Loaded from the workspace directory, max 20,000 chars each (70/20 head/tail trun
 
 `MEMORY.md` and `HEARTBEAT.md` are not auto-injected. Memory is retrieved on-demand via `memory_search` / `memory_get`. Heartbeat tasks are read by the heartbeat cron via tool call.
 
-Subagents receive the full set of bootstrap files, same as their parent.
+Subagents receive all 3 bootstrap files but use a stripped-down `minimal-subagent` prompt mode (no memory recall, heartbeats, or codebase context sections).
 
 ## Streaming Events
 
@@ -104,11 +105,18 @@ Supported providers: `anthropic`, `openai`, `google`, `openrouter`, `ollama`, `l
 `sessions_spawn` creates an isolated session and runs the agent:
 
 - Unique session key: `<parent>:subagent:<timestamp>-<rand>`
-- Full prompt mode (same as parent)
+- Optional `role` parameter overrides SOUL.md for the sub-agent (e.g., architect, reviewer, security)
+- `minimal-subagent` prompt mode (bootstrap files + focused worker guidance)
 - History limit inherited from root session type
 - All tools available (no deny list)
-- Can spawn children up to depth 3 (depth-limited)
-- On completion: result announced to parent session, parent re-triggered if channel-rooted, reply delivered through the channel
+- Configurable limits via `config.agent.subagents`:
+  - `maxChildren` (default 10) — max active children per parent session
+  - `maxSpawnDepth` (default 3) — max nesting depth
+  - `runTimeoutSeconds` (default 300) — per-subagent timeout
+  - `model` — optional cheaper model for workers
+- On completion: result announced to parent session as `subagent_announce` system message
+- Re-trigger is debounced (3s) — multiple completions batch into one parent re-run
+- Parent sees results via `toAgentMessages` injection (announce → user message)
 
 ## Thinking-Only Responses
 
