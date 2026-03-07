@@ -231,12 +231,13 @@ describe('buildSystemPrompt', () => {
       expect(result).toContain('# Soul persona');
     });
 
-    it('does not inject USER.md, MEMORY.md, or BOOTSTRAP.md', async () => {
+    it('does not inject USER.md, MEMORY.md, BOOTSTRAP.md, or HEARTBEAT.md', async () => {
       const dir = await makeTmpDir();
       await fs.writeFile(path.join(dir, 'AGENTS.md'), '# Agents');
       await fs.writeFile(path.join(dir, 'USER.md'), '# User prefs');
       await fs.writeFile(path.join(dir, 'MEMORY.md'), '# Memories');
       await fs.writeFile(path.join(dir, 'BOOTSTRAP.md'), '# Bootstrap');
+      await fs.writeFile(path.join(dir, 'HEARTBEAT.md'), '# Heartbeat tasks');
 
       const result = await buildSystemPrompt({
         mode: 'full',
@@ -246,6 +247,7 @@ describe('buildSystemPrompt', () => {
       expect(result).not.toContain('# User prefs');
       expect(result).not.toContain('# Memories');
       expect(result).not.toContain('# Bootstrap');
+      expect(result).not.toContain('# Heartbeat tasks');
     });
   });
 });

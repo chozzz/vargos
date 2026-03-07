@@ -49,10 +49,6 @@ vi.mock('../lib/media-transform.js', () => ({
   transformMedia: (...args: any[]) => mockTransformMedia(...args),
 }));
 
-vi.mock('../config/workspace.js', () => ({
-  loadContextFiles: async () => [],
-}));
-
 vi.mock('../config/paths.js', () => ({
   resolveWorkspaceDir: () => '/tmp/workspace',
   resolveDataDir: () => '/tmp/data',

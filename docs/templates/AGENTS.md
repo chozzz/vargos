@@ -2,7 +2,7 @@
 
 ## Session Start
 
-SOUL.md, TOOLS.md, and HEARTBEAT.md are already loaded into your context — no need to re-read them.
+AGENTS.md, SOUL.md, and TOOLS.md are already loaded into your context — no need to re-read them.
 
 When a task requires recent context, read today's daily memory file:
 - `memory/YYYY-MM-DD.md` (substitute actual date)
