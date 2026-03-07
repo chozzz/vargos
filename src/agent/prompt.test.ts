@@ -58,7 +58,7 @@ describe('buildSystemPrompt', () => {
   });
 
   describe('mode=full', () => {
-    it('includes Identity section', async () => {
+    it('includes Identity section delegating to SOUL.md', async () => {
       const dir = await makeTmpDir();
       const result = await buildSystemPrompt({
         mode: 'full',
@@ -66,6 +66,8 @@ describe('buildSystemPrompt', () => {
         toolNames: [],
       });
       expect(result).toContain('## Identity');
+      expect(result).toContain('SOUL.md');
+      expect(result).not.toContain('You are Vargos');
     });
 
     it('includes Tooling section with tool names', async () => {
@@ -213,12 +215,11 @@ describe('buildSystemPrompt', () => {
       expect(result).toContain('[...truncated, read AGENTS.md for full content...]');
     });
 
-    it('minimal mode loads all bootstrap files', async () => {
+    it('minimal mode loads bootstrap files', async () => {
       const dir = await makeTmpDir();
       await fs.writeFile(path.join(dir, 'AGENTS.md'), '# Agents OK');
       await fs.writeFile(path.join(dir, 'TOOLS.md'), '# Tools OK');
       await fs.writeFile(path.join(dir, 'SOUL.md'), '# Soul persona');
-      await fs.writeFile(path.join(dir, 'USER.md'), '# User prefs');
 
       const result = await buildSystemPrompt({
         mode: 'minimal',
@@ -228,7 +229,23 @@ describe('buildSystemPrompt', () => {
       expect(result).toContain('# Agents OK');
       expect(result).toContain('# Tools OK');
       expect(result).toContain('# Soul persona');
-      expect(result).toContain('# User prefs');
+    });
+
+    it('does not inject USER.md, MEMORY.md, or BOOTSTRAP.md', async () => {
+      const dir = await makeTmpDir();
+      await fs.writeFile(path.join(dir, 'AGENTS.md'), '# Agents');
+      await fs.writeFile(path.join(dir, 'USER.md'), '# User prefs');
+      await fs.writeFile(path.join(dir, 'MEMORY.md'), '# Memories');
+      await fs.writeFile(path.join(dir, 'BOOTSTRAP.md'), '# Bootstrap');
+
+      const result = await buildSystemPrompt({
+        mode: 'full',
+        workspaceDir: dir,
+        toolNames: [],
+      });
+      expect(result).not.toContain('# User prefs');
+      expect(result).not.toContain('# Memories');
+      expect(result).not.toContain('# Bootstrap');
     });
   });
 });

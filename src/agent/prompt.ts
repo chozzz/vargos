@@ -24,14 +24,10 @@ export interface SystemPromptOptions {
 
 // Bootstrap files to inject (in priority order)
 const BOOTSTRAP_FILES = [
-  'ARCHITECTURE.md', // Project structure and overview
   'AGENTS.md',
   'SOUL.md',
   'TOOLS.md',
-  'USER.md',
   'HEARTBEAT.md',
-  'MEMORY.md',     // Project context and curated memories
-  'BOOTSTRAP.md',  // Only on first run
 ];
 
 const DEFAULT_BOOTSTRAP_MAX_CHARS = 20000;
@@ -48,7 +44,7 @@ export async function buildSystemPrompt(options: SystemPromptOptions): Promise<s
 
   const sections: string[] = [];
 
-  // 0. Identity - Who this assistant is
+  // 0. Identity — delegates to SOUL.md for persona details
   sections.push(buildIdentitySection());
 
   // 1. Tooling section
@@ -57,7 +53,7 @@ export async function buildSystemPrompt(options: SystemPromptOptions): Promise<s
   // 2. Workspace section
   sections.push(buildWorkspaceSection(workspaceDir));
 
-  // 2.5 Codebase context - what this project is (prevents hallucination)
+  // 2.5 Codebase context — prevents hallucination about this project
   if (mode === 'full') {
     sections.push(await buildCodebaseContextSection(workspaceDir));
   }
@@ -67,18 +63,13 @@ export async function buildSystemPrompt(options: SystemPromptOptions): Promise<s
     sections.push(buildMemorySection());
   }
 
-  // 3.5 Heartbeat protocol (included in all modes — heartbeat runs use minimal)
+  // 3.5 Heartbeat protocol (all modes — heartbeat runs use minimal)
   sections.push(buildHeartbeatSection());
 
-  // 4. Project Context - Injected bootstrap files
+  // 4. Bootstrap files (AGENTS.md, SOUL.md, TOOLS.md, HEARTBEAT.md)
   const bootstrapContent = await loadBootstrapFiles(workspaceDir, mode, options.bootstrapOverrides);
   if (bootstrapContent) {
     sections.push(bootstrapContent);
-  }
-
-  // 4.5 Behavioral override — placed after bootstrap so it takes precedence
-  if (mode === 'full') {
-    sections.push(buildBehaviorSection());
   }
 
   // 4.7 Tool narration guidance
@@ -206,21 +197,6 @@ function buildHeartbeatSection(): string {
 }
 
 /**
- * Behavioral override — placed after bootstrap files so it takes precedence
- * over any "read files before doing anything" instructions in AGENTS.md
- */
-function buildBehaviorSection(): string {
-  return [
-    '## Behavior',
-    '',
-    'IMPORTANT: The workspace rules above (AGENTS.md) apply when executing tasks.',
-    'For casual conversation (greetings, small talk, questions about yourself),',
-    'respond directly and naturally WITHOUT reading files or searching memory first.',
-    'Only use tools when the user\'s message requires action or information retrieval.',
-  ].join('\n');
-}
-
-/**
  * Tool narration guidance — reduces verbose tool-call commentary
  */
 function buildToolNarrationSection(): string {
@@ -243,12 +219,9 @@ async function loadBootstrapFiles(
   overrides?: Record<string, string>,
 ): Promise<string | null> {
   const lines: string[] = [];
-  const isFirstRun = await checkFirstRun(workspaceDir);
   let hasSoulFile = false;
 
   for (const filename of BOOTSTRAP_FILES) {
-    if (filename === 'BOOTSTRAP.md' && !isFirstRun) continue;
-
     let content: string;
 
     if (overrides?.[filename] !== undefined) {
@@ -258,9 +231,6 @@ async function loadBootstrapFiles(
       try {
         content = await fs.readFile(filepath, 'utf-8');
       } catch {
-        if (mode === 'full') {
-          lines.push(`<!-- ${filename} - missing -->`);
-        }
         continue;
       }
     }
@@ -286,16 +256,14 @@ async function loadBootstrapFiles(
     lines.push('');
   }
 
-  // SOUL.md persona hint
   if (hasSoulFile) {
-    lines.push('If SOUL.md is present, embody its persona. Avoid stiff, generic replies.');
+    lines.push('Embody the persona defined in SOUL.md. Avoid stiff, generic replies.');
     lines.push('');
   }
 
   if (lines.length === 0) return null;
 
-  const label = 'Project Context';
-  return [`## ${label}`, '', ...lines].join('\n');
+  return [`## Project Context`, '', ...lines].join('\n');
 }
 
 /**
@@ -346,16 +314,16 @@ function buildSystemSection(options: {
 }
 
 /**
- * Build identity section - who this assistant is
+ * Build identity section — delegates persona to SOUL.md
  */
 function buildIdentitySection(): string {
   return [
     '## Identity',
     '',
-    'You are Vargos, an Artificially Intelligent Agentic Assistant.',
-    'You help users by providing powerful tools for file manipulation, shell execution, browser automation, and agent management.',
+    'You are an AI agent running on the Vargos platform.',
+    'Your name, personality, and working style are defined in SOUL.md below.',
     '',
-    'Respond naturally to conversation. Only use tools when the user asks you to do something that requires them.',
+    'Respond naturally to conversation. Only use tools when the task requires them.',
     'Do NOT read workspace files or search memory on casual messages like greetings or small talk.',
   ].join('\n');
 }
@@ -399,31 +367,6 @@ async function buildCodebaseContextSection(workspaceDir: string): Promise<string
     'Explore the codebase structure before making assumptions.',
     'Use ls, read, and grep to understand the actual code.',
   ].join('\n');
-}
-
-/**
- * Check if this is first run (BOOTSTRAP.md exists but no other files)
- */
-async function checkFirstRun(workspaceDir: string): Promise<boolean> {
-  try {
-    // Check if BOOTSTRAP.md exists
-    await fs.access(path.join(workspaceDir, 'BOOTSTRAP.md'));
-
-    // Check if any other bootstrap files exist
-    for (const file of BOOTSTRAP_FILES) {
-      if (file === 'BOOTSTRAP.md') continue;
-      try {
-        await fs.access(path.join(workspaceDir, file));
-        return false; // Other files exist, not first run
-      } catch {
-        // Continue checking
-      }
-    }
-
-    return true; // Only BOOTSTRAP.md exists
-  } catch {
-    return false; // BOOTSTRAP.md doesn't exist
-  }
 }
 
 /**

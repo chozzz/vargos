@@ -11,8 +11,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TEMPLATES_DIR = path.resolve(__dirname, '../../docs/templates');
 
 export const CONTEXT_FILE_NAMES = [
-  'AGENTS.md', 'SOUL.md', 'USER.md', 'TOOLS.md',
-  'MEMORY.md', 'HEARTBEAT.md', 'BOOTSTRAP.md',
+  'AGENTS.md', 'SOUL.md', 'TOOLS.md',
+  'MEMORY.md', 'HEARTBEAT.md',
 ] as const;
 
 /**

@@ -2,8 +2,6 @@
 
 ## People
 
-## Assistant Identity
+## Environment
 
 ## Notes
-
-*(Add your long-term memories here)*

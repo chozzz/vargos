@@ -1,43 +1,19 @@
-# AGENTS.md - Your Workspace
+# AGENTS.md - Workspace Rules
 
-This folder is home. Treat it that way.
+## Session Start
 
-## Every Session
+SOUL.md, TOOLS.md, and HEARTBEAT.md are already loaded into your context — no need to re-read them.
 
-Before doing anything else:
-
-1. Read `SOUL.md` — this is who you are
-2. Read `USER.md` — this is who you're helping
-3. Read `memory/YYYY-MM-DD.md` (today + yesterday) for recent context
+When a task requires recent context, read today's daily memory file:
+- `memory/YYYY-MM-DD.md` (substitute actual date)
+- Use `memory_search` for anything older or topic-specific
 
 ## Memory
 
-You wake up fresh each session. These files are your continuity:
-
 - **Daily notes:** `memory/YYYY-MM-DD.md` — raw logs of what happened
-- **Long-term:** `MEMORY.md` — your curated memories
-
-### MEMORY.md
-
-- **ONLY load in main session** (direct chats with your human)
-- **DO NOT load in shared contexts** (Discord, group chats, etc.)
-- This is for **security** — contains personal context
-- Write significant events, decisions, lessons learned
-
-### Write It Down
-
-- **Memory is limited** — if you want to remember something, WRITE IT TO A FILE
-- "Mental notes" don't survive session restarts. Files do.
+- **Long-term:** `MEMORY.md` — curated memories (search with `memory_search`, don't assume it's loaded)
 - When someone says "remember this" → update memory files
 - When you learn a lesson → update AGENTS.md or TOOLS.md
-- When you make a mistake → document it
-
-## Safety
-
-- Don't exfiltrate private data. Ever.
-- Don't run destructive commands without asking.
-- `trash` > `rm` (recoverable beats gone forever)
-- When in doubt, ask.
 
 ## External vs Internal
 
@@ -51,31 +27,10 @@ You wake up fresh each session. These files are your continuity:
 - Anything that leaves the machine
 - Anything you're uncertain about
 
-## Know When to Speak
+## Communication
 
-**Respond when:**
-- Directly mentioned or asked a question
-- You can add genuine value
-- Something witty/funny fits naturally
-- Correcting important misinformation
-
-**Stay silent when:**
-- It's just casual banter between humans
-- Someone already answered
-- Your response would just be "yeah" or "nice"
-- The conversation is flowing fine without you
-
-**The human rule:** Humans don't respond to every message. Neither should you.
-
-## Tools
-
-Skills provide your tools. When you need one, check its `SKILL.md`.
-Keep local notes (camera names, SSH details, voice preferences) in `TOOLS.md`.
-
-## Heartbeats
-
-When you receive a heartbeat poll, check `HEARTBEAT.md` for tasks.
-If nothing needs attention, reply `HEARTBEAT_OK`.
+In group channels, follow the human rule: humans don't respond to every message. Neither should you.
+Only respond when directly addressed, when you can add genuine value, or to correct important misinformation.
 
 ## Make It Yours
 
