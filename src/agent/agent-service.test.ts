@@ -401,6 +401,93 @@ describe('AgentService', () => {
     }
   });
 
+  it('delivers cron subagent re-trigger result to notify targets, not cron channel', async () => {
+    await agent.disconnect();
+
+    const cronSessionKey = 'cron:daily-test:2026-03-08';
+    const childSessionKey = `${cronSessionKey}:subagent:abc123`;
+
+    // Runtime: first call is the cron parent run, second is the subagent,
+    // third is the re-trigger after subagent completes
+    let runCount = 0;
+    const spyRuntime = createMockRuntime();
+    spyRuntime.run = async (config: any) => {
+      runCount++;
+      if (config.sessionKey === childSessionKey) {
+        return { success: true, response: 'Subagent done', duration: 100 };
+      }
+      return { success: true, response: `Parent result #${runCount}`, duration: 100 };
+    };
+
+    agent = new AgentService({ gatewayUrl: GATEWAY_URL, workspaceDir: '/tmp/workspace', dataDir: '/tmp/data', runtime: spyRuntime });
+    await agent.connect();
+
+    // Mock sessions service that tracks metadata
+    const sessionStore = new Map<string, { kind?: string; metadata?: Record<string, unknown> }>();
+    const sessions = new (class extends ServiceClient {
+      constructor() {
+        super({ service: 'sessions', methods: ['session.create', 'session.addMessage', 'session.get', 'session.getMessages'], events: [], subscriptions: [], gatewayUrl: GATEWAY_URL });
+      }
+      async handleMethod(method: string, params: any) {
+        if (method === 'session.create') {
+          sessionStore.set(params.sessionKey, { kind: params.kind, metadata: params.metadata });
+          return {};
+        }
+        if (method === 'session.get') {
+          return sessionStore.get(params.sessionKey) ?? {};
+        }
+        if (method === 'session.getMessages') return [];
+        return {};
+      }
+      handleEvent() {}
+    })();
+    await sessions.connect();
+
+    const channel = new MockChannelService();
+    await channel.connect();
+
+    try {
+      // Step 1: Trigger cron — creates session with notify in metadata
+      caller.emit('cron.trigger', {
+        taskId: 'daily-test',
+        task: 'Test task',
+        sessionKey: cronSessionKey,
+        notify: ['whatsapp:999'],
+      });
+
+      await new Promise((r) => setTimeout(r, 500));
+
+      // Verify session was created with notify in metadata
+      const stored = sessionStore.get(cronSessionKey);
+      expect(stored?.metadata?.notify).toEqual(['whatsapp:999']);
+
+      // Step 2: Create child session with parentSessionKey
+      sessionStore.set(childSessionKey, {
+        kind: 'subagent',
+        metadata: { parentSessionKey: cronSessionKey },
+      });
+
+      // Step 3: Run subagent — on completion, triggers handleSubagentCompletion
+      await caller.call('agent', 'agent.run', {
+        sessionKey: childSessionKey,
+        task: 'Do subtask',
+      });
+
+      // Wait for debounce (3s) + re-trigger + delivery
+      await new Promise((r) => setTimeout(r, 5000));
+
+      // Should deliver to whatsapp:999, NOT to cron channel
+      const whatsappDeliveries = channel.sent.filter(s => s.channel === 'whatsapp');
+      const cronDeliveries = channel.sent.filter(s => s.channel === 'cron');
+      expect(cronDeliveries.length).toBe(0);
+      expect(whatsappDeliveries.length).toBeGreaterThanOrEqual(1);
+      expect(whatsappDeliveries[0].userId).toBe('999');
+    } finally {
+      await sessions.disconnect();
+      await channel.disconnect();
+    }
+  }, 10000);
+
   it('sends error feedback to channel on failed run', async () => {
     // Disconnect default agent and reconnect with a failing runtime
     await agent.disconnect();

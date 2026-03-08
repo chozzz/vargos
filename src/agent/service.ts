@@ -13,7 +13,7 @@ import { ServiceClient } from '../gateway/service-client.js';
 import { createLogger } from '../lib/logger.js';
 import { stripHeartbeatToken } from '../lib/heartbeat.js';
 import { parseTarget } from '../lib/channel-target.js';
-import { isSubagentSessionKey } from '../sessions/keys.js';
+import { isSubagentSessionKey, parseSessionKey } from '../sessions/keys.js';
 import { type PiAgentRuntime, type PiAgentConfig, type PiAgentRunResult } from './runtime.js';
 
 const log = createLogger('agent');
@@ -279,7 +279,7 @@ export class AgentService extends ServiceClient {
     await this.call('sessions', 'session.create', {
       sessionKey,
       kind,
-      metadata: { [idKey]: triggerId },
+      metadata: { [idKey]: triggerId, ...(notify?.length && { notify }) },
     }).catch((err: unknown) => {
       const msg = err instanceof Error ? err.message : String(err);
       if (!msg.includes('already exists')) log.error(`Failed to create ${kind} session: ${msg}`);
@@ -350,8 +350,6 @@ export class AgentService extends ServiceClient {
 
     // Debounced re-trigger: wait for other subagents to complete before waking parent
     const rootKey = parentKey.split(':subagent:')[0];
-    const target = parseTarget(rootKey);
-    if (!target) return;
 
     // Clear any existing debounce timer for this parent
     const existing = this.retriggerTimers.get(parentKey);
@@ -366,7 +364,21 @@ export class AgentService extends ServiceClient {
         task: retriggerTask,
         retrigger: true,
       });
-      await this.deliverToChannel(target.channel, target.userId, parentResult);
+
+      const { type } = parseSessionKey(rootKey);
+      if (type === 'cron' || type === 'webhook') {
+        const rootSession = await this.call<{ metadata?: Record<string, unknown> }>(
+          'sessions', 'session.get', { sessionKey: rootKey },
+        ).catch(() => null);
+        const notify = (rootSession?.metadata?.notify as string[]) ?? [];
+        for (const t of notify) {
+          const parsed = parseTarget(t);
+          if (parsed) await this.deliverToChannel(parsed.channel, parsed.userId, parentResult);
+        }
+      } else {
+        const target = parseTarget(rootKey);
+        if (target) await this.deliverToChannel(target.channel, target.userId, parentResult);
+      }
     }, AgentService.RETRIGGER_DEBOUNCE_MS);
 
     this.retriggerTimers.set(parentKey, timer);
