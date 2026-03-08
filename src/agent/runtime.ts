@@ -297,6 +297,34 @@ export class PiAgentRuntime {
     }
   }
 
+  /**
+   * Detect thinking-only responses and determine the appropriate fallback text.
+   * Returns undefined response when the model only thought but produced no visible output
+   * and ran no tool calls (safe to skip delivery). Returns a fallback string when
+   * tool calls were made but no summary was generated.
+   */
+  private classifyResponse(
+    rawContent: unknown,
+    entries: Array<{ type: string }>,
+  ): { response: string | undefined; isThinkingOnly: boolean } {
+    if (!isThinkingOnlyContent(rawContent)) {
+      return { response: undefined, isThinkingOnly: false };
+    }
+
+    const hadToolCalls = entries.some(e => {
+      if ((e as { type: string }).type !== 'message') return false;
+      const msg = (e as SessionMessageEntry).message;
+      if (!msg || msg.role !== 'assistant' || !Array.isArray(msg.content)) return false;
+      return (msg.content as Array<{ type?: string }>).some(b => b?.type === 'tool_use');
+    });
+
+    const response = hadToolCalls
+      ? 'I completed the task but couldn\'t generate a summary. Check the results directly.'
+      : undefined;
+
+    return { response, isThinkingOnly: true };
+  }
+
   private async extractRunResult(
     sessionEntries: Array<{ type: string }>,
     startedAt: number,
@@ -334,28 +362,21 @@ export class PiAgentRuntime {
     }
 
     if (!response.trim()) {
-      if (rawContent && isThinkingOnlyContent(rawContent)) {
-        const hadToolCalls = sessionEntries.some(e => {
-          if ((e as { type: string }).type !== 'message') return false;
-          const msg = (e as SessionMessageEntry).message;
-          if (!msg || msg.role !== 'assistant' || !Array.isArray(msg.content)) return false;
-          return (msg.content as Array<{ type?: string }>).some(b => b?.type === 'tool_use');
-        });
-        const fallback = hadToolCalls
-          ? 'I completed the task but couldn\'t generate a summary. Check the results directly.'
-          : undefined;
+      if (rawContent) {
+        const { response: fallback, isThinkingOnly } = this.classifyResponse(rawContent, sessionEntries);
+        if (isThinkingOnly) {
+          log.info(`thinking-only response for ${sessionKey}${fallback ? ' (had tool calls, sending fallback)' : ' — skipping delivery'}`);
 
-        log.info(`thinking-only response for ${sessionKey}${hadToolCalls ? ' (had tool calls, sending fallback)' : ' — skipping delivery'}`);
+          if (fallback) {
+            await this.storeResponse(sessionKey, fallback).catch((e) =>
+              log.error(`failed to store fallback for ${sessionKey}: ${e instanceof Error ? e.message : e}`),
+            );
+          }
 
-        if (fallback) {
-          await this.storeResponse(sessionKey, fallback).catch((e) =>
-            log.error(`failed to store fallback for ${sessionKey}: ${e instanceof Error ? e.message : e}`),
-          );
+          const duration = Date.now() - startedAt;
+          this.lifecycle.endRun(runId, tokenSummary(inputTokens, outputTokens));
+          return { success: true, response: fallback, tokensUsed: tokenSummary(inputTokens, outputTokens), duration };
         }
-
-        const duration = Date.now() - startedAt;
-        this.lifecycle.endRun(runId, tokenSummary(inputTokens, outputTokens));
-        return { success: true, response: fallback, tokensUsed: tokenSummary(inputTokens, outputTokens), duration };
       }
 
       const hint = 'Empty response — model returned nothing useful.';
