@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { GatewayServer } from '../gateway/server.js';
 import { ServiceClient } from '../gateway/service-client.js';
 import { CronService, type CronTask } from './service.js';
@@ -178,5 +178,93 @@ describe('CronService', () => {
     });
 
     expect(updated.notify).toEqual(['whatsapp:61400000000']);
+  });
+
+  describe('concurrency guard', () => {
+    it('skips fire when task is already running', async () => {
+      const task = await subscriber.call<CronTask>('cron', 'cron.add', {
+        id: 'concurrency-skip',
+        schedule: '0 * * * *',
+        task: 'slow job',
+        enabled: false,
+      });
+
+      // First fire — marks task active
+      await subscriber.call('cron', 'cron.run', { id: task.id });
+      await new Promise((r) => setTimeout(r, 100));
+
+      const firstTriggers = subscriber.events.filter(
+        (e) => e.event === 'cron.trigger' && (e.payload as any).taskId === task.id,
+      );
+      expect(firstTriggers).toHaveLength(1);
+
+      // Second fire while still active — should be skipped
+      await subscriber.call('cron', 'cron.run', { id: task.id });
+      await new Promise((r) => setTimeout(r, 100));
+
+      const allTriggers = subscriber.events.filter(
+        (e) => e.event === 'cron.trigger' && (e.payload as any).taskId === task.id,
+      );
+      expect(allTriggers).toHaveLength(1); // still only 1 — second was skipped
+    });
+
+    it('fires again after run.completed clears the lock', async () => {
+      const task = await subscriber.call<CronTask>('cron', 'cron.add', {
+        id: 'concurrency-release',
+        schedule: '0 * * * *',
+        task: 'quick job',
+        enabled: false,
+      });
+
+      // First fire — marks task active
+      await subscriber.call('cron', 'cron.run', { id: task.id });
+      await new Promise((r) => setTimeout(r, 100));
+
+      // Simulate agent emitting run.completed for this cron session
+      const today = new Date().toISOString().slice(0, 10);
+      cron.handleEvent('run.completed', {
+        sessionKey: `cron:${task.id}:${today}`,
+        success: true,
+      });
+
+      // Third fire — lock released, should fire
+      await subscriber.call('cron', 'cron.run', { id: task.id });
+      await new Promise((r) => setTimeout(r, 100));
+
+      const triggers = subscriber.events.filter(
+        (e) => e.event === 'cron.trigger' && (e.payload as any).taskId === task.id,
+      );
+      expect(triggers).toHaveLength(2); // both the first and post-release fires
+    });
+
+    it('clears lock when task is removed', async () => {
+      const task = await subscriber.call<CronTask>('cron', 'cron.add', {
+        id: 'concurrency-remove',
+        schedule: '0 * * * *',
+        task: 'any job',
+        enabled: false,
+      });
+
+      // First fire — marks task active
+      await subscriber.call('cron', 'cron.run', { id: task.id });
+      await new Promise((r) => setTimeout(r, 100));
+
+      // Remove clears the lock — re-add and fire should work
+      await subscriber.call('cron', 'cron.remove', { id: task.id });
+      await subscriber.call<CronTask>('cron', 'cron.add', {
+        id: 'concurrency-remove',
+        schedule: '0 * * * *',
+        task: 'any job',
+        enabled: false,
+      });
+
+      await subscriber.call('cron', 'cron.run', { id: task.id });
+      await new Promise((r) => setTimeout(r, 100));
+
+      const triggers = subscriber.events.filter(
+        (e) => e.event === 'cron.trigger' && (e.payload as any).taskId === task.id,
+      );
+      expect(triggers).toHaveLength(2); // first + post-remove re-add
+    });
   });
 });

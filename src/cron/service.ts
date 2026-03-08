@@ -11,7 +11,7 @@
 
 import { CronJob } from 'cron';
 import { ServiceClient } from '../gateway/service-client.js';
-import { cronSessionKey } from '../sessions/keys.js';
+import { cronSessionKey, parseSessionKey } from '../lib/subagent.js';
 import { createLogger } from '../lib/logger.js';
 import type { CronTask, CronTaskInput } from './types.js';
 
@@ -28,6 +28,8 @@ export class CronService extends ServiceClient {
   private jobs = new Map<string, { task: CronTask; job: CronJob }>();
   private hooks = new Map<string, (task: CronTask) => Promise<boolean>>();
   private ephemeralIds = new Set<string>();
+  // Tasks whose runs are currently in progress — prevents overlapping executions
+  private activeTasks = new Set<string>();
   private running = false;
   private onPersist?: (tasks: CronTask[]) => Promise<void>;
 
@@ -36,7 +38,7 @@ export class CronService extends ServiceClient {
       service: 'cron',
       methods: ['cron.list', 'cron.add', 'cron.remove', 'cron.update', 'cron.run'],
       events: ['cron.trigger'],
-      subscriptions: [],
+      subscriptions: ['run.completed'],
       gatewayUrl: config.gatewayUrl,
     });
     this.onPersist = config.onPersist;
@@ -75,8 +77,19 @@ export class CronService extends ServiceClient {
     }
   }
 
-  handleEvent(): void {
-    // Cron service subscribes to nothing
+  handleEvent(event: string, payload: unknown): void {
+    if (event !== 'run.completed') return;
+    const { sessionKey } = payload as { sessionKey?: string };
+    if (!sessionKey) return;
+
+    const parsed = parseSessionKey(sessionKey);
+    if (parsed.type !== 'cron') return;
+
+    // Extract the taskId portion (strip trailing date: "taskId:YYYY-MM-DD" → "taskId")
+    const taskId = parsed.id.replace(/:\d{4}-\d{2}-\d{2}$/, '');
+    if (this.activeTasks.delete(taskId)) {
+      log.debug(`task run completed, concurrency lock released: ${taskId}`);
+    }
   }
 
   addTask(task: CronTaskInput, opts?: { ephemeral?: boolean }): CronTask {
@@ -133,6 +146,7 @@ export class CronService extends ServiceClient {
     entry.job.stop();
     this.jobs.delete(id);
     this.ephemeralIds.delete(id);
+    this.activeTasks.delete(id);
     log.info(`task removed: ${id}`);
     return true;
   }
@@ -174,11 +188,18 @@ export class CronService extends ServiceClient {
   }
 
   private async onTaskFire(task: CronTask): Promise<void> {
+    if (this.activeTasks.has(task.id)) {
+      log.info(`task still running, skipping fire: ${task.name} (${task.id})`);
+      return;
+    }
+
     const hook = this.hooks.get(task.id);
     if (hook) {
       const shouldFire = await hook(task).catch(() => true);
       if (!shouldFire) return;
     }
+
+    this.activeTasks.add(task.id);
     log.info(`task fired: ${task.name} (${task.id})`);
     const sessionKey = cronSessionKey(task.id);
     this.emit('cron.trigger', { taskId: task.id, task: task.task, name: task.name, sessionKey, notify: task.notify });

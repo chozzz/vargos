@@ -219,7 +219,8 @@ export class PiAgentRuntime {
       }));
       log.info(`prompting agent: session=${config.sessionKey} prompt=${task.slice(0, 120)}...`);
 
-      await this.promptWithRetry(session, sessionManager, task, piImages);
+      const abortSignal = this.lifecycle.getAbortSignal(runId);
+      await this.promptWithRetry(session, sessionManager, task, piImages, abortSignal);
 
       log.info(`agent run complete: session=${config.sessionKey}`);
 
@@ -268,6 +269,10 @@ export class PiAgentRuntime {
     sessionManager: import('@mariozechner/pi-coding-agent').SessionManager,
     prompt: string,
     piImages: Array<{ type: 'image'; data: string; mimeType: string }> | undefined,
+    // NOTE: AbortSignal is not wired through to session.prompt() because the Pi SDK's
+    // PromptOptions interface does not expose an abort/signal parameter. When the SDK
+    // adds support, accept a signal here and pass it via PromptOptions.
+    _signal?: AbortSignal,
   ): Promise<void> {
     const API_RETRY_LIMIT = 2;
     let lastError: string | undefined;
