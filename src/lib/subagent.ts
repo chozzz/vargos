@@ -12,7 +12,7 @@ export const DEFAULT_RUN_TIMEOUT_SECONDS = 300;
 // ── Key helpers ─────────────────────────────────────────────────────────────
 
 export function subagentSessionKey(parentKey: string): string {
-  return `${parentKey}:subagent:${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  return `${parentKey}:subagent:${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
 export function isSubagentSessionKey(sessionKey: string): boolean {

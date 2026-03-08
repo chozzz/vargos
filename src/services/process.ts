@@ -5,6 +5,7 @@
 
 import { spawn, ChildProcessWithoutNullStreams } from 'node:child_process';
 import { EventEmitter } from 'node:events';
+import { generateId } from '../lib/id.js';
 
 export interface ProcessSession {
   id: string;
@@ -33,7 +34,7 @@ export class ProcessService extends EventEmitter {
   private maxFinishedSessions = 50;
 
   createSession(command: string, options: ProcessOptions): ProcessSession {
-    const id = `proc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const id = generateId('proc');
     
     const session: ProcessSession = {
       id,

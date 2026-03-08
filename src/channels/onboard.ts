@@ -24,7 +24,6 @@ const log = {
 
 async function promptAllowFrom(label: string, example: string): Promise<string[]> {
   const input = await pickText(`Allowed ${label} (comma-separated, empty = accept all)`, { placeholder: example });
-  if (input === null) return [];
   if (!input) return [];
   return input.split(',').map((s) => s.trim()).filter(Boolean);
 }

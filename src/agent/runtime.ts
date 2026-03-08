@@ -15,6 +15,7 @@ import {
 import { toolRegistry } from '../tools/registry.js';
 import type { ToolResult } from '../tools/types.js';
 import { createLogger } from '../lib/logger.js';
+import { generateId } from '../lib/id.js';
 
 const log = createLogger('runtime');
 import { buildSystemPrompt, resolvePromptMode } from './prompt.js';
@@ -144,7 +145,7 @@ export class PiAgentRuntime {
    * Queued per-session to prevent race conditions
    */
   async run(config: PiAgentConfig): Promise<PiAgentRunResult> {
-    const runId = config.runId || `run-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const runId = config.runId || generateId('run');
     log.debug(`Queueing run: runId=${runId} session=${config.sessionKey} model=${config.model ?? 'default'}`);
 
     return this.messageQueue.enqueue<PiAgentRunResult>(
