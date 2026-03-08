@@ -81,4 +81,35 @@ describe('createMessageDebouncer', () => {
     vi.advanceTimersByTime(1000);
     expect(flushed).toHaveLength(0);
   });
+
+  it('should immediately flush pending messages for a key', () => {
+    const flushed: Array<{ key: string; messages: string[] }> = [];
+    const debouncer = createMessageDebouncer(
+      (key, messages) => flushed.push({ key, messages }),
+      { delayMs: 5000 },
+    );
+
+    debouncer.push('user1', 'hello');
+    debouncer.push('user1', 'world');
+    expect(flushed).toHaveLength(0);
+
+    debouncer.flush('user1');
+    expect(flushed).toHaveLength(1);
+    expect(flushed[0]).toEqual({ key: 'user1', messages: ['hello', 'world'] });
+
+    // Timer should be cleared — no second flush after delay
+    vi.advanceTimersByTime(5000);
+    expect(flushed).toHaveLength(1);
+  });
+
+  it('flush should be a no-op when no messages are pending', () => {
+    const flushed: string[][] = [];
+    const debouncer = createMessageDebouncer(
+      (_, messages) => flushed.push(messages),
+      { delayMs: 500 },
+    );
+
+    debouncer.flush('nonexistent');
+    expect(flushed).toHaveLength(0);
+  });
 });

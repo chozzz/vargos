@@ -21,7 +21,7 @@ export abstract class BaseChannelAdapter implements ChannelAdapter {
   protected typingFailures = new Map<string, number>();
   protected readonly log;
 
-  constructor(channelType: ChannelType, allowFrom?: string[], onInboundMessage?: OnInboundMessageFn) {
+  constructor(channelType: ChannelType, allowFrom?: string[], onInboundMessage?: OnInboundMessageFn, debounceMs?: number) {
     this.allowFrom = allowFrom?.length ? new Set(allowFrom) : null;
     this.onInboundMessage = onInboundMessage;
     this.log = createLogger(channelType);
@@ -31,7 +31,7 @@ export abstract class BaseChannelAdapter implements ChannelAdapter {
           this.log.error(`handleBatch error for ${id}: ${err}`);
         });
       },
-      { delayMs: 1500 },
+      { delayMs: debounceMs ?? 2000 },
     );
   }
 

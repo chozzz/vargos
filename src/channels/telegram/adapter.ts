@@ -32,8 +32,8 @@ export class TelegramAdapter extends BaseChannelAdapter {
   private polling = false;
   private abortController: AbortController | null = null;
 
-  constructor(botToken: string, allowFrom?: string[], onInboundMessage?: OnInboundMessageFn) {
-    super('telegram', allowFrom, onInboundMessage);
+  constructor(botToken: string, allowFrom?: string[], onInboundMessage?: OnInboundMessageFn, debounceMs?: number) {
+    super('telegram', allowFrom, onInboundMessage, debounceMs);
     this.botToken = botToken;
   }
 
@@ -152,6 +152,8 @@ export class TelegramAdapter extends BaseChannelAdapter {
     const chatId = String(msg.chat.id);
 
     if (msg.photo || msg.voice || msg.audio) {
+      // Flush any pending text so it reaches the agent before the media message
+      this.debouncer.flush(chatId);
       this.handleMedia(chatId, msg).catch((err) => {
         this.log.debug(`handleMedia error for ${chatId}: ${err}`);
       });

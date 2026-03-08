@@ -10,10 +10,10 @@ import { TelegramAdapter } from './telegram/adapter.js';
 export function createAdapter(config: ChannelConfig, onInboundMessage?: OnInboundMessageFn): ChannelAdapter {
   switch (config.type) {
     case 'whatsapp':
-      return new WhatsAppAdapter(config.allowFrom, onInboundMessage);
+      return new WhatsAppAdapter(config.allowFrom, onInboundMessage, config.debounceMs);
     case 'telegram':
       if (!config.botToken) throw new Error('Telegram requires a botToken');
-      return new TelegramAdapter(config.botToken, config.allowFrom, onInboundMessage);
+      return new TelegramAdapter(config.botToken, config.allowFrom, onInboundMessage, config.debounceMs);
     default:
       throw new Error(`Unknown channel type: ${config.type}`);
   }

@@ -24,12 +24,12 @@ export class WhatsAppAdapter extends BaseChannelAdapter {
   // Track latest messageId per userId for reaction support
   private latestMessageId = new Map<string, string>();
 
-  constructor(allowFrom?: string[], onInboundMessage?: OnInboundMessageFn) {
+  constructor(allowFrom?: string[], onInboundMessage?: OnInboundMessageFn, debounceMs?: number) {
     // WA normalizes phone numbers by stripping leading +
     const normalized = allowFrom?.length
       ? allowFrom.map(p => p.replace(/^\+/, ''))
       : undefined;
-    super('whatsapp', normalized, onInboundMessage);
+    super('whatsapp', normalized, onInboundMessage, debounceMs);
   }
 
   async initialize(): Promise<void> {
@@ -174,6 +174,8 @@ export class WhatsAppAdapter extends BaseChannelAdapter {
 
     if (msg.mediaType) {
       this.log.info(`received ${msg.mediaType} from ${msg.jid}`);
+      // Flush any pending text so it reaches the agent before the media message
+      this.debouncer.flush(this.buildUserId(msg.jid));
       this.handleMedia(msg).catch((err) => {
         this.log.error(`handleMedia error for ${msg.jid}: ${err}`);
       });

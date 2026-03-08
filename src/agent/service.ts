@@ -16,6 +16,7 @@ import { stripHeartbeatToken } from '../lib/heartbeat.js';
 import { parseTarget } from '../lib/channel-target.js';
 import { isSubagentSessionKey, parseSessionKey } from '../sessions/keys.js';
 import { type PiAgentRuntime, type PiAgentConfig, type PiAgentRunResult } from './runtime.js';
+import { parseDirectives } from '../lib/directives.js';
 
 const log = createLogger('agent');
 import type { AgentStreamEvent } from './lifecycle.js';
@@ -172,14 +173,20 @@ export class AgentService extends ServiceClient {
     const media = metadata?.media as MediaAttachment | undefined;
 
     // Preprocess media → may rewrite task or bail early
-    const task = await this.preprocessMedia(media, content, config, channel, userId);
-    if (task === null) return;
+    const rawTask = await this.preprocessMedia(media, content, config, channel, userId);
+    if (rawTask === null) return;
+
+    const directives = parseDirectives(rawTask);
+    // Fall back to original if stripping left nothing (e.g. directive-only message)
+    const task = directives.cleaned || rawTask;
 
     const result = await this.runAgent({
       sessionKey,
       task,
       channel,
       images,
+      thinkingLevel: directives.thinkingLevel,
+      verbose: directives.verbose,
     }, config);
 
     log.info(`agent result: ${sessionKey} success=${result.success} (${result.response?.length ?? 0} chars)`);
@@ -432,6 +439,8 @@ export class AgentService extends ServiceClient {
       channel: params.channel,
       bootstrapOverrides: params.bootstrapOverrides,
       compaction: config.compaction,
+      thinkingLevel: params.thinkingLevel,
+      verbose: params.verbose,
       runId,
     };
   }
@@ -464,6 +473,8 @@ interface AgentRunParams {
   images?: Array<{ data: string; mimeType: string }>;
   channel?: string;
   bootstrapOverrides?: Record<string, string>;
+  thinkingLevel?: string;
+  verbose?: boolean;
   /** Set by handleSubagentCompletion to prevent recursive re-triggers */
   retrigger?: boolean;
 }
