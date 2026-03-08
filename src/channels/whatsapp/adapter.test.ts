@@ -20,14 +20,20 @@ vi.mock('../../config/paths.js', () => ({
   resolveChannelsDir: () => '/tmp/channels',
   resolveMediaDir: () => '/tmp/media',
 }));
+const mockReset = vi.fn();
 vi.mock('../../lib/reconnect.js', () => ({
-  Reconnector: class { reset() {} next() { return null; } attempts = 0; },
+  Reconnector: class {
+    reset = mockReset;
+    next() { return null; }
+    attempts = 0;
+  },
 }));
 vi.mock('../../lib/logger.js', () => ({
   createLogger: () => ({ debug: vi.fn(), info: vi.fn(), error: vi.fn() }),
 }));
 
 import { WhatsAppAdapter } from './adapter.js';
+import { createWhatsAppSocket } from './session.js';
 
 function mockSocket(): WASocket {
   return {
@@ -167,6 +173,29 @@ describe('WhatsAppAdapter', () => {
     it('logs error when no callback is set', async () => {
       // Default adapter has no callback — should not throw
       await (adapter as any).routeToService('61423222658', 'test');
+    });
+  });
+
+  describe('reconnector reset on successful connection', () => {
+    it('resets the reconnector when onConnected fires so retries start fresh', async () => {
+      const mockedCreate = vi.mocked(createWhatsAppSocket);
+      let capturedCallbacks: Record<string, Function> = {};
+
+      mockedCreate.mockImplementationOnce(async (_dir, callbacks) => {
+        capturedCallbacks = callbacks as Record<string, Function>;
+        return sock;
+      });
+
+      mockReset.mockClear();
+
+      await adapter.start();
+      expect(mockReset).not.toHaveBeenCalled();
+
+      // Simulate a successful connection
+      capturedCallbacks.onConnected('Test User');
+
+      expect(mockReset).toHaveBeenCalledOnce();
+      expect((adapter as any).status).toBe('connected');
     });
   });
 });
