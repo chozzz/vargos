@@ -16,11 +16,14 @@ import { extractMediaPaths } from './media-extract.js';
 import { channelSessionKey } from '../sessions/keys.js';
 import { createLogger } from '../lib/logger.js';
 import { StatusReactionController } from './status-reactions.js';
+import { expandLinks } from './link-expand.js';
+import type { LinkExpandConfig } from '../config/pi-config.js';
 
 const log = createLogger('channels');
 
 export interface ChannelServiceConfig {
   gatewayUrl?: string;
+  linkExpand?: LinkExpandConfig;
 }
 
 export class ChannelService extends ServiceClient {
@@ -29,6 +32,7 @@ export class ChannelService extends ServiceClient {
   private reactionControllers = new Map<string, StatusReactionController>(); // runId → controller
   // Latest inbound messageId per sessionKey, for reaction targeting
   private pendingMessageIds = new Map<string, string>();
+  private linkExpandConfig: LinkExpandConfig;
 
   constructor(config: ChannelServiceConfig = {}) {
     super({
@@ -38,6 +42,7 @@ export class ChannelService extends ServiceClient {
       subscriptions: ['run.started', 'run.delta', 'run.completed'],
       gatewayUrl: config.gatewayUrl,
     });
+    this.linkExpandConfig = config.linkExpand ?? {};
   }
 
   /**
@@ -80,6 +85,9 @@ export class ChannelService extends ServiceClient {
       this.pendingMessageIds.set(sessionKey, metadata.messageId);
     }
 
+    // Expand URLs in content before storing — never block on failure
+    const enrichedContent = await expandLinks(content, this.linkExpandConfig).catch(() => content);
+
     // Store user message — strip base64 data from media to avoid session bloat
     const sessionMeta: Record<string, unknown> = { type: 'task', channel, ...metadata };
     if (sessionMeta.media && typeof sessionMeta.media === 'object') {
@@ -90,13 +98,13 @@ export class ChannelService extends ServiceClient {
 
     await this.call('sessions', 'session.addMessage', {
       sessionKey,
-      content,
+      content: enrichedContent,
       role: 'user',
       metadata: sessionMeta,
     });
 
     log.info(`inbound: ${channel}:${userId} "${content.slice(0, 80)}"`);
-    this.emit('message.received', { channel, userId, sessionKey, content, metadata });
+    this.emit('message.received', { channel, userId, sessionKey, content: enrichedContent, metadata });
   }
 
   async handleMethod(method: string, params: unknown): Promise<unknown> {

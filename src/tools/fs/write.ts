@@ -7,7 +7,7 @@ import { z } from 'zod';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { Tool, ToolContext, textResult, errorResult } from '../types.js';
-import { expandTilde } from '../../lib/path.js';
+import { expandTilde, validateBoundary } from '../../lib/path.js';
 
 const WriteParameters = z.object({
   path: z.string().describe('Path to the file to write'),
@@ -22,8 +22,16 @@ export const writeTool: Tool = {
   execute: async (args: unknown, context: ToolContext) => {
     const params = WriteParameters.parse(args);
     const resolvedPath = expandTilde(params.path);
-    const filePath = path.resolve(context.workingDir, resolvedPath);
-    
+    let filePath = path.resolve(context.workingDir, resolvedPath);
+
+    if (context.boundary) {
+      try {
+        filePath = await validateBoundary(filePath, context.boundary, context.boundaryAllowlist);
+      } catch (err) {
+        return errorResult(err instanceof Error ? err.message : 'Path outside boundary');
+      }
+    }
+
     try {
       // Ensure parent directory exists
       const parentDir = path.dirname(filePath);

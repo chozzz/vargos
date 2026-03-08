@@ -7,7 +7,7 @@ import { z } from 'zod';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { Tool, ToolContext, textResult, errorResult } from '../types.js';
-import { expandTilde } from '../../lib/path.js';
+import { expandTilde, validateBoundary } from '../../lib/path.js';
 
 const EditParameters = z.object({
   path: z.string().describe('Path to the file to edit'),
@@ -23,7 +23,15 @@ export const editTool: Tool = {
   execute: async (args: unknown, context: ToolContext) => {
     const params = EditParameters.parse(args);
     const resolvedPath = expandTilde(params.path);
-    const filePath = path.resolve(context.workingDir, resolvedPath);
+    let filePath = path.resolve(context.workingDir, resolvedPath);
+
+    if (context.boundary) {
+      try {
+        filePath = await validateBoundary(filePath, context.boundary, context.boundaryAllowlist);
+      } catch (err) {
+        return errorResult(err instanceof Error ? err.message : 'Path outside boundary');
+      }
+    }
 
     try {
       // Read existing content

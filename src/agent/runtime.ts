@@ -102,6 +102,8 @@ export interface PiAgentConfig {
   compaction?: CompactionConfig;
   thinkingLevel?: string;
   verbose?: boolean;
+  fsBoundary?: string;
+  fsBoundaryAllowlist?: string[];
 }
 
 export interface PiAgentRunResult {

@@ -277,7 +277,7 @@ export async function start(): Promise<void> {
   );
   reaperInterval.unref();
 
-  const channels = new ChannelService({ gatewayUrl });
+  const channels = new ChannelService({ gatewayUrl, linkExpand: config.linkExpand });
   await channels.connect();
 
   if (config.channels) {
