@@ -2,7 +2,7 @@ export type AgentMethod = 'agent.run' | 'agent.abort' | 'agent.status' | 'agent.
 export type ToolMethod = 'tool.execute' | 'tool.list' | 'tool.describe';
 export type SessionMethod = 'session.list' | 'session.get' | 'session.create'
   | 'session.delete' | 'session.addMessage' | 'session.getMessages';
-export type ChannelMethod = 'channel.send' | 'channel.status' | 'channel.list';
+export type ChannelMethod = 'channel.send' | 'channel.sendMedia' | 'channel.status' | 'channel.list';
 export type CronMethod = 'cron.list' | 'cron.add' | 'cron.remove' | 'cron.update' | 'cron.run';
 export type WebhookMethod = 'webhook.list' | 'webhook.status';
 export type GatewayMethod = 'gateway.register' | 'gateway.inspect' | 'gateway.stats';
