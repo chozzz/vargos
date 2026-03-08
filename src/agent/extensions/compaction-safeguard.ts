@@ -6,6 +6,7 @@
  */
 
 import type { AgentMessage } from '@mariozechner/pi-agent-core';
+import { userMessage } from '../message-helpers.js';
 import {
   estimateTokens,
   generateSummary,
@@ -27,6 +28,7 @@ const DEFAULT_SUMMARY_FALLBACK = 'No prior history.';
 const FALLBACK_SUMMARY = 'Summary unavailable due to context limits. Older messages were truncated.';
 const MAX_TOOL_FAILURES = 8;
 const MAX_TOOL_FAILURE_CHARS = 240;
+const MERGE_PROMPT = 'Merge these partial summaries into a single cohesive summary. Preserve decisions, TODOs, open questions, and any constraints.';
 
 // -- Token estimation --
 
@@ -203,13 +205,11 @@ export async function summarizeInStages(params: {
   if (partials.length === 1) return partials[0];
 
   // Merge partial summaries
-  const mergeMessages: AgentMessage[] = partials.map(s => ({
-    role: 'user', content: s, timestamp: Date.now(),
-  } as AgentMessage));
+  const mergeMessages: AgentMessage[] = partials.map(s => userMessage(s));
 
   const mergeInstructions = params.customInstructions
-    ? `Merge these partial summaries into a single cohesive summary. Preserve decisions, TODOs, open questions, and any constraints.\n\nAdditional focus:\n${params.customInstructions}`
-    : 'Merge these partial summaries into a single cohesive summary. Preserve decisions, TODOs, open questions, and any constraints.';
+    ? `${MERGE_PROMPT}\n\nAdditional focus:\n${params.customInstructions}`
+    : MERGE_PROMPT;
 
   return summarizeWithFallback({ ...params, messages: mergeMessages, customInstructions: mergeInstructions });
 }

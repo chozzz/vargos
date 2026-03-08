@@ -10,6 +10,7 @@
 import type { AgentMessage } from '@mariozechner/pi-agent-core';
 import type { ExtensionAPI } from '@mariozechner/pi-coding-agent';
 import type { ContextPruningConfig } from '../../config/pi-config.js';
+import { toMsg } from '../message-helpers.js';
 
 const CHARS_PER_TOKEN = 4;
 const IMAGE_CHAR_ESTIMATE = 8_000;
@@ -243,10 +244,10 @@ export function pruneContextMessages(
     if (!updated) continue;
 
     const before = estimateMessageChars(messages[i]);
-    const after = estimateMessageChars(updated as unknown as AgentMessage);
+    const after = estimateMessageChars(toMsg(updated));
     totalChars += after - before;
     if (!next) next = messages.slice();
-    next[i] = updated as unknown as AgentMessage;
+    next[i] = toMsg(updated);
   }
 
   const afterSoftTrim = next ?? messages;

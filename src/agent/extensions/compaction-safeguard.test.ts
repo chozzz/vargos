@@ -9,14 +9,7 @@ import {
   __testing,
 } from './compaction-safeguard.js';
 import type { AgentMessage } from '@mariozechner/pi-agent-core';
-
-function msg(obj: Record<string, unknown>): AgentMessage {
-  return obj as unknown as AgentMessage;
-}
-
-function userMsg(text: string) {
-  return msg({ role: 'user', content: text, timestamp: Date.now() });
-}
+import { toMsg as msg, userMessage as userMsg } from '../message-helpers.js';
 
 function assistantMsg(text: string) {
   return msg({ role: 'assistant', content: [{ type: 'text', text }], timestamp: Date.now() });
