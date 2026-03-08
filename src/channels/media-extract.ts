@@ -25,7 +25,8 @@ const EXT_MIME: Record<string, string> = {
   '.pdf': 'application/pdf',
 };
 
-const PATH_RE = /(?:^|[\s\[(`])(\/{1}[\w./-]+\.(?:jpe?g|png|gif|webp|mp4|mp3|ogg|m4a|pdf))\b/gi;
+// Matches absolute paths and ./paths in text, markdown ![](path), and [path] references
+const PATH_RE = /(?:^|[\s\[(`)>])\.?(\/[\w./-]+\.(?:jpe?g|png|gif|webp|mp4|mp3|ogg|m4a|pdf))\b/gi;
 
 export interface ExtractedMedia {
   filePath: string;
