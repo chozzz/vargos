@@ -11,6 +11,7 @@
 
 import { ServiceClient } from '../gateway/service-client.js';
 import { createLogger } from '../lib/logger.js';
+import { generateId } from '../lib/id.js';
 import { stripHeartbeatToken } from '../lib/heartbeat.js';
 import { parseTarget } from '../lib/channel-target.js';
 import { isSubagentSessionKey, parseSessionKey } from '../sessions/keys.js';
@@ -415,7 +416,7 @@ export class AgentService extends ServiceClient {
     const apiKey = envKey || primary.apiKey || (LOCAL_PROVIDERS.has(primary.provider) ? 'local' : undefined);
 
     const sessionKey = params.sessionKey;
-    const runId = `run-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const runId = generateId('run');
 
     return {
       sessionKey,

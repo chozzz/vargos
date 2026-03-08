@@ -124,11 +124,6 @@ export class ProcessTool extends BaseTool {
           return errorResult(`Failed to write to session: ${args.sessionId}`);
         }
 
-        if (args.eof) {
-          const proc = service.getSession(args.sessionId);
-          // Close stdin not directly supported in simple implementation
-        }
-
         return textResult(`Wrote ${args.data.length} bytes to session ${args.sessionId}`);
       }
 
