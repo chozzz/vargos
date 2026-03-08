@@ -113,6 +113,8 @@ Adapters implement `ChannelAdapter` (`src/channels/types.ts`). Base class (`src/
 
 **Status reactions** (`src/channels/status-reactions.ts`): `StatusReactionController` drives emoji reactions on the triggering message through agent phases: queued (👀) → thinking (🤔) → tool (🔧) → done (👍) / error (❗). Transient phases are debounced (500ms), terminal phases are immediate and seal the controller. Requires `react()` method on the adapter (implemented on WhatsApp via Baileys, Telegram via `setMessageReaction`).
 
+**Link understanding** (`src/channels/link-expand.ts`): URLs in inbound channel messages are auto-expanded — fetched and appended as readable text under a `---\n[Expanded links]` separator. Configurable via `config.linkExpand`: `enabled`, `maxUrls` (default 3), `maxCharsPerUrl` (default 8000), `timeoutMs` (default 5000). Private/internal IPs are filtered out. Expansion failures are silently ignored.
+
 **Media delivery**: Two mechanisms — `channel_send_media` tool (explicit, agent-initiated) and `extractMediaPaths` (passive regex fallback that scans `channel.send` text for file paths). The explicit tool is preferred; the passive path exists as a safety net.
 
 **Event subscriptions**: channel service subscribes to `run.started` (start typing + init reactions), `run.delta` (track tool phases for reactions), `run.completed` (stop typing + seal reactions).
@@ -140,6 +142,10 @@ Command tree is data-driven in `src/cli/tree.ts` — a `MenuNode[]` array that d
 **Structured retry** (`src/lib/retry.ts`): `withRetry(fn, config)` wraps any async operation with exponential backoff and optional jitter. Config: `maxRetries` (default 3), `baseMs` (default 1000), `maxMs` (default 30_000), `jitter` (default true), `shouldRetry` predicate, `signal` for abort. The gateway auto-reconnect and other transient-failure paths use this utility.
 
 **Retryable error detection** (`src/agent/runtime.ts`): `isRetryableError()` identifies network errors, JSON parse failures, HTTP 502/503/529, and abort signals as safe to retry within an agent run.
+
+### Path Boundary Validation
+
+`validateBoundary()` (`src/lib/path.ts`) prevents path traversal in fs tools (read, write, edit). All file paths are resolved through `fs.realpath` (symlink-aware), then checked against the workspace boundary. An optional allowlist permits access to paths outside the boundary (e.g. shared model directories). New files that don't exist yet are resolved by walking up to the nearest existing ancestor. The boundary and allowlist are injected via `ToolContext.boundary` at tool registration time.
 
 ## Domain Boundary Rules
 

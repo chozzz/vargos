@@ -115,6 +115,7 @@
 | Image description (OpenAI/Anthropic Vision) | ✅ |
 | Media type routing | ✅ |
 | Media file saving | ✅ |
+| Link understanding (auto-expand URLs in messages) | ✅ |
 
 ## Cron & Scheduling
 
@@ -165,10 +166,14 @@
 | Config management | ✅ |
 | Health check | ✅ |
 
+## Security
+
+| Feature | Status |
+|---------|--------|
+| Boundary path validation (symlink-aware traversal prevention) | ✅ |
+
 ## Planned
 
 | Feature | Status |
 |---------|--------|
-| Link understanding (auto-expand URLs) | 📋 |
-| Boundary path validation (prevent traversal) | 📋 |
 | Session cost tracking | 📋 |

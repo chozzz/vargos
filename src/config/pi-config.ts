@@ -141,18 +141,32 @@ export interface EmbeddingConfig {
   apiKey?: string;
 }
 
+export interface LinkExpandConfig {
+  enabled?: boolean;        // default true
+  maxUrls?: number;         // default 3
+  maxCharsPerUrl?: number;  // default 8000
+  timeoutMs?: number;       // default 5000
+}
+
+export interface FsBoundaryConfig {
+  enabled?: boolean;     // default: true
+  allowlist?: string[];  // paths outside workingDir that are permitted (e.g. /mnt/ai/)
+}
+
 export interface VargosConfig {
   models: Record<string, ModelProfile>;
   agent: AgentRef;
   channels?: Record<string, ChannelEntry>;
   compaction?: CompactionConfig;
   cron?: CronConfig;
+  fsBoundary?: FsBoundaryConfig;
   gateway?: GatewayConfig;
   heartbeat?: HeartbeatConfig;
   mcp?: McpConfig;
   mcpServers?: Record<string, McpServerEntry>;
   paths?: PathsConfig;
   embedding?: EmbeddingConfig;
+  linkExpand?: LinkExpandConfig;
   storage?: StorageConfig;
   webhooks?: WebhooksConfig;
 }
