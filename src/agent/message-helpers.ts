@@ -1,10 +1,13 @@
 /**
- * Type-safe constructors for AgentMessage.
+ * Type-safe constructors and shared constants for AgentMessage.
  * The Pi SDK AgentMessage type is opaque — these helpers centralize the cast
  * so production and test code don't need `as unknown as AgentMessage` everywhere.
  */
 
 import type { AgentMessage } from '@mariozechner/pi-agent-core';
+
+/** Rough chars-per-token estimate used across history and context pruning. */
+export const CHARS_PER_TOKEN = 4;
 
 /** Cast a plain object to AgentMessage. Use the typed constructors below when possible. */
 export function toMsg(obj: unknown): AgentMessage {

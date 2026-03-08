@@ -26,8 +26,6 @@ import { sanitizeHistory, toAgentMessages, prepareHistory } from './history.js';
 import { getVargosToolNames } from './extension.js';
 import { buildPiSession } from './session-setup.js';
 
-export { PROVIDER_BASE_URLS, resolveProviderBaseUrl } from './session-setup.js';
-
 const RETRYABLE_PATTERNS = [
   'after JSON',
   'Unexpected',

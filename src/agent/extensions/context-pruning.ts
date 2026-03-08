@@ -10,9 +10,7 @@
 import type { AgentMessage } from '@mariozechner/pi-agent-core';
 import type { ExtensionAPI } from '@mariozechner/pi-coding-agent';
 import type { ContextPruningConfig } from '../../config/pi-config.js';
-import { toMsg } from '../message-helpers.js';
-
-const CHARS_PER_TOKEN = 4;
+import { CHARS_PER_TOKEN, toMsg } from '../message-helpers.js';
 const IMAGE_CHAR_ESTIMATE = 8_000;
 
 // -- Types --
