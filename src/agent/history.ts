@@ -8,7 +8,7 @@
 import type { AgentMessage } from '@mariozechner/pi-agent-core';
 import type { SessionMessage } from '../sessions/types.js';
 import { createLogger } from '../lib/logger.js';
-import { toMsg, userMessage, assistantMessage, toolResultMessage } from './message-helpers.js';
+import { CHARS_PER_TOKEN, toMsg, userMessage, assistantMessage, toolResultMessage } from './message-helpers.js';
 
 const log = createLogger('history');
 
@@ -214,7 +214,6 @@ function syntheticErrorResult(toolCallId: string): AgentMessage {
 // Tool Result Truncation (pre-injection)
 // ============================================================================
 
-const CHARS_PER_TOKEN = 4;
 const MAX_TOOL_RESULT_SHARE = 0.3; // single tool result capped at 30% of context
 
 /**

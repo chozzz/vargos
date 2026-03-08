@@ -204,7 +204,7 @@ export class ProcessService extends EventEmitter {
       this.finishedSessions.splice(finishedIndex, 1);
       return true;
     }
-    return this.sessions.has(id);
+    return false;
   }
 }
 
