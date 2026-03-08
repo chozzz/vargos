@@ -290,6 +290,7 @@ function buildChannelSection(channel: string): string {
     '- All tools listed above are available. Do not claim otherwise.',
     '- If a tool fails, report the error briefly. Do not speculate.',
     '- When you generate or reference a media file (image, video, audio, document), use channel_send_media to deliver it. Do not just describe the file — send it.',
+    '- User messages may have contained /think or /verbose directives — these are stripped before you see the message. Do not try to parse or reference them.',
   ].join('\n');
 }
 

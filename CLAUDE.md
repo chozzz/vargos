@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Vargos is a TypeScript/Node.js MCP runtime for agents. It runs as a local WebSocket gateway service that exposes tools via the Model Context Protocol (MCP) and routes agent conversations through messaging channels (WhatsApp, Telegram).
 
+See [FEATURES.md](./FEATURES.md) for a full feature inventory and status.
+
 ## Commands
 
 ```bash
@@ -103,6 +105,10 @@ Extensions register tools via `VargosExtension.register(ctx)` → `ctx.registerT
 
 Adapters implement `ChannelAdapter` (`src/channels/types.ts`). Base class (`src/channels/base-adapter.ts`) provides shared logic.
 
+**Chat directives** (`src/lib/directives.ts`): Users can prefix messages with `/think:<level>` (off/low/medium/high) or `/verbose` to override per-message inference settings. Directives are parsed and stripped in `AgentService` before the task reaches the agent — the agent never sees the raw directive tokens.
+
+**Message debouncing**: `BaseChannelAdapter` uses `createMessageDebouncer` (`src/lib/debounce.ts`) to batch rapid messages from the same sender before triggering an agent run. Default delay is 2000ms; configurable per channel via `debounceMs` in `config.json`. Media messages (photo, audio, video) bypass the debouncer and flush any pending text immediately so they are processed in order.
+
 **Typing indicators**: circuit breaker stops after 3 consecutive failures; TTL safety auto-stops after 120s to prevent zombie indicators.
 
 **Status reactions** (`src/channels/status-reactions.ts`): `StatusReactionController` drives emoji reactions on the triggering message through agent phases: queued (👀) → thinking (🤔) → tool (🔧) → done (👍) / error (❗). Transient phases are debounced (500ms), terminal phases are immediate and seal the controller. Requires `react()` method on the adapter (implemented on WhatsApp via Baileys, Telegram via `setMessageReaction`).
@@ -128,6 +134,12 @@ Hybrid semantic + text search over `~/.vargos/workspace/*.md`. Chunks text, supp
 ### CLI
 
 Command tree is data-driven in `src/cli/tree.ts` — a `MenuNode[]` array that drives both the interactive menu and CLI argument routing.
+
+### Error Handling & Retry
+
+**Structured retry** (`src/lib/retry.ts`): `withRetry(fn, config)` wraps any async operation with exponential backoff and optional jitter. Config: `maxRetries` (default 3), `baseMs` (default 1000), `maxMs` (default 30_000), `jitter` (default true), `shouldRetry` predicate, `signal` for abort. The gateway auto-reconnect and other transient-failure paths use this utility.
+
+**Retryable error detection** (`src/agent/runtime.ts`): `isRetryableError()` identifies network errors, JSON parse failures, HTTP 502/503/529, and abort signals as safe to retry within an agent run.
 
 ## Domain Boundary Rules
 
