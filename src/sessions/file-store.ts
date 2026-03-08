@@ -238,15 +238,17 @@ export class FileSessionService extends EventEmitter implements ISessionService 
       timestamp: new Date(),
     };
 
+    // Verify session exists before appending
     const data = await this.loadSession(message.sessionKey);
     if (!data) {
       throw new Error(`Session not found: ${message.sessionKey}`);
     }
 
-    data.messages.push(fullMessage);
-    data.session.updatedAt = new Date();
+    // Append-only: write just the new message line to avoid O(n) rewrite.
+    // The metadata line (line 0) is not updated here; use update() if updatedAt matters.
+    const filePath = this.getSessionPath(message.sessionKey);
+    await fs.appendFile(filePath, JSON.stringify(fullMessage) + '\n', 'utf-8');
 
-    await this.saveSession(message.sessionKey, data);
     this.emit('message.added', { message: fullMessage, sessionKey: message.sessionKey });
 
     return fullMessage;
