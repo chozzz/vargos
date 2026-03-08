@@ -22,7 +22,7 @@ import { AgentLifecycle, type AgentStreamEvent } from './lifecycle.js';
 import { SessionMessageQueue } from './queue.js';
 import type { ISessionService, SessionMessage } from '../sessions/types.js';
 import { type CompactionConfig } from '../config/pi-config.js';
-import { sanitizeHistory, limitHistoryTurns, getHistoryLimit, toAgentMessages } from './history.js';
+import { sanitizeHistory, toAgentMessages, prepareHistory } from './history.js';
 import { getVargosToolNames } from './extension.js';
 import { buildPiSession } from './session-setup.js';
 
@@ -240,9 +240,9 @@ export class PiAgentRuntime {
     }
     const agentMessages = toAgentMessages(storedMessages);
     const sanitized = sanitizeHistory(agentMessages);
-    const limited = limitHistoryTurns(sanitized, getHistoryLimit(config.sessionKey));
-    log.debug(`history: ${storedMessages.length} stored → ${agentMessages.length} converted → ${sanitized.length} sanitized → ${limited.length} injected (limit=${getHistoryLimit(config.sessionKey)})`);
-    session.agent.replaceMessages(limited);
+    const prepared = prepareHistory(sanitized, config.sessionKey, config.contextWindow);
+    log.debug(`history: ${storedMessages.length} stored → ${agentMessages.length} converted → ${sanitized.length} sanitized → ${prepared.length} injected`);
+    session.agent.replaceMessages(prepared);
   }
 
   private async promptWithRetry(

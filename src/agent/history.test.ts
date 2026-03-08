@@ -6,6 +6,10 @@ import {
   repairToolResultPairing,
   sanitizeHistory,
   toAgentMessages,
+  truncateToolResults,
+  pruneToTokenBudget,
+  prepareHistory,
+  estimateMessageTokens,
 } from './history.js';
 import type { AgentMessage } from '@mariozechner/pi-agent-core';
 import type { SessionMessage } from '../sessions/types.js';
@@ -352,5 +356,141 @@ describe('toAgentMessages', () => {
       sessionMsg('assistant', 'b'),
     ]);
     expect(result.length).toBe(3);
+  });
+});
+
+// ============================================================================
+// truncateToolResults
+// ============================================================================
+
+describe('truncateToolResults', () => {
+  it('leaves small tool results unchanged', () => {
+    const msgs = [
+      userMsg('q'),
+      assistantWithTools([{ id: 't1', name: 'read' }]),
+      toolResult('t1', 'read', 'short result'),
+    ];
+    const result = truncateToolResults(msgs, 128_000);
+    expect(result).toBe(msgs); // same reference = no changes
+  });
+
+  it('truncates oversized tool results with head+tail', () => {
+    // 128K context × 4 chars/token × 0.3 share = 153,600 char limit
+    // Create a tool result that exceeds this
+    const bigText = 'x'.repeat(200_000);
+    const msgs = [
+      userMsg('q'),
+      assistantWithTools([{ id: 't1', name: 'read' }]),
+      msg({
+        role: 'toolResult', toolCallId: 't1', toolName: 'read',
+        content: [{ type: 'text', text: bigText }], isError: false, timestamp: Date.now(),
+      }),
+    ];
+    const result = truncateToolResults(msgs, 128_000);
+    expect(result).not.toBe(msgs);
+    const content = (result[2] as unknown as { content: Array<{ text: string }> }).content;
+    expect(content[0].text).toContain('...');
+    expect(content[0].text).toContain('[Truncated:');
+    expect(content[0].text.length).toBeLessThan(bigText.length);
+  });
+
+  it('preserves non-toolResult messages', () => {
+    const bigText = 'x'.repeat(200_000);
+    const msgs = [
+      userMsg(bigText), // user message should NOT be truncated
+      assistantMsg('ok'),
+    ];
+    const result = truncateToolResults(msgs, 128_000);
+    expect(result).toBe(msgs);
+  });
+});
+
+// ============================================================================
+// pruneToTokenBudget
+// ============================================================================
+
+describe('pruneToTokenBudget', () => {
+  it('keeps all messages when under budget', () => {
+    const msgs = [userMsg('a'), assistantMsg('b')];
+    const { messages, droppedCount } = pruneToTokenBudget(msgs, {
+      contextWindowTokens: 128_000,
+    });
+    expect(messages).toBe(msgs);
+    expect(droppedCount).toBe(0);
+  });
+
+  it('drops oldest messages when over budget', () => {
+    // Each message ~250 tokens (1000 chars / 4). Budget = 1000 * 0.5 = 500 tokens.
+    const longText = 'x'.repeat(1000);
+    const msgs = [
+      userMsg(longText),
+      assistantMsg(longText),
+      userMsg(longText),
+      assistantMsg(longText),
+    ];
+    const { messages, droppedCount } = pruneToTokenBudget(msgs, {
+      contextWindowTokens: 1000,
+    });
+    expect(droppedCount).toBeGreaterThan(0);
+    expect(messages.length).toBeLessThan(msgs.length);
+    // Kept messages should be the most recent ones
+    expect(messages[messages.length - 1]).toBe(msgs[msgs.length - 1]);
+  });
+
+  it('respects custom budget ratio', () => {
+    const longText = 'x'.repeat(1000);
+    const msgs = [userMsg(longText), assistantMsg(longText)];
+
+    // With 0.9 ratio, more budget → keeps more
+    const loose = pruneToTokenBudget(msgs, { contextWindowTokens: 1000, budgetRatio: 0.9 });
+    // With 0.1 ratio, tighter budget → drops more
+    const tight = pruneToTokenBudget(msgs, { contextWindowTokens: 1000, budgetRatio: 0.1 });
+
+    expect(tight.droppedCount).toBeGreaterThanOrEqual(loose.droppedCount);
+  });
+});
+
+// ============================================================================
+// prepareHistory
+// ============================================================================
+
+describe('prepareHistory', () => {
+  it('returns empty for empty input', () => {
+    expect(prepareHistory([], 'whatsapp:123', 128_000)).toEqual([]);
+  });
+
+  it('prepends preamble when messages are pruned', () => {
+    // Create enough messages to exceed 50% of a small context window
+    const msgs: AgentMessage[] = [];
+    for (let i = 0; i < 20; i++) {
+      msgs.push(userMsg('x'.repeat(500)));
+      msgs.push(assistantMsg('y'.repeat(500)));
+    }
+    // 40 messages × ~125 tokens each = ~5000 tokens. Budget at 2000 * 0.5 = 1000 tokens
+    const result = prepareHistory(msgs, 'whatsapp:123', 2000);
+    expect(result.length).toBeLessThan(msgs.length);
+    // First message should be the preamble
+    const first = result[0] as unknown as { content: string };
+    expect(first.content).toContain('pruned from history');
+  });
+
+  it('skips preamble when everything fits', () => {
+    const msgs = [userMsg('hi'), assistantMsg('hello')];
+    const result = prepareHistory(msgs, 'whatsapp:123', 128_000);
+    const first = result[0] as unknown as { content: string };
+    expect(first.content).not.toContain('pruned');
+  });
+
+  it('applies turn limit as fallback ceiling', () => {
+    // Even if token budget allows it, turn limit should cap
+    const msgs: AgentMessage[] = [];
+    for (let i = 0; i < 100; i++) {
+      msgs.push(userMsg(`msg ${i}`));
+      msgs.push(assistantMsg(`reply ${i}`));
+    }
+    // WhatsApp limit = 30 user turns = ~60 messages max
+    const result = prepareHistory(msgs, 'whatsapp:123', 1_000_000);
+    const userMsgs = result.filter(m => (m as unknown as { role: string }).role === 'user');
+    expect(userMsgs.length).toBeLessThanOrEqual(31); // 30 + possible preamble
   });
 });
