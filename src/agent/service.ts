@@ -14,9 +14,10 @@ import { createLogger } from '../lib/logger.js';
 import { generateId } from '../lib/id.js';
 import { stripHeartbeatToken } from '../lib/heartbeat.js';
 import { parseTarget } from '../lib/channel-target.js';
-import { isSubagentSessionKey, parseSessionKey } from '../sessions/keys.js';
+import { isSubagentSessionKey } from '../sessions/keys.js';
 import { type PiAgentRuntime, type PiAgentConfig, type PiAgentRunResult } from './runtime.js';
 import { parseDirectives } from '../lib/directives.js';
+import { SubagentCoordinator } from './subagent-coordinator.js';
 
 const log = createLogger('agent');
 import type { AgentStreamEvent } from './lifecycle.js';
@@ -38,6 +39,7 @@ export class AgentService extends ServiceClient {
   private dataDir: string;
   private cachedConfig: VargosConfig | null = null;
   private configLoad: Promise<VargosConfig | null> | null = null;
+  private coordinator: SubagentCoordinator;
   private stats = {
     totalTokens: { input: 0, output: 0 },
     totalToolCalls: 0,
@@ -55,11 +57,15 @@ export class AgentService extends ServiceClient {
     this.runtime = config.runtime;
     this.workspaceDir = config.workspaceDir ?? resolveWorkspaceDir();
     this.dataDir = config.dataDir ?? resolveDataDir();
+    this.coordinator = new SubagentCoordinator(
+      this.call.bind(this),
+      (sessionKey, task) => this.runAgent({ sessionKey, task, retrigger: true }),
+      this.deliverToChannel.bind(this),
+    );
   }
 
   async disconnect(): Promise<void> {
-    for (const timer of this.retriggerTimers.values()) clearTimeout(timer);
-    this.retriggerTimers.clear();
+    this.coordinator.clearTimers();
     return super.disconnect();
   }
 
@@ -166,9 +172,9 @@ export class AgentService extends ServiceClient {
         response: result.response?.slice(0, 500),
       });
 
-      // If sub-agent completed, announce to parent and re-trigger
+      // If sub-agent completed, announce to parent and batch re-trigger
       if (isSubagentSessionKey(params.sessionKey) && result.success && !params.retrigger) {
-        this.handleSubagentCompletion(params.sessionKey, result)
+        this.coordinator.handleSubagentCompletion(params.sessionKey, result)
           .catch(err => log.error(`subagent completion failed: ${err}`));
       }
 
@@ -355,84 +361,6 @@ export class AgentService extends ServiceClient {
     await this.call('channel', 'channel.send', { channel, userId, text: cleaned })
       .catch(err => log.error(`Failed to send reply: ${err}`));
     log.info(`reply sent: ${channel}:${userId}`);
-  }
-
-  // Debounce timers for batched subagent re-triggers
-  private retriggerTimers = new Map<string, ReturnType<typeof setTimeout>>();
-  private static RETRIGGER_DEBOUNCE_MS = 3000;
-
-  /** When a sub-agent completes, announce to parent and batch re-trigger */
-  private async handleSubagentCompletion(sessionKey: string, result: PiAgentRunResult): Promise<void> {
-    const session = await this.call<{ metadata?: Record<string, unknown> }>('sessions', 'session.get', { sessionKey });
-    const parentKey = session?.metadata?.parentSessionKey as string | undefined;
-    if (!parentKey) return;
-
-    // Write announcement to parent session (visible to LLM via history injection)
-    const status = result.success ? 'success' : 'error';
-    const summary = result.response?.slice(0, 500) ?? '(no response)';
-    await this.call('sessions', 'session.addMessage', {
-      sessionKey: parentKey,
-      content: `[Subagent Complete] session=${sessionKey} status=${status} duration=${result.duration ? `${(result.duration / 1000).toFixed(1)}s` : 'unknown'}\n\n${summary}`,
-      role: 'system',
-      metadata: { type: 'subagent_announce', childSessionKey: sessionKey, success: result.success },
-    }).catch(err => log.error(`Failed to announce to parent: ${err}`));
-
-    // Debounced re-trigger: wait for other subagents to complete before waking parent
-    const rootKey = parentKey.split(':subagent:')[0];
-
-    // Clear any existing debounce timer for this parent
-    const existing = this.retriggerTimers.get(parentKey);
-    if (existing) clearTimeout(existing);
-
-    const timer = setTimeout(async () => {
-      this.retriggerTimers.delete(parentKey);
-      log.info(`re-triggering parent ${parentKey} after sub-agent completions`);
-      const retriggerTask = await this.buildRetriggerTask(parentKey);
-      const parentResult = await this.runAgent({
-        sessionKey: parentKey,
-        task: retriggerTask,
-        retrigger: true,
-      });
-
-      const { type } = parseSessionKey(rootKey);
-      if (type === 'cron' || type === 'webhook') {
-        const rootSession = await this.call<{ metadata?: Record<string, unknown> }>(
-          'sessions', 'session.get', { sessionKey: rootKey },
-        ).catch(() => null);
-        const notify = (rootSession?.metadata?.notify as string[]) ?? [];
-        for (const t of notify) {
-          const parsed = parseTarget(t);
-          if (parsed) await this.deliverToChannel(parsed.channel, parsed.userId, parentResult);
-        }
-      } else {
-        const target = parseTarget(rootKey);
-        if (target) await this.deliverToChannel(target.channel, target.userId, parentResult);
-      }
-    }, AgentService.RETRIGGER_DEBOUNCE_MS);
-
-    this.retriggerTimers.set(parentKey, timer);
-  }
-
-  /** Build a re-trigger prompt that includes the original user task for continuity */
-  private async buildRetriggerTask(parentKey: string): Promise<string> {
-    const fallback = 'Sub-agents completed. Review results above. If your original plan has remaining steps, continue executing them. Otherwise, synthesize a final response for the user.';
-    try {
-      const messages = await this.call<Array<{ role: string; content: string }>>(
-        'sessions', 'session.getMessages', { sessionKey: parentKey, limit: 50 },
-      );
-      // Find the last user message that isn't a subagent_announce injection
-      const lastUserMsg = [...(messages ?? [])].reverse().find(
-        m => m.role === 'user' && !m.content.startsWith('[Subagent Complete]'),
-      );
-      if (!lastUserMsg) return fallback;
-
-      return (
-        `Sub-agents completed. Your original task was:\n\n> ${lastUserMsg.content.slice(0, 500)}\n\n` +
-        'Review all sub-agent results above. If your plan has remaining steps, continue executing them (spawn more sub-agents as needed). Otherwise, synthesize a final response for the user.'
-      );
-    } catch {
-      return fallback;
-    }
   }
 
   private async buildRunConfig(params: AgentRunParams, existing?: VargosConfig | null): Promise<PiAgentConfig> {
