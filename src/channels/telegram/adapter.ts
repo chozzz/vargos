@@ -108,6 +108,14 @@ export class TelegramAdapter extends BaseChannelAdapter {
     await this.apiCall('sendChatAction', { chat_id: recipientId, action: 'typing' });
   }
 
+  async react(recipientId: string, messageId: string, emoji: string): Promise<void> {
+    await this.apiCall('setMessageReaction', {
+      chat_id: recipientId,
+      message_id: Number(messageId),
+      reaction: [{ type: 'emoji', emoji }],
+    });
+  }
+
   private async pollLoop(): Promise<void> {
     while (this.polling) {
       try {

@@ -41,6 +41,9 @@ export interface ChannelAdapter {
   /** Send a media file to a specific recipient (optional) */
   sendMedia?(recipientId: string, filePath: string, mimeType: string, caption?: string): Promise<void>;
 
+  /** React to a message with an emoji (optional) */
+  react?(recipientId: string, messageId: string, emoji: string): Promise<void>;
+
   /** Start typing indicator for a recipient */
   startTyping(recipientId: string): void;
 

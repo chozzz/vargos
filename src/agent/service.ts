@@ -439,9 +439,10 @@ export class AgentService extends ServiceClient {
     const handler = (event: AgentStreamEvent) => {
       if (event.runId !== runId) return;
       if (event.type === 'assistant') {
-        this.emit('run.delta', { runId, delta: event.content });
-      } else if (event.type === 'tool' && event.phase === 'start') {
-        this.stats.totalToolCalls++;
+        this.emit('run.delta', { runId, sessionKey: event.sessionKey, type: 'text_delta', data: event.content });
+      } else if (event.type === 'tool') {
+        if (event.phase === 'start') this.stats.totalToolCalls++;
+        this.emit('run.delta', { runId, sessionKey: event.sessionKey, type: `tool_${event.phase}`, data: event.toolName });
       }
     };
 
