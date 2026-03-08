@@ -15,10 +15,18 @@ const log = createLogger('tools');
 
 // Gateway call function injected by start.ts after services connect
 type GatewayCallFn = <T>(target: string, method: string, params?: unknown) => Promise<T>;
-let gatewayCallFn: GatewayCallFn | undefined;
+
+let _gatewayCallFn: GatewayCallFn | undefined;
+
+function gatewayCallFn<T>(target: string, method: string, params?: unknown): Promise<T> {
+  if (!_gatewayCallFn) {
+    throw new Error('Gateway call function not set — call setGatewayCall() before using tools');
+  }
+  return _gatewayCallFn<T>(target, method, params);
+}
 
 export function setGatewayCall(fn: GatewayCallFn): void {
-  gatewayCallFn = fn;
+  _gatewayCallFn = fn;
 }
 
 /**

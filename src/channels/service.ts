@@ -52,10 +52,6 @@ export class ChannelService extends ServiceClient {
     this.adapters.set(adapter.type, adapter);
   }
 
-  getAdapter(type: string): ChannelAdapter | undefined {
-    return this.adapters.get(type);
-  }
-
   listAdapters(): Array<{ type: string; status: string }> {
     return Array.from(this.adapters.entries()).map(([type, a]) => ({
       type,

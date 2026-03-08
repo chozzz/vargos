@@ -17,6 +17,7 @@ import type {
 import { BaseChannelAdapter } from '../base-adapter.js';
 import { saveMedia } from '../../lib/media.js';
 import { resolveMediaDir } from '../../config/paths.js';
+import { sleep } from '../../lib/sleep.js';
 
 const API_BASE = 'https://api.telegram.org/bot';
 const API_FILE_BASE = 'https://api.telegram.org/file/bot';
@@ -239,8 +240,4 @@ export class TelegramAdapter extends BaseChannelAdapter {
 
     return data.result;
   }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

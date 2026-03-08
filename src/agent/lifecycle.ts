@@ -69,10 +69,6 @@ export class AgentLifecycle extends EventEmitter {
     abortController: AbortController;
   }>();
 
-
-  /**
-   * Start a new run
-   */
   startRun(runId: string, sessionKey: string): void {
     const abortController = new AbortController();
 
@@ -94,9 +90,6 @@ export class AgentLifecycle extends EventEmitter {
     this.emit('start', runId, sessionKey);
   }
 
-  /**
-   * End a run successfully
-   */
   endRun(
     runId: string,
     tokens?: { input: number; output: number; total: number }
@@ -122,9 +115,6 @@ export class AgentLifecycle extends EventEmitter {
     this.emit('end', runId, { tokens, duration });
   }
 
-  /**
-   * Error a run
-   */
   errorRun(runId: string, error: Error | string): void {
     const run = this.activeRuns.get(runId);
     if (!run) return;
@@ -147,9 +137,6 @@ export class AgentLifecycle extends EventEmitter {
     this.emit('run_error', runId, error);
   }
 
-  /**
-   * Abort a run
-   */
   abortRun(runId: string, reason?: string): boolean {
     const run = this.activeRuns.get(runId);
     if (!run) return false;
@@ -173,23 +160,14 @@ export class AgentLifecycle extends EventEmitter {
     return true;
   }
 
-  /**
-   * Check if run is active
-   */
   isRunning(runId: string): boolean {
     return this.activeRuns.has(runId);
   }
 
-  /**
-   * Get abort signal for run
-   */
   getAbortSignal(runId: string): AbortSignal | undefined {
     return this.activeRuns.get(runId)?.abortController.signal;
   }
 
-  /**
-   * Stream assistant delta
-   */
   streamAssistant(
     runId: string,
     content: string,
@@ -211,9 +189,6 @@ export class AgentLifecycle extends EventEmitter {
     this.emit('assistant', event);
   }
 
-  /**
-   * Stream tool event
-   */
   streamTool(
     runId: string,
     toolName: string,
@@ -241,9 +216,6 @@ export class AgentLifecycle extends EventEmitter {
     this.emit('tool', event);
   }
 
-  /**
-   * Stream compaction event
-   */
   streamCompaction(
     runId: string,
     tokensBefore: number,
@@ -265,9 +237,6 @@ export class AgentLifecycle extends EventEmitter {
     this.emit('compaction', event);
   }
 
-  /**
-   * List active runs
-   */
   listActiveRuns(): Array<{ runId: string; sessionKey: string; duration: number }> {
     const now = Date.now();
     return Array.from(this.activeRuns.entries()).map(([runId, run]) => ({
@@ -277,9 +246,6 @@ export class AgentLifecycle extends EventEmitter {
     }));
   }
 
-  /**
-   * Abort all runs for a session
-   */
   abortSessionRuns(sessionKey: string, reason?: string): number {
     let count = 0;
     for (const [runId, run] of this.activeRuns.entries()) {
@@ -291,5 +257,3 @@ export class AgentLifecycle extends EventEmitter {
     return count;
   }
 }
-
-
