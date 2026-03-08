@@ -52,7 +52,7 @@ All services extend `ServiceClient` (`src/gateway/service-client.ts`), which han
 | **agent** | `src/agent/` | `agent.run`, `agent.abort` | `run.started`, `run.delta`, `run.completed` |
 | **tools** | `src/tools/` | `tool.execute`, `tool.list` | — |
 | **sessions** | `src/sessions/` | `session.list`, `session.get`, `session.create`, `session.addMessage` | `session.created`, `session.message` |
-| **channels** | `src/channels/` | `channel.send`, `channel.list` | `message.received`, `channel.connected` |
+| **channels** | `src/channels/` | `channel.send`, `channel.sendMedia`, `channel.list` | `message.received`, `channel.connected` |
 | **cron** | `src/cron/` | `cron.list`, `cron.add`, `cron.remove` | `cron.trigger` |
 | **mcp** | `src/mcp/` | MCP bridge (HTTP on port 9001 + stdio) | — |
 
@@ -106,6 +106,8 @@ Adapters implement `ChannelAdapter` (`src/channels/types.ts`). Base class (`src/
 **Typing indicators**: circuit breaker stops after 3 consecutive failures; TTL safety auto-stops after 120s to prevent zombie indicators.
 
 **Status reactions** (`src/channels/status-reactions.ts`): `StatusReactionController` drives emoji reactions on the triggering message through agent phases: queued (👀) → thinking (🤔) → tool (🔧) → done (👍) / error (❗). Transient phases are debounced (500ms), terminal phases are immediate and seal the controller. Requires `react()` method on the adapter (implemented on WhatsApp via Baileys, Telegram via `setMessageReaction`).
+
+**Media delivery**: Two mechanisms — `channel_send_media` tool (explicit, agent-initiated) and `extractMediaPaths` (passive regex fallback that scans `channel.send` text for file paths). The explicit tool is preferred; the passive path exists as a safety net.
 
 **Event subscriptions**: channel service subscribes to `run.started` (start typing + init reactions), `run.delta` (track tool phases for reactions), `run.completed` (stop typing + seal reactions).
 
