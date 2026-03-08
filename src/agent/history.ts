@@ -8,6 +8,7 @@
 import type { AgentMessage } from '@mariozechner/pi-agent-core';
 import type { SessionMessage } from '../sessions/types.js';
 import { createLogger } from '../lib/logger.js';
+import { toMsg, userMessage, assistantMessage, toolResultMessage } from './message-helpers.js';
 
 const log = createLogger('history');
 
@@ -29,25 +30,11 @@ export function toAgentMessages(messages: SessionMessage[]): AgentMessage[] {
       return false;
     })
     .map(m => {
-      // Convert subagent_announce system messages to user messages for the LLM
-      if (m.role === 'system' && m.metadata?.type === 'subagent_announce') {
-        const ts = m.timestamp instanceof Date ? m.timestamp.getTime() : Number(m.timestamp);
-        return { role: 'user', content: m.content, timestamp: ts } as AgentMessage;
-      }
       const ts = m.timestamp instanceof Date ? m.timestamp.getTime() : Number(m.timestamp);
-      if (m.role === 'user') {
-        return { role: 'user', content: m.content, timestamp: ts } as AgentMessage;
+      if (m.role === 'user' || (m.role === 'system' && m.metadata?.type === 'subagent_announce')) {
+        return userMessage(m.content, ts);
       }
-      return {
-        role: 'assistant',
-        content: [{ type: 'text', text: m.content }],
-        api: 'openai-completions',
-        provider: 'unknown',
-        model: 'unknown',
-        usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-        stopReason: 'stop',
-        timestamp: ts,
-      } as unknown as AgentMessage;
+      return assistantMessage(m.content, ts);
     });
 }
 
@@ -216,14 +203,11 @@ function extractToolCallIds(content: unknown): string[] {
 }
 
 function syntheticErrorResult(toolCallId: string): AgentMessage {
-  return {
-    role: 'toolResult',
+  return toolResultMessage({
     toolCallId,
-    toolName: 'unknown',
     content: [{ type: 'text', text: '[result lost during session compaction]' }],
     isError: true,
-    timestamp: Date.now(),
-  } as unknown as AgentMessage;
+  });
 }
 
 // ============================================================================
@@ -263,10 +247,7 @@ export function truncateToolResults(
     const note = `\n\n[Truncated: ${totalChars} chars → ${headChars + tailChars} chars]`;
 
     changed = true;
-    return {
-      ...msg,
-      content: [{ type: 'text', text: `${head}\n...\n${tail}${note}` }],
-    } as unknown as AgentMessage;
+    return toMsg({ ...msg, content: [{ type: 'text', text: `${head}\n...\n${tail}${note}` }] });
   });
 
   return changed ? result : messages;
@@ -342,11 +323,9 @@ export function pruneToTokenBudget(
  * Injected as the first user message so the agent knows context was lost.
  */
 function buildDroppedPreamble(droppedCount: number): AgentMessage {
-  return {
-    role: 'user',
-    content: `[System: ${droppedCount} older messages were pruned from history to fit context window. Earlier conversation context is no longer available.]`,
-    timestamp: Date.now(),
-  } as AgentMessage;
+  return userMessage(
+    `[System: ${droppedCount} older messages were pruned from history to fit context window. Earlier conversation context is no longer available.]`,
+  );
 }
 
 // ============================================================================

@@ -13,15 +13,7 @@ import {
 } from './history.js';
 import type { AgentMessage } from '@mariozechner/pi-agent-core';
 import type { SessionMessage } from '../sessions/types.js';
-
-// Cast helpers — we only care about role/content/toolCallId shape, not full type compliance
-function msg(obj: Record<string, unknown>): AgentMessage {
-  return obj as unknown as AgentMessage;
-}
-
-function userMsg(text: string) {
-  return msg({ role: 'user', content: text, timestamp: Date.now() });
-}
+import { toMsg as msg, userMessage as userMsg } from './message-helpers.js';
 
 function assistantMsg(text: string) {
   return msg({ role: 'assistant', content: [{ type: 'text', text }], timestamp: Date.now() });

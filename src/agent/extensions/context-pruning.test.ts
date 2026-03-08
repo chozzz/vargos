@@ -5,19 +5,7 @@ import {
   estimateMessageChars,
   type ContextPruningSettings,
 } from './context-pruning.js';
-import type { AgentMessage } from '@mariozechner/pi-agent-core';
-
-function msg(obj: Record<string, unknown>): AgentMessage {
-  return obj as unknown as AgentMessage;
-}
-
-function userMsg(text: string) {
-  return msg({ role: 'user', content: text, timestamp: Date.now() });
-}
-
-function assistantMsg(text: string) {
-  return msg({ role: 'assistant', content: [{ type: 'text', text }], timestamp: Date.now() });
-}
+import { toMsg as msg, userMessage as userMsg, assistantMessage as assistantMsg } from '../message-helpers.js';
 
 function toolResultMsg(toolName: string, text: string) {
   return msg({
