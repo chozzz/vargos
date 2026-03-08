@@ -182,7 +182,7 @@ describe('WhatsAppAdapter', () => {
       let capturedCallbacks: Record<string, Function> = {};
 
       mockedCreate.mockImplementationOnce(async (_dir, callbacks) => {
-        capturedCallbacks = callbacks as Record<string, Function>;
+        capturedCallbacks = callbacks as unknown as Record<string, Function>;
         return sock;
       });
 

@@ -35,7 +35,7 @@ let mockConfig: any = {
 
 const loadConfigSpy = vi.fn(async () => mockConfig);
 vi.mock('../config/pi-config.js', () => ({
-  loadConfig: (...args: any[]) => loadConfigSpy(...args),
+  loadConfig: (...args: unknown[]) => loadConfigSpy(),
   resolveModel: (config: any, name?: string) => {
     const key = name ?? config.agent.primary;
     const profile = config.models[key];
