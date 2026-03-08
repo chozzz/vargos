@@ -13,6 +13,8 @@ export interface ChannelConfig {
   botToken?: string;
   /** Whitelist of sender IDs (phone numbers / chat IDs). Empty = accept all. */
   allowFrom?: string[];
+  /** Debounce window in ms before batched messages are forwarded (default: 2000) */
+  debounceMs?: number;
 }
 
 export type OnInboundMessageFn = (

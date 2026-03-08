@@ -47,6 +47,8 @@ export interface ChannelEntry {
   enabled?: boolean;
   botToken?: string;
   allowFrom?: string[];
+  /** Debounce window in ms before batched messages are forwarded (default: 2000) */
+  debounceMs?: number;
 }
 
 export interface GatewayConfig {

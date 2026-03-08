@@ -100,6 +100,8 @@ export interface PiAgentConfig {
   channel?: string;
   bootstrapOverrides?: Record<string, string>;
   compaction?: CompactionConfig;
+  thinkingLevel?: string;
+  verbose?: boolean;
 }
 
 export interface PiAgentRunResult {
@@ -180,6 +182,21 @@ export class PiAgentRuntime {
       log.debug(`Lifecycle started: runId=${runId}`);
 
       const { session, sessionManager } = await buildPiSession(config);
+
+      if (config.thinkingLevel) {
+        // Cast: ThinkingLevel from pi-agent-core is not re-exported; we validate upstream
+        session.agent.setThinkingLevel(config.thinkingLevel as Parameters<typeof session.agent.setThinkingLevel>[0]);
+      }
+
+      if (config.verbose) {
+        config = {
+          ...config,
+          extraSystemPrompt: [
+            config.extraSystemPrompt,
+            'User requested verbose mode. Provide detailed, thorough responses.',
+          ].filter(Boolean).join('\n\n'),
+        };
+      }
 
       await this.injectSystemPrompt(session, config);
       await this.injectHistory(session, config);

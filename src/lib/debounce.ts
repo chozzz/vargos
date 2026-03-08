@@ -16,6 +16,8 @@ export type FlushCallback = (key: string, messages: string[]) => void;
 export interface MessageDebouncer {
   /** Add a message for a given key. Resets the flush timer. */
   push(key: string, message: string): void;
+  /** Immediately flush pending messages for a key */
+  flush(key: string): void;
   /** Cancel pending flush for a key */
   cancel(key: string): void;
   /** Cancel all pending flushes */
@@ -44,6 +46,8 @@ export function createMessageDebouncer(
   }
 
   return {
+    flush,
+
     push(key: string, message: string): void {
       let entry = pending.get(key);
 
