@@ -1,10 +1,15 @@
 /**
  * History sanitization and limiting for Vargos sessions
  * Sanitize and limit session history for context windows
+ *
+ * Pipeline: convert → sanitize → truncate tool results → token-budget prune → turn limit fallback
  */
 
 import type { AgentMessage } from '@mariozechner/pi-agent-core';
 import type { SessionMessage } from '../sessions/types.js';
+import { createLogger } from '../lib/logger.js';
+
+const log = createLogger('history');
 
 // ============================================================================
 // Session → AgentMessage Conversion
@@ -222,6 +227,129 @@ function syntheticErrorResult(toolCallId: string): AgentMessage {
 }
 
 // ============================================================================
+// Tool Result Truncation (pre-injection)
+// ============================================================================
+
+const CHARS_PER_TOKEN = 4;
+const MAX_TOOL_RESULT_SHARE = 0.3; // single tool result capped at 30% of context
+
+/**
+ * Truncate oversized tool results before injection.
+ * Uses head+tail strategy to preserve errors/summaries at the end.
+ */
+export function truncateToolResults(
+  messages: AgentMessage[],
+  contextWindowTokens: number,
+): AgentMessage[] {
+  if (contextWindowTokens <= 0) return messages;
+
+  const maxChars = Math.floor(contextWindowTokens * CHARS_PER_TOKEN * MAX_TOOL_RESULT_SHARE);
+  let changed = false;
+  const result = messages.map(msg => {
+    const m = msg as { role?: string; content?: unknown };
+    if (m.role !== 'toolResult' || !Array.isArray(m.content)) return msg;
+
+    const textParts = (m.content as Array<{ type?: string; text?: string }>)
+      .filter(b => b.type === 'text' && typeof b.text === 'string');
+    const totalChars = textParts.reduce((sum, b) => sum + (b.text?.length ?? 0), 0);
+    if (totalChars <= maxChars) return msg;
+
+    // Head + tail truncation
+    const headChars = Math.floor(maxChars * 0.6);
+    const tailChars = Math.floor(maxChars * 0.3);
+    const fullText = textParts.map(b => b.text!).join('\n');
+    const head = fullText.slice(0, headChars);
+    const tail = fullText.slice(-tailChars);
+    const note = `\n\n[Truncated: ${totalChars} chars → ${headChars + tailChars} chars]`;
+
+    changed = true;
+    return {
+      ...msg,
+      content: [{ type: 'text', text: `${head}\n...\n${tail}${note}` }],
+    } as unknown as AgentMessage;
+  });
+
+  return changed ? result : messages;
+}
+
+// ============================================================================
+// Token-Budget History Pruning
+// ============================================================================
+
+/** Rough token estimate for a message (4 chars ≈ 1 token). */
+export function estimateMessageTokens(msg: AgentMessage): number {
+  const m = msg as { role?: string; content?: unknown };
+  if (typeof m.content === 'string') return Math.ceil(m.content.length / CHARS_PER_TOKEN);
+  if (Array.isArray(m.content)) {
+    let chars = 0;
+    for (const b of m.content as Array<{ type?: string; text?: string; thinking?: string }>) {
+      if (b.type === 'text') chars += (b.text ?? '').length;
+      else if (b.type === 'thinking') chars += (b.thinking ?? '').length;
+      else if (b.type === 'tool_use') {
+        try { chars += JSON.stringify(b).length; } catch { chars += 128; }
+      }
+      else chars += 256;
+    }
+    return Math.ceil(chars / CHARS_PER_TOKEN);
+  }
+  return 64;
+}
+
+function estimateTotalTokens(messages: AgentMessage[]): number {
+  return messages.reduce((sum, m) => sum + estimateMessageTokens(m), 0);
+}
+
+/** Default context budget: 50% of context window for history */
+const DEFAULT_HISTORY_BUDGET_RATIO = 0.5;
+
+export interface HistoryBudgetConfig {
+  contextWindowTokens: number;
+  /** Fraction of context window for history (default 0.5) */
+  budgetRatio?: number;
+}
+
+/**
+ * Prune history to fit within a token budget.
+ * Drops oldest messages first, in chunks, until within budget.
+ * Returns kept messages and count of dropped messages.
+ */
+export function pruneToTokenBudget(
+  messages: AgentMessage[],
+  config: HistoryBudgetConfig,
+): { messages: AgentMessage[]; droppedCount: number } {
+  const ratio = config.budgetRatio ?? DEFAULT_HISTORY_BUDGET_RATIO;
+  const budget = Math.floor(config.contextWindowTokens * ratio);
+  const totalTokens = estimateTotalTokens(messages);
+
+  if (totalTokens <= budget) return { messages, droppedCount: 0 };
+
+  // Drop from the front (oldest) until within budget
+  let droppedCount = 0;
+  let currentTokens = totalTokens;
+  let startIndex = 0;
+
+  while (startIndex < messages.length && currentTokens > budget) {
+    currentTokens -= estimateMessageTokens(messages[startIndex]);
+    startIndex++;
+    droppedCount++;
+  }
+
+  return { messages: messages.slice(startIndex), droppedCount };
+}
+
+/**
+ * Build a preamble message summarizing what was dropped.
+ * Injected as the first user message so the agent knows context was lost.
+ */
+function buildDroppedPreamble(droppedCount: number): AgentMessage {
+  return {
+    role: 'user',
+    content: `[System: ${droppedCount} older messages were pruned from history to fit context window. Earlier conversation context is no longer available.]`,
+    timestamp: Date.now(),
+  } as AgentMessage;
+}
+
+// ============================================================================
 // Pipeline
 // ============================================================================
 
@@ -231,4 +359,42 @@ function syntheticErrorResult(toolCallId: string): AgentMessage {
 export function sanitizeHistory(messages: AgentMessage[]): AgentMessage[] {
   const repaired = repairToolResultPairing(messages);
   return validateTurns(repaired);
+}
+
+/**
+ * Full pre-injection pipeline:
+ * 1. Truncate oversized tool results
+ * 2. Token-budget prune (drop oldest)
+ * 3. Turn-limit fallback (hard ceiling)
+ * 4. Prepend preamble if messages were dropped
+ */
+export function prepareHistory(
+  messages: AgentMessage[],
+  sessionKey: string,
+  contextWindowTokens?: number,
+): AgentMessage[] {
+  if (messages.length === 0) return messages;
+
+  const contextWindow = contextWindowTokens ?? 128_000;
+
+  // 1. Truncate oversized tool results
+  let prepared = truncateToolResults(messages, contextWindow);
+
+  // 2. Token-budget prune
+  const { messages: budgeted, droppedCount } = pruneToTokenBudget(prepared, {
+    contextWindowTokens: contextWindow,
+  });
+  prepared = budgeted;
+
+  // 3. Turn-limit fallback (hard ceiling for safety)
+  const turnLimit = getHistoryLimit(sessionKey);
+  prepared = limitHistoryTurns(prepared, turnLimit);
+
+  // 4. Prepend preamble if context was pruned
+  if (droppedCount > 0) {
+    log.info(`pruned ${droppedCount} messages to fit context budget (${contextWindow} tokens)`);
+    prepared = [buildDroppedPreamble(droppedCount), ...prepared];
+  }
+
+  return prepared;
 }
