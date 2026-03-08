@@ -5,6 +5,7 @@
  */
 
 import { createLogger } from '../lib/logger.js';
+import { sleep } from '../lib/sleep.js';
 
 const log = createLogger('delivery');
 
@@ -57,10 +58,6 @@ export function chunkText(text: string, maxSize: number): string[] {
   }
 
   return chunks.filter((c) => c.length > 0);
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**

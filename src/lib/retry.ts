@@ -3,6 +3,8 @@
  * Pure utility — no domain imports, no side effects beyond timing.
  */
 
+import { sleep } from './sleep.js';
+
 export interface RetryConfig {
   /** Max number of retry attempts after initial failure. Default: 3 */
   maxRetries?: number;
@@ -16,27 +18,6 @@ export interface RetryConfig {
   shouldRetry?: (error: unknown) => boolean;
   /** Abort mid-retry on signal cancellation */
   signal?: AbortSignal;
-}
-
-function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(signal.reason ?? new DOMException('Aborted', 'AbortError'));
-      return;
-    }
-
-    const onAbort = () => {
-      clearTimeout(timer);
-      reject(signal!.reason ?? new DOMException('Aborted', 'AbortError'));
-    };
-
-    const timer = setTimeout(() => {
-      signal?.removeEventListener('abort', onAbort);
-      resolve();
-    }, ms);
-
-    signal?.addEventListener('abort', onAbort, { once: true });
-  });
 }
 
 function computeDelay(attempt: number, baseMs: number, maxMs: number, jitter: boolean): number {

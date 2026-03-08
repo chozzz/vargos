@@ -5,10 +5,9 @@
 
 import { z } from 'zod';
 import * as fs from 'node:fs/promises';
-import * as path from 'node:path';
 import { Tool, ToolContext, ToolResult, textResult, errorResult, imageResult } from '../types.js';
 import { detectMimeType } from '../../lib/mime.js';
-import { expandTilde, validateBoundary } from '../../lib/path.js';
+import { resolveFsPath } from './resolve.js';
 
 const ReadParameters = z.object({
   path: z.string().describe('Path to the file to read'),
@@ -29,16 +28,9 @@ export const readTool: Tool = {
   },
   execute: async (args: unknown, context: ToolContext): Promise<ToolResult> => {
     const params = ReadParameters.parse(args);
-    const resolvedPath = expandTilde(params.path);
-    let filePath = path.resolve(context.workingDir, resolvedPath);
-
-    if (context.boundary) {
-      try {
-        filePath = await validateBoundary(filePath, context.boundary, context.boundaryAllowlist);
-      } catch (err) {
-        return errorResult(err instanceof Error ? err.message : 'Path outside boundary');
-      }
-    }
+    const resolved = await resolveFsPath(params.path, context);
+    if (!resolved.ok) return resolved.error;
+    const { filePath } = resolved;
 
     try {
       const stat = await fs.stat(filePath);
