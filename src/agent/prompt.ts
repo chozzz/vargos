@@ -88,7 +88,7 @@ export async function buildSystemPrompt(options: SystemPromptOptions): Promise<s
 
   // 5. Channel context (if from a messaging channel)
   if (options.channel) {
-    sections.push(buildChannelSection(options.channel));
+    sections.push(buildChannelSection(options.channel, options.sessionKey));
   }
 
   // 6. System info — date/time, OS, runtime
@@ -276,11 +276,26 @@ async function loadBootstrapFiles(
 /**
  * Build channel context section
  */
-function buildChannelSection(channel: string): string {
-  return [
+function buildChannelSection(channel: string, sessionKey?: string): string {
+  // Extract userId from session key (e.g. "whatsapp:61423222658" → "61423222658")
+  const userId = sessionKey?.startsWith(`${channel}:`)
+    ? sessionKey.slice(channel.length + 1).split(':')[0]
+    : undefined;
+
+  const lines = [
     '## Channel',
     '',
     `This message arrived via: ${channel}`,
+  ];
+
+  if (userId) {
+    lines.push(`Channel: ${channel}, userId: ${userId}`);
+  }
+
+  lines.push(
+    '',
+    'MEDIA DELIVERY (MANDATORY):',
+    `When the user asks you to send, show, or share a file — you MUST call channel_send_media with channel="${channel}"${userId ? `, userId="${userId}"` : ''}, the file path, and correct MIME type. Do NOT describe the file or print the path. SEND IT.`,
     '',
     'Channel rules:',
     '- Be short and direct. 1-3 sentences for simple answers. No filler, no preamble.',
@@ -289,9 +304,11 @@ function buildChannelSection(channel: string): string {
     '- Execute tools immediately — never say "I\'ll search" or "Let me look" without calling the tool.',
     '- All tools listed above are available. Do not claim otherwise.',
     '- If a tool fails, report the error briefly. Do not speculate.',
-    '- When you generate or reference a media file (image, video, audio, document), use channel_send_media to deliver it. Do not just describe the file — send it.',
+    '- After generating any media file, immediately call channel_send_media to deliver it. Never just report the file path.',
     '- User messages may have contained /think or /verbose directives — these are stripped before you see the message. Do not try to parse or reference them.',
-  ].join('\n');
+  );
+
+  return lines.join('\n');
 }
 
 /**

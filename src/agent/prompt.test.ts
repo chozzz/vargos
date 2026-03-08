@@ -131,6 +131,60 @@ describe('buildSystemPrompt', () => {
       expect(result).toContain('All tools listed above are available');
     });
 
+    it('includes mandatory media delivery block with channel and userId', async () => {
+      const dir = await makeTmpDir();
+      const result = await buildSystemPrompt({
+        mode: 'full',
+        workspaceDir: dir,
+        toolNames: [],
+        channel: 'whatsapp',
+        sessionKey: 'whatsapp:61423222658',
+      });
+      expect(result).toContain('MEDIA DELIVERY (MANDATORY)');
+      expect(result).toContain('channel_send_media');
+      expect(result).toContain('channel="whatsapp"');
+      expect(result).toContain('userId="61423222658"');
+    });
+
+    it('extracts userId from session key for channel prompt', async () => {
+      const dir = await makeTmpDir();
+      const result = await buildSystemPrompt({
+        mode: 'full',
+        workspaceDir: dir,
+        toolNames: [],
+        channel: 'telegram',
+        sessionKey: 'telegram:98765',
+      });
+      expect(result).toContain('Channel: telegram, userId: 98765');
+      expect(result).toContain('channel="telegram"');
+      expect(result).toContain('userId="98765"');
+    });
+
+    it('handles subagent session key by extracting root userId', async () => {
+      const dir = await makeTmpDir();
+      const result = await buildSystemPrompt({
+        mode: 'full',
+        workspaceDir: dir,
+        toolNames: [],
+        channel: 'whatsapp',
+        sessionKey: 'whatsapp:12345:subagent:abc',
+      });
+      expect(result).toContain('userId="12345"');
+    });
+
+    it('omits userId when sessionKey is not provided', async () => {
+      const dir = await makeTmpDir();
+      const result = await buildSystemPrompt({
+        mode: 'full',
+        workspaceDir: dir,
+        toolNames: [],
+        channel: 'whatsapp',
+      });
+      expect(result).toContain('MEDIA DELIVERY (MANDATORY)');
+      expect(result).not.toContain('userId=');
+      expect(result).not.toContain('Channel: whatsapp, userId:');
+    });
+
     it('includes system section with date, time, and OS', async () => {
       const dir = await makeTmpDir();
       const result = await buildSystemPrompt({
