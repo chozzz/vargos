@@ -33,7 +33,7 @@ export class ChannelService extends ServiceClient {
   constructor(config: ChannelServiceConfig = {}) {
     super({
       service: 'channel',
-      methods: ['channel.send', 'channel.status', 'channel.list'],
+      methods: ['channel.send', 'channel.sendMedia', 'channel.status', 'channel.list'],
       events: ['message.received', 'channel.connected', 'channel.disconnected'],
       subscriptions: ['run.started', 'run.delta', 'run.completed'],
       gatewayUrl: config.gatewayUrl,
@@ -124,6 +124,18 @@ export class ChannelService extends ServiceClient {
           }
         }
 
+        return { sent: true };
+      }
+
+      case 'channel.sendMedia': {
+        const { channel, userId, filePath, mimeType, caption } = p as {
+          channel: string; userId: string; filePath: string; mimeType: string; caption?: string;
+        };
+        const adapter = this.adapters.get(channel);
+        if (!adapter) throw new Error(`No adapter for channel: ${channel}`);
+        if (!adapter.sendMedia) throw new Error(`Channel ${channel} does not support media`);
+        log.info(`sendMedia: ${channel}:${userId} ${mimeType} ${filePath}`);
+        await adapter.sendMedia(userId, filePath, mimeType, caption);
         return { sent: true };
       }
 
