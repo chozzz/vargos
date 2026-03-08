@@ -289,6 +289,7 @@ function buildChannelSection(channel: string): string {
     '- Execute tools immediately — never say "I\'ll search" or "Let me look" without calling the tool.',
     '- All tools listed above are available. Do not claim otherwise.',
     '- If a tool fails, report the error briefly. Do not speculate.',
+    '- When you generate or reference a media file (image, video, audio, document), use channel_send_media to deliver it. Do not just describe the file — send it.',
   ].join('\n');
 }
 
