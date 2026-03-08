@@ -17,6 +17,8 @@ export abstract class BaseChannelAdapter implements ChannelAdapter {
   protected allowFrom: Set<string> | null;
   protected onInboundMessage?: OnInboundMessageFn;
   protected typingIntervals = new Map<string, ReturnType<typeof setInterval>>();
+  protected typingTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+  protected typingFailures = new Map<string, number>();
   protected readonly log;
 
   constructor(channelType: ChannelType, allowFrom?: string[], onInboundMessage?: OnInboundMessageFn) {
@@ -41,11 +43,33 @@ export abstract class BaseChannelAdapter implements ChannelAdapter {
   /** Subclass implements the platform-specific typing API call */
   protected abstract sendTypingIndicator(recipientId: string): Promise<void>;
 
+  private static readonly TYPING_TTL_MS = 120_000;
+  private static readonly TYPING_FAILURE_LIMIT = 3;
+
   startTyping(recipientId: string): void {
     if (this.typingIntervals.has(recipientId)) return;
-    const typing = () => this.sendTypingIndicator(recipientId).catch(() => {});
-    typing();
-    this.typingIntervals.set(recipientId, setInterval(typing, 4000));
+
+    const typing = async () => {
+      try {
+        await this.sendTypingIndicator(recipientId);
+        this.typingFailures.delete(recipientId);
+      } catch {
+        const failures = (this.typingFailures.get(recipientId) ?? 0) + 1;
+        this.typingFailures.set(recipientId, failures);
+        if (failures >= BaseChannelAdapter.TYPING_FAILURE_LIMIT) {
+          this.stopTyping(recipientId);
+        }
+      }
+    };
+
+    void typing();
+    this.typingIntervals.set(recipientId, setInterval(() => void typing(), 4000));
+
+    // Auto-stop after TTL to prevent zombie indicators
+    this.typingTimeouts.set(
+      recipientId,
+      setTimeout(() => this.stopTyping(recipientId), BaseChannelAdapter.TYPING_TTL_MS),
+    );
   }
 
   stopTyping(recipientId: string): void {
@@ -54,6 +78,12 @@ export abstract class BaseChannelAdapter implements ChannelAdapter {
       clearInterval(interval);
       this.typingIntervals.delete(recipientId);
     }
+    const timeout = this.typingTimeouts.get(recipientId);
+    if (timeout) {
+      clearTimeout(timeout);
+      this.typingTimeouts.delete(recipientId);
+    }
+    this.typingFailures.delete(recipientId);
   }
 
   protected async routeToService(userId: string, content: string, metadata?: Record<string, unknown>): Promise<void> {
@@ -74,5 +104,8 @@ export abstract class BaseChannelAdapter implements ChannelAdapter {
     this.debouncer.cancelAll();
     for (const interval of this.typingIntervals.values()) clearInterval(interval);
     this.typingIntervals.clear();
+    for (const timeout of this.typingTimeouts.values()) clearTimeout(timeout);
+    this.typingTimeouts.clear();
+    this.typingFailures.clear();
   }
 }

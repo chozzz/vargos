@@ -21,6 +21,7 @@ import { initializeWorkspace, isWorkspaceInitialized } from '../../config/worksp
 import type { ExtensionContext } from '../../tools/extension.js';
 import { setGatewayCall } from '../../agent/extension.js';
 import { extractLoaderArgs } from '../../lib/loader-args.js';
+import { reapSessions } from '../../sessions/reaper.js';
 import { acquireLock, releaseLock } from '../lock.js';
 import { writePidFile, removePidFile } from '../pid.js';
 import {
@@ -267,6 +268,14 @@ export async function start(): Promise<void> {
   cron.startAll();
   const cronCount = cron.listTasks().length;
   serviceStatuses.push({ name: 'Cron', ok: true, detail: `${cronCount} task${cronCount !== 1 ? 's' : ''}` });
+
+  // Run once at boot, then every 6 hours
+  reapSessions(fileSessionService).catch(() => {});
+  const reaperInterval = setInterval(
+    () => reapSessions(fileSessionService).catch(() => {}),
+    6 * 60 * 60 * 1000,
+  );
+  reaperInterval.unref();
 
   const channels = new ChannelService({ gatewayUrl });
   await channels.connect();

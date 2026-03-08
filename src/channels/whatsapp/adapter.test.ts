@@ -148,8 +148,8 @@ describe('WhatsAppAdapter', () => {
         messageId: 'msg-1',
       });
 
-      // Debouncer mock fires synchronously → routeToService called with normalized userId
-      expect(onInbound).toHaveBeenCalledWith('whatsapp', '61423222658', 'hello', undefined);
+      // Debouncer mock fires synchronously → routeToService called with normalized userId and messageId
+      expect(onInbound).toHaveBeenCalledWith('whatsapp', '61423222658', 'hello', { messageId: 'msg-1' });
     });
   });
 

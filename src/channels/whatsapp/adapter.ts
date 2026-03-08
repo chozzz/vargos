@@ -21,6 +21,8 @@ export class WhatsAppAdapter extends BaseChannelAdapter {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private authDir = '';
   private lidCache = new Map<string, string>();
+  // Track latest messageId per userId for reaction support
+  private latestMessageId = new Map<string, string>();
 
   constructor(allowFrom?: string[], onInboundMessage?: OnInboundMessageFn) {
     // WA normalizes phone numbers by stripping leading +
@@ -114,6 +116,13 @@ export class WhatsAppAdapter extends BaseChannelAdapter {
     await this.sock?.sendPresenceUpdate('composing', this.toJid(recipientId));
   }
 
+  async react(recipientId: string, messageId: string, emoji: string): Promise<void> {
+    const jid = this.toJid(recipientId);
+    await this.sock?.sendMessage(jid, {
+      react: { text: emoji, key: { remoteJid: jid, id: messageId } },
+    });
+  }
+
   /** Normalize a phone number or raw JID into a valid WhatsApp JID */
   private toJid(id: string): string {
     if (id.includes('@')) return id;
@@ -172,11 +181,20 @@ export class WhatsAppAdapter extends BaseChannelAdapter {
     }
 
     this.log.info(`received from ${msg.jid}: ${msg.text.slice(0, 80)}`);
-    this.debouncer.push(this.buildUserId(msg.jid), msg.text);
+    const userId = this.buildUserId(msg.jid);
+    this.latestMessageId.set(userId, msg.messageId);
+    this.debouncer.push(userId, msg.text);
   }
 
   private buildUserId(jid: string): string {
     return this.resolvePhone(jid);
+  }
+
+  protected override async handleBatch(id: string, messages: string[]): Promise<void> {
+    const messageId = this.latestMessageId.get(id);
+    const text = messages.join('\n');
+    this.log.info(`batch for whatsapp:${id}: "${text.slice(0, 80)}"`);
+    await this.routeToService(id, text, messageId ? { messageId } : undefined);
   }
 
   private async handleMedia(msg: WhatsAppInboundMessage): Promise<void> {

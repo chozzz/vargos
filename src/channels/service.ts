@@ -15,6 +15,7 @@ import { deliverReply } from './delivery.js';
 import { extractMediaPaths } from './media-extract.js';
 import { channelSessionKey } from '../sessions/keys.js';
 import { createLogger } from '../lib/logger.js';
+import { StatusReactionController } from './status-reactions.js';
 
 const log = createLogger('channels');
 
@@ -25,13 +26,16 @@ export interface ChannelServiceConfig {
 export class ChannelService extends ServiceClient {
   private adapters = new Map<string, ChannelAdapter>();
   private typingRuns = new Map<string, string>(); // runId → channel:userId
+  private reactionControllers = new Map<string, StatusReactionController>(); // runId → controller
+  // Latest inbound messageId per sessionKey, for reaction targeting
+  private pendingMessageIds = new Map<string, string>();
 
   constructor(config: ChannelServiceConfig = {}) {
     super({
       service: 'channel',
       methods: ['channel.send', 'channel.status', 'channel.list'],
       events: ['message.received', 'channel.connected', 'channel.disconnected'],
-      subscriptions: ['run.started', 'run.completed'],
+      subscriptions: ['run.started', 'run.delta', 'run.completed'],
       gatewayUrl: config.gatewayUrl,
     });
   }
@@ -70,6 +74,11 @@ export class ChannelService extends ServiceClient {
       const msg = err instanceof Error ? err.message : String(err);
       if (!msg.includes('already exists')) throw err;
     });
+
+    // Track inbound messageId for reaction support
+    if (metadata?.messageId && typeof metadata.messageId === 'string') {
+      this.pendingMessageIds.set(sessionKey, metadata.messageId);
+    }
 
     // Store user message — strip base64 data from media to avoid session bloat
     const sessionMeta: Record<string, unknown> = { type: 'task', channel, ...metadata };
@@ -143,6 +152,9 @@ export class ChannelService extends ServiceClient {
       case 'run.started':
         this.handleRunStarted(p);
         break;
+      case 'run.delta':
+        this.handleRunDelta(p);
+        break;
       case 'run.completed':
         this.handleRunCompleted(p);
         break;
@@ -160,10 +172,32 @@ export class ChannelService extends ServiceClient {
 
     adapter.startTyping(userId);
     this.typingRuns.set(runId, `${channel}:${userId}`);
+
+    // Set up reaction controller if the adapter supports it
+    const messageId = this.pendingMessageIds.get(sessionKey);
+    if (adapter.react && messageId) {
+      this.pendingMessageIds.delete(sessionKey);
+      const reactFn = adapter.react.bind(adapter);
+      const controller = new StatusReactionController({ react: reactFn }, userId, messageId);
+      controller.setThinking();
+      this.reactionControllers.set(runId, controller);
+    }
+  }
+
+  private handleRunDelta(payload: Record<string, unknown>): void {
+    const { runId, type, data } = payload as { runId: string; type: string; data: unknown };
+    const controller = this.reactionControllers.get(runId);
+    if (!controller) return;
+
+    if (type === 'tool_start') {
+      controller.setTool(typeof data === 'string' ? data : '');
+    } else if (type === 'text_delta') {
+      controller.setThinking();
+    }
   }
 
   private handleRunCompleted(payload: Record<string, unknown>): void {
-    const { runId } = payload as { runId: string };
+    const { runId, success } = payload as { runId: string; success?: boolean };
     const key = this.typingRuns.get(runId);
     if (!key) return;
 
@@ -173,6 +207,17 @@ export class ChannelService extends ServiceClient {
 
     const adapter = this.adapters.get(parsed.channel);
     adapter?.stopTyping(parsed.userId);
+
+    const controller = this.reactionControllers.get(runId);
+    if (controller) {
+      this.reactionControllers.delete(runId);
+      if (success === false) {
+        controller.setError();
+      } else {
+        controller.setDone();
+      }
+      controller.dispose();
+    }
   }
 
   /** Extract channel + userId from a session key like "whatsapp:123" */
