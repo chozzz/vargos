@@ -33,8 +33,9 @@ let mockConfig: any = {
   agent: { primary: 'test' },
 };
 
+const loadConfigSpy = vi.fn(async () => mockConfig);
 vi.mock('../config/pi-config.js', () => ({
-  loadConfig: async () => mockConfig,
+  loadConfig: (...args: any[]) => loadConfigSpy(...args),
   resolveModel: (config: any, name?: string) => {
     const key = name ?? config.agent.primary;
     const profile = config.models[key];
@@ -108,6 +109,8 @@ describe('AgentService', () => {
       agent: { primary: 'test' },
     };
     mockTransformMedia.mockReset();
+    loadConfigSpy.mockReset();
+    loadConfigSpy.mockImplementation(async () => mockConfig);
 
     gateway = new GatewayServer({ port: PORT, host: '127.0.0.1', requestTimeout: 5000, pingInterval: 60_000 });
     await gateway.start();
@@ -487,6 +490,30 @@ describe('AgentService', () => {
       await channel.disconnect();
     }
   }, 10000);
+
+  it('loads config once and caches it across multiple inbound messages', async () => {
+    const channel = new MockChannelService();
+    await channel.connect();
+
+    try {
+      // Send two messages in succession
+      caller.emit('message.received', {
+        channel: 'whatsapp', userId: 'cache-test-1',
+        sessionKey: 'whatsapp:cache-test-1', content: 'First message',
+      });
+      caller.emit('message.received', {
+        channel: 'whatsapp', userId: 'cache-test-2',
+        sessionKey: 'whatsapp:cache-test-2', content: 'Second message',
+      });
+
+      await new Promise((r) => setTimeout(r, 500));
+
+      // loadConfig should only be called once (cache hit on second message)
+      expect(loadConfigSpy).toHaveBeenCalledOnce();
+    } finally {
+      await channel.disconnect();
+    }
+  });
 
   it('sends error feedback to channel on failed run', async () => {
     // Disconnect default agent and reconnect with a failing runtime

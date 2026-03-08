@@ -36,6 +36,8 @@ export class AgentService extends ServiceClient {
   private runtime: PiAgentRuntime;
   private workspaceDir: string;
   private dataDir: string;
+  private cachedConfig: VargosConfig | null = null;
+  private configLoad: Promise<VargosConfig | null> | null = null;
   private stats = {
     totalTokens: { input: 0, output: 0 },
     totalToolCalls: 0,
@@ -59,6 +61,25 @@ export class AgentService extends ServiceClient {
     for (const timer of this.retriggerTimers.values()) clearTimeout(timer);
     this.retriggerTimers.clear();
     return super.disconnect();
+  }
+
+  /** Returns cached config, loading on first call. Concurrent callers share one load. */
+  private async getConfig(): Promise<VargosConfig | null> {
+    if (this.cachedConfig) return this.cachedConfig;
+    if (!this.configLoad) {
+      this.configLoad = loadConfig(this.dataDir).then(cfg => {
+        this.cachedConfig = cfg;
+        this.configLoad = null;
+        return cfg;
+      });
+    }
+    return this.configLoad;
+  }
+
+  /** Force re-read config from disk */
+  async reloadConfig(): Promise<void> {
+    this.configLoad = null;
+    this.cachedConfig = await loadConfig(this.dataDir);
   }
 
   async handleMethod(method: string, params: unknown): Promise<unknown> {
@@ -168,7 +189,7 @@ export class AgentService extends ServiceClient {
 
     log.info(`inbound message: ${channel}:${userId} → ${sessionKey}`);
 
-    const config = await loadConfig(this.dataDir);
+    const config = await this.getConfig();
     const images = metadata?.images as Array<{ data: string; mimeType: string }> | undefined;
     const media = metadata?.media as MediaAttachment | undefined;
 
@@ -415,7 +436,7 @@ export class AgentService extends ServiceClient {
   }
 
   private async buildRunConfig(params: AgentRunParams, existing?: VargosConfig | null): Promise<PiAgentConfig> {
-    const config = existing ?? await loadConfig(this.dataDir);
+    const config = existing ?? await this.getConfig();
     if (!config) throw new Error('No config.json — run: vargos config');
 
     const primary = resolveModel(config);

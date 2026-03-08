@@ -66,23 +66,24 @@ export class ChannelService extends ServiceClient {
   async onInboundMessage(channel: string, userId: string, content: string, metadata?: Record<string, unknown>): Promise<void> {
     const sessionKey = channelSessionKey(channel, userId);
 
-    // Create session if needed
-    await this.call('sessions', 'session.create', {
-      sessionKey,
-      kind: 'main',
-      metadata: { channel },
-    }).catch((err: unknown) => {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (!msg.includes('already exists')) throw err;
-    });
+    // Run session creation and link expansion concurrently — both are I/O bound
+    // and independent. This way expansion doesn't add latency on top of session setup.
+    const [, enrichedContent] = await Promise.all([
+      this.call('sessions', 'session.create', {
+        sessionKey,
+        kind: 'main',
+        metadata: { channel },
+      }).catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!msg.includes('already exists')) throw err;
+      }),
+      expandLinks(content, this.linkExpandConfig).catch(() => content),
+    ]);
 
     // Track inbound messageId for reaction support
     if (metadata?.messageId && typeof metadata.messageId === 'string') {
       this.pendingMessageIds.set(sessionKey, metadata.messageId);
     }
-
-    // Expand URLs in content before storing — never block on failure
-    const enrichedContent = await expandLinks(content, this.linkExpandConfig).catch(() => content);
 
     // Store user message — strip base64 data from media to avoid session bloat
     const sessionMeta: Record<string, unknown> = { type: 'task', channel, ...metadata };
