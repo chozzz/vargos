@@ -63,6 +63,9 @@ export class AgentService extends ServiceClient {
       (sessionKey, task) => this.runAgent({ sessionKey, task, retrigger: true }),
       this.deliverToChannel.bind(this),
       this.deliverToNotifyTargets.bind(this),
+      (parentKey) => this.runtime.listActiveRuns().some(
+        r => r.sessionKey?.startsWith(parentKey + ':subagent:'),
+      ),
     );
   }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { SubagentCoordinator, CallFn, RunAgentFn, DeliverFn, NotifyFn } from './subagent-coordinator.js';
+import { SubagentCoordinator, CallFn, RunAgentFn, DeliverFn, NotifyFn, HasActiveSubagentsFn } from './subagent-coordinator.js';
 import type { PiAgentRunResult } from './runtime.js';
 
 function makeResult(overrides: Partial<PiAgentRunResult> = {}): PiAgentRunResult {
@@ -11,6 +11,7 @@ describe('SubagentCoordinator', () => {
   let runAgent: RunAgentFn;
   let deliver: DeliverFn;
   let deliverNotify: NotifyFn;
+  let hasActiveSubagents: HasActiveSubagentsFn;
   let coordinator: SubagentCoordinator;
 
   beforeEach(() => {
@@ -19,7 +20,8 @@ describe('SubagentCoordinator', () => {
     runAgent = vi.fn().mockResolvedValue(makeResult());
     deliver = vi.fn().mockResolvedValue(undefined);
     deliverNotify = vi.fn().mockResolvedValue(undefined);
-    coordinator = new SubagentCoordinator(call, runAgent, deliver, deliverNotify);
+    hasActiveSubagents = vi.fn().mockReturnValue(false);
+    coordinator = new SubagentCoordinator(call, runAgent, deliver, deliverNotify, hasActiveSubagents);
   });
 
   afterEach(() => {
@@ -94,6 +96,22 @@ describe('SubagentCoordinator', () => {
     await vi.advanceTimersByTimeAsync(5000);
 
     expect(runAgent).not.toHaveBeenCalled();
+  });
+
+  it('defers delivery when subagents are still active', async () => {
+    (hasActiveSubagents as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    const callMock = call as ReturnType<typeof vi.fn>;
+    callMock.mockResolvedValueOnce({ metadata: { parentSessionKey: 'cron:daily' } });
+    callMock.mockResolvedValueOnce(undefined);
+    callMock.mockResolvedValueOnce([]);
+
+    await coordinator.handleSubagentCompletion('cron:daily:subagent:a', makeResult());
+    await vi.advanceTimersByTimeAsync(3500);
+
+    // Parent re-triggered but delivery deferred
+    expect(runAgent).toHaveBeenCalledTimes(1);
+    expect(deliverNotify).not.toHaveBeenCalled();
+    expect(deliver).not.toHaveBeenCalled();
   });
 
   it('clearTimers cancels pending re-triggers', async () => {

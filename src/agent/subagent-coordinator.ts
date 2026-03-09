@@ -20,6 +20,7 @@ export type CallFn = <T>(service: string, method: string, params: unknown) => Pr
 export type RunAgentFn = (sessionKey: string, task: string) => Promise<PiAgentRunResult>;
 export type DeliverFn = (channel: string, userId: string, result: PiAgentRunResult) => Promise<void>;
 export type NotifyFn = (targets: string[], result: PiAgentRunResult) => Promise<void>;
+export type HasActiveSubagentsFn = (parentKey: string) => boolean;
 
 export class SubagentCoordinator {
   private retriggerTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -29,6 +30,7 @@ export class SubagentCoordinator {
     private readonly runAgent: RunAgentFn,
     private readonly deliver: DeliverFn,
     private readonly deliverNotify: NotifyFn,
+    private readonly hasActiveSubagents: HasActiveSubagentsFn,
   ) {}
 
   clearTimers(): void {
@@ -84,6 +86,12 @@ export class SubagentCoordinator {
   }
 
   private async routeParentResult(parentKey: string, result: PiAgentRunResult): Promise<void> {
+    // Don't deliver yet if more subagents are still running — next completion will re-trigger
+    if (this.hasActiveSubagents(parentKey)) {
+      log.info(`parent ${parentKey} still has active subagents — deferring delivery`);
+      return;
+    }
+
     const rootKey = parentKey.split(':subagent:')[0];
     const { type } = parseSessionKey(rootKey);
 
