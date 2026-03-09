@@ -67,7 +67,7 @@ GatewayServer → SessionsService → SessionReaper → MemoryContext → ToolsS
 `PiAgentRuntime` (`src/agent/runtime.ts`) wraps `@mariozechner/pi-coding-agent`. `SessionMessageQueue` serializes runs per session to prevent race conditions. System prompt is assembled from workspace bootstrap files (`~/.vargos/workspace/*.md`). Tools are wrapped into Pi SDK format via `src/agent/extension.ts`.
 
 **History injection pipeline** (`src/agent/history.ts`):
-1. Convert session messages → agent messages (inject `subagent_announce` as user messages)
+1. Convert session messages → agent messages (inject `subagent_announce` and `media_transform` as user messages)
 2. Sanitize: repair tool result pairing, merge consecutive same-role messages
 3. Truncate oversized tool results (>30% of context window) with head+tail strategy
 4. Token-budget prune: drop oldest messages to fit 50% of context window

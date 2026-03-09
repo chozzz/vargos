@@ -82,6 +82,8 @@
 | Hierarchical session keys | ✅ |
 | Session types (main, cron, subagent, webhook) | ✅ |
 | Session reaper (TTL: cron 7d, subagent 3d) | ✅ |
+| Training data enrichment (tool calls, thinking, tokens, model) | ✅ |
+| Media transcription persistence | ✅ |
 
 ## Sub-agent Orchestration
 
@@ -182,6 +184,17 @@
 | LLM credential verification during onboarding | ✅ |
 | Embedding config validation (warn on missing key) | ✅ |
 | PostgreSQL → SQLite graceful fallback | ✅ |
+
+## Training Data
+
+| Feature | Status |
+|---------|--------|
+| Run metadata on assistant messages (model, provider, tokens, duration) | ✅ |
+| Tool call capture (name + args for every tool invocation) | ✅ |
+| Thinking block extraction (truncated at 4K chars) | ✅ |
+| Channel context tagging | ✅ |
+| Media transform persistence (audio transcription, image description) | ✅ |
+| Training data export pipeline | 📋 |
 
 ## Planned
 
