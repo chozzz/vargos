@@ -4,7 +4,7 @@
  * When a subagent finishes, it:
  * 1. Writes a subagent_announce message to the parent session so the LLM can see results
  * 2. Debounces re-triggers so multiple completing subagents batch into one parent wakeup
- * 3. Routes the parent result to the correct delivery target (channel or cron notify list)
+ * 3. Routes the parent result to the correct delivery target
  */
 
 import { createLogger } from '../lib/logger.js';
@@ -19,6 +19,7 @@ const RETRIGGER_DEBOUNCE_MS = 3000;
 export type CallFn = <T>(service: string, method: string, params: unknown) => Promise<T>;
 export type RunAgentFn = (sessionKey: string, task: string) => Promise<PiAgentRunResult>;
 export type DeliverFn = (channel: string, userId: string, result: PiAgentRunResult) => Promise<void>;
+export type NotifyFn = (targets: string[], result: PiAgentRunResult) => Promise<void>;
 
 export class SubagentCoordinator {
   private retriggerTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -27,6 +28,7 @@ export class SubagentCoordinator {
     private readonly call: CallFn,
     private readonly runAgent: RunAgentFn,
     private readonly deliver: DeliverFn,
+    private readonly deliverNotify: NotifyFn,
   ) {}
 
   clearTimers(): void {
@@ -85,19 +87,19 @@ export class SubagentCoordinator {
     const rootKey = parentKey.split(':subagent:')[0];
     const { type } = parseSessionKey(rootKey);
 
+    // Cron/webhook: delegate to the service's notify delivery (writes session + sends)
     if (type === 'cron' || type === 'webhook') {
       const rootSession = await this.call<{ metadata?: Record<string, unknown> }>(
         'sessions', 'session.get', { sessionKey: rootKey },
       ).catch(() => null);
       const notify = (rootSession?.metadata?.notify as string[]) ?? [];
-      for (const t of notify) {
-        const parsed = parseTarget(t);
-        if (parsed) await this.deliver(parsed.channel, parsed.userId, result);
-      }
-    } else {
-      const target = parseTarget(rootKey);
-      if (target) await this.deliver(target.channel, target.userId, result);
+      if (notify.length) await this.deliverNotify(notify, result);
+      return;
     }
+
+    // Channel sessions: deliver directly
+    const target = parseTarget(rootKey);
+    if (target) await this.deliver(target.channel, target.userId, result);
   }
 
   private async buildRetriggerTask(parentKey: string): Promise<string> {

@@ -23,6 +23,7 @@ import { setGatewayCall } from '../../agent/extension.js';
 import { extractLoaderArgs } from '../../lib/loader-args.js';
 import { reapSessions } from '../../sessions/reaper.js';
 import { acquireLock, releaseLock } from '../lock.js';
+import { toMessage } from '../../lib/error.js';
 import { writePidFile, removePidFile } from '../pid.js';
 import {
   renderBanner,
@@ -301,7 +302,7 @@ export async function start(): Promise<void> {
         }
         serviceStatuses.push({ name: 'Channel', ok: true, detail: `${type} ${adapter.status}` });
       } catch (err) {
-        serviceStatuses.push({ name: 'Channel', ok: false, detail: `${type} (${err instanceof Error ? err.message : String(err)})` });
+        serviceStatuses.push({ name: 'Channel', ok: false, detail: `${type} (${toMessage(err)})` });
       }
     }
   }

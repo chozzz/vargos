@@ -4,6 +4,7 @@
 
 import { z } from 'zod';
 import { Tool, ToolContext, textResult, errorResult } from '../types.js';
+import { toMessage } from '../../lib/error.js';
 
 const CronRemoveParameters = z.object({
   id: z.string().describe('ID of the scheduled task to remove'),
@@ -25,7 +26,7 @@ export const cronRemoveTool: Tool = {
       }
       return errorResult(`Task not found: ${id}`);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = toMessage(err);
       return errorResult(`Failed to remove scheduled task: ${message}`);
     }
   },

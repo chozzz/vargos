@@ -4,6 +4,7 @@
 
 import { z } from 'zod';
 import { Tool, ToolContext, textResult, errorResult } from '../types.js';
+import { toMessage } from '../../lib/error.js';
 
 const SessionsSendParameters = z.object({
   sessionKey: z.string().describe('Target session key'),
@@ -37,7 +38,7 @@ export const sessionsSendTool: Tool = {
 
       return textResult(`Message sent to session ${params.sessionKey}`);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = toMessage(err);
       return errorResult(`Sessions send failed: ${message}`);
     }
   },

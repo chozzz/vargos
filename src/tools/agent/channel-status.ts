@@ -4,6 +4,7 @@
 
 import { z } from 'zod';
 import { Tool, ToolContext, textResult, errorResult } from '../types.js';
+import { toMessage } from '../../lib/error.js';
 
 const ChannelStatusParameters = z.object({
   channel: z.string().optional().describe('Specific channel name to check (omit for all)'),
@@ -39,7 +40,7 @@ export const channelStatusTool: Tool = {
 
       return textResult(lines.join('\n'));
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = toMessage(err);
       return errorResult(`Failed to get channel status: ${message}`);
     }
   },

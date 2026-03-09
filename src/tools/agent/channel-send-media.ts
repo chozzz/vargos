@@ -4,6 +4,7 @@
 
 import { z } from 'zod';
 import { Tool, ToolContext, textResult, errorResult } from '../types.js';
+import { toMessage } from '../../lib/error.js';
 
 const ChannelSendMediaParameters = z.object({
   channel: z.string().describe('Channel type (e.g. "whatsapp", "telegram")'),
@@ -33,7 +34,7 @@ export const channelSendMediaTool: Tool = {
 
       return textResult(`Media sent to ${params.channel}:${params.userId}`);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = toMessage(err);
       return errorResult(`Failed to send media: ${message}`);
     }
   },

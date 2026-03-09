@@ -192,6 +192,3 @@ export class BrowserTool extends BaseTool {
   }
 }
 
-export function createBrowserTool(): BrowserTool {
-  return new BrowserTool();
-}

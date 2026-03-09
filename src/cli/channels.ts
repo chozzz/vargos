@@ -1,5 +1,6 @@
 import chalk from 'chalk';
 import { connectToGateway } from './client.js';
+import { toMessage } from '../lib/error.js';
 
 export async function send(args?: string[]): Promise<void> {
   if (!args || args.length < 2) {
@@ -26,7 +27,7 @@ export async function send(args?: string[]): Promise<void> {
     await client.call('channel', 'channel.send', { channel, userId, text });
     console.log(chalk.green(`  Sent to ${target}`));
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = toMessage(err);
     console.error(chalk.red(`  Send failed: ${msg}`));
     process.exit(1);
   } finally {

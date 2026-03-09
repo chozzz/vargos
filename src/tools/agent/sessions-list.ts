@@ -4,6 +4,7 @@
 
 import { z } from 'zod';
 import { Tool, ToolContext, textResult, errorResult } from '../types.js';
+import { toMessage } from '../../lib/error.js';
 
 const SessionsListParameters = z.object({
   kinds: z.array(z.enum(['main', 'subagent'])).optional().describe('Filter by session kinds'),
@@ -55,7 +56,7 @@ export const sessionsListTool: Tool = {
 
       return textResult(`Found ${list.length} sessions:\n\n${formatted.join('\n\n')}`);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = toMessage(err);
       return errorResult(`Sessions list failed: ${message}`);
     }
   },

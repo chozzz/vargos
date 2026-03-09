@@ -11,6 +11,7 @@ import type { ToolRegistry } from '../tools/registry.js';
 import type { Tool, ToolContent, ToolResult } from '../tools/types.js';
 import { errorResult } from '../tools/types.js';
 import { createLogger } from '../lib/logger.js';
+import { toMessage } from '../lib/error.js';
 
 const log = createLogger('mcp');
 
@@ -171,7 +172,7 @@ function createBridgeTool(
         });
         return { content: mapMcpContent(result.content), isError: result.isError as boolean | undefined };
       } catch (err) {
-        return errorResult(`${prefixedName}: ${err instanceof Error ? err.message : String(err)}`);
+        return errorResult(`${prefixedName}: ${toMessage(err)}`);
       }
     },
     formatCall: (args: Record<string, unknown>) =>

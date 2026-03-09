@@ -3,6 +3,7 @@
 import { createRequire } from 'node:module';
 import chalk from 'chalk';
 import { buildTree, resolve, isGroup } from './tree.js';
+import { toMessage } from '../lib/error.js';
 import { runMenu } from './menu.js';
 
 const require = createRequire(import.meta.url);
@@ -71,6 +72,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error(err instanceof Error ? err.message : String(err));
+  console.error(toMessage(err));
   process.exit(1);
 });

@@ -17,6 +17,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import http from 'node:http';
 import { ServiceClient } from '../gateway/service-client.js';
+import { toMessage } from '../lib/error.js';
 import { resolveWorkspaceDir } from '../config/paths.js';
 import type { ToolResult } from '../tools/types.js';
 
@@ -210,7 +211,7 @@ export class McpBridge extends ServiceClient {
         return { content: result.content, isError: result.isError };
       } catch (err) {
         return {
-          content: [{ type: 'text', text: err instanceof Error ? err.message : String(err) }],
+          content: [{ type: 'text', text: toMessage(err) }],
           isError: true,
         };
       }

@@ -4,6 +4,7 @@
 
 import { z } from 'zod';
 import { Tool, ToolContext, textResult, errorResult } from '../types.js';
+import { toMessage } from '../../lib/error.js';
 
 const CronRunParameters = z.object({
   id: z.string().describe('ID of the scheduled task to run immediately'),
@@ -22,7 +23,7 @@ export const cronRunTool: Tool = {
       await context.call('cron', 'cron.run', { id });
       return textResult(`Triggered immediate run of task: ${id}`);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = toMessage(err);
       return errorResult(`Failed to run task: ${message}`);
     }
   },

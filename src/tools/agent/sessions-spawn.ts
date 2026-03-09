@@ -5,6 +5,7 @@
 
 import { z } from 'zod';
 import { Tool, ToolContext, textResult, errorResult } from '../types.js';
+import { toMessage } from '../../lib/error.js';
 import {
   canSpawnSubagent,
   subagentSessionKey,
@@ -83,7 +84,7 @@ export const sessionsSpawnTool: Tool = {
         model: params.model ?? subagentCfg?.model,
         ...(params.role && { bootstrapOverrides: { 'SOUL.md': params.role } }),
       }).catch(err => {
-        log.error(`Subagent ${childKey} failed:`, err instanceof Error ? err.message : err);
+        log.error(`Subagent ${childKey} failed:`, toMessage(err));
       });
 
       // Enforce timeout — abort the child run if it exceeds the limit
@@ -99,7 +100,7 @@ export const sessionsSpawnTool: Tool = {
               });
             }
           } catch (err) {
-            log.error(`Timeout check failed for ${childKey}:`, err instanceof Error ? err.message : err);
+            log.error(`Timeout check failed for ${childKey}:`, toMessage(err));
           }
         }, timeout * 1000);
       }
@@ -111,7 +112,7 @@ export const sessionsSpawnTool: Tool = {
         `The sub-agent is running in the background. Results will be announced when complete.`
       );
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = toMessage(err);
       return errorResult(`Sessions spawn failed: ${message}`);
     }
   },

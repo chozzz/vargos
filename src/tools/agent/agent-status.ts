@@ -4,6 +4,7 @@
 
 import { z } from 'zod';
 import { Tool, ToolContext, textResult, errorResult } from '../types.js';
+import { toMessage } from '../../lib/error.js';
 
 const AgentStatusParameters = z.object({});
 
@@ -36,7 +37,7 @@ export const agentStatusTool: Tool = {
 
       return textResult(lines.join('\n'));
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = toMessage(err);
       return errorResult(`Failed to get agent status: ${message}`);
     }
   },

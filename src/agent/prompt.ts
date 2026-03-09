@@ -46,55 +46,42 @@ export async function buildSystemPrompt(options: SystemPromptOptions): Promise<s
 
   const sections: string[] = [];
 
-  // 0. Identity — delegates to SOUL.md for persona details
   sections.push(buildIdentitySection());
-
-  // 1. Tooling section
   sections.push(await buildToolingSection(toolNames));
-
-  // 2. Workspace section
   sections.push(buildWorkspaceSection(workspaceDir));
 
-  // 2.5 Codebase context — prevents hallucination about this project
   if (mode === 'full') {
-    sections.push(await buildCodebaseContextSection(workspaceDir));
+    sections.push(buildCodebaseContextSection(workspaceDir));
   }
 
-  // 2.7 Orchestration guidance (full mode + subagent worker guidance)
   if (mode === 'full' || mode === 'minimal-subagent') {
     sections.push(buildOrchestrationSection(options.sessionKey));
   }
 
-  // 3. Memory recall guidance (full mode, non-subagent)
   if (mode === 'full') {
     sections.push(buildMemorySection());
   }
 
-  // 3.5 Heartbeat protocol (full + minimal — heartbeat runs use minimal)
+  // Heartbeat protocol (full + minimal — heartbeat runs use minimal)
   if (mode !== 'minimal-subagent') {
     sections.push(buildHeartbeatSection());
   }
 
-  // 4. Bootstrap files (AGENTS.md, SOUL.md, TOOLS.md)
   const bootstrapContent = await loadBootstrapFiles(workspaceDir, options.bootstrapOverrides);
   if (bootstrapContent) {
     sections.push(bootstrapContent);
   }
 
-  // 4.7 Tool narration guidance (full mode only)
   if (mode === 'full') {
     sections.push(buildToolNarrationSection());
   }
 
-  // 5. Channel context (if from a messaging channel)
   if (options.channel) {
     sections.push(buildChannelSection(options.channel, options.sessionKey));
   }
 
-  // 6. System info — date/time, OS, runtime
   sections.push(buildSystemSection({ userTimezone, repoRoot, model, thinking }));
 
-  // 8. Extra prompt if provided
   if (options.extraSystemPrompt) {
     sections.push(`## Additional Context\n\n${options.extraSystemPrompt}`);
   }
@@ -103,9 +90,6 @@ export async function buildSystemPrompt(options: SystemPromptOptions): Promise<s
   return sections.filter(Boolean).join('\n\n');
 }
 
-/**
- * Build tooling section with detailed descriptions
- */
 async function buildToolingSection(toolNames: string[]): Promise<string> {
   const { external } = toolRegistry.getGroups();
   const externalNames = new Set<string>();
@@ -162,9 +146,6 @@ async function buildToolingSection(toolNames: string[]): Promise<string> {
   return lines.join('\n');
 }
 
-/**
- * Build workspace section
- */
 function buildWorkspaceSection(workspaceDir: string): string {
   return [
     '## Workspace',
@@ -175,9 +156,6 @@ function buildWorkspaceSection(workspaceDir: string): string {
   ].join('\n');
 }
 
-/**
- * Build memory recall guidance
- */
 function buildMemorySection(): string {
   return [
     '## Memory Recall',
@@ -191,9 +169,6 @@ function buildMemorySection(): string {
   ].join('\n');
 }
 
-/**
- * Build heartbeat protocol guidance
- */
 function buildHeartbeatSection(): string {
   return [
     '## Heartbeats',
@@ -273,9 +248,6 @@ async function loadBootstrapFiles(
   return [`## Project Context`, '', ...lines].join('\n');
 }
 
-/**
- * Build channel context section
- */
 function buildChannelSection(channel: string, sessionKey?: string): string {
   // Extract userId from session key (e.g. "whatsapp:61423222658" → "61423222658")
   const userId = sessionKey?.startsWith(`${channel}:`)
@@ -311,9 +283,6 @@ function buildChannelSection(channel: string, sessionKey?: string): string {
   return lines.join('\n');
 }
 
-/**
- * Build system & runtime section — current time, OS, host, model info
- */
 function buildSystemSection(options: {
   userTimezone?: string;
   repoRoot?: string;
@@ -341,9 +310,6 @@ function buildSystemSection(options: {
   return lines.join('\n');
 }
 
-/**
- * Build identity section — delegates persona to SOUL.md
- */
 function buildIdentitySection(): string {
   return [
     '## Identity',
@@ -356,40 +322,7 @@ function buildIdentitySection(): string {
   ].join('\n');
 }
 
-/**
- * Build codebase context section - prevents hallucination
- */
-async function buildCodebaseContextSection(workspaceDir: string): Promise<string> {
-  // Check if we're in the Vargos repo itself
-  try {
-    const packageJsonPath = path.join(workspaceDir, 'package.json');
-    const packageContent = await fs.readFile(packageJsonPath, 'utf-8');
-    const pkg = JSON.parse(packageContent);
-
-    if (pkg.name === 'vargos') {
-      return [
-        '## Project Context',
-        '',
-        'This is the Vargos MCP server codebase.',
-        '',
-        'Key Components:',
-        '- src/cli/ - CLI entry point, interactive menu, config/gateway actions',
-        '- src/gateway/ - WebSocket gateway server, protocol, router, event bus',
-        '- src/agent/ - Agent runtime, lifecycle, prompt builder, session setup',
-        '- src/tools/ - Tool registry, extensions (fs, web, agent, memory)',
-        '- src/sessions/ - Session storage (JSONL), types, key parsing',
-        '- src/channels/ - Channel adapters (WhatsApp, Telegram)',
-        '- src/cron/ - Cron scheduler, heartbeat task',
-        '- src/mcp/ - MCP bridge (MCP protocol ↔ gateway RPC)',
-        '- src/memory/ - Hybrid semantic + text search over workspace markdown',
-        '',
-        'See CLAUDE.md for full structure.',
-      ].join('\n');
-    }
-  } catch {
-    // Not the Vargos repo, return generic section
-  }
-
+function buildCodebaseContextSection(workspaceDir: string): string {
   return [
     '## Project Context',
     '',

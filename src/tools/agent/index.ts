@@ -17,7 +17,7 @@ import { agentStatusTool } from './agent-status.js';
 import { channelStatusTool } from './channel-status.js';
 import { channelSendMediaTool } from './channel-send-media.js';
 import { configReadTool } from './config-read.js';
-import { createProcessTool } from './process.js';
+import { ProcessTool } from './process.js';
 
 const extension: VargosExtension = {
   id: 'tools-agent',
@@ -37,7 +37,7 @@ const extension: VargosExtension = {
     ctx.registerTool(channelStatusTool);
     ctx.registerTool(channelSendMediaTool);
     ctx.registerTool(configReadTool);
-    ctx.registerTool(createProcessTool());
+    ctx.registerTool(new ProcessTool());
   },
 };
 

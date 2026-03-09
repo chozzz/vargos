@@ -2,6 +2,7 @@ import chalk from 'chalk';
 import { pickText } from './pick.js';
 import { connectToGateway } from './client.js';
 import { cliSessionKey } from '../sessions/keys.js';
+import { toMessage } from '../lib/error.js';
 
 export async function run(args?: string[]): Promise<void> {
   let task = args?.join(' ') || '';
@@ -38,7 +39,7 @@ export async function run(args?: string[]): Promise<void> {
       process.exit(1);
     }
   } catch (err) {
-    console.error(chalk.red(`  Error: ${err instanceof Error ? err.message : String(err)}`));
+    console.error(chalk.red(`  Error: ${toMessage(err)}`));
     process.exit(1);
   }
 

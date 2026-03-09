@@ -44,24 +44,6 @@ describe('BaseTool', () => {
     expect((result.content[0] as { text: string }).text).toContain('test-tool failed: boom');
   });
 
-  it('calls beforeExecute hook before execution', async () => {
-    const order: string[] = [];
-    const tool = new TestTool();
-    tool.fn.mockImplementation(async () => { order.push('execute'); return textResult('ok'); });
-    tool['beforeExecute'] = async () => { order.push('before'); };
-    await tool.execute({ message: 'hi' }, ctx);
-    expect(order).toEqual(['before', 'execute']);
-  });
-
-  it('calls afterExecute hook after execution', async () => {
-    const order: string[] = [];
-    const tool = new TestTool();
-    tool.fn.mockImplementation(async () => { order.push('execute'); return textResult('ok'); });
-    tool['afterExecute'] = async () => { order.push('after'); };
-    await tool.execute({ message: 'hi' }, ctx);
-    expect(order).toEqual(['execute', 'after']);
-  });
-
   it('passes validated (not raw) args to executeImpl', async () => {
     const strict = z.object({ message: z.string() }).strict();
     const tool = new TestTool(strict);

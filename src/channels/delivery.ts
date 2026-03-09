@@ -6,6 +6,7 @@
 
 import { createLogger } from '../lib/logger.js';
 import { sleep } from '../lib/sleep.js';
+import { withRetry } from '../lib/retry.js';
 
 const log = createLogger('delivery');
 
@@ -78,27 +79,12 @@ export async function deliverReply(
   log.debug(`delivering ${text.length} chars in ${chunks.length} chunk(s)`);
 
   for (let i = 0; i < chunks.length; i++) {
-    let lastError: Error | undefined;
-
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        await send(chunks[i]);
-        log.debug(`chunk ${i + 1}/${chunks.length} sent (${chunks[i].length} chars)`);
-        lastError = undefined;
-        break;
-      } catch (err) {
-        lastError = err instanceof Error ? err : new Error(String(err));
-        log.error(`chunk ${i + 1} attempt ${attempt + 1} failed: ${lastError.message}`);
-        if (attempt < maxRetries) {
-          await sleep(retryBaseMs * 2 ** attempt);
-        }
-      }
-    }
-
-    if (lastError) {
-      log.error(`chunk ${i + 1} delivery failed after ${maxRetries + 1} attempts`);
-      throw lastError;
-    }
+    await withRetry(() => send(chunks[i]), {
+      maxRetries,
+      baseMs: retryBaseMs,
+      jitter: false,
+    });
+    log.debug(`chunk ${i + 1}/${chunks.length} sent (${chunks[i].length} chars)`);
 
     // Delay between chunks (not after last)
     if (i < chunks.length - 1) {

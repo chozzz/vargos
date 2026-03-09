@@ -16,6 +16,7 @@ import { toolRegistry } from '../tools/registry.js';
 import type { ToolResult } from '../tools/types.js';
 import { createLogger } from '../lib/logger.js';
 import { generateId } from '../lib/id.js';
+import { toMessage } from '../lib/error.js';
 
 const log = createLogger('runtime');
 import { buildSystemPrompt, resolvePromptMode } from './prompt.js';
@@ -207,7 +208,7 @@ export class PiAgentRuntime {
 
       let task = config.task;
       if (!task) {
-        const messages = await this.loadSessionMessages(config.sessionKey);
+        const messages = await this.sessionService.getMessages(config.sessionKey);
         const taskMessages = messages.filter((m) => m.metadata?.type === 'task');
         task = taskMessages[taskMessages.length - 1]?.content ?? 'Complete your assigned task.';
       }
@@ -219,15 +220,14 @@ export class PiAgentRuntime {
       }));
       log.info(`prompting agent: session=${config.sessionKey} prompt=${task.slice(0, 120)}...`);
 
-      const abortSignal = this.lifecycle.getAbortSignal(runId);
-      await this.promptWithRetry(session, sessionManager, task, piImages, abortSignal);
+      await this.promptWithRetry(session, sessionManager, task, piImages);
 
       log.info(`agent run complete: session=${config.sessionKey}`);
 
       return this.extractRunResult(sessionManager.getEntries(), startedAt, runId, config.sessionKey);
     } catch (err) {
       const duration = Date.now() - startedAt;
-      const raw = err instanceof Error ? err.message : String(err);
+      const raw = toMessage(err);
       log.error(`Run ${runId} failed (${(duration / 1000).toFixed(1)}s): ${raw}`);
       this.lifecycle.errorRun(runId, raw);
       return { success: false, error: raw, duration };
@@ -252,7 +252,7 @@ export class PiAgentRuntime {
   }
 
   private async injectHistory(session: AgentSession, config: PiAgentConfig): Promise<void> {
-    const storedMessages = await this.loadSessionMessages(config.sessionKey);
+    const storedMessages = await this.sessionService.getMessages(config.sessionKey);
     if (storedMessages.length === 0) {
       log.debug('history: no stored messages');
       return;
@@ -269,10 +269,7 @@ export class PiAgentRuntime {
     sessionManager: import('@mariozechner/pi-coding-agent').SessionManager,
     prompt: string,
     piImages: Array<{ type: 'image'; data: string; mimeType: string }> | undefined,
-    // NOTE: AbortSignal is not wired through to session.prompt() because the Pi SDK's
-    // PromptOptions interface does not expose an abort/signal parameter. When the SDK
-    // adds support, accept a signal here and pass it via PromptOptions.
-    _signal?: AbortSignal,
+    // NOTE: Pi SDK PromptOptions does not expose an abort/signal parameter yet.
   ): Promise<void> {
     const API_RETRY_LIMIT = 2;
     let lastError: string | undefined;
@@ -423,7 +420,7 @@ export class PiAgentRuntime {
       }
 
       if (event.type === 'tool_execution_start') {
-        this.lifecycle.streamTool(runId, 'tool', 'start', {});
+        this.lifecycle.streamTool(runId, event.toolName, 'start', {});
         const tool = toolRegistry.get(event.toolName);
         const args = event.args as Record<string, unknown> | undefined;
         const summary = tool?.formatCall && args ? tool.formatCall(args) : '';
@@ -431,8 +428,8 @@ export class PiAgentRuntime {
       }
 
       if (event.type === 'tool_execution_end') {
-        this.lifecycle.streamTool(runId, 'tool', 'end', {}, {});
         const toolName = (event as unknown as { toolName?: string }).toolName;
+        this.lifecycle.streamTool(runId, toolName ?? 'unknown', 'end', {}, {});
         const tool = toolName ? toolRegistry.get(toolName) : undefined;
         if (tool?.formatResult && event.result) {
           log.info(`tool end: ${tool.name} ${tool.formatResult(event.result as ToolResult)}`);
@@ -503,16 +500,11 @@ export class PiAgentRuntime {
     return null;
   }
 
-  private async loadSessionMessages(sessionKey: string): Promise<SessionMessage[]> {
-    return this.sessionService.getMessages(sessionKey);
-  }
-
   private async storeResponse(sessionKey: string, response: string): Promise<void> {
     await this.sessionService.addMessage({
       sessionKey,
       content: response,
       role: 'assistant',
-      metadata: {},
     });
   }
 
@@ -536,10 +528,4 @@ export class PiAgentRuntime {
     this.lifecycle.removeListener('stream', callback);
   }
 
-  onLifecycle(callback: (phase: string, runId: string, data?: unknown) => void): void {
-    this.lifecycle.on('start', (runId: string, sessionKey: string) => callback('start', runId, { sessionKey }));
-    this.lifecycle.on('end', (runId: string, data: unknown) => callback('end', runId, data));
-    this.lifecycle.on('run_error', (runId: string, error: Error) => callback('error', runId, { error }));
-    this.lifecycle.on('abort', (runId: string, reason: string) => callback('abort', runId, { reason }));
-  }
 }

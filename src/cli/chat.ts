@@ -1,6 +1,7 @@
 import readline from 'node:readline';
 import chalk from 'chalk';
 import { connectToGateway } from './client.js';
+import { toMessage } from '../lib/error.js';
 
 const SESSION_KEY = 'cli:chat';
 
@@ -40,7 +41,7 @@ export async function chat(): Promise<void> {
         console.error(chalk.red(`  ${result.error ?? 'Agent run failed.'}`));
       }
     } catch (err) {
-      console.error(chalk.red(`  Error: ${err instanceof Error ? err.message : String(err)}`));
+      console.error(chalk.red(`  Error: ${toMessage(err)}`));
     }
     rl.prompt();
   });
