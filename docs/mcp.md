@@ -1,6 +1,6 @@
 # MCP
 
-Vargos is both an MCP **server** (exposes its 22 tools to external clients) and an MCP **client** (connects to external MCP servers and makes their tools available to the agent). MCP is one integration point — the same tools are also available internally via the gateway protocol.
+Vargos is both an MCP **server** (exposes its 24 tools to external clients) and an MCP **client** (connects to external MCP servers and makes their tools available to the agent). MCP is one integration point — the same tools are also available internally via the gateway protocol.
 
 ## Server
 
@@ -58,7 +58,7 @@ CORS preflight (OPTIONS) requests are allowed without auth.
 
 `GET /openapi.json` returns an OpenAPI 3.1 spec generated from the tool registry. Each tool maps to a `POST /tools/{name}` operation with its JSON Schema input. Useful for documentation, code generation, or REST-based integrations.
 
-## Available Tools (22)
+## Available Tools (24)
 
 ### File System
 
@@ -92,6 +92,7 @@ CORS preflight (OPTIONS) requests are allowed without auth.
 | `cron_run` | Trigger a task immediately |
 | `agent_status` | Show active agent runs |
 | `channel_status` | Show channel connection status |
+| `channel_send_media` | Send media file to a channel |
 | `config_read` | Read current config (keys masked) |
 | `process` | Background process management |
 

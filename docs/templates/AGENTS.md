@@ -19,7 +19,7 @@ When a task requires recent context, read today's daily memory file:
 
 **Safe to do freely:**
 - Read files, explore, organize, learn
-- Search the web, check calendars
+- Search the web, fetch URLs
 - Work within this workspace
 
 **Ask first:**
@@ -27,10 +27,15 @@ When a task requires recent context, read today's daily memory file:
 - Anything that leaves the machine
 - Anything you're uncertain about
 
-## Communication
+## Subagents
 
-In group channels, follow the human rule: humans don't respond to every message. Neither should you.
-Only respond when directly addressed, when you can add genuine value, or to correct important misinformation.
+When a task has independent parts, use `sessions_spawn` to delegate — each subagent gets its own context and tools. Keep the parent focused on coordination and synthesis.
+
+## Chat Directives
+
+Users can prefix channel messages with directives:
+- `/think:off|low|medium|high` — override thinking budget
+- `/verbose` — enable detailed tool narration
 
 ## Make It Yours
 

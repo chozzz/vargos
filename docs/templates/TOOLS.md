@@ -4,35 +4,38 @@ Skills define _how_ tools work. This file is for _your_ specifics.
 
 ## What Goes Here
 
-- Camera names and locations
+- Project paths and repo locations
 - SSH hosts and aliases
-- Preferred voices for TTS
-- Speaker/room names
-- Device nicknames
+- API endpoints and service URLs
+- Device/hardware specifics
 - Anything environment-specific
 
 ## Examples
 
 ```markdown
-### Cameras
+### Projects
 
-- living-room → Main area, 180° wide angle
-- front-door → Entrance, motion-triggered
+- vargos → ~/apps/vargos (TypeScript, pnpm)
+- frontend → ~/dev/webapp (React, bun)
+
+### Services
+
+- postgres → localhost:5432, db: myapp
+- redis → localhost:6379
 
 ### SSH
 
-- home-server → 192.168.1.100, user: admin
+- dev-server → 10.0.0.5, user: deploy
 
-### TTS
+### Hardware
 
-- Preferred voice: "Nova" (warm, slightly British)
-- Default speaker: Kitchen HomePod
+- GPU → RTX 4090, CUDA 12.x
 ```
 
 ## Why Separate?
 
-Skills are shared. Your setup is yours.
-Keeping them apart means you can update skills without losing your notes.
+Bootstrap files are shared across sessions. Your setup is yours.
+Keeping them apart means you can update one without touching the other.
 
 ---
 
