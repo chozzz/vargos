@@ -16,7 +16,7 @@ import { toolRegistry } from '../tools/registry.js';
 import type { ToolResult } from '../tools/types.js';
 import { createLogger } from '../lib/logger.js';
 import { generateId } from '../lib/id.js';
-import { toMessage } from '../lib/error.js';
+import { toMessage, classifyError } from '../lib/error.js';
 
 const log = createLogger('runtime');
 import { buildSystemPrompt, resolvePromptMode } from './prompt.js';
@@ -28,27 +28,16 @@ import { sanitizeHistory, toAgentMessages, prepareHistory } from './history.js';
 import { getVargosToolNames } from './extension.js';
 import { buildPiSession } from './session-setup.js';
 
-const RETRYABLE_PATTERNS = [
-  'after JSON',
-  'Unexpected',
-  'Network connection lost',
-  'network error',
-  'ECONNRESET',
-  'ECONNREFUSED',
-  'ETIMEDOUT',
-  'socket hang up',
-  'fetch failed',
-  'abort',
-  '502',
-  '503',
-  '529',
-];
+/** Patterns for retryable errors not covered by classifyError */
+const RETRYABLE_PARSE_PATTERNS = ['after json', 'unexpected', 'abort'];
 
 /** Check if an error message indicates a transient/retryable failure. */
 export function isRetryableError(message: string | undefined): boolean {
   if (!message) return false;
+  const cls = classifyError(message);
+  if (cls === 'transient' || cls === 'timeout') return true;
   const lower = message.toLowerCase();
-  return RETRYABLE_PATTERNS.some(p => lower.includes(p.toLowerCase()));
+  return RETRYABLE_PARSE_PATTERNS.some(p => lower.includes(p));
 }
 
 /**

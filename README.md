@@ -130,7 +130,7 @@ All settings live in `~/.vargos/config.json`. See [docs/configuration.md](./docs
   "models": { "anthropic": { "provider": "anthropic", "model": "claude-sonnet-4-20250514" } },
   "agent": { "primary": "anthropic" },
   "gateway": { "port": 9000 },
-  "mcp": { "transport": "http", "port": 9001 },
+  "mcp": { "transport": "http", "port": 9001, "bearerToken": "..." },
   "mcpServers": { ... },
   "channels": { ... },
   "webhooks": { "hooks": [...] },

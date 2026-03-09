@@ -67,14 +67,15 @@ Priority: `config.paths.dataDir` > `VARGOS_DATA_DIR` env > `~/.vargos`
     "transport": "http",            // http | stdio, default: http
     "host": "127.0.0.1",           // default: 127.0.0.1
     "port": 9001,                   // default: 9001
-    "endpoint": "/mcp"              // default: /mcp
+    "endpoint": "/mcp",             // default: /mcp
+    "bearerToken": "your-secret"    // required for HTTP — server skipped without this
   },
   "paths": {
     "dataDir": "~/.vargos",         // default: ~/.vargos
     "workspace": "~/.vargos/workspace"
   },
   "storage": {
-    "type": "postgres",             // postgres | sqlite, default: postgres
+    "type": "sqlite",               // postgres | sqlite, default: sqlite
     "url": "postgresql://..."       // required when type=postgres
   },
   "heartbeat": {

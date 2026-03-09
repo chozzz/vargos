@@ -56,7 +56,7 @@ All services extend `ServiceClient` (`src/gateway/service-client.ts`), which han
 | **sessions** | `src/sessions/` | `session.list`, `session.get`, `session.create`, `session.addMessage` | `session.created`, `session.message` |
 | **channels** | `src/channels/` | `channel.send`, `channel.sendMedia`, `channel.list` | `message.received`, `channel.connected` |
 | **cron** | `src/cron/` | `cron.list`, `cron.add`, `cron.remove` | `cron.trigger` |
-| **mcp** | `src/mcp/` | MCP bridge (HTTP on port 9001 + stdio) | — |
+| **mcp** | `src/mcp/` | MCP bridge (HTTP on port 9001 + stdio, bearer auth) | — |
 
 ### Boot Sequence (`src/cli/gateway/start.ts`)
 
@@ -145,7 +145,7 @@ Command tree is data-driven in `src/cli/tree.ts` — a `MenuNode[]` array that d
 
 ### Path Boundary Validation
 
-`validateBoundary()` (`src/lib/path.ts`) prevents path traversal in fs tools (read, write, edit). All file paths are resolved through `fs.realpath` (symlink-aware), then checked against the workspace boundary. An optional allowlist permits access to paths outside the boundary (e.g. shared model directories). New files that don't exist yet are resolved by walking up to the nearest existing ancestor. The boundary and allowlist are injected via `ToolContext.boundary` at tool registration time.
+`validateBoundary()` (`src/lib/path.ts`) prevents path traversal in fs tools (read, write, edit). All file paths are resolved through `fs.realpath` (symlink-aware), then checked against the workspace boundary. An optional allowlist permits access to paths outside the boundary (e.g. shared model directories). New files that don't exist yet are resolved by walking up to the nearest existing ancestor. The boundary and allowlist are injected via `ToolContext.boundary` — both by the agent runtime (`extension.ts`) and by `ToolsService` for gateway RPC callers (MCP bridge, etc.).
 
 ## Domain Boundary Rules
 

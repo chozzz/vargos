@@ -16,6 +16,7 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import http from 'node:http';
+import { timingSafeEqual, createHash } from 'node:crypto';
 import { ServiceClient } from '../gateway/service-client.js';
 import { toMessage } from '../lib/error.js';
 import { resolveWorkspaceDir } from '../config/paths.js';
@@ -125,22 +126,31 @@ export class McpBridge extends ServiceClient {
     await this.mcpServer.connect(transport);
   }
 
-  async startHttp(config: { host: string; port: number; endpoint: string }): Promise<void> {
+  async startHttp(config: { host: string; port: number; endpoint: string; bearerToken: string }): Promise<void> {
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => crypto.randomUUID(),
     });
 
     await this.mcpServer.connect(transport);
 
+    const expectedTokenHash = createHash('sha256').update(`Bearer ${config.bearerToken}`).digest();
+
     this.httpServer = http.createServer(async (req, res) => {
-      // MCP clients connect from various hosts; restrict via gateway.host binding instead
-      res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Mcp-Session-Id');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Mcp-Session-Id, Authorization');
 
       if (req.method === 'OPTIONS') {
         res.writeHead(200);
         res.end();
+        return;
+      }
+
+      // Bearer token auth — timing-safe hash comparison
+      const auth = req.headers.authorization ?? '';
+      const authHash = createHash('sha256').update(auth).digest();
+      if (!timingSafeEqual(authHash, expectedTokenHash)) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Unauthorized' }));
         return;
       }
 

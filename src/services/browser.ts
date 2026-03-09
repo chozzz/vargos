@@ -7,6 +7,7 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { chromium, Browser, Page, BrowserContext } from 'playwright';
 import { resolveDataDir } from '../config/paths.js';
+import { generateId } from '../lib/id.js';
 
 const MAX_SESSIONS = 5;
 const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
@@ -28,7 +29,6 @@ export interface BrowserServiceConfig {
 
 export class BrowserService {
   private sessions = new Map<string, BrowserSession>();
-  private sessionCounter = 0;
   private cleanupTimer: ReturnType<typeof setInterval> | null = null;
   private stateDir: string;
 
@@ -43,7 +43,16 @@ export class BrowserService {
       throw new Error(`Session limit reached (max ${MAX_SESSIONS}). Close an existing session first.`);
     }
 
-    const browser = await chromium.launch({ headless: true });
+    let browser: Browser;
+    try {
+      browser = await chromium.launch({ headless: true });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('Executable doesn\'t exist') || msg.includes('browserType.launch')) {
+        throw new Error('Playwright browsers not installed. Run: npx playwright install chromium');
+      }
+      throw err;
+    }
 
     let storageState: string | undefined;
     if (options?.restoreFrom) {
@@ -60,8 +69,7 @@ export class BrowserService {
     });
     const page = await context.newPage();
 
-    this.sessionCounter++;
-    const id = `browser-${this.sessionCounter}`;
+    const id = generateId('browser');
     const now = Date.now();
 
     const session: BrowserSession = {
@@ -221,9 +229,24 @@ export class BrowserService {
   async evaluate(sessionId: string, script: string): Promise<unknown> {
     const session = this.getSessionOrThrow(sessionId);
     session.lastActivityAt = Date.now();
-    return await session.page.evaluate((code) => {
-      return eval(code);
-    }, script);
+
+    // Block outbound network requests during evaluation to prevent SSRF/exfiltration
+    await session.context.route('**/*', (route) => {
+      route.abort('blockedbyclient');
+    });
+
+    try {
+      const result = await Promise.race([
+        session.page.evaluate(script),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('evaluate timed out (30s)')), 30_000),
+        ),
+      ]);
+      return result;
+    } finally {
+      // Restore normal routing
+      await session.context.unrouteAll({ behavior: 'ignoreErrors' });
+    }
   }
 
   private getSessionOrThrow(id: string): BrowserSession {

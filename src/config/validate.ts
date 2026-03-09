@@ -3,7 +3,7 @@
  * Fails fast so runtime errors don't surface minutes later
  */
 
-import type { VargosConfig, ModelProfile } from './pi-config.js';
+import { resolveApiKey, type VargosConfig, type ModelProfile } from './pi-config.js';
 
 export const LOCAL_PROVIDERS = new Set(['ollama', 'lmstudio']);
 
@@ -51,7 +51,7 @@ export function validateConfig(config: VargosConfig): ValidationResult {
 
   // Validate each model profile
   for (const [name, profile] of Object.entries(config.models)) {
-    validateProfile(name, profile, errors, warnings);
+    validateProfile(name, profile, errors);
   }
 
   // Subagent validation
@@ -82,11 +82,7 @@ export function validateConfig(config: VargosConfig): ValidationResult {
 
   // Gateway validation
   if (config.gateway) {
-    if (config.gateway.port !== undefined) {
-      if (!Number.isInteger(config.gateway.port) || config.gateway.port < 1 || config.gateway.port > 65535) {
-        errors.push('gateway.port must be an integer 1-65535');
-      }
-    }
+    validatePort('gateway.port', config.gateway.port, errors);
   }
 
   // MCP validation
@@ -94,23 +90,27 @@ export function validateConfig(config: VargosConfig): ValidationResult {
     if (config.mcp.transport !== undefined && config.mcp.transport !== 'stdio' && config.mcp.transport !== 'http') {
       errors.push('mcp.transport must be "stdio" or "http"');
     }
-    if (config.mcp.port !== undefined) {
-      if (!Number.isInteger(config.mcp.port) || config.mcp.port < 1 || config.mcp.port > 65535) {
-        errors.push('mcp.port must be an integer 1-65535');
-      }
-    }
+    validatePort('mcp.port', config.mcp.port, errors);
     if (config.mcp.endpoint !== undefined && !config.mcp.endpoint.startsWith('/')) {
       errors.push('mcp.endpoint must start with /');
+    }
+    const mcpTransport = config.mcp.transport ?? 'http';
+    if (mcpTransport === 'http' && !config.mcp.bearerToken) {
+      warnings.push('mcp.bearerToken not set — MCP HTTP server will not start. Set mcp.bearerToken in config.json to enable it.');
+    }
+  }
+
+  // Embedding validation
+  if (config.embedding?.provider === 'openai') {
+    const envKey = process.env['OPENAI_API_KEY'];
+    if (!envKey && !config.embedding.apiKey) {
+      warnings.push('embedding.provider is "openai" but no API key set — embeddings will fall back to local trigram hashing. Set embedding.apiKey or OPENAI_API_KEY env var.');
     }
   }
 
   // Webhook validation
   if (config.webhooks) {
-    if (config.webhooks.port !== undefined) {
-      if (!Number.isInteger(config.webhooks.port) || config.webhooks.port < 1 || config.webhooks.port > 65535) {
-        errors.push('webhooks.port must be an integer 1-65535');
-      }
-    }
+    validatePort('webhooks.port', config.webhooks.port, errors);
     const hookIds = new Set<string>();
     for (const hook of config.webhooks.hooks ?? []) {
       if (!hook.id || !hook.token) {
@@ -133,25 +133,31 @@ export function validateConfig(config: VargosConfig): ValidationResult {
       if (cp.keepLastAssistants !== undefined && (!Number.isInteger(cp.keepLastAssistants) || cp.keepLastAssistants < 0)) {
         errors.push('compaction.contextPruning.keepLastAssistants must be a non-negative integer');
       }
-      if (cp.softTrimRatio !== undefined && (cp.softTrimRatio < 0 || cp.softTrimRatio > 1)) {
-        errors.push('compaction.contextPruning.softTrimRatio must be between 0 and 1');
-      }
-      if (cp.hardClearRatio !== undefined && (cp.hardClearRatio < 0 || cp.hardClearRatio > 1)) {
-        errors.push('compaction.contextPruning.hardClearRatio must be between 0 and 1');
-      }
+      validateRatio('compaction.contextPruning.softTrimRatio', cp.softTrimRatio, errors);
+      validateRatio('compaction.contextPruning.hardClearRatio', cp.hardClearRatio, errors);
     }
     const sg = config.compaction.safeguard;
     if (sg) {
-      if (sg.maxHistoryShare !== undefined && (sg.maxHistoryShare < 0 || sg.maxHistoryShare > 1)) {
-        errors.push('compaction.safeguard.maxHistoryShare must be between 0 and 1');
-      }
+      validateRatio('compaction.safeguard.maxHistoryShare', sg.maxHistoryShare, errors);
     }
   }
 
   return { valid: errors.length === 0, errors, warnings };
 }
 
-function validateProfile(name: string, profile: ModelProfile, errors: string[], _warnings: string[]): void {
+function validatePort(section: string, port: unknown, errors: string[]): void {
+  if (port !== undefined && (!Number.isInteger(port) || (port as number) < 1 || (port as number) > 65535)) {
+    errors.push(`${section} must be an integer 1-65535`);
+  }
+}
+
+function validateRatio(path: string, value: unknown, errors: string[]): void {
+  if (value !== undefined && (typeof value !== 'number' || value < 0 || value > 1)) {
+    errors.push(`${path} must be between 0 and 1`);
+  }
+}
+
+function validateProfile(name: string, profile: ModelProfile, errors: string[]): void {
   if (!profile.provider) {
     errors.push(`models.${name}: missing provider`);
   }
@@ -162,13 +168,10 @@ function validateProfile(name: string, profile: ModelProfile, errors: string[], 
   if (!profile.provider) return;
 
   // Cloud providers need an API key
-  if (!LOCAL_PROVIDERS.has(profile.provider)) {
-    const envKey = process.env[`${profile.provider.toUpperCase()}_API_KEY`];
-    if (!envKey && !profile.apiKey) {
-      errors.push(
-        `models.${name}: missing API key — set apiKey in profile or ${profile.provider.toUpperCase()}_API_KEY env var`
-      );
-    }
+  if (!LOCAL_PROVIDERS.has(profile.provider) && !resolveApiKey(profile)) {
+    errors.push(
+      `models.${name}: missing API key — set apiKey in profile or ${profile.provider.toUpperCase()}_API_KEY env var`
+    );
   }
 
   // Local providers — check baseUrl format
