@@ -7,7 +7,7 @@
 - **WebSocket service mesh** — isolated services communicate through a typed protocol with RPC, pub/sub events, and streaming
 - **Any LLM** — Anthropic, OpenAI, Google, OpenRouter, Ollama, LM Studio, Groq, Together, DeepSeek, Mistral, Fireworks, Perplexity
 - **Multi-channel messaging** — route agent conversations through WhatsApp and Telegram
-- **22 built-in tools** — files, shell, browser automation, memory, sessions, cron, processes, and more
+- **24 built-in tools** — files, shell, browser automation, memory, sessions, cron, processes, and more
 - **MCP server + client** — expose tools to MCP clients (Claude Desktop, etc.) and connect to external MCP servers (Atlassian, GitHub, etc.)
 - **Hybrid memory** — pgvector + text search over memory files and session transcripts
 - **Scheduled tasks** — cron-based recurring tasks with channel notification delivery
@@ -88,6 +88,7 @@ Each service is isolated — no shared state, communication only through the gat
 | `cron_run` | Trigger a task immediately |
 | `agent_status` | Show active agent runs |
 | `channel_status` | Show channel connection status |
+| `channel_send_media` | Send media file to a channel |
 | `config_read` | Read current config (keys masked) |
 
 ## CLI
@@ -142,7 +143,7 @@ All settings live in `~/.vargos/config.json`. See [docs/configuration.md](./docs
 
 ## MCP Integration
 
-**As a server** — Vargos exposes all 22 tools via MCP. Add to your MCP client config (Claude Desktop, etc.):
+**As a server** — Vargos exposes all 24 tools via MCP. Add to your MCP client config (Claude Desktop, etc.):
 
 ```json
 {

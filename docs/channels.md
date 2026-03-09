@@ -109,7 +109,7 @@ Sender filter (allowFrom whitelist)
 Dedup (skip if seen in last 120s)
     |
     v
-Debounce (batch rapid messages, 1.5s)
+Debounce (batch rapid messages, 2s default)
     |
     v
 Gateway > Agent runtime > Tools
@@ -119,6 +119,51 @@ Reply sent back through the channel
 ```
 
 Both channels support text and media (images, audio, video, documents). Only private/direct messages are processed — group messages are ignored.
+
+## Chat Directives
+
+Users can prefix messages with directives to override per-message inference settings:
+
+| Directive | Effect |
+|-----------|--------|
+| `/think:off` | Disable extended thinking |
+| `/think:low` | Low thinking budget |
+| `/think:medium` | Medium thinking budget |
+| `/think:high` | High thinking budget |
+| `/verbose` | Enable verbose tool narration |
+
+Directives are parsed and stripped before reaching the agent — the agent never sees the raw directive tokens.
+
+## Status Reactions
+
+When a message triggers an agent run, emoji reactions track progress on the triggering message:
+
+| Phase | Emoji |
+|-------|-------|
+| Queued | 👀 |
+| Thinking | 🤔 |
+| Tool use | 🔧 |
+| Done | 👍 |
+| Error | ❗ |
+
+Transient phases (thinking, tool) are debounced (500ms). Terminal phases (done, error) are immediate.
+
+## Link Expansion
+
+URLs in inbound messages are auto-fetched and appended as readable text so the agent can understand linked content without using tools.
+
+```jsonc
+{
+  "linkExpand": {
+    "enabled": true,          // default: true
+    "maxUrls": 3,             // max URLs to expand per message
+    "maxCharsPerUrl": 8000,   // truncate expanded content
+    "timeoutMs": 5000         // per-URL fetch timeout
+  }
+}
+```
+
+Private/internal IPs are filtered out. Expansion failures are silently ignored.
 
 ## Comparison
 

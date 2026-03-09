@@ -20,7 +20,7 @@ pnpm start
 
 First run prompts for identity (your name, agent name/vibe), LLM provider, storage, and optional channels. Identity is saved to `SOUL.md`, LLM/storage config to `~/.vargos/config.json`.
 
-Supported providers: Anthropic, OpenAI, Google, OpenRouter, Ollama, LM Studio.
+Supported providers: Anthropic, OpenAI, Google, OpenRouter, Ollama, LM Studio, Groq, Together, DeepSeek, Mistral, Fireworks, Perplexity.
 
 ## Chat
 

@@ -81,6 +81,7 @@ Helper factories: `textResult()`, `errorResult()`, `imageResult()`.
 | `cron_run` | Trigger immediate execution of a scheduled task |
 | `agent_status` | Show currently active agent runs |
 | `channel_status` | Show connection status of messaging channels |
+| `channel_send_media` | Send media file (image, audio, video, document) to a channel |
 | `config_read` | Read current config (API keys masked) |
 | `process` | Manage background processes (list, poll, write stdin, kill) |
 
@@ -127,7 +128,7 @@ interface ChannelAdapter {
 }
 ```
 
-Adapters are wired directly in `cli/gateway/start.ts` via the channel factory. Both share patterns: 1.5s message debounce, 120s dedup cache, text + media support, private messages only.
+Adapters are wired directly in `cli/gateway/start.ts` via the channel factory. Both share patterns: 2s message debounce (configurable via `debounceMs`), 120s dedup cache, text + media support, private messages only.
 
 ## File Storage
 
