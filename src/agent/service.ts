@@ -12,6 +12,7 @@
 import { ServiceClient } from '../gateway/service-client.js';
 import { createLogger } from '../lib/logger.js';
 import { generateId } from '../lib/id.js';
+import { toMessage } from '../lib/error.js';
 import { stripHeartbeatToken } from '../lib/heartbeat.js';
 import { parseTarget } from '../lib/channel-target.js';
 import { isSubagentSessionKey } from '../sessions/keys.js';
@@ -61,6 +62,7 @@ export class AgentService extends ServiceClient {
       this.call.bind(this),
       (sessionKey, task) => this.runAgent({ sessionKey, task, retrigger: true }),
       this.deliverToChannel.bind(this),
+      this.deliverToNotifyTargets.bind(this),
     );
   }
 
@@ -82,12 +84,6 @@ export class AgentService extends ServiceClient {
     return this.configLoad;
   }
 
-  /** Force re-read config from disk */
-  async reloadConfig(): Promise<void> {
-    this.configLoad = null;
-    this.cachedConfig = await loadConfig(this.dataDir);
-  }
-
   async handleMethod(method: string, params: unknown): Promise<unknown> {
     const p = params as Record<string, unknown>;
 
@@ -96,7 +92,6 @@ export class AgentService extends ServiceClient {
         return this.runAgent(p as unknown as AgentRunParams);
 
       case 'agent.abort': {
-        // Support abort by runId or sessionKey
         if (p.sessionKey) {
           const count = this.runtime.abortSessionRuns(p.sessionKey as string, p.reason as string | undefined);
           return { aborted: count > 0, count };
@@ -134,14 +129,9 @@ export class AgentService extends ServiceClient {
         break;
 
       case 'cron.trigger':
-        this.handleCronTrigger(p).catch((err) =>
-          log.error(`Error handling cron trigger: ${err}`),
-        );
-        break;
-
       case 'webhook.trigger':
-        this.handleWebhookTrigger(p).catch((err) =>
-          log.error(`Error handling webhook trigger: ${err}`),
+        this.handleTrigger(event, p).catch((err) =>
+          log.error(`Error handling ${event}: ${err}`),
         );
         break;
     }
@@ -253,7 +243,7 @@ export class AgentService extends ServiceClient {
           : `[Image description: ${transformed}]\n\n${content}`;
       } catch (err) {
         log.error(`media transform failed: ${err}`);
-        const errMsg = err instanceof Error ? err.message : String(err);
+        const errMsg = toMessage(err);
         await this.call('channel', 'channel.send', {
           channel, userId,
           text: `Failed to process ${media.type}: ${errMsg.slice(0, 200)}`,
@@ -274,26 +264,16 @@ export class AgentService extends ServiceClient {
     return content;
   }
 
-  private async handleCronTrigger(payload: Record<string, unknown>): Promise<void> {
-    const { taskId, task, sessionKey, notify } = payload as {
-      taskId: string;
+  private async handleTrigger(event: string, payload: Record<string, unknown>): Promise<void> {
+    const kind = event.split('.')[0]; // 'cron' or 'webhook'
+    const { task, sessionKey, notify } = payload as {
       task: string;
       sessionKey: string;
       notify?: string[];
     };
-    log.info(`cron trigger: ${taskId} → ${sessionKey}${notify?.length ? ` (notify: ${notify.length} targets)` : ''}`);
-    await this.handleTriggeredRun({ kind: 'cron', triggerId: taskId, task, sessionKey, notify });
-  }
-
-  private async handleWebhookTrigger(payload: Record<string, unknown>): Promise<void> {
-    const { hookId, task, sessionKey, notify } = payload as {
-      hookId: string;
-      task: string;
-      sessionKey: string;
-      notify?: string[];
-    };
-    log.info(`webhook trigger: ${hookId} → ${sessionKey}${notify?.length ? ` (notify: ${notify.length} targets)` : ''}`);
-    await this.handleTriggeredRun({ kind: 'webhook', triggerId: hookId, task, sessionKey, notify });
+    const triggerId = (payload.taskId ?? payload.hookId) as string;
+    log.info(`${kind} trigger: ${triggerId} → ${sessionKey}${notify?.length ? ` (notify: ${notify.length} targets)` : ''}`);
+    await this.handleTriggeredRun({ kind, triggerId, task, sessionKey, notify });
   }
 
   private async handleTriggeredRun({
@@ -316,14 +296,14 @@ export class AgentService extends ServiceClient {
       kind,
       metadata: { [idKey]: triggerId, ...(notify?.length && { notify }) },
     }).catch((err: unknown) => {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = toMessage(err);
       if (!msg.includes('already exists')) log.error(`Failed to create ${kind} session: ${msg}`);
     });
 
     await this.call('sessions', 'session.addMessage', {
       sessionKey, content: task, role: 'user',
       metadata: { source: kind, [idKey]: triggerId },
-    }).catch(() => {});
+    }).catch(err => log.error(`Failed to store ${kind} task message: ${err}`));
 
     let result = await this.runAgent({ sessionKey, task });
 
@@ -335,6 +315,19 @@ export class AgentService extends ServiceClient {
 
     if (!notify?.length) return;
 
+    // If subagents were spawned, skip — coordinator.routeParentResult handles delivery after re-trigger
+    const prefix = sessionKey + ':subagent:';
+    const hasSubagents = this.runtime.listActiveRuns().some(r => r.sessionKey?.startsWith(prefix));
+    if (hasSubagents) {
+      log.info(`${kind}:${triggerId} spawned sub-agents — deferring delivery`);
+      return;
+    }
+
+    await this.deliverToNotifyTargets(notify, result);
+  }
+
+  /** Deliver result to notify targets — writes session message + sends to channel */
+  private async deliverToNotifyTargets(notify: string[], result: PiAgentRunResult): Promise<void> {
     for (const target of notify) {
       const parsed = parseTarget(target);
       if (!parsed) continue;
@@ -344,8 +337,7 @@ export class AgentService extends ServiceClient {
         if (cleaned) {
           await this.call('sessions', 'session.addMessage', {
             sessionKey: target, content: cleaned, role: 'assistant',
-            metadata: { source: kind, [idKey]: triggerId },
-          }).catch(() => {});
+          }).catch(err => log.error(`Failed to store notify message: ${err}`));
         }
       }
 

@@ -32,15 +32,11 @@ export class StatusReactionController {
     private readonly messageId: string,
   ) {}
 
-  setQueued(): void {
-    this.immediate('queued');
-  }
-
   setThinking(): void {
     this.debounced('thinking');
   }
 
-  setTool(_toolName: string): void {
+  setTool(): void {
     this.debounced('tool');
   }
 
@@ -82,7 +78,7 @@ export class StatusReactionController {
   private enqueue(phase: ReactionPhase): void {
     const emoji = EMOJI[phase];
     this.chain = this.chain.then(() =>
-      this.adapter.react(this.recipientId, this.messageId, emoji).catch(() => {}),
+      this.adapter.react(this.recipientId, this.messageId, emoji).catch(() => { /* reaction failures are non-critical */ }),
     );
   }
 }

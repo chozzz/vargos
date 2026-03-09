@@ -13,6 +13,7 @@ import { createWhatsAppSocket } from './whatsapp/session.js';
 import { TelegramAdapter } from './telegram/adapter.js';
 import type { ChannelConfig } from './types.js';
 import type { WASocket } from '@whiskeysockets/baileys';
+import { toMessage } from '../lib/error.js';
 
 const log = {
   info: (msg: string) => console.log(chalk.blue(`  ℹ ${msg}`)),
@@ -95,7 +96,7 @@ export async function setupWhatsApp(): Promise<void> {
 
     try { state.sock?.end(undefined); } catch { /* ignore */ }
   } catch (err) {
-    log.error(`Setup failed: ${err instanceof Error ? err.message : String(err)}`);
+    log.error(`Setup failed: ${toMessage(err)}`);
   }
 }
 
@@ -122,7 +123,7 @@ export async function setupTelegram(): Promise<void> {
     await addChannelConfig(config);
     log.success(`Saved to ${resolveDataDir()}/config.json`);
   } catch (err) {
-    log.error(`Validation failed: ${err instanceof Error ? err.message : String(err)}`);
+    log.error(`Validation failed: ${toMessage(err)}`);
     log.warn('Check your bot token and try again.');
   }
 }

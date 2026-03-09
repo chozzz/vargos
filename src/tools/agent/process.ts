@@ -183,7 +183,3 @@ export class ProcessTool extends BaseTool {
   }
 }
 
-// Factory function
-export function createProcessTool(): ProcessTool {
-  return new ProcessTool();
-}

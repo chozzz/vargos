@@ -4,6 +4,7 @@
 
 import { z } from 'zod';
 import { Tool, ToolContext, textResult, errorResult } from '../types.js';
+import { toMessage } from '../../lib/error.js';
 
 const SessionsHistoryParameters = z.object({
   sessionKey: z.string().describe('Target session key'),
@@ -52,7 +53,7 @@ export const sessionsHistoryTool: Tool = {
         `---\n\n${formatted.join('\n\n')}`
       );
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = toMessage(err);
       return errorResult(`Sessions history failed: ${message}`);
     }
   },

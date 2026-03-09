@@ -4,6 +4,7 @@ import { connectToGateway, type CliClient } from './client.js';
 import { formatSchedule } from '../lib/schedule.js';
 import { normalizeTarget } from '../lib/channel-target.js';
 import { resolveDataDir } from '../config/paths.js';
+import { toMessage } from '../lib/error.js';
 import { loadConfig } from '../config/pi-config.js';
 import type { CronTask } from '../cron/types.js';
 import type { Session, SessionMessage } from '../sessions/types.js';
@@ -132,7 +133,7 @@ async function editTask(client: CliClient, task: CronTask): Promise<void> {
     const updated = await client.call<CronTask>('cron', 'cron.update', { id: task.id, ...updates });
     console.log(chalk.green(`  Updated: ${updated.name}`));
   } catch (err) {
-    console.error(chalk.red(`  Error: ${err instanceof Error ? err.message : String(err)}`));
+    console.error(chalk.red(`  Error: ${toMessage(err)}`));
   }
 }
 
@@ -172,7 +173,7 @@ export async function add(): Promise<void> {
     }
     console.log();
   } catch (err) {
-    console.error(chalk.red(`  Error: ${err instanceof Error ? err.message : String(err)}`));
+    console.error(chalk.red(`  Error: ${toMessage(err)}`));
   } finally {
     await client.disconnect();
   }
@@ -209,7 +210,7 @@ export async function remove(args?: string[]): Promise<void> {
       console.log(chalk.yellow(`  Task not found: ${taskId}`));
     }
   } catch (err) {
-    console.error(chalk.red(`  Error: ${err instanceof Error ? err.message : String(err)}`));
+    console.error(chalk.red(`  Error: ${toMessage(err)}`));
   } finally {
     await client.disconnect();
   }
@@ -242,7 +243,7 @@ export async function trigger(args?: string[]): Promise<void> {
     await client.call('cron', 'cron.run', { id: taskId });
     console.log(chalk.green(`  Triggered task: ${taskId}`));
   } catch (err) {
-    console.error(chalk.red(`  Error: ${err instanceof Error ? err.message : String(err)}`));
+    console.error(chalk.red(`  Error: ${toMessage(err)}`));
   } finally {
     await client.disconnect();
   }

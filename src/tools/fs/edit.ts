@@ -7,6 +7,7 @@ import { z } from 'zod';
 import * as fs from 'node:fs/promises';
 import { Tool, ToolContext, textResult, errorResult } from '../types.js';
 import { resolveFsPath } from './resolve.js';
+import { toMessage } from '../../lib/error.js';
 
 const EditParameters = z.object({
   path: z.string().describe('Path to the file to edit'),
@@ -48,7 +49,7 @@ export const editTool: Tool = {
 
       return textResult(`Successfully edited ${params.path}`);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = toMessage(err);
       if (message.includes('ENOENT')) {
         return errorResult(`File not found: ${params.path}`);
       }

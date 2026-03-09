@@ -8,6 +8,7 @@ import * as fs from 'node:fs/promises';
 import { Tool, ToolContext, ToolResult, textResult, errorResult, imageResult } from '../types.js';
 import { detectMimeType } from '../../lib/mime.js';
 import { resolveFsPath } from './resolve.js';
+import { toMessage } from '../../lib/error.js';
 
 const ReadParameters = z.object({
   path: z.string().describe('Path to the file to read'),
@@ -66,7 +67,7 @@ export const readTool: Tool = {
 
       return textResult(content);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = toMessage(err);
       if (message.includes('ENOENT')) {
         return errorResult(`File not found: ${params.path}`);
       }

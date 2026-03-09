@@ -4,6 +4,7 @@
 
 import { z } from 'zod';
 import { Tool, ToolContext, textResult, errorResult } from '../types.js';
+import { toMessage } from '../../lib/error.js';
 
 const CronAddParameters = z.object({
   id: z.string().describe('Unique slug ID for the task (e.g., "daily-report")'),
@@ -42,7 +43,7 @@ export const cronAddTool: Tool = {
         `Use cron_list to see all tasks.`
       );
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = toMessage(err);
       return errorResult(`Failed to create scheduled task: ${message}`);
     }
   },

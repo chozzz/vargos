@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { spawn } from 'node:child_process';
 import * as path from 'node:path';
 import { Tool, ToolContext, textResult, errorResult } from '../types.js';
+import { toMessage } from '../../lib/error.js';
 
 const ExecParameters = z.object({
   command: z.string().describe('Shell command to execute'),
@@ -144,7 +145,7 @@ export const execTool: Tool = {
 
       return textResult(output, metadata);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = toMessage(err);
       return errorResult(`Execution failed: ${message}`);
     }
   },

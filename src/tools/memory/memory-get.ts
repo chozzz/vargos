@@ -6,6 +6,7 @@
 import { z } from 'zod';
 import { Tool, ToolContext, textResult, errorResult } from '../types.js';
 import { getMemoryContext } from '../../memory/context.js';
+import { toMessage } from '../../lib/error.js';
 
 const MemoryGetParameters = z.object({
   path: z.string().describe('Relative path to memory file (e.g., "MEMORY.md" or "daily/2026-02-05.md")'),
@@ -32,7 +33,7 @@ export const memoryGetTool: Tool = {
       
       return textResult(`File: ${result.path}\n\n${result.text}`);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = toMessage(err);
       if (message.includes('ENOENT') || message.includes('not found')) {
         return errorResult(`File not found: ${params.path}`);
       }

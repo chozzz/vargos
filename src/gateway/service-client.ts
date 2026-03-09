@@ -16,6 +16,7 @@ import {
   type ServiceRegistration,
 } from '../protocol/index.js';
 import { Reconnector } from '../lib/reconnect.js';
+import { toMessage } from '../lib/error.js';
 import { createLogger } from '../lib/logger.js';
 import type { ServiceMethod, ServiceEvent } from './methods.js';
 
@@ -212,7 +213,7 @@ export abstract class ServiceClient {
         type: 'res',
         id: frame.id,
         ok: false,
-        error: { code: 'METHOD_ERROR', message: err instanceof Error ? err.message : String(err) },
+        error: { code: 'METHOD_ERROR', message: toMessage(err) },
       };
       this.ws?.send(serializeFrame(response));
     }

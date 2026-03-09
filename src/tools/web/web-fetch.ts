@@ -5,6 +5,7 @@
 
 import { z } from 'zod';
 import { Tool, ToolContext, textResult, errorResult } from '../types.js';
+import { toMessage } from '../../lib/error.js';
 
 const WebFetchParameters = z.object({
   url: z.string().describe('HTTP or HTTPS URL to fetch'),
@@ -167,7 +168,7 @@ export const webFetchTool: Tool = {
 
       return textResult(output);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = toMessage(err);
       return errorResult(`Fetch failed: ${message}`);
     }
   },

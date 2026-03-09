@@ -5,6 +5,7 @@
 import { z } from 'zod';
 import { Tool, ToolContext, textResult, errorResult } from '../types.js';
 import { loadConfig } from '../../config/pi-config.js';
+import { toMessage } from '../../lib/error.js';
 import { resolveDataDir } from '../../config/paths.js';
 import { maskSecret } from '../../lib/mask.js';
 
@@ -56,7 +57,7 @@ export const configReadTool: Tool = {
       const masked = maskSecrets(data);
       return textResult(JSON.stringify(masked, null, 2));
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = toMessage(err);
       return errorResult(`Failed to read config: ${message}`);
     }
   },

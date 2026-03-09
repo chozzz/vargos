@@ -491,6 +491,54 @@ describe('AgentService', () => {
     }
   }, 10000);
 
+  it('skips cron notify delivery when subagents are active', async () => {
+    await agent.disconnect();
+
+    // Runtime that reports active subagent runs after parent completes
+    const activeRuns: Array<{ sessionKey: string }> = [];
+    const spyRuntime = createMockRuntime();
+    spyRuntime.run = async (config: any) => {
+      // Simulate spawning a subagent during the parent cron run
+      if (config.sessionKey.startsWith('cron:')) {
+        activeRuns.push({ sessionKey: `${config.sessionKey}:subagent:child1` });
+      }
+      return { success: true, response: 'Spawning sub-agents...', duration: 100 };
+    };
+    spyRuntime.listActiveRuns = () => activeRuns;
+
+    agent = new AgentService({ gatewayUrl: GATEWAY_URL, workspaceDir: '/tmp/workspace', dataDir: '/tmp/data', runtime: spyRuntime });
+    await agent.connect();
+
+    const sessions = new (class extends ServiceClient {
+      constructor() {
+        super({ service: 'sessions', methods: ['session.create', 'session.addMessage', 'session.getMessages'], events: [], subscriptions: [], gatewayUrl: GATEWAY_URL });
+      }
+      async handleMethod() { return {}; }
+      handleEvent() {}
+    })();
+    await sessions.connect();
+
+    const channel = new MockChannelService();
+    await channel.connect();
+
+    try {
+      caller.emit('cron.trigger', {
+        taskId: 'daily-test',
+        task: 'Test task with subagents',
+        sessionKey: 'cron:daily-test:2026-03-08',
+        notify: ['whatsapp:555'],
+      });
+
+      await new Promise((r) => setTimeout(r, 1000));
+
+      // Should NOT deliver — subagents are active, defer to re-trigger path
+      expect(channel.sent.length).toBe(0);
+    } finally {
+      await sessions.disconnect();
+      await channel.disconnect();
+    }
+  });
+
   it('loads config once and caches it across multiple inbound messages', async () => {
     const channel = new MockChannelService();
     await channel.connect();

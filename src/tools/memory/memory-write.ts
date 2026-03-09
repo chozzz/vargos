@@ -8,6 +8,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { Tool, ToolContext, textResult, errorResult } from '../types.js';
 import { resolveWorkspaceDir } from '../../config/paths.js';
+import { toMessage } from '../../lib/error.js';
 
 const MemoryWriteParameters = z.object({
   path: z.string().describe('Relative path within memory dir (e.g., "notes/project.md")'),
@@ -41,7 +42,7 @@ export const memoryWriteTool: Tool = {
 
       return textResult(`Written to ${params.path} (${params.mode})`);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = toMessage(err);
       return errorResult(`Failed to write memory file: ${message}`);
     }
   },

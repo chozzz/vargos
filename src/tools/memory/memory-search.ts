@@ -6,6 +6,7 @@
 import { z } from 'zod';
 import { Tool, ToolContext, textResult, errorResult } from '../types.js';
 import { getMemoryContext } from '../../memory/context.js';
+import { toMessage } from '../../lib/error.js';
 
 const MemorySearchParameters = z.object({
   query: z.string().describe('Search query to find relevant memories'),
@@ -44,7 +45,7 @@ export const memorySearchTool: Tool = {
         { indexedFiles: stats.files, indexedChunks: stats.chunks }
       );
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = toMessage(err);
       return errorResult(`Memory search failed: ${message}`);
     }
   },

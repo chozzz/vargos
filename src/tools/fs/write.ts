@@ -8,6 +8,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { Tool, ToolContext, textResult, errorResult } from '../types.js';
 import { resolveFsPath } from './resolve.js';
+import { toMessage } from '../../lib/error.js';
 
 const WriteParameters = z.object({
   path: z.string().describe('Path to the file to write'),
@@ -35,7 +36,7 @@ export const writeTool: Tool = {
 
       return textResult(`Successfully wrote ${params.content.length} characters to ${params.path}`);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = toMessage(err);
       return errorResult(`Write failed: ${message}`);
     }
   },

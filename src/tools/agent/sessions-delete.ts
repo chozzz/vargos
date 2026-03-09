@@ -4,6 +4,7 @@
 
 import { z } from 'zod';
 import { Tool, ToolContext, textResult, errorResult } from '../types.js';
+import { toMessage } from '../../lib/error.js';
 
 const SessionsDeleteParameters = z.object({
   sessionKey: z.string().describe('Session key to delete (use sessions_list to find keys)'),
@@ -22,7 +23,7 @@ export const sessionsDeleteTool: Tool = {
       await context.call('sessions', 'session.delete', { sessionKey });
       return textResult(`Deleted session: ${sessionKey}`);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = toMessage(err);
       return errorResult(`Failed to delete session: ${message}`);
     }
   },

@@ -4,6 +4,7 @@
 
 import { z } from 'zod';
 import { Tool, ToolContext, textResult, errorResult } from '../types.js';
+import { toMessage } from '../../lib/error.js';
 
 const CronUpdateParameters = z.object({
   id: z.string().describe('ID of the scheduled task to update'),
@@ -27,7 +28,7 @@ export const cronUpdateTool: Tool = {
       const updated = await context.call<{ id: string }>('cron', 'cron.update', { id, ...fields });
       return textResult(`Updated scheduled task: ${updated.id}`);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = toMessage(err);
       return errorResult(`Failed to update scheduled task: ${message}`);
     }
   },

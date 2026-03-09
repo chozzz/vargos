@@ -15,6 +15,7 @@ import { deliverReply } from './delivery.js';
 import { extractMediaPaths } from './media-extract.js';
 import { channelSessionKey } from '../sessions/keys.js';
 import { createLogger } from '../lib/logger.js';
+import { toMessage } from '../lib/error.js';
 import { StatusReactionController } from './status-reactions.js';
 import { expandLinks } from './link-expand.js';
 import type { LinkExpandConfig } from '../config/pi-config.js';
@@ -74,7 +75,7 @@ export class ChannelService extends ServiceClient {
         kind: 'main',
         metadata: { channel },
       }).catch((err: unknown) => {
-        const msg = err instanceof Error ? err.message : String(err);
+        const msg = toMessage(err);
         if (!msg.includes('already exists')) throw err;
       }),
       expandLinks(content, this.linkExpandConfig).catch(() => content),
@@ -207,7 +208,7 @@ export class ChannelService extends ServiceClient {
     if (!controller) return;
 
     if (type === 'tool_start') {
-      controller.setTool(typeof data === 'string' ? data : '');
+      controller.setTool();
     } else if (type === 'text_delta') {
       controller.setThinking();
     }

@@ -16,14 +16,6 @@ describe('StatusReactionController', () => {
     vi.useRealTimers();
   });
 
-  it('calls react immediately for queued', async () => {
-    const { react, adapter } = makeAdapter();
-    const ctrl = new StatusReactionController(adapter, 'user1', 'msg1');
-    ctrl.setQueued();
-    await vi.runAllTimersAsync();
-    expect(react).toHaveBeenCalledWith('user1', 'msg1', '👀');
-  });
-
   it('debounces rapid setThinking calls — only one react fires', async () => {
     const { react, adapter } = makeAdapter();
     const ctrl = new StatusReactionController(adapter, 'user1', 'msg1');
@@ -46,9 +38,9 @@ describe('StatusReactionController', () => {
     const { react, adapter } = makeAdapter();
     const ctrl = new StatusReactionController(adapter, 'user1', 'msg1');
 
-    ctrl.setTool('fs_read');
-    ctrl.setTool('fs_write');
-    ctrl.setTool('web_fetch');
+    ctrl.setTool();
+    ctrl.setTool();
+    ctrl.setTool();
 
     await vi.runAllTimersAsync();
     expect(react).toHaveBeenCalledTimes(1);
@@ -64,7 +56,7 @@ describe('StatusReactionController', () => {
     ctrl.setDone();
     // Further calls are ignored
     ctrl.setThinking();
-    ctrl.setTool('anything');
+    ctrl.setTool();
 
     await vi.runAllTimersAsync();
     expect(react).toHaveBeenCalledTimes(1);
@@ -97,13 +89,13 @@ describe('StatusReactionController', () => {
     };
 
     const ctrl = new StatusReactionController(adapter, 'user1', 'msg1');
-    ctrl.setQueued();
-    // Advance past debounce to flush the queued immediate call
-    await vi.advanceTimersByTimeAsync(10);
+    ctrl.setThinking();
+    // Advance past debounce to flush the thinking call
+    await vi.advanceTimersByTimeAsync(600);
     ctrl.setDone();
     await vi.runAllTimersAsync();
 
-    expect(order).toEqual(['👀', '👍']);
+    expect(order).toEqual(['🤔', '👍']);
     ctrl.dispose();
   });
 

@@ -10,6 +10,7 @@ import { zodToJsonSchema } from 'zod-to-json-schema';
 import { toolRegistry } from '../tools/registry.js';
 import type { Tool, ToolContext } from '../tools/types.js';
 import { createLogger } from '../lib/logger.js';
+import { toMessage } from '../lib/error.js';
 
 const log = createLogger('tools');
 
@@ -109,7 +110,7 @@ function wrapVargosTool(
           details: {},
         };
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
+        const message = toMessage(err);
         log.debug(`${tool.name} error: ${message}`);
         return {
           content: [{ type: 'text', text: `Error: ${message}` }],
