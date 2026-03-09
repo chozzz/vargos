@@ -1,5 +1,5 @@
 import { resolveDataDir, resolveGatewayUrl } from '../config/paths.js';
-import { loadConfig, resolveModel } from '../config/pi-config.js';
+import { loadConfig, resolveModel, resolveApiKey } from '../config/pi-config.js';
 import { validateConfig } from '../config/validate.js';
 import { ServiceClient } from '../gateway/service-client.js';
 import { startSpinner } from '../lib/spinner.js';
@@ -29,8 +29,7 @@ export async function health(): Promise<void> {
   }
 
   const primary = resolveModel(config);
-  const envKey = process.env[`${primary.provider.toUpperCase()}_API_KEY`];
-  const hasKey = !!(envKey || primary.apiKey);
+  const hasKey = !!resolveApiKey(primary);
 
   const validation = validateConfig(config);
 

@@ -80,10 +80,12 @@ describe('buildOpenApiSpec', () => {
   });
 });
 
-describe('GET /openapi.json', () => {
+describe('MCP HTTP server', () => {
   const GW_PORT = 19809;
   const MCP_PORT = 19810;
   const GW_URL = `ws://127.0.0.1:${GW_PORT}`;
+  const TEST_TOKEN = 'test-secret-token-12345';
+  const AUTH_HEADER = `Bearer ${TEST_TOKEN}`;
 
   let gateway: GatewayServer;
   let tools: ToolsService;
@@ -102,7 +104,7 @@ describe('GET /openapi.json', () => {
 
     bridge = new McpBridge({ gatewayUrl: GW_URL, version: '0.1.0' });
     await bridge.connect();
-    await bridge.startHttp({ host: '127.0.0.1', port: MCP_PORT, endpoint: '/mcp' });
+    await bridge.startHttp({ host: '127.0.0.1', port: MCP_PORT, endpoint: '/mcp', bearerToken: TEST_TOKEN });
   });
 
   afterEach(async () => {
@@ -112,8 +114,10 @@ describe('GET /openapi.json', () => {
     await gateway.stop();
   });
 
-  it('returns OpenAPI spec with registered tools', async () => {
-    const res = await fetch(`http://127.0.0.1:${MCP_PORT}/openapi.json`);
+  it('returns OpenAPI spec with valid auth', async () => {
+    const res = await fetch(`http://127.0.0.1:${MCP_PORT}/openapi.json`, {
+      headers: { Authorization: AUTH_HEADER },
+    });
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('application/json');
 
@@ -126,8 +130,31 @@ describe('GET /openapi.json', () => {
     expect(paths).toHaveLength(2);
   });
 
-  it('returns 404 for unknown routes', async () => {
-    const res = await fetch(`http://127.0.0.1:${MCP_PORT}/nope`);
+  it('returns 401 without auth header', async () => {
+    const res = await fetch(`http://127.0.0.1:${MCP_PORT}/openapi.json`);
+    expect(res.status).toBe(401);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body.error).toBe('Unauthorized');
+  });
+
+  it('returns 401 with wrong token', async () => {
+    const res = await fetch(`http://127.0.0.1:${MCP_PORT}/openapi.json`, {
+      headers: { Authorization: 'Bearer wrong-token' },
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('returns 404 for unknown routes with valid auth', async () => {
+    const res = await fetch(`http://127.0.0.1:${MCP_PORT}/nope`, {
+      headers: { Authorization: AUTH_HEADER },
+    });
     expect(res.status).toBe(404);
+  });
+
+  it('allows OPTIONS without auth (CORS preflight)', async () => {
+    const res = await fetch(`http://127.0.0.1:${MCP_PORT}/mcp`, {
+      method: 'OPTIONS',
+    });
+    expect(res.status).toBe(200);
   });
 });

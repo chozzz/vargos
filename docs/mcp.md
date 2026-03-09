@@ -44,10 +44,15 @@ For MCP clients that expect stdio transport:
     "transport": "http",         // default
     "host": "127.0.0.1",
     "port": 9001,
-    "endpoint": "/mcp"
+    "endpoint": "/mcp",
+    "bearerToken": "your-secret-token"  // required — server won't start without this
   }
 }
 ```
+
+The HTTP server requires `bearerToken` for authentication. All requests must include `Authorization: Bearer <token>`. If no token is configured, the MCP HTTP server is skipped at boot (a warning is logged).
+
+CORS preflight (OPTIONS) requests are allowed without auth.
 
 ## OpenAPI
 

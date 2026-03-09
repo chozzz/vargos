@@ -165,12 +165,23 @@
 | Session debug | ✅ |
 | Config management | ✅ |
 | Health check | ✅ |
+| Onboarding: media/voice setup wizard | ✅ |
+| Onboarding: LLM credential verification | ✅ |
 
 ## Security
 
 | Feature | Status |
 |---------|--------|
 | Boundary path validation (symlink-aware traversal prevention) | ✅ |
+| MCP HTTP bearer token authentication | ✅ |
+| ToolsService boundary injection (gateway RPC callers) | ✅ |
+| Config file permissions (0o600, owner-only) | ✅ |
+| Error sanitization (API keys/tokens scrubbed from logs) | ✅ |
+| User-facing error classification (auth/timeout/transient) | ✅ |
+| Browser random session IDs | ✅ |
+| LLM credential verification during onboarding | ✅ |
+| Embedding config validation (warn on missing key) | ✅ |
+| PostgreSQL → SQLite graceful fallback | ✅ |
 
 ## Planned
 

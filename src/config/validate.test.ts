@@ -6,6 +6,7 @@ function validConfig(overrides?: Partial<VargosConfig>): VargosConfig {
   return {
     models: { openai: { provider: 'openai', model: 'gpt-4o', apiKey: 'sk-test' } },
     agent: { primary: 'openai' },
+    mcp: { bearerToken: 'test-token' },
     ...overrides,
   };
 }
@@ -143,10 +144,32 @@ describe('validateConfig', () => {
       models: { x: { provider: '', model: '' } },
       agent: { primary: 'x' },
       gateway: { port: -1 },
-      mcp: { transport: 'bad' as any, port: 0, endpoint: 'no-slash' },
+      mcp: { transport: 'bad' as any, port: 0, endpoint: 'no-slash', bearerToken: 'x' },
     });
     expect(result.valid).toBe(false);
     expect(result.errors.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it('warns when mcp.bearerToken is missing', () => {
+    const result = validateConfig({ ...validConfig(), mcp: {} });
+    expect(result.valid).toBe(true);
+    expect(result.warnings).toEqual(expect.arrayContaining([expect.stringMatching(/bearerToken/)]));
+  });
+
+  it('no mcp warning when mcp section is absent', () => {
+    const result = validateConfig({ ...validConfig(), mcp: undefined });
+    expect(result.valid).toBe(true);
+    expect(result.warnings).not.toEqual(expect.arrayContaining([expect.stringMatching(/bearerToken/)]));
+  });
+
+  it('no mcp warning when bearerToken is set', () => {
+    const result = validateConfig({ ...validConfig(), mcp: { bearerToken: 'my-secret' } });
+    expect(result.warnings).not.toEqual(expect.arrayContaining([expect.stringMatching(/bearerToken/)]));
+  });
+
+  it('no mcp warning when transport is stdio', () => {
+    const result = validateConfig({ ...validConfig(), mcp: { transport: 'stdio' } });
+    expect(result.warnings).not.toEqual(expect.arrayContaining([expect.stringMatching(/bearerToken/)]));
   });
 
   it('agent.fallback referencing unknown profile produces warning', () => {
@@ -168,6 +191,7 @@ describe('validateConfig', () => {
         whisper: { provider: 'openai', model: 'whisper-1', apiKey: 'sk-test' },
       },
       agent: { primary: 'openai', media: { audio: 'whisper' } },
+      mcp: { bearerToken: 'test-token' },
     });
     expect(result.valid).toBe(true);
     expect(result.warnings).toHaveLength(0);
@@ -223,6 +247,28 @@ describe('subagent config validation', () => {
     config.agent.subagents = { model: 'nonexistent' };
     const result = validateConfig(config);
     expect(result.warnings).toContain('agent.subagents.model "nonexistent" not found in models');
+  });
+
+  it('warns when embedding provider is openai without API key', () => {
+    const result = validateConfig(validConfig({
+      embedding: { provider: 'openai' },
+    }));
+    expect(result.valid).toBe(true);
+    expect(result.warnings.some(w => w.includes('embedding') && w.includes('API key'))).toBe(true);
+  });
+
+  it('no embedding warning when apiKey is set', () => {
+    const result = validateConfig(validConfig({
+      embedding: { provider: 'openai', apiKey: 'sk-test' },
+    }));
+    expect(result.warnings.some(w => w.includes('embedding'))).toBe(false);
+  });
+
+  it('no embedding warning when provider is local or none', () => {
+    const resultLocal = validateConfig(validConfig({ embedding: { provider: 'local' } }));
+    const resultNone = validateConfig(validConfig({ embedding: { provider: 'none' } }));
+    expect(resultLocal.warnings.some(w => w.includes('embedding'))).toBe(false);
+    expect(resultNone.warnings.some(w => w.includes('embedding'))).toBe(false);
   });
 });
 

@@ -12,7 +12,7 @@
 import { ServiceClient } from '../gateway/service-client.js';
 import { createLogger } from '../lib/logger.js';
 import { generateId } from '../lib/id.js';
-import { toMessage } from '../lib/error.js';
+import { toMessage, classifyError, friendlyError, sanitizeError } from '../lib/error.js';
 import { stripHeartbeatToken } from '../lib/heartbeat.js';
 import { parseTarget } from '../lib/channel-target.js';
 import { isSubagentSessionKey } from '../sessions/keys.js';
@@ -23,7 +23,7 @@ import { SubagentCoordinator } from './subagent-coordinator.js';
 const log = createLogger('agent');
 import type { AgentStreamEvent } from './lifecycle.js';
 import { resolveWorkspaceDir, resolveDataDir } from '../config/paths.js';
-import { loadConfig, resolveModel, type VargosConfig } from '../config/pi-config.js';
+import { loadConfig, resolveModel, resolveApiKey, type VargosConfig } from '../config/pi-config.js';
 import { LOCAL_PROVIDERS } from '../config/validate.js';
 import { transformMedia, type MediaAttachment } from '../lib/media-transform.js';
 
@@ -129,11 +129,20 @@ export class AgentService extends ServiceClient {
         break;
 
       case 'cron.trigger':
-      case 'webhook.trigger':
-        this.handleTrigger(event, p).catch((err) =>
+      case 'webhook.trigger': {
+        const kind = event.split('.')[0];
+        const { task, sessionKey, notify } = p as {
+          task: string;
+          sessionKey: string;
+          notify?: string[];
+        };
+        const triggerId = (p.taskId ?? p.hookId) as string;
+        log.info(`${kind} trigger: ${triggerId} → ${sessionKey}${notify?.length ? ` (notify: ${notify.length} targets)` : ''}`);
+        this.handleTriggeredRun({ kind, triggerId, task, sessionKey, notify }).catch((err) =>
           log.error(`Error handling ${event}: ${err}`),
         );
         break;
+      }
     }
   }
 
@@ -213,7 +222,7 @@ export class AgentService extends ServiceClient {
       await this.deliverToChannel(channel, userId, result);
     } else {
       const errMsg = result.error
-        ? `Something went wrong: ${result.error.slice(0, 200)}`
+        ? friendlyError(classifyError(result.error))
         : 'Something went wrong — please try again.';
       await this.call('channel', 'channel.send', { channel, userId, text: errMsg })
         .catch((err) => log.error(`Failed to send error reply: ${err}`));
@@ -235,18 +244,17 @@ export class AgentService extends ServiceClient {
     if (mediaModelName) {
       try {
         const profile = resolveModel(config!, mediaModelName);
-        const envKey = process.env[`${profile.provider.toUpperCase()}_API_KEY`];
-        const apiKey = envKey || profile.apiKey;
-        const transformed = await transformMedia(media, { ...profile, apiKey });
+        const transformed = await transformMedia(media, { ...profile, apiKey: resolveApiKey(profile) });
         return media.type === 'audio'
           ? transformed
           : `[Image description: ${transformed}]\n\n${content}`;
       } catch (err) {
-        log.error(`media transform failed: ${err}`);
-        const errMsg = toMessage(err);
+        const raw = toMessage(err);
+        log.error(`media transform failed: ${sanitizeError(raw)}`);
+        const userMsg = friendlyError(classifyError(raw));
         await this.call('channel', 'channel.send', {
           channel, userId,
-          text: `Failed to process ${media.type}: ${errMsg.slice(0, 200)}`,
+          text: `${media.type} processing failed. ${userMsg}`,
         }).catch((e) => log.error(`Failed to send transform error: ${e}`));
         return null;
       }
@@ -255,25 +263,13 @@ export class AgentService extends ServiceClient {
     if (media.type !== 'image') {
       await this.call('channel', 'channel.send', {
         channel, userId,
-        text: `${media.type} processing requires a model. Set agent.media.${media.type} in config.json.`,
+        text: `${media.type === 'audio' ? 'Voice' : media.type.charAt(0).toUpperCase() + media.type.slice(1)} messages are not enabled. Ask the admin to set this up.`,
       }).catch((err) => log.error(`Failed to send media error: ${err}`));
       return null;
     }
 
     // Images without a transform model fall through — primary may support vision
     return content;
-  }
-
-  private async handleTrigger(event: string, payload: Record<string, unknown>): Promise<void> {
-    const kind = event.split('.')[0]; // 'cron' or 'webhook'
-    const { task, sessionKey, notify } = payload as {
-      task: string;
-      sessionKey: string;
-      notify?: string[];
-    };
-    const triggerId = (payload.taskId ?? payload.hookId) as string;
-    log.info(`${kind} trigger: ${triggerId} → ${sessionKey}${notify?.length ? ` (notify: ${notify.length} targets)` : ''}`);
-    await this.handleTriggeredRun({ kind, triggerId, task, sessionKey, notify });
   }
 
   private async handleTriggeredRun({
@@ -360,8 +356,7 @@ export class AgentService extends ServiceClient {
     if (!config) throw new Error('No config.json — run: vargos config');
 
     const primary = resolveModel(config);
-    const envKey = process.env[`${primary.provider.toUpperCase()}_API_KEY`];
-    const apiKey = envKey || primary.apiKey || (LOCAL_PROVIDERS.has(primary.provider) ? 'local' : undefined);
+    const apiKey = resolveApiKey(primary) || (LOCAL_PROVIDERS.has(primary.provider) ? 'local' : undefined);
 
     const sessionKey = params.sessionKey;
     const runId = generateId('run');

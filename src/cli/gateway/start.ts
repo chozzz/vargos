@@ -23,7 +23,7 @@ import { setGatewayCall } from '../../agent/extension.js';
 import { extractLoaderArgs } from '../../lib/loader-args.js';
 import { reapSessions } from '../../sessions/reaper.js';
 import { acquireLock, releaseLock } from '../lock.js';
-import { toMessage } from '../../lib/error.js';
+import { toMessage, classifyError, sanitizeError } from '../../lib/error.js';
 import { writePidFile, removePidFile } from '../pid.js';
 import {
   renderBanner,
@@ -66,20 +66,30 @@ interface BootedServices {
   webhooks?: import('../../webhooks/service.js').WebhookService;
 }
 
-async function resolveMemoryStorage(config: VargosConfig, dataDir: string): Promise<MemoryStorage> {
-  const storageType = config.storage?.type ?? 'postgres';
+async function resolveMemoryStorage(config: VargosConfig, dataDir: string, log: (s: string) => void): Promise<MemoryStorage> {
+  const storageType = config.storage?.type ?? 'sqlite';
   if (storageType === 'postgres' && config.storage?.url) {
-    const { MemoryPostgresStorage } = await import('../../memory/postgres-storage.js');
-    return new MemoryPostgresStorage({ url: config.storage.url });
+    try {
+      const { MemoryPostgresStorage } = await import('../../memory/postgres-storage.js');
+      const pg = new MemoryPostgresStorage({ url: config.storage.url });
+      await pg.initialize();
+      return pg;
+    } catch (err) {
+      log(`  ⚠ PostgreSQL unavailable (${sanitizeError(toMessage(err))}) — falling back to SQLite`);
+    }
   }
   const { MemorySQLiteStorage } = await import('../../memory/sqlite-storage.js');
   return new MemorySQLiteStorage({ dbPath: path.join(resolveCacheDir(), 'memory.db') });
 }
 
-async function initTools(
-  extensionCtx: ExtensionContext,
-  gatewayUrl: string,
-): Promise<{ tools: ToolsService; toolCounts: Record<string, number> }> {
+interface InitToolsOpts {
+  extensionCtx: ExtensionContext;
+  gatewayUrl: string;
+  boundary?: string;
+  boundaryAllowlist?: string[];
+}
+
+async function initTools(opts: InitToolsOpts): Promise<{ tools: ToolsService; toolCounts: Record<string, number> }> {
   const toolCounts: Record<string, number> = {};
   const extensionModules = await Promise.all([
     import('../../tools/fs/index.js'),
@@ -89,11 +99,16 @@ async function initTools(
   ]);
   for (let i = 0; i < extensionModules.length; i++) {
     const before = toolRegistry.list().length;
-    await extensionModules[i].default.register(extensionCtx);
+    await extensionModules[i].default.register(opts.extensionCtx);
     toolCounts[TOOL_GROUPS[i]] = toolRegistry.list().length - before;
   }
 
-  const tools = new ToolsService({ registry: toolRegistry, gatewayUrl });
+  const tools = new ToolsService({
+    registry: toolRegistry,
+    gatewayUrl: opts.gatewayUrl,
+    boundary: opts.boundary,
+    boundaryAllowlist: opts.boundaryAllowlist,
+  });
   await tools.connect();
   setGatewayCall((target, method, params) => tools.call(target, method, params));
 
@@ -129,6 +144,19 @@ async function teardown(services: BootedServices, dataDir: string): Promise<void
   await services.gateway.stop();
   await removePidFile(dataDir);
   await releaseLock();
+}
+
+/** Map channel boot errors to actionable recovery hints */
+function classifyChannelError(type: string, msg: string): string {
+  const lower = msg.toLowerCase();
+  if (lower.includes('bottoken') || lower.includes('bot_token') || lower.includes('requires a'))
+    return `missing config — run: vargos config channel edit`;
+  const errorClass = classifyError(msg);
+  if (errorClass === 'auth')
+    return `auth failed — check your ${type} credentials in config.json`;
+  if (errorClass === 'transient')
+    return `connection failed — check network and retry`;
+  return msg;
 }
 
 export async function start(): Promise<void> {
@@ -199,10 +227,7 @@ export async function start(): Promise<void> {
   await sessions.connect();
   serviceStatuses.push({ name: 'Sessions', ok: true });
 
-  const envKey = process.env[`${primary.provider.toUpperCase()}_API_KEY`];
-  const apiKey = envKey || primary.apiKey;
-
-  const memoryStorage = await resolveMemoryStorage(config, dataDir);
+  const memoryStorage = await resolveMemoryStorage(config, dataDir, log);
   await initializeMemoryContext({
     memoryDir: workspaceDir,
     cacheDir: path.join(dataDir, 'cache'),
@@ -223,7 +248,13 @@ export async function start(): Promise<void> {
     paths: { dataDir, workspaceDir },
   };
 
-  const { tools, toolCounts } = await initTools(extensionCtx, gatewayUrl);
+  const fsBoundary = config.fsBoundary?.enabled !== false ? workspaceDir : undefined;
+  const { tools, toolCounts } = await initTools({
+    extensionCtx,
+    gatewayUrl,
+    boundary: fsBoundary,
+    boundaryAllowlist: config.fsBoundary?.allowlist,
+  });
 
   const { McpClientManager } = await import('../../mcp/client.js');
   const mcpClients = new McpClientManager(toolRegistry);
@@ -302,7 +333,9 @@ export async function start(): Promise<void> {
         }
         serviceStatuses.push({ name: 'Channel', ok: true, detail: `${type} ${adapter.status}` });
       } catch (err) {
-        serviceStatuses.push({ name: 'Channel', ok: false, detail: `${type} (${toMessage(err)})` });
+        const msg = toMessage(err);
+        const hint = classifyChannelError(type, msg);
+        serviceStatuses.push({ name: 'Channel', ok: false, detail: `${type} — ${hint}` });
       }
     }
   }
@@ -315,6 +348,7 @@ export async function start(): Promise<void> {
       hooks: config.webhooks.hooks,
       port: config.webhooks.port,
       host: config.webhooks.host,
+      dataDir,
     });
     await webhooks.connect();
     await webhooks.startHttp();
@@ -330,12 +364,17 @@ export async function start(): Promise<void> {
   let openapiUrl: string | undefined;
   const mcpTransport = config.mcp?.transport ?? 'http';
   if (mcpTransport === 'http') {
-    const mcpHost = config.mcp?.host ?? '127.0.0.1';
-    const mcpPort = config.mcp?.port ?? 9001;
-    const mcpEndpoint = config.mcp?.endpoint ?? '/mcp';
-    await mcpBridge.startHttp({ host: mcpHost, port: mcpPort, endpoint: mcpEndpoint });
-    mcpUrl = `http://${mcpHost}:${mcpPort}${mcpEndpoint}`;
-    openapiUrl = `http://${mcpHost}:${mcpPort}/openapi.json`;
+    const bearerToken = config.mcp?.bearerToken;
+    if (bearerToken) {
+      const mcpHost = config.mcp?.host ?? '127.0.0.1';
+      const mcpPort = config.mcp?.port ?? 9001;
+      const mcpEndpoint = config.mcp?.endpoint ?? '/mcp';
+      await mcpBridge.startHttp({ host: mcpHost, port: mcpPort, endpoint: mcpEndpoint, bearerToken });
+      mcpUrl = `http://${mcpHost}:${mcpPort}${mcpEndpoint}`;
+      openapiUrl = `http://${mcpHost}:${mcpPort}/openapi.json`;
+    } else {
+      mcpUrl = 'disabled (no mcp.bearerToken)';
+    }
   } else {
     await mcpBridge.startStdio();
   }

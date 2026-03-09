@@ -114,7 +114,7 @@ describe('session tools', () => {
         role: 'You are a senior architect. Focus on API contracts.',
       }, ctx);
 
-      const agentRunCall = ctx.call!.mock.calls.find(
+      const agentRunCall = (ctx.call as ReturnType<typeof vi.fn>).mock.calls.find(
         (c: unknown[]) => c[0] === 'agent' && c[1] === 'agent.run',
       );
       expect(agentRunCall).toBeDefined();
@@ -127,7 +127,7 @@ describe('session tools', () => {
       const ctx = createMockContext();
       await sessionsSpawnTool.execute({ task: 'Simple task' }, ctx);
 
-      const agentRunCall = ctx.call!.mock.calls.find(
+      const agentRunCall = (ctx.call as ReturnType<typeof vi.fn>).mock.calls.find(
         (c: unknown[]) => c[0] === 'agent' && c[1] === 'agent.run',
       );
       expect(agentRunCall).toBeDefined();

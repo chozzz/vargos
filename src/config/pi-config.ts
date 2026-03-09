@@ -61,6 +61,8 @@ export interface McpConfig {
   host?: string;
   port?: number;
   endpoint?: string;
+  /** Bearer token for HTTP transport auth. MCP HTTP server won't start without this. */
+  bearerToken?: string;
 }
 
 export interface PathsConfig {
@@ -136,9 +138,9 @@ export interface WebhooksConfig {
 }
 
 export interface EmbeddingConfig {
-  provider: 'openai';
-  model?: string;    // default: text-embedding-3-small
-  apiKey?: string;
+  provider: 'openai' | 'local' | 'none';
+  model?: string;    // default: text-embedding-3-small (openai only)
+  apiKey?: string;   // required for openai
 }
 
 export interface LinkExpandConfig {
@@ -182,6 +184,11 @@ export function resolveModel(config: VargosConfig, name?: string): ModelProfile 
     throw new Error(`Model profile "${profileName}" not found — available: ${Object.keys(config.models).join(', ')}`);
   }
   return profile;
+}
+
+/** Resolve API key: env var > profile.apiKey > 'local' for local providers */
+export function resolveApiKey(profile: ModelProfile): string | undefined {
+  return process.env[`${profile.provider.toUpperCase()}_API_KEY`] || profile.apiKey || undefined;
 }
 
 function getConfigPath(dataDir: string): string {
@@ -267,7 +274,7 @@ export async function saveConfig(dataDir: string, config: VargosConfig): Promise
   await fs.writeFile(
     getConfigPath(dataDir),
     JSON.stringify(config, null, 2),
-    'utf-8',
+    { encoding: 'utf-8', mode: 0o600 },
   );
 }
 

@@ -42,6 +42,7 @@ vi.mock('../config/pi-config.js', () => ({
     if (!profile) throw new Error(`Model profile "${key}" not found`);
     return profile;
   },
+  resolveApiKey: (profile: any) => profile.apiKey,
   getPiConfigPaths: () => ({ agentDir: '/tmp', authPath: '/tmp/auth.json', modelsPath: '/tmp/models.json' }),
 }));
 
@@ -186,8 +187,7 @@ describe('AgentService', () => {
       await new Promise((r) => setTimeout(r, 500));
 
       expect(channel.sent.length).toBe(1);
-      expect(channel.sent[0].text).toContain('audio processing requires a model');
-      expect(channel.sent[0].text).toContain('agent.media.audio');
+      expect(channel.sent[0].text).toContain('Voice messages are not enabled');
     } finally {
       await channel.disconnect();
     }
@@ -220,8 +220,8 @@ describe('AgentService', () => {
       await new Promise((r) => setTimeout(r, 500));
 
       expect(channel.sent.length).toBe(1);
-      expect(channel.sent[0].text).toContain('Failed to process audio');
-      expect(channel.sent[0].text).toContain('Whisper API 401');
+      expect(channel.sent[0].text).toContain('audio processing failed');
+      expect(channel.sent[0].text).toContain('authentication');
     } finally {
       await channel.disconnect();
     }
@@ -591,8 +591,8 @@ describe('AgentService', () => {
       expect(channel.sent.length).toBe(1);
       expect(channel.sent[0].channel).toBe('whatsapp');
       expect(channel.sent[0].userId).toBe('123');
-      expect(channel.sent[0].text).toContain('Something went wrong');
-      expect(channel.sent[0].text).toContain('LLM timeout');
+      // Error is classified as 'timeout' → friendly message
+      expect(channel.sent[0].text).toContain('timed out');
     } finally {
       await channel.disconnect();
     }

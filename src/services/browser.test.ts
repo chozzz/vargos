@@ -114,11 +114,12 @@ describe('session lifecycle', () => {
     expect(service.listSessions()).toHaveLength(0);
   });
 
-  it('assigns sequential ids', async () => {
+  it('assigns unique ids with browser prefix', async () => {
     const s1 = await service.createSession();
     const s2 = await service.createSession();
-    expect(s1.id).toBe('browser-1');
-    expect(s2.id).toBe('browser-2');
+    expect(s1.id).toMatch(/^browser-/);
+    expect(s2.id).toMatch(/^browser-/);
+    expect(s1.id).not.toBe(s2.id);
   });
 });
 

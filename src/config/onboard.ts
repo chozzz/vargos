@@ -6,7 +6,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { intro, outro, text, select, confirm, log, isCancel } from '@clack/prompts';
-import pg from 'pg';
 import { loadConfig, saveConfig, type ModelProfile, type StorageConfig, type VargosConfig } from './pi-config.js';
 import { LOCAL_PROVIDERS } from './validate.js';
 
@@ -141,13 +140,51 @@ async function setupLlm(dataDir: string): Promise<void> {
     : { models, agent: { primary: profileName } };
   await saveConfig(dataDir, config);
   log.success(`Configured ${provider}/${profile.model}`);
+
+  // Quick credential test for cloud providers
+  if (!LOCAL_PROVIDERS.has(provider) && profile.apiKey) {
+    await testLlmCredentials(provider, profile);
+  }
+}
+
+async function testLlmCredentials(provider: string, profile: ModelProfile): Promise<void> {
+  log.info('Testing API key...');
+  const urls: Record<string, string> = {
+    openai: 'https://api.openai.com/v1/models',
+    anthropic: 'https://api.anthropic.com/v1/messages',
+    google: 'https://generativelanguage.googleapis.com/v1beta/models',
+    openrouter: 'https://openrouter.ai/api/v1/models',
+  };
+  const url = urls[provider];
+  if (!url) return;
+
+  try {
+    const headers: Record<string, string> = provider === 'anthropic'
+      ? { 'x-api-key': profile.apiKey!, 'anthropic-version': '2023-06-01' }
+      : { 'Authorization': `Bearer ${profile.apiKey}` };
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch(url, { headers, signal: controller.signal });
+    clearTimeout(timeout);
+
+    if (res.status === 401 || res.status === 403) {
+      log.warn('API key rejected — double-check the key and try again.');
+    } else {
+      log.success('API key verified');
+    }
+  } catch {
+    log.warn('Could not verify API key (network issue) — will retry at boot.');
+  }
 }
 
 // ── Step 3: Storage ──────────────────────────────────────────────────────────
 
 async function testPostgresConnection(url: string): Promise<string | null> {
+  const pg = await import('pg');
+  const Pool = pg.default.Pool;
   const dbName = new URL(url).pathname.slice(1);
-  let pool = new pg.Pool({ connectionString: url });
+  let pool = new Pool({ connectionString: url });
   try {
     await pool.query('SELECT 1');
   } catch (err: unknown) {
@@ -157,7 +194,7 @@ async function testPostgresConnection(url: string): Promise<string | null> {
       await pool.end();
       const baseUrl = new URL(url);
       baseUrl.pathname = '/postgres';
-      const bootstrap = new pg.Pool({ connectionString: baseUrl.toString() });
+      const bootstrap = new Pool({ connectionString: baseUrl.toString() });
       try {
         if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(dbName)) return `Invalid database name: ${dbName}`;
         await bootstrap.query(`CREATE DATABASE ${dbName}`);
@@ -167,7 +204,7 @@ async function testPostgresConnection(url: string): Promise<string | null> {
         await bootstrap.end();
       }
       // Reconnect to the newly created database
-      pool = new pg.Pool({ connectionString: url });
+      pool = new Pool({ connectionString: url });
     } else {
       return pgErr.message ?? 'Connection failed';
     }
@@ -201,8 +238,8 @@ export async function setupStorage(dataDir: string): Promise<void> {
   const storageType = await select({
     message: 'Storage backend',
     options: [
-      { value: 'postgres', label: 'PostgreSQL (recommended)' },
-      { value: 'sqlite', label: 'SQLite (local only)' },
+      { value: 'sqlite', label: 'SQLite (default, zero setup)' },
+      { value: 'postgres', label: 'PostgreSQL (pgvector, production)' },
     ],
   });
   if (isCancel(storageType)) return;
@@ -265,6 +302,51 @@ async function setupChannels(): Promise<void> {
   else await setupTelegram();
 }
 
+// ── Step 5: Media (optional) ─────────────────────────────────────────────────
+
+/** Reuse an existing OpenAI profile's API key, or prompt for one */
+async function resolveOpenaiKey(config: VargosConfig, promptMsg: string): Promise<string | null> {
+  const existing = Object.values(config.models).find(m => m.provider === 'openai' && m.apiKey);
+  if (existing?.apiKey) return existing.apiKey;
+  const apiKey = await text({ message: promptMsg, placeholder: 'sk-...' });
+  if (isCancel(apiKey)) return null;
+  return apiKey || null;
+}
+
+async function setupMedia(dataDir: string): Promise<void> {
+  const wantMedia = await confirm({ message: 'Set up voice/image processing?' });
+  if (isCancel(wantMedia) || !wantMedia) return;
+
+  const config = await loadConfig(dataDir);
+  if (!config) return;
+
+  log.step('Media Processing');
+
+  const wantAudio = await confirm({ message: 'Enable voice message transcription (Whisper)?' });
+  if (isCancel(wantAudio)) return;
+
+  if (wantAudio) {
+    const key = await resolveOpenaiKey(config, 'OpenAI API key for Whisper');
+    if (key === null) return;
+    config.models['whisper'] = { provider: 'openai', model: 'whisper-1', apiKey: key };
+    config.agent.media = { ...config.agent.media, audio: 'whisper' };
+    log.success('Whisper transcription configured');
+  }
+
+  const wantImage = await confirm({ message: 'Enable image description?' });
+  if (isCancel(wantImage)) return;
+
+  if (wantImage) {
+    const key = await resolveOpenaiKey(config, 'OpenAI API key for vision');
+    if (key === null) return;
+    config.models['vision'] = { provider: 'openai', model: 'gpt-4o-mini', apiKey: key };
+    config.agent.media = { ...config.agent.media, image: 'vision' };
+    log.success('Image description configured');
+  }
+
+  await saveConfig(dataDir, config);
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 export async function runFirstRunSetup(dataDir: string, workspaceDir: string): Promise<void> {
@@ -274,6 +356,7 @@ export async function runFirstRunSetup(dataDir: string, workspaceDir: string): P
   await setupLlm(dataDir);
   await setupStorage(dataDir);
   await setupChannels();
+  await setupMedia(dataDir);
 
   outro('Setup complete — starting gateway...');
 }

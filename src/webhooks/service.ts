@@ -9,7 +9,7 @@
  */
 
 import http from 'node:http';
-import { timingSafeEqual } from 'node:crypto';
+import { timingSafeEqual, createHash } from 'node:crypto';
 import { ServiceClient } from '../gateway/service-client.js';
 import { webhookSessionKey } from '../sessions/keys.js';
 import { createLogger } from '../lib/logger.js';
@@ -26,6 +26,7 @@ export interface WebhookServiceConfig {
   hooks: WebhookHook[];
   port?: number;
   host?: string;
+  dataDir?: string;
 }
 
 export class WebhookService extends ServiceClient {
@@ -34,6 +35,7 @@ export class WebhookService extends ServiceClient {
   private server: http.Server | null = null;
   private httpPort: number;
   private httpHost: string;
+  private dataDir?: string;
 
   constructor(config: WebhookServiceConfig) {
     super({
@@ -49,6 +51,7 @@ export class WebhookService extends ServiceClient {
     }
     this.httpPort = config.port ?? 9002;
     this.httpHost = config.host ?? '127.0.0.1';
+    this.dataDir = config.dataDir;
   }
 
   async handleMethod(method: string, _params: unknown): Promise<unknown> {
@@ -117,11 +120,11 @@ export class WebhookService extends ServiceClient {
       return;
     }
 
-    // Timing-safe bearer token comparison
+    // Timing-safe bearer token comparison (hash-then-compare prevents length leakage)
     const auth = req.headers.authorization ?? '';
-    const expected = `Bearer ${hook.token}`;
-    if (auth.length !== expected.length ||
-        !timingSafeEqual(Buffer.from(auth), Buffer.from(expected))) {
+    const expectedHash = createHash('sha256').update(`Bearer ${hook.token}`).digest();
+    const authHash = createHash('sha256').update(auth).digest();
+    if (!timingSafeEqual(authHash, expectedHash)) {
       res.writeHead(401, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Unauthorized' }));
       return;
@@ -175,7 +178,7 @@ export class WebhookService extends ServiceClient {
 
   private async fireHook(hook: WebhookHook, payload: unknown): Promise<void> {
     const task = hook.transform
-      ? await loadTransform(hook.transform).then((fn) => fn(payload))
+      ? await loadTransform(hook.transform, this.dataDir).then((fn) => fn(payload))
       : passthroughTransform(payload);
 
     const sessionKey = webhookSessionKey(hook.id);
