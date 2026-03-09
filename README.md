@@ -15,6 +15,7 @@
 - **Subagent spawning** — isolated child agents with depth-limited nesting
 - **Context pruning + compaction** — automatic history management to stay within context windows
 - **Media processing** — audio transcription (Whisper) and image description routed to dedicated models
+- **Training-ready sessions** — every run captures tool calls, thinking, token usage, and model metadata for fine-tuning
 
 ## Quick Start
 

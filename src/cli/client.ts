@@ -25,9 +25,10 @@ export class CliClient extends ServiceClient {
 
   handleEvent(event: string, payload: unknown): void {
     if (event === 'run.delta' && this.deltaHandler) {
+      const p = payload as { type?: string; data?: string };
+      if (p.type !== 'text_delta' || !p.data) return;
       this.clearThinking();
-      const { delta } = payload as { delta: string };
-      this.deltaHandler(delta);
+      this.deltaHandler(p.data);
     }
   }
 

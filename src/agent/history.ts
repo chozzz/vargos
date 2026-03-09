@@ -21,17 +21,19 @@ const log = createLogger('history');
  * Keeps user, assistant, and subagent_announce system messages.
  * Subagent announcements are injected as user messages so the parent LLM can see results.
  */
+/** System message types that should be injected as user messages in agent history */
+const INJECTABLE_SYSTEM_TYPES = new Set(['subagent_announce', 'media_transform']);
+
 export function toAgentMessages(messages: SessionMessage[]): AgentMessage[] {
   return messages
     .filter(m => {
       if (m.role === 'user' || m.role === 'assistant') return true;
-      // Inject subagent announcements so parent can see results
-      if (m.role === 'system' && m.metadata?.type === 'subagent_announce') return true;
+      if (m.role === 'system' && INJECTABLE_SYSTEM_TYPES.has(m.metadata?.type as string)) return true;
       return false;
     })
     .map(m => {
       const ts = m.timestamp instanceof Date ? m.timestamp.getTime() : Number(m.timestamp);
-      if (m.role === 'user' || (m.role === 'system' && m.metadata?.type === 'subagent_announce')) {
+      if (m.role === 'user' || (m.role === 'system' && INJECTABLE_SYSTEM_TYPES.has(m.metadata?.type as string))) {
         return userMessage(m.content, ts);
       }
       return assistantMessage(m.content, ts);

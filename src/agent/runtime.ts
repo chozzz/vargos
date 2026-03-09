@@ -193,7 +193,8 @@ export class PiAgentRuntime {
       await this.injectSystemPrompt(session, config);
       await this.injectHistory(session, config);
 
-      this.subscribeToSessionEvents(session, config.sessionKey, runId);
+      const runToolCalls: Array<{ name: string; args?: unknown }> = [];
+      this.subscribeToSessionEvents(session, config.sessionKey, runId, runToolCalls);
 
       let task = config.task;
       if (!task) {
@@ -213,7 +214,7 @@ export class PiAgentRuntime {
 
       log.info(`agent run complete: session=${config.sessionKey}`);
 
-      return this.extractRunResult(sessionManager.getEntries(), startedAt, runId, config.sessionKey);
+      return this.extractRunResult(sessionManager.getEntries(), startedAt, runId, config, runToolCalls);
     } catch (err) {
       const duration = Date.now() - startedAt;
       const raw = toMessage(err);
@@ -320,8 +321,10 @@ export class PiAgentRuntime {
     sessionEntries: Array<{ type: string }>,
     startedAt: number,
     runId: string,
-    sessionKey: string,
+    config: PiAgentConfig,
+    runToolCalls: Array<{ name: string; args?: unknown }>,
   ): Promise<PiAgentRunResult> {
+    const sessionKey = config.sessionKey;
     log.debug(`session entries: ${sessionEntries.length} total`);
     let response = '';
     let rawContent: unknown;
@@ -352,6 +355,9 @@ export class PiAgentRuntime {
       }
     }
 
+    // Build run metadata for training data enrichment
+    const runMeta = this.buildRunMetadata(sessionEntries, runId, config, inputTokens, outputTokens, runToolCalls);
+
     if (!response.trim()) {
       if (rawContent) {
         const { response: fallback, isThinkingOnly } = this.classifyResponse(rawContent, sessionEntries);
@@ -359,12 +365,13 @@ export class PiAgentRuntime {
           log.info(`thinking-only response for ${sessionKey}${fallback ? ' (had tool calls, sending fallback)' : ' — skipping delivery'}`);
 
           if (fallback) {
-            await this.storeResponse(sessionKey, fallback).catch((e) =>
+            await this.storeResponse(sessionKey, fallback, runMeta).catch((e) =>
               log.error(`failed to store fallback for ${sessionKey}: ${e instanceof Error ? e.message : e}`),
             );
           }
 
           const duration = Date.now() - startedAt;
+          runMeta.duration = duration;
           this.lifecycle.endRun(runId, tokenSummary(inputTokens, outputTokens));
           return { success: true, response: fallback, tokensUsed: tokenSummary(inputTokens, outputTokens), duration };
         }
@@ -376,11 +383,13 @@ export class PiAgentRuntime {
       return { success: false, error: hint, duration: Date.now() - startedAt };
     }
 
-    await this.storeResponse(sessionKey, response).catch((e) =>
+    const duration = Date.now() - startedAt;
+    runMeta.duration = duration;
+
+    await this.storeResponse(sessionKey, response, runMeta).catch((e) =>
       log.error(`failed to store response for ${sessionKey}: ${e instanceof Error ? e.message : e}`),
     );
 
-    const duration = Date.now() - startedAt;
     this.lifecycle.endRun(runId, tokenSummary(inputTokens, outputTokens));
 
     return {
@@ -391,10 +400,52 @@ export class PiAgentRuntime {
     };
   }
 
+  /** Build run metadata for training data enrichment. */
+  private buildRunMetadata(
+    entries: Array<{ type: string }>,
+    runId: string,
+    config: PiAgentConfig,
+    inputTokens: number,
+    outputTokens: number,
+    runToolCalls: Array<{ name: string; args?: unknown }>,
+  ): Record<string, unknown> {
+    // Extract thinking from session entries
+    const thinkingBlocks: string[] = [];
+    for (const entry of entries) {
+      if (entry.type !== 'message') continue;
+      const msg = (entry as SessionMessageEntry).message;
+      if (msg?.role !== 'assistant') continue;
+      const content = (msg as { content?: unknown }).content;
+      if (!Array.isArray(content)) continue;
+      for (const block of content as Array<{ type?: string; text?: string }>) {
+        if (block.type === 'thinking' && block.text) {
+          thinkingBlocks.push(block.text);
+        }
+      }
+    }
+
+    const meta: Record<string, unknown> = {
+      runId,
+      model: config.model,
+      provider: config.provider,
+      tokens: { input: inputTokens, output: outputTokens },
+    };
+
+    if (config.channel) meta.channel = config.channel;
+    if (runToolCalls.length) meta.toolCalls = runToolCalls;
+    if (thinkingBlocks.length) {
+      const joined = thinkingBlocks.join('\n---\n');
+      meta.thinking = joined.length > 4000 ? joined.slice(0, 4000) + '…' : joined;
+    }
+
+    return meta;
+  }
+
   private subscribeToSessionEvents(
     session: AgentSession,
     vargosSessionKey: string,
-    runId: string
+    runId: string,
+    runToolCalls?: Array<{ name: string; args?: unknown }>,
   ): void {
     session.subscribe((event: AgentSessionEvent) => {
       if (event.type === 'message_update') {
@@ -414,6 +465,8 @@ export class PiAgentRuntime {
         const args = event.args as Record<string, unknown> | undefined;
         const summary = tool?.formatCall && args ? tool.formatCall(args) : '';
         log.info(`tool: ${event.toolName}(${summary})`);
+        // Collect for training data enrichment
+        runToolCalls?.push({ name: event.toolName, ...(args && { args }) });
       }
 
       if (event.type === 'tool_execution_end') {
@@ -489,11 +542,12 @@ export class PiAgentRuntime {
     return null;
   }
 
-  private async storeResponse(sessionKey: string, response: string): Promise<void> {
+  private async storeResponse(sessionKey: string, response: string, metadata?: Record<string, unknown>): Promise<void> {
     await this.sessionService.addMessage({
       sessionKey,
       content: response,
       role: 'assistant',
+      ...(metadata && { metadata }),
     });
   }
 

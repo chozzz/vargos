@@ -74,6 +74,32 @@ File names use base64url-encoded session keys (e.g., `Y2xpOmNoYXQ.jsonl` for `cl
 
 The Pi SDK runs in-memory only — no session files from the LLM runtime. All persistence goes through `FileSessionService`. Before each agent run, history is loaded from `FileSessionService`, converted to `AgentMessage[]` via `toAgentMessages()`, sanitized, and injected into the Pi SDK session.
 
+## Training Data Enrichment
+
+Assistant messages are enriched at write-time with metadata for fine-tuning and analysis. Every agent response stored via `storeResponse` includes:
+
+```jsonc
+{
+  "role": "assistant",
+  "content": "...",
+  "timestamp": 1708865234567,
+  "metadata": {
+    "runId": "abc123",
+    "model": "claude-sonnet-4-20250514",
+    "provider": "anthropic",
+    "tokens": { "input": 1234, "output": 567 },
+    "channel": "whatsapp",          // only for channel sessions
+    "toolCalls": [                   // only when tools were invoked
+      { "name": "read", "args": { "path": "/tmp/foo.txt" } },
+      { "name": "exec", "args": { "command": "ls" } }
+    ],
+    "thinking": "reasoning text..."  // only when thinking blocks present (truncated at 4K chars)
+  }
+}
+```
+
+**Media transforms** are persisted as system messages with `metadata.type = 'media_transform'` so audio transcriptions (Whisper) and image descriptions (Vision) survive in session history and are available for training data extraction.
+
 ## Lifecycle
 
 - **Chat sessions** (`cli:chat`) persist across restarts — resume where you left off

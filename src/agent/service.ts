@@ -202,6 +202,14 @@ export class AgentService extends ServiceClient {
     const rawTask = await this.preprocessMedia(media, content, config, channel, userId);
     if (rawTask === null) return;
 
+    // Store transcription/description so session history has the actual text the agent saw
+    if (rawTask !== content) {
+      await this.call('sessions', 'session.addMessage', {
+        sessionKey, content: rawTask, role: 'system',
+        metadata: { type: 'media_transform', mediaType: media!.type },
+      }).catch(err => log.error(`Failed to store media transform: ${err}`));
+    }
+
     const directives = parseDirectives(rawTask);
     // Fall back to original if stripping left nothing (e.g. directive-only message)
     const task = directives.cleaned || rawTask;
