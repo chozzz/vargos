@@ -15,6 +15,8 @@ import {
 } from '../../lib/subagent.js';
 import { loadConfig } from '../../config/pi-config.js';
 import { resolveDataDir } from '../../config/paths.js';
+import { loadAgent } from '../../lib/agents.js';
+import { loadSkill } from '../../lib/skills.js';
 import { createLogger } from '../../lib/logger.js';
 
 type ActiveRunsStatus = { activeRuns?: Array<{ sessionKey?: string }> };
@@ -23,7 +25,8 @@ const log = createLogger('sessions-spawn');
 
 const SessionsSpawnParameters = z.object({
   task: z.string().describe('Task description for the sub-agent'),
-  role: z.string().optional().describe('Persona/role for the sub-agent (e.g., "You are a senior architect. Focus on API design and separation of concerns."). Overrides SOUL.md for this sub-agent.'),
+  agent: z.string().optional().describe('Named agent definition to use (loads from workspace/agents/<name>.md). Overrides role and pre-loads the agent\'s skills.'),
+  role: z.string().optional().describe('Persona/role for the sub-agent. Overrides SOUL.md for this sub-agent. Ignored if agent is set.'),
   agentId: z.string().optional().describe('Optional agent ID to use'),
   label: z.string().optional().describe('Optional label for the session'),
   model: z.string().optional().describe('Model to use (e.g., gpt-4o-mini)'),
@@ -61,13 +64,32 @@ export const sessionsSpawnTool: Tool = {
       const childKey = subagentSessionKey(context.sessionKey);
       const timeout = params.runTimeoutSeconds ?? defaultTimeout;
 
+      // Resolve agent definition if specified
+      let role = params.role;
+      let model = params.model;
+      if (params.agent) {
+        const agentDef = await loadAgent(context.workingDir, params.agent);
+        if (agentDef) {
+          const parts: string[] = [];
+          for (const skillName of agentDef.skills) {
+            const skillContent = await loadSkill(context.workingDir, skillName);
+            if (skillContent) parts.push(skillContent);
+          }
+          if (parts.length) role = parts.join('\n\n---\n\n');
+          if (agentDef.model && !model) model = agentDef.model;
+          log.info(`loaded agent: ${params.agent} (${agentDef.skills.length} skills)`);
+        } else {
+          log.info(`agent not found: ${params.agent}, using role as fallback`);
+        }
+      }
+
       // Create child session
       await context.call('sessions', 'session.create', {
         sessionKey: childKey,
         kind: 'subagent',
         agentId: params.agentId,
         label: params.label ?? `Task: ${params.task.slice(0, 30)}...`,
-        metadata: { parentSessionKey: context.sessionKey, model: params.model },
+        metadata: { parentSessionKey: context.sessionKey, model },
       });
 
       await context.call('sessions', 'session.addMessage', {
@@ -81,8 +103,8 @@ export const sessionsSpawnTool: Tool = {
       context.call('agent', 'agent.run', {
         sessionKey: childKey,
         task: params.task,
-        model: params.model ?? subagentCfg?.model,
-        ...(params.role && { bootstrapOverrides: { 'SOUL.md': params.role } }),
+        model: model ?? subagentCfg?.model,
+        ...(role && { bootstrapOverrides: { 'SOUL.md': role } }),
       }).catch(err => {
         log.error(`Subagent ${childKey} failed:`, toMessage(err));
       });

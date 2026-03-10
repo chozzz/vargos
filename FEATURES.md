@@ -50,6 +50,7 @@
 | Tool registry with extension groups | ✅ |
 | Pi SDK tool wrapping | ✅ |
 | Tool formatting (formatCall/formatResult) | ✅ |
+| Skills directory (SKILL.md discovery, skill_load tool) | ✅ |
 
 ## File System Tools
 
@@ -177,6 +178,7 @@
 | MCP HTTP bearer token authentication | ✅ |
 | Config file permissions (0o600, owner-only) | ✅ |
 | Error sanitization (API keys/tokens scrubbed from logs) | ✅ |
+| Centralized error store (append-only JSONL, auto-classified) | ✅ |
 | User-facing error classification (auth/timeout/transient) | ✅ |
 | Browser random session IDs | ✅ |
 | LLM credential verification during onboarding | ✅ |

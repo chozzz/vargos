@@ -268,13 +268,13 @@ export class FileSessionService extends EventEmitter implements ISessionService 
       messages = messages.filter(m => m.timestamp.getTime() < before);
     }
 
-    // Sort by timestamp descending
-    messages.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+    // Sort oldest-first, stable tiebreak by insertion order
+    messages.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
 
     if (options.limit) {
-      messages = messages.slice(0, options.limit);
+      messages = messages.slice(-options.limit);
     }
 
-    return messages.reverse(); // Return oldest first
+    return messages;
   }
 }

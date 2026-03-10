@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TEMPLATES_DIR = path.resolve(__dirname, '../../docs/templates');
+const SKILLS_TEMPLATES_DIR = path.join(TEMPLATES_DIR, 'skills');
 
 export const CONTEXT_FILE_NAMES = [
   'AGENTS.md', 'SOUL.md', 'TOOLS.md',
@@ -50,6 +51,39 @@ interface WorkspaceInitOptions {
 }
 
 /**
+ * Copy default skill templates into workspace skills directory.
+ * Only copies skills that don't already exist (never overwrites user skills).
+ */
+async function copySkillTemplates(workspaceDir: string): Promise<void> {
+  const skillsDir = path.join(workspaceDir, 'skills');
+
+  let templateEntries: string[];
+  try {
+    templateEntries = await fs.readdir(SKILLS_TEMPLATES_DIR);
+  } catch {
+    return; // no skill templates bundled
+  }
+
+  for (const name of templateEntries) {
+    const destDir = path.join(skillsDir, name);
+    const destFile = path.join(destDir, 'SKILL.md');
+
+    // Never overwrite existing skills
+    try {
+      await fs.access(destFile);
+      continue;
+    } catch { /* doesn't exist, copy it */ }
+
+    const srcFile = path.join(SKILLS_TEMPLATES_DIR, name, 'SKILL.md');
+    try {
+      const content = await fs.readFile(srcFile, 'utf-8');
+      await fs.mkdir(destDir, { recursive: true });
+      await fs.writeFile(destFile, content, 'utf-8');
+    } catch { /* skip broken templates */ }
+  }
+}
+
+/**
  * Initialize workspace with default structure and files
  * Copies templates from docs/templates/ into the workspace directory
  */
@@ -71,6 +105,8 @@ export async function initializeWorkspace(options: WorkspaceInitOptions): Promis
     const content = await readTemplate(name);
     if (content) await fs.writeFile(filePath, content, 'utf-8');
   }
+
+  await copySkillTemplates(workspaceDir);
 }
 
 /**

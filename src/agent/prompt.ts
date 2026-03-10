@@ -8,6 +8,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { toolRegistry } from '../tools/registry.js';
 import { isSubagentSessionKey } from '../lib/subagent.js';
+import { scanSkills } from '../lib/skills.js';
+import { scanAgents } from '../lib/agents.js';
 
 export type PromptMode = 'full' | 'minimal' | 'minimal-subagent' | 'none';
 
@@ -70,6 +72,13 @@ export async function buildSystemPrompt(options: SystemPromptOptions): Promise<s
   const bootstrapContent = await loadBootstrapFiles(workspaceDir, options.bootstrapOverrides);
   if (bootstrapContent) {
     sections.push(bootstrapContent);
+  }
+
+  if (mode !== 'minimal-subagent') {
+    const skillsSection = await buildSkillsSection(workspaceDir);
+    if (skillsSection) sections.push(skillsSection);
+    const agentsSection = await buildAgentsSection(workspaceDir);
+    if (agentsSection) sections.push(agentsSection);
   }
 
   if (mode === 'full') {
@@ -362,14 +371,14 @@ function buildOrchestrationSection(sessionKey?: string): string {
     '- The task touches multiple domains (e.g., fetch + analyze + write)',
     '',
     'When orchestrating:',
-    '1. Tell the user your plan in one sentence before spawning',
-    '2. Spawn one sub-agent per focused subtask — not one per micro-step',
-    '3. Use `role` to set each sub-agent\'s expertise — any persona, not limited to predefined roles',
-    '4. After sub-agents complete, review all results and synthesize a response',
-    '5. Report what was done and what it means, not raw output',
+    '1. **Plan**: List numbered steps. For each, name the agent (or role) and relevant skills.',
+    '2. **Execute**: Spawn agents per step (parallel where independent). Use `agent` for named definitions, `role` for ad-hoc personas.',
+    '3. **Review**: Check results against plan. Re-plan if steps failed or are incomplete.',
+    '4. **Synthesize**: Combine results into a coherent response. Report what was done and what it means.',
     '',
-    'Example:',
-    '  sessions_spawn({ task: "Review auth module for security issues", role: "You are a security engineer. Focus on auth flows, token handling, and input validation." })',
+    'Examples:',
+    '  sessions_spawn({ agent: "code-reviewer", task: "Review the auth module changes" })',
+    '  sessions_spawn({ task: "Research AI ethics frameworks", role: "You are a research analyst. Focus on regulatory frameworks." })',
     '',
     'For large iterative tasks (process N items, scan N files, summarize N days):',
     '- Spawn a batch of sub-agents (up to the concurrency limit), not one mega-agent',
@@ -380,6 +389,45 @@ function buildOrchestrationSection(sessionKey?: string): string {
     'Do not spawn sub-agents for: time/date questions, status checks, single file reads,',
     'calculations, or tasks completable in one or two tool calls.',
   ].join('\n');
+}
+
+async function buildAgentsSection(workspaceDir: string): Promise<string | null> {
+  const agents = await scanAgents(workspaceDir);
+  if (agents.length === 0) return null;
+
+  const lines = [
+    '## Available Agents',
+    '',
+    'Use `sessions_spawn({ agent: "<name>", task: "..." })` to delegate to a specialist.',
+    '',
+    ...agents.map(a => {
+      const extras: string[] = [];
+      if (a.skills.length) extras.push(`skills: ${a.skills.join(', ')}`);
+      if (a.model) extras.push(`model: ${a.model}`);
+      const suffix = extras.length ? ` [${extras.join('; ')}]` : '';
+      return `- **${a.name}**: ${a.description}${suffix}`;
+    }),
+  ];
+
+  return lines.join('\n');
+}
+
+async function buildSkillsSection(workspaceDir: string): Promise<string | null> {
+  const skills = await scanSkills(workspaceDir);
+  if (skills.length === 0) return null;
+
+  const lines = [
+    '## Available Skills',
+    '',
+    'Load a skill with `skill_load` to get full instructions.',
+    '',
+    ...skills.map(s => {
+      const tags = s.tags.length ? ` [${s.tags.join(', ')}]` : '';
+      return `- **${s.name}**: ${s.description}${tags}`;
+    }),
+  ];
+
+  return lines.join('\n');
 }
 
 /**

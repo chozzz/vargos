@@ -17,6 +17,7 @@ import type { ToolResult } from '../tools/types.js';
 import { createLogger } from '../lib/logger.js';
 import { generateId } from '../lib/id.js';
 import { toMessage, classifyError } from '../lib/error.js';
+import { appendError } from '../lib/error-store.js';
 
 const log = createLogger('runtime');
 import { buildSystemPrompt, resolvePromptMode } from './prompt.js';
@@ -218,6 +219,8 @@ export class PiAgentRuntime {
       const raw = toMessage(err);
       log.error(`Run ${runId} failed (${(duration / 1000).toFixed(1)}s): ${raw}`);
       this.lifecycle.errorRun(runId, raw);
+      appendError({ runId, sessionKey: config.sessionKey, message: raw, model: config.model })
+        .catch(e => log.error(`error store: ${e}`));
       return { success: false, error: raw, duration };
     }
   }
@@ -331,6 +334,8 @@ export class PiAgentRuntime {
             log.error(`agent error: ${msg.errorMessage}`);
             if (msg.usage) log.error(`usage: in=${msg.usage.input} out=${msg.usage.output}`);
             this.lifecycle.errorRun(runId, msg.errorMessage);
+            appendError({ runId, sessionKey, message: msg.errorMessage, model: config.model })
+              .catch(e => log.error(`error store: ${e}`));
             return { success: false, error: msg.errorMessage, duration: Date.now() - startedAt };
           }
           if (msg.content) {

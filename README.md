@@ -143,7 +143,7 @@ All settings live in `~/.vargos/config.json`. See [docs/configuration.md](./docs
 
 ## MCP Integration
 
-**As a server** — Vargos exposes all 24 tools via MCP. Add to your MCP client config (Claude Desktop, etc.):
+**As a server** — Vargos exposes all 25 tools via MCP. Add to your MCP client config (Claude Desktop, etc.):
 
 ```json
 {

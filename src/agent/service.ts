@@ -18,6 +18,7 @@ import { parseTarget } from '../lib/channel-target.js';
 import { isSubagentSessionKey } from '../sessions/keys.js';
 import { type PiAgentRuntime, type PiAgentConfig, type PiAgentRunResult } from './runtime.js';
 import { parseDirectives } from '../lib/directives.js';
+import { appendError } from '../lib/error-store.js';
 import { SubagentCoordinator } from './subagent-coordinator.js';
 
 const log = createLogger('agent');
@@ -126,9 +127,10 @@ export class AgentService extends ServiceClient {
 
     switch (event) {
       case 'message.received':
-        this.handleInboundMessage(p).catch((err) =>
-          log.error(`Error handling message: ${err}`),
-        );
+        this.handleInboundMessage(p).catch((err) => {
+          log.error(`Error handling message: ${err}`);
+          appendError({ message: toMessage(err), sessionKey: String(p.sessionKey ?? '') }).catch(() => {});
+        });
         break;
 
       case 'cron.trigger':
@@ -141,9 +143,10 @@ export class AgentService extends ServiceClient {
         };
         const triggerId = (p.taskId ?? p.hookId) as string;
         log.info(`${kind} trigger: ${triggerId} → ${sessionKey}${notify?.length ? ` (notify: ${notify.length} targets)` : ''}`);
-        this.handleTriggeredRun({ kind, triggerId, task, sessionKey, notify }).catch((err) =>
-          log.error(`Error handling ${event}: ${err}`),
-        );
+        this.handleTriggeredRun({ kind, triggerId, task, sessionKey, notify }).catch((err) => {
+          log.error(`Error handling ${event}: ${err}`);
+          appendError({ message: toMessage(err), sessionKey }).catch(() => {});
+        });
         break;
       }
     }
@@ -358,7 +361,10 @@ export class AgentService extends ServiceClient {
     const cleaned = stripHeartbeatToken(result.response);
     if (cleaned === null) return;
     await this.call('channel', 'channel.send', { channel, userId, text: cleaned })
-      .catch(err => log.error(`Failed to send reply: ${err}`));
+      .catch(err => {
+        log.error(`Failed to send reply: ${err}`);
+        appendError({ message: toMessage(err), sessionKey: `${channel}:${userId}` }).catch(() => {});
+      });
     log.info(`reply sent: ${channel}:${userId}`);
   }
 
