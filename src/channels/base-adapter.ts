@@ -101,7 +101,7 @@ export abstract class BaseChannelAdapter implements ChannelAdapter {
   }
 
   protected cleanupTimers(): void {
-    this.debouncer.cancelAll();
+    this.debouncer.flushAll();
     for (const interval of this.typingIntervals.values()) clearInterval(interval);
     this.typingIntervals.clear();
     for (const timeout of this.typingTimeouts.values()) clearTimeout(timeout);

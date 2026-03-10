@@ -340,6 +340,10 @@ export async function start(): Promise<void> {
     }
   }
 
+  // Recover orphaned channel messages from crash/restart (fire-and-forget)
+  channels.recoverOrphanedMessages().catch(err =>
+    log(`  ⚠ message recovery failed: ${toMessage(err)}`));
+
   let webhooks: import('../../webhooks/service.js').WebhookService | undefined;
   if (config.webhooks?.hooks?.length) {
     const { WebhookService } = await import('../../webhooks/service.js');

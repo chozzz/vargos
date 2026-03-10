@@ -18,9 +18,11 @@ export interface MessageDebouncer {
   push(key: string, message: string): void;
   /** Immediately flush pending messages for a key */
   flush(key: string): void;
-  /** Cancel pending flush for a key */
+  /** Immediately flush all pending keys */
+  flushAll(): void;
+  /** Cancel pending flush for a key (messages dropped) */
   cancel(key: string): void;
-  /** Cancel all pending flushes */
+  /** Cancel all pending flushes (messages dropped) */
   cancelAll(): void;
   /** Number of keys with pending messages */
   readonly pendingCount: number;
@@ -47,6 +49,11 @@ export function createMessageDebouncer(
 
   return {
     flush,
+
+    flushAll(): void {
+      const keys = [...pending.keys()];
+      for (const key of keys) flush(key);
+    },
 
     push(key: string, message: string): void {
       let entry = pending.get(key);
