@@ -1,6 +1,6 @@
 # MCP
 
-Vargos is both an MCP **server** (exposes its 24 tools to external clients) and an MCP **client** (connects to external MCP servers and makes their tools available to the agent). MCP is one integration point — the same tools are also available internally via the gateway protocol.
+Vargos is both an MCP **server** (exposes its 25 tools to external clients) and an MCP **client** (connects to external MCP servers and makes their tools available to the agent). MCP is one integration point — the same tools are also available internally via the gateway protocol.
 
 ## Server
 

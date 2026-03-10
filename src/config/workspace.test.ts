@@ -99,6 +99,60 @@ describe('initializeWorkspace', () => {
     expect(content).not.toBe('custom');
     expect(content).toContain('AGENTS.md');
   });
+
+  it('copies default skill templates into skills/ directory', async () => {
+    const dir = await makeTmpDir();
+    const ws = path.join(dir, 'workspace');
+    await initializeWorkspace({ workspaceDir: ws });
+
+    const skillsDir = path.join(ws, 'skills');
+    const entries = await fs.readdir(skillsDir);
+    expect(entries.length).toBeGreaterThan(0);
+
+    // Verify at least one skill has valid SKILL.md
+    const firstSkill = await fs.readFile(
+      path.join(skillsDir, entries[0], 'SKILL.md'), 'utf-8',
+    );
+    expect(firstSkill).toContain('---');
+    expect(firstSkill).toContain('name:');
+    expect(firstSkill).toContain('description:');
+  });
+
+  it('does not overwrite existing user skills', async () => {
+    const dir = await makeTmpDir();
+    const ws = path.join(dir, 'workspace');
+    const customSkillDir = path.join(ws, 'skills', 'deep-research');
+    await fs.mkdir(customSkillDir, { recursive: true });
+    await fs.writeFile(path.join(customSkillDir, 'SKILL.md'), 'my custom skill');
+
+    await initializeWorkspace({ workspaceDir: ws });
+
+    const content = await fs.readFile(
+      path.join(customSkillDir, 'SKILL.md'), 'utf-8',
+    );
+    expect(content).toBe('my custom skill');
+  });
+
+  it('copies new skill templates alongside existing user skills', async () => {
+    const dir = await makeTmpDir();
+    const ws = path.join(dir, 'workspace');
+    const customSkillDir = path.join(ws, 'skills', 'my-custom-skill');
+    await fs.mkdir(customSkillDir, { recursive: true });
+    await fs.writeFile(path.join(customSkillDir, 'SKILL.md'), 'custom');
+
+    await initializeWorkspace({ workspaceDir: ws });
+
+    // Custom skill preserved
+    const custom = await fs.readFile(
+      path.join(customSkillDir, 'SKILL.md'), 'utf-8',
+    );
+    expect(custom).toBe('custom');
+
+    // Default skills also present
+    const skillsEntries = await fs.readdir(path.join(ws, 'skills'));
+    expect(skillsEntries).toContain('my-custom-skill');
+    expect(skillsEntries.length).toBeGreaterThan(1);
+  });
 });
 
 describe('isWorkspaceInitialized', () => {

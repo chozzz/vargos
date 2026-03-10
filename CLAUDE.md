@@ -143,6 +143,12 @@ Command tree is data-driven in `src/cli/tree.ts` — a `MenuNode[]` array that d
 
 **Retryable error detection** (`src/agent/runtime.ts`): `isRetryableError()` identifies network errors, JSON parse failures, HTTP 502/503/529, and abort signals as safe to retry within an agent run.
 
+**Centralized error store** (`src/lib/error-store.ts`): `appendError()` persists classified errors to `~/.vargos/errors.jsonl` as append-only JSONL. Auto-classifies via `classifyError()`, sanitizes API keys. Hook points: runtime run failures, tool execution errors, gateway reconnect exhaustion.
+
+### Skills Directory
+
+Reusable prompt recipes stored as `~/.vargos/workspace/skills/<name>/SKILL.md` with YAML frontmatter (name, description, tags). Three-phase lifecycle: **discover** (scanner reads frontmatter at prompt-build time → manifest in system prompt) → **activate** (`skill_load` tool reads full content) → **execute** (agent follows instructions using existing tools). Agents can create new skills via `write` tool — they appear on the next run automatically. Scanner: `src/lib/skills.ts`. Prompt injection: `buildSkillsSection()` in `src/agent/prompt.ts`.
+
 ## Domain Boundary Rules
 
 ESLint enforces strict domain isolation via `no-restricted-imports`. Each domain directory can only import from:

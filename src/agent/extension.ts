@@ -11,6 +11,7 @@ import { toolRegistry } from '../tools/registry.js';
 import type { Tool, ToolContext } from '../tools/types.js';
 import { createLogger } from '../lib/logger.js';
 import { toMessage } from '../lib/error.js';
+import { appendError } from '../lib/error-store.js';
 
 const log = createLogger('tools');
 
@@ -104,6 +105,8 @@ function wrapVargosTool(
       } catch (err) {
         const message = toMessage(err);
         log.debug(`${tool.name} error: ${message}`);
+        appendError({ tool: tool.name, sessionKey, message })
+          .catch(e => log.debug(`error store: ${e}`));
         return {
           content: [{ type: 'text', text: `Error: ${message}` }],
           details: { error: message },

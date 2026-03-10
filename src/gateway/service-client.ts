@@ -17,6 +17,7 @@ import {
 } from '../protocol/index.js';
 import { Reconnector } from '../lib/reconnect.js';
 import { toMessage } from '../lib/error.js';
+import { appendError } from '../lib/error-store.js';
 import { createLogger } from '../lib/logger.js';
 import type { ServiceMethod, ServiceEvent } from './methods.js';
 
@@ -235,7 +236,11 @@ export abstract class ServiceClient {
 
   private scheduleReconnect(): void {
     const delay = this.reconnector.next();
-    if (delay === null) return; // Max attempts exhausted
+    if (delay === null) {
+      appendError({ message: `${this.service} reconnect exhausted`, errorClass: 'fatal' })
+        .catch(() => {});
+      return;
+    }
 
     this.log.error(`reconnect scheduled, attempt ${this.reconnector.attempts}`);
     this.reconnectTimer = setTimeout(() => {
