@@ -145,7 +145,7 @@ Command tree is data-driven in `src/cli/tree.ts` — a `MenuNode[]` array that d
 
 **Centralized error store** (`src/lib/error-store.ts`): `appendError()` persists classified errors to `~/.vargos/errors.jsonl` as append-only JSONL. Auto-classifies via `classifyError()`, sanitizes API keys. `readErrors({ sinceHours })` reads back entries with optional time filter. Hook points: runtime run failures, tool execution errors, gateway reconnect exhaustion.
 
-**Error review scheduler** (`src/cron/tasks/error-review.ts`): ephemeral cron task that fires daily (default `0 20 * * *` UTC = 6am AEST). Before-fire hook skips when no errors in the look-back window (default 24h). Prompts the agent to read `errors.jsonl`, group by class/pattern, and write actionable findings to HEARTBEAT.md. Config: `config.errorReview` (`enabled`, `schedule`, `sinceHours`, `notify`, `prompt`).
+**Error review**: seeded as a default cron task (`error-review`, daily at `0 20 * * *` UTC). Reads `errors.jsonl`, groups by pattern, writes findings to HEARTBEAT.md.
 
 ### Skills Directory
 

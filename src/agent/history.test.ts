@@ -486,3 +486,27 @@ describe('prepareHistory', () => {
     expect(userMsgs.length).toBeLessThanOrEqual(31); // 30 + possible preamble
   });
 });
+
+describe('estimateMessageTokens', () => {
+  it('counts thinking blocks via .thinking property', () => {
+    const msg = assistantMsg('') as unknown as AgentMessage;
+    (msg as unknown as { content: unknown[] }).content = [
+      { type: 'thinking', thinking: 'a'.repeat(400) },
+      { type: 'text', text: 'short' },
+    ];
+    const tokens = estimateMessageTokens(msg);
+    // 400 chars thinking + 5 chars text = 405 chars / 4 = ~102 tokens
+    expect(tokens).toBeGreaterThanOrEqual(100);
+  });
+
+  it('does not count .text property on thinking blocks', () => {
+    const msg = assistantMsg('') as unknown as AgentMessage;
+    (msg as unknown as { content: unknown[] }).content = [
+      // Malformed: thinking block with .text instead of .thinking
+      { type: 'thinking', text: 'a'.repeat(400) },
+    ];
+    const tokens = estimateMessageTokens(msg);
+    // Should not count the .text — only .thinking is read
+    expect(tokens).toBe(0);
+  });
+});
