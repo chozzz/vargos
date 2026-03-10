@@ -127,12 +127,23 @@ describe('isRetryableError', () => {
     expect(isRetryableError('Error 529: overloaded')).toBe(true);
   });
 
-  it('retries abort errors', () => {
-    expect(isRetryableError('The operation was aborted')).toBe(true);
-  });
-
   it('retries generic network error', () => {
     expect(isRetryableError('network error')).toBe(true);
+  });
+
+  it('matches "unexpected token" JSON parse errors', () => {
+    expect(isRetryableError('Unexpected token < in JSON at position 0')).toBe(true);
+    expect(isRetryableError('unexpected token u in JSON')).toBe(true);
+  });
+
+  it('does not retry abort errors (intentional cancellation)', () => {
+    expect(isRetryableError('The operation was aborted')).toBe(false);
+    expect(isRetryableError('AbortError: signal is aborted')).toBe(false);
+  });
+
+  it('does not match overly broad "unexpected" strings', () => {
+    expect(isRetryableError('unexpected field in response schema')).toBe(false);
+    expect(isRetryableError('Unexpected error occurred')).toBe(false);
   });
 
   it('does not retry non-transient errors', () => {

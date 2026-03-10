@@ -30,7 +30,7 @@ import { getVargosToolNames } from './extension.js';
 import { buildPiSession } from './session-setup.js';
 
 /** Patterns for retryable errors not covered by classifyError */
-const RETRYABLE_PARSE_PATTERNS = ['after json', 'unexpected', 'abort'];
+const RETRYABLE_PARSE_PATTERNS = ['after json', 'unexpected token', 'end of json'];
 
 /** Check if an error message indicates a transient/retryable failure. */
 export function isRetryableError(message: string | undefined): boolean {
@@ -270,7 +270,9 @@ export class PiAgentRuntime {
       if (attempt === 0) {
         await session.prompt(prompt, piImages?.length ? { images: piImages } : undefined);
       } else {
-        log.info(`retrying after transient API error (attempt ${attempt + 1}/${API_RETRY_LIMIT + 1})`);
+        const delayMs = 1000 * Math.pow(2, attempt - 1); // 1s, 2s
+        log.info(`retrying after transient API error (attempt ${attempt + 1}/${API_RETRY_LIMIT + 1}, backoff ${delayMs}ms)`);
+        await new Promise(r => setTimeout(r, delayMs));
         await session.prompt('Continue from where you left off.');
       }
 
@@ -417,9 +419,9 @@ export class PiAgentRuntime {
       if (msg?.role !== 'assistant') continue;
       const content = (msg as { content?: unknown }).content;
       if (!Array.isArray(content)) continue;
-      for (const block of content as Array<{ type?: string; text?: string }>) {
-        if (block.type === 'thinking' && block.text) {
-          thinkingBlocks.push(block.text);
+      for (const block of content as Array<{ type?: string; text?: string; thinking?: string }>) {
+        if (block.type === 'thinking' && block.thinking) {
+          thinkingBlocks.push(block.thinking);
         }
       }
     }

@@ -52,6 +52,12 @@ const DEFAULT_CRON_TASKS = [
     schedule: '0 11 * * *',
     task: 'Analyze the Vargos codebase for improvements. Review scalability, code quality, architecture patterns, and feature gaps. Present suggestions with effort/impact ratings. Store findings in memory/vargos-suggestions/. Wait for user approval before implementing.',
   },
+  {
+    id: 'error-review',
+    name: 'Error Review (Daily)',
+    schedule: '0 20 * * *',
+    task: 'Read ~/.vargos/errors.jsonl. Group errors by class and recurring patterns. For each pattern: count occurrences, identify root cause, suggest a fix. Write a concise summary to the "Error Review" section of HEARTBEAT.md using checklist format (- [ ] ...). If no errors or all are transient retries, reply: HEARTBEAT_OK',
+  },
 ];
 
 interface BootedServices {
@@ -290,10 +296,6 @@ export async function start(): Promise<void> {
     createHeartbeatTask(cron, config.heartbeat, workspaceDir, () => runtime.listActiveRuns().length);
   }
 
-  if (config.errorReview?.enabled) {
-    const { createErrorReviewTask } = await import('../../cron/tasks/error-review.js');
-    createErrorReviewTask(cron, config.errorReview);
-  }
 
   cron.startAll();
   const cronCount = cron.listTasks().length;
