@@ -159,4 +159,87 @@ describe('ChannelService', () => {
     const received = subscriber.events.filter((e) => e.event === 'message.received');
     expect(received.length).toBe(2);
   });
+
+  describe('recoverOrphanedMessages', () => {
+    it('re-emits message.received for orphaned user messages', async () => {
+      // Simulate a session left with an unanswered user message (crash scenario)
+      await subscriber.call('sessions', 'session.create', {
+        sessionKey: 'whatsapp:orphan1', kind: 'main', metadata: { channel: 'whatsapp' },
+      });
+      await subscriber.call('sessions', 'session.addMessage', {
+        sessionKey: 'whatsapp:orphan1', content: 'Help me with something', role: 'user',
+      });
+
+      subscriber.events = [];
+      await channelService.recoverOrphanedMessages();
+      await new Promise((r) => setTimeout(r, 150));
+
+      const evt = subscriber.events.find((e) => e.event === 'message.received');
+      expect(evt).toBeDefined();
+      const p = evt!.payload as { channel: string; userId: string; content: string; sessionKey: string };
+      expect(p.channel).toBe('whatsapp');
+      expect(p.userId).toBe('orphan1');
+      expect(p.content).toBe('Help me with something');
+      expect(p.sessionKey).toBe('whatsapp:orphan1');
+    });
+
+    it('skips sessions that already have an assistant response', async () => {
+      await subscriber.call('sessions', 'session.create', {
+        sessionKey: 'whatsapp:answered1', kind: 'main', metadata: { channel: 'whatsapp' },
+      });
+      await subscriber.call('sessions', 'session.addMessage', {
+        sessionKey: 'whatsapp:answered1', content: 'Hello', role: 'user',
+      });
+      await subscriber.call('sessions', 'session.addMessage', {
+        sessionKey: 'whatsapp:answered1', content: 'Hi there!', role: 'assistant',
+      });
+
+      // Drain any in-flight events from prior tests before checking
+      await new Promise((r) => setTimeout(r, 50));
+      subscriber.events = [];
+      await channelService.recoverOrphanedMessages();
+      await new Promise((r) => setTimeout(r, 150));
+
+      const received = subscriber.events.filter((e) => e.event === 'message.received');
+      expect(received).toHaveLength(0);
+    });
+
+    it('skips non-channel sessions', async () => {
+      await subscriber.call('sessions', 'session.create', {
+        sessionKey: 'cli:chat', kind: 'main', metadata: {},
+      });
+      await subscriber.call('sessions', 'session.addMessage', {
+        sessionKey: 'cli:chat', content: 'orphaned cli message', role: 'user',
+      });
+
+      subscriber.events = [];
+      await channelService.recoverOrphanedMessages();
+      await new Promise((r) => setTimeout(r, 150));
+
+      expect(subscriber.events.filter(e => e.event === 'message.received')).toHaveLength(0);
+    });
+
+    it('recovers when last entries are system messages after user', async () => {
+      // User sent media → media_transform system message → crash before agent ran
+      await subscriber.call('sessions', 'session.create', {
+        sessionKey: 'whatsapp:media1', kind: 'main', metadata: { channel: 'whatsapp' },
+      });
+      await subscriber.call('sessions', 'session.addMessage', {
+        sessionKey: 'whatsapp:media1', content: 'Voice message received', role: 'user',
+      });
+      await subscriber.call('sessions', 'session.addMessage', {
+        sessionKey: 'whatsapp:media1', content: 'Transcribed audio text', role: 'system',
+        metadata: { type: 'media_transform' },
+      });
+
+      subscriber.events = [];
+      await channelService.recoverOrphanedMessages();
+      await new Promise((r) => setTimeout(r, 150));
+
+      const evt = subscriber.events.find((e) => e.event === 'message.received');
+      expect(evt).toBeDefined();
+      // Should recover the user message content (agent will see media_transform in history)
+      expect((evt!.payload as any).content).toBe('Voice message received');
+    });
+  });
 });

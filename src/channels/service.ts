@@ -252,6 +252,57 @@ export class ChannelService extends ServiceClient {
     return null;
   }
 
+  /**
+   * Recover orphaned channel messages after a crash/restart.
+   * Scans main channel sessions for user messages with no assistant response
+   * and re-emits them so the agent service picks them up.
+   */
+  async recoverOrphanedMessages(): Promise<void> {
+    const channelTypes = [...this.adapters.keys()];
+    if (!channelTypes.length) return;
+
+    let sessions: Array<{ sessionKey: string }>;
+    try {
+      sessions = await this.call('sessions', 'session.list', { kind: 'main' });
+    } catch {
+      return;
+    }
+
+    for (const session of sessions) {
+      const parsed = this.parseChannelSession(session.sessionKey);
+      if (!parsed) continue;
+      if (!this.adapters.has(parsed.channel)) continue;
+
+      try {
+        const messages = await this.call<Array<{ role: string; content: string }>>(
+          'sessions', 'session.getMessages', { sessionKey: session.sessionKey, limit: 5 },
+        );
+        if (!messages?.length) continue;
+
+        // Messages are oldest-first — scan backwards for the most recent non-system entry
+        let orphanedContent: string | undefined;
+        for (let i = messages.length - 1; i >= 0; i--) {
+          if (messages[i].role === 'assistant') break;
+          if (messages[i].role === 'user') {
+            orphanedContent = messages[i].content;
+            break;
+          }
+        }
+        if (!orphanedContent) continue;
+
+        log.info(`recovering orphaned message: ${session.sessionKey}`);
+        this.emit('message.received', {
+          channel: parsed.channel,
+          userId: parsed.userId,
+          sessionKey: session.sessionKey,
+          content: orphanedContent,
+        });
+      } catch (err) {
+        log.error(`recovery check failed for ${session.sessionKey}: ${err}`);
+      }
+    }
+  }
+
   async stopAdapters(): Promise<void> {
     for (const adapter of this.adapters.values()) {
       try { await adapter.stop(); } catch { /* best effort */ }

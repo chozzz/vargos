@@ -112,4 +112,51 @@ describe('createMessageDebouncer', () => {
     debouncer.flush('nonexistent');
     expect(flushed).toHaveLength(0);
   });
+
+  it('flushAll should flush all pending keys', () => {
+    const flushed = new Map<string, string[]>();
+    const debouncer = createMessageDebouncer(
+      (key, messages) => flushed.set(key, messages),
+      { delayMs: 5000 },
+    );
+
+    debouncer.push('a', 'msg-a');
+    debouncer.push('b', 'msg-b1');
+    debouncer.push('b', 'msg-b2');
+    expect(debouncer.pendingCount).toBe(2);
+
+    debouncer.flushAll();
+    expect(flushed.get('a')).toEqual(['msg-a']);
+    expect(flushed.get('b')).toEqual(['msg-b1', 'msg-b2']);
+    expect(debouncer.pendingCount).toBe(0);
+
+    // No duplicate flush after timers
+    vi.advanceTimersByTime(5000);
+    expect(flushed.size).toBe(2);
+  });
+
+  it('flushAll is a no-op when nothing is pending', () => {
+    const flushed: string[][] = [];
+    const debouncer = createMessageDebouncer(
+      (_, messages) => flushed.push(messages),
+      { delayMs: 500 },
+    );
+
+    debouncer.flushAll();
+    expect(flushed).toHaveLength(0);
+  });
+
+  it('cancelAll drops messages without flushing', () => {
+    const flushed: string[][] = [];
+    const debouncer = createMessageDebouncer(
+      (_, messages) => flushed.push(messages),
+      { delayMs: 500 },
+    );
+
+    debouncer.push('u', 'will-be-lost');
+    debouncer.cancelAll();
+    vi.advanceTimersByTime(1000);
+    expect(flushed).toHaveLength(0);
+    expect(debouncer.pendingCount).toBe(0);
+  });
 });
