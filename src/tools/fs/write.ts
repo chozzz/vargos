@@ -22,9 +22,7 @@ export const writeTool: Tool = {
   formatCall: (args) => String(args.path || ''),
   execute: async (args: unknown, context: ToolContext) => {
     const params = WriteParameters.parse(args);
-    const resolved = await resolveFsPath(params.path, context);
-    if (!resolved.ok) return resolved.error;
-    const { filePath } = resolved;
+    const filePath = resolveFsPath(params.path, context);
 
     try {
       // Ensure parent directory exists

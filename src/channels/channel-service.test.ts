@@ -190,17 +190,23 @@ describe('ChannelService', () => {
       await subscriber.call('sessions', 'session.addMessage', {
         sessionKey: 'whatsapp:answered1', content: 'Hello', role: 'user',
       });
+      // Small gap ensures timestamps differ so ordering is deterministic
+      await new Promise((r) => setTimeout(r, 10));
       await subscriber.call('sessions', 'session.addMessage', {
         sessionKey: 'whatsapp:answered1', content: 'Hi there!', role: 'assistant',
       });
 
-      // Drain any in-flight events from prior tests before checking
-      await new Promise((r) => setTimeout(r, 50));
+      // Drain any in-flight events before checking
+      await new Promise((r) => setTimeout(r, 200));
       subscriber.events = [];
       await channelService.recoverOrphanedMessages();
       await new Promise((r) => setTimeout(r, 150));
 
-      const received = subscriber.events.filter((e) => e.event === 'message.received');
+      // Filter for this session only — orphans from prior tests may also recover
+      const received = subscriber.events.filter((e) =>
+        e.event === 'message.received' &&
+        (e.payload as { sessionKey: string }).sessionKey === 'whatsapp:answered1',
+      );
       expect(received).toHaveLength(0);
     });
 

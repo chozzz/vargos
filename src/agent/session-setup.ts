@@ -48,8 +48,6 @@ export interface PiSessionConfig {
   maxTokens?: number;
   contextWindow?: number;
   compaction?: CompactionConfig;
-  fsBoundary?: string;
-  fsBoundaryAllowlist?: string[];
 }
 
 export interface PiSessionResult {
@@ -105,10 +103,7 @@ export async function buildPiSession(config: PiSessionConfig): Promise<PiSession
     }
   }
 
-  const boundaryOpts = config.fsBoundary
-    ? { boundary: config.fsBoundary, allowlist: config.fsBoundaryAllowlist }
-    : undefined;
-  const vargosCustomTools = createVargosCustomTools(config.workspaceDir, config.sessionKey, boundaryOpts);
+  const vargosCustomTools = createVargosCustomTools(config.workspaceDir, config.sessionKey);
   log.debug(`Created ${vargosCustomTools.length} custom tools`);
 
   const extensionFactories: ExtensionFactory[] = [];
