@@ -16,12 +16,7 @@ const log = createLogger('history');
 // Session → AgentMessage Conversion
 // ============================================================================
 
-/**
- * Convert FileSessionService messages to Pi SDK AgentMessage format.
- * Keeps user, assistant, and subagent_announce system messages.
- * Subagent announcements are injected as user messages so the parent LLM can see results.
- */
-/** System message types that should be injected as user messages in agent history */
+/** System message types injected as user messages so the LLM can see them in history */
 const INJECTABLE_SYSTEM_TYPES = new Set(['subagent_announce', 'media_transform']);
 
 export function toAgentMessages(messages: SessionMessage[]): AgentMessage[] {
