@@ -95,6 +95,14 @@
 | Result announcement (debounced 3s re-trigger) | ✅ |
 | Minimal prompt mode for sub-agents | ✅ |
 
+## Agent Definitions
+
+| Feature | Status |
+|---------|--------|
+| Agent manifests (YAML frontmatter, skills routing) | ✅ |
+| Agent-scoped sessions_spawn | ✅ |
+| Agent discovery in system prompt | ✅ |
+
 ## Channels
 
 | Feature | Status |
@@ -168,6 +176,8 @@
 | Session debug | ✅ |
 | Config management | ✅ |
 | Health check | ✅ |
+| Tool call visibility (start/end with args/results) | ✅ |
+| Sub-agent completion waiting | ✅ |
 | Onboarding: media/voice setup wizard | ✅ |
 | Onboarding: LLM credential verification | ✅ |
 
@@ -179,6 +189,7 @@
 | Config file permissions (0o600, owner-only) | ✅ |
 | Error sanitization (API keys/tokens scrubbed from logs) | ✅ |
 | Centralized error store (append-only JSONL, auto-classified) | ✅ |
+| Error review scheduler (daily cron, pattern grouping) | ✅ |
 | User-facing error classification (auth/timeout/transient) | ✅ |
 | Browser random session IDs | ✅ |
 | LLM credential verification during onboarding | ✅ |

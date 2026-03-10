@@ -290,6 +290,11 @@ export async function start(): Promise<void> {
     createHeartbeatTask(cron, config.heartbeat, workspaceDir, () => runtime.listActiveRuns().length);
   }
 
+  if (config.errorReview?.enabled) {
+    const { createErrorReviewTask } = await import('../../cron/tasks/error-review.js');
+    createErrorReviewTask(cron, config.errorReview);
+  }
+
   cron.startAll();
   const cronCount = cron.listTasks().length;
   serviceStatuses.push({ name: 'Cron', ok: true, detail: `${cronCount} task${cronCount !== 1 ? 's' : ''}` });

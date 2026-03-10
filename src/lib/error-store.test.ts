@@ -10,7 +10,7 @@ vi.mock('../config/paths.js', () => ({
   resolveDataDir: () => tmpDir,
 }));
 
-const { appendError } = await import('./error-store.js');
+const { appendError, readErrors } = await import('./error-store.js');
 
 describe('appendError', () => {
   beforeEach(async () => {
@@ -57,5 +57,41 @@ describe('appendError', () => {
     const content = await fs.readFile(path.join(tmpDir, 'errors.jsonl'), 'utf-8');
     const lines = content.trim().split('\n');
     expect(lines).toHaveLength(2);
+  });
+});
+
+describe('readErrors', () => {
+  beforeEach(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vargos-errors-'));
+  });
+
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it('returns empty array when file does not exist', async () => {
+    const errors = await readErrors();
+    expect(errors).toEqual([]);
+  });
+
+  it('returns all errors when no filter specified', async () => {
+    await appendError({ message: 'error one' });
+    await appendError({ message: 'error two' });
+    const errors = await readErrors();
+    expect(errors).toHaveLength(2);
+  });
+
+  it('filters by sinceHours', async () => {
+    // Write an old entry directly
+    const oldTs = new Date(Date.now() - 48 * 3600_000).toISOString();
+    const oldEntry = JSON.stringify({ ts: oldTs, errorClass: 'unknown', message: 'old error' });
+    await fs.writeFile(path.join(tmpDir, 'errors.jsonl'), oldEntry + '\n');
+
+    // Write a recent entry via appendError
+    await appendError({ message: 'recent error' });
+
+    const errors = await readErrors({ sinceHours: 24 });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).toBe('recent error');
   });
 });

@@ -150,12 +150,21 @@ export interface LinkExpandConfig {
   timeoutMs?: number;       // default 5000
 }
 
+export interface ErrorReviewConfig {
+  enabled?: boolean;           // default: false
+  schedule?: string;           // cron expression, default: "0 20 * * *" (6am AEST)
+  sinceHours?: number;         // look-back window in hours (default: 24)
+  notify?: string[];           // channel targets for delivery
+  prompt?: string;             // custom prompt override
+}
+
 export interface VargosConfig {
   models: Record<string, ModelProfile>;
   agent: AgentRef;
   channels?: Record<string, ChannelEntry>;
   compaction?: CompactionConfig;
   cron?: CronConfig;
+  errorReview?: ErrorReviewConfig;
   gateway?: GatewayConfig;
   heartbeat?: HeartbeatConfig;
   mcp?: McpConfig;
