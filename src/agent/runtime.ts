@@ -108,6 +108,8 @@ export interface PiAgentRunResult {
   };
   duration?: number;
   spawnedSubagents?: boolean;
+  /** True when model produced only thinking blocks with no visible text */
+  thinkingOnly?: boolean;
 }
 
 export interface RuntimeDeps {
@@ -300,27 +302,6 @@ export class PiAgentRuntime {
     }
   }
 
-  /**
-   * Detect thinking-only responses and determine the appropriate fallback text.
-   * Returns undefined response when the model only thought but produced no visible output
-   * and ran no tool calls (safe to skip delivery). Returns a fallback string when
-   * tool calls were made but no summary was generated.
-   */
-  private classifyResponse(
-    rawContent: unknown,
-    hadToolCalls: boolean,
-  ): { response: string | undefined; isThinkingOnly: boolean } {
-    if (!isThinkingOnlyContent(rawContent)) {
-      return { response: undefined, isThinkingOnly: false };
-    }
-
-    const response = hadToolCalls
-      ? 'I completed the task but couldn\'t generate a summary. Check the results directly.'
-      : undefined;
-
-    return { response, isThinkingOnly: true };
-  }
-
   private async extractRunResult(
     sessionEntries: Array<{ type: string }>,
     startedAt: number,
@@ -365,22 +346,13 @@ export class PiAgentRuntime {
     const runMeta = this.buildRunMetadata(sessionEntries, runId, config, inputTokens, outputTokens, runToolCalls);
 
     if (!response.trim()) {
-      if (rawContent) {
-        const { response: fallback, isThinkingOnly } = this.classifyResponse(rawContent, runToolCalls.length > 0);
-        if (isThinkingOnly) {
-          log.info(`thinking-only response for ${sessionKey}${fallback ? ' (had tool calls, sending fallback)' : ' — skipping delivery'}`);
-
-          if (fallback) {
-            await this.storeResponse(sessionKey, fallback, runMeta).catch((e) =>
-              log.error(`failed to store fallback for ${sessionKey}: ${e instanceof Error ? e.message : e}`),
-            );
-          }
-
-          const duration = Date.now() - startedAt;
-          runMeta.duration = duration;
-          this.lifecycle.endRun(runId, tokenSummary(inputTokens, outputTokens));
-          return { success: true, response: fallback, tokensUsed: tokenSummary(inputTokens, outputTokens), duration };
-        }
+      if (rawContent && isThinkingOnlyContent(rawContent)) {
+        const hadTools = runToolCalls.length > 0;
+        log.info(`thinking-only response for ${sessionKey}${hadTools ? ' (had tool calls)' : ''}`);
+        const duration = Date.now() - startedAt;
+        runMeta.duration = duration;
+        this.lifecycle.endRun(runId, tokenSummary(inputTokens, outputTokens));
+        return { success: true, thinkingOnly: true, tokensUsed: tokenSummary(inputTokens, outputTokens), duration };
       }
 
       const hint = 'Empty response — model returned nothing useful.';

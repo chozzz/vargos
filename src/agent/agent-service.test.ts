@@ -320,8 +320,8 @@ describe('AgentService', () => {
     const retryRuntime = createMockRuntime();
     retryRuntime.run = async () => {
       runCount++;
-      // First call: thinking-only (empty response), second: real response
-      if (runCount === 1) return { success: true, response: '', duration: 100 };
+      // First call: thinking-only, second: real response
+      if (runCount === 1) return { success: true, thinkingOnly: true, duration: 100 };
       return { success: true, response: 'Sprint suggestion: MP-12345', duration: 100 };
     };
 

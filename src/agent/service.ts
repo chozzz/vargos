@@ -221,7 +221,7 @@ export class AgentService extends ServiceClient {
     // Fall back to original if stripping left nothing (e.g. directive-only message)
     const task = directives.cleaned || rawTask;
 
-    const result = await this.runAgent({
+    let result = await this.runAgent({
       sessionKey,
       task,
       channel,
@@ -229,6 +229,12 @@ export class AgentService extends ServiceClient {
       thinkingLevel: directives.thinkingLevel,
       verbose: directives.verbose,
     }, config);
+
+    // Re-prompt once on thinking-only (model thought but produced no visible output)
+    if (result.success && result.thinkingOnly) {
+      log.info(`thinking-only response for ${sessionKey} — re-prompting for summary`);
+      result = await this.runAgent({ sessionKey, task: 'Provide your response.', channel }, config);
+    }
 
     log.info(`agent result: ${sessionKey} success=${result.success} (${result.response?.length ?? 0} chars)`);
 
@@ -318,10 +324,10 @@ export class AgentService extends ServiceClient {
 
     let result = await this.runAgent({ sessionKey, task });
 
-    // Retry once on empty response (e.g. thinking-only from weaker models)
-    if (result.success && !result.response) {
-      log.info(`empty response for ${kind}:${triggerId} — retrying once`);
-      result = await this.runAgent({ sessionKey, task });
+    // Re-prompt once on thinking-only (model thought but produced no visible output)
+    if (result.success && result.thinkingOnly) {
+      log.info(`thinking-only response for ${kind}:${triggerId} — re-prompting for summary`);
+      result = await this.runAgent({ sessionKey, task: 'Provide your response. Summarize what you found or did.' });
     }
 
     if (!notify?.length) return;
