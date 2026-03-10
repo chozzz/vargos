@@ -30,13 +30,21 @@ export async function run(args?: string[]): Promise<void> {
       sessionKey, content: task, role: 'user',
     }).catch(() => {});
 
-    const result = await client.call<{ success: boolean; error?: string }>(
+    const result = await client.call<RunResult>(
       'agent', 'agent.run', { sessionKey, task }, 300_000,
     );
     console.log('');
+
     if (!result.success) {
       console.error(chalk.red(`  ${result.error ?? 'Agent run failed.'}`));
       process.exit(1);
+    }
+
+    // If sub-agents were spawned, wait for re-trigger run to synthesize results
+    if (result.spawnedSubagents) {
+      client.startThinking();
+      await client.waitForCompletion(sessionKey);
+      console.log('');
     }
   } catch (err) {
     console.error(chalk.red(`  Error: ${toMessage(err)}`));
@@ -44,4 +52,10 @@ export async function run(args?: string[]): Promise<void> {
   }
 
   await client.disconnect();
+}
+
+interface RunResult {
+  success: boolean;
+  error?: string;
+  spawnedSubagents?: boolean;
 }

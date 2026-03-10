@@ -105,6 +105,7 @@ export interface PiAgentRunResult {
     total: number;
   };
   duration?: number;
+  spawnedSubagents?: boolean;
 }
 
 export interface RuntimeDeps {
@@ -388,11 +389,14 @@ export class PiAgentRuntime {
 
     this.lifecycle.endRun(runId, tokenSummary(inputTokens, outputTokens));
 
+    const spawnedSubagents = runToolCalls.some(tc => tc.name === 'sessions_spawn');
+
     return {
       success: true,
       response,
       tokensUsed: tokenSummary(inputTokens, outputTokens),
       duration,
+      ...(spawnedSubagents && { spawnedSubagents }),
     };
   }
 
