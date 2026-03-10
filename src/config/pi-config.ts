@@ -150,18 +150,12 @@ export interface LinkExpandConfig {
   timeoutMs?: number;       // default 5000
 }
 
-export interface FsBoundaryConfig {
-  enabled?: boolean;     // default: true
-  allowlist?: string[];  // paths outside workingDir that are permitted (e.g. /mnt/ai/)
-}
-
 export interface VargosConfig {
   models: Record<string, ModelProfile>;
   agent: AgentRef;
   channels?: Record<string, ChannelEntry>;
   compaction?: CompactionConfig;
   cron?: CronConfig;
-  fsBoundary?: FsBoundaryConfig;
   gateway?: GatewayConfig;
   heartbeat?: HeartbeatConfig;
   mcp?: McpConfig;

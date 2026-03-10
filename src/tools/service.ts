@@ -12,16 +12,10 @@ import type { ToolContext } from './types.js';
 export interface ToolsServiceConfig {
   registry: ToolRegistry;
   gatewayUrl?: string;
-  /** Filesystem boundary for path validation */
-  boundary?: string;
-  /** Additional paths outside boundary that are permitted */
-  boundaryAllowlist?: string[];
 }
 
 export class ToolsService extends ServiceClient {
   private registry: ToolRegistry;
-  private boundary?: string;
-  private boundaryAllowlist?: string[];
 
   constructor(config: ToolsServiceConfig) {
     super({
@@ -32,8 +26,6 @@ export class ToolsService extends ServiceClient {
       gatewayUrl: config.gatewayUrl,
     });
     this.registry = config.registry;
-    this.boundary = config.boundary;
-    this.boundaryAllowlist = config.boundaryAllowlist;
   }
 
   async handleMethod(method: string, params: unknown): Promise<unknown> {
@@ -71,8 +63,6 @@ export class ToolsService extends ServiceClient {
       sessionKey: context?.sessionKey ?? 'default',
       workingDir: context?.workingDir ?? process.cwd(),
       call: <T>(target: string, method: string, p?: unknown) => this.call<T>(target, method, p),
-      boundary: this.boundary,
-      boundaryAllowlist: this.boundaryAllowlist,
     };
 
     return tool.execute(args ?? {}, toolContext);

@@ -143,10 +143,6 @@ Command tree is data-driven in `src/cli/tree.ts` — a `MenuNode[]` array that d
 
 **Retryable error detection** (`src/agent/runtime.ts`): `isRetryableError()` identifies network errors, JSON parse failures, HTTP 502/503/529, and abort signals as safe to retry within an agent run.
 
-### Path Boundary Validation
-
-`validateBoundary()` (`src/lib/path.ts`) prevents path traversal in fs tools (read, write, edit). All file paths are resolved through `fs.realpath` (symlink-aware), then checked against the workspace boundary. An optional allowlist permits access to paths outside the boundary (e.g. shared model directories). New files that don't exist yet are resolved by walking up to the nearest existing ancestor. The boundary and allowlist are injected via `ToolContext.boundary` — both by the agent runtime (`extension.ts`) and by `ToolsService` for gateway RPC callers (MCP bridge, etc.).
-
 ## Domain Boundary Rules
 
 ESLint enforces strict domain isolation via `no-restricted-imports`. Each domain directory can only import from:

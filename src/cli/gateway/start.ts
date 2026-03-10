@@ -85,8 +85,6 @@ async function resolveMemoryStorage(config: VargosConfig, dataDir: string, log: 
 interface InitToolsOpts {
   extensionCtx: ExtensionContext;
   gatewayUrl: string;
-  boundary?: string;
-  boundaryAllowlist?: string[];
 }
 
 async function initTools(opts: InitToolsOpts): Promise<{ tools: ToolsService; toolCounts: Record<string, number> }> {
@@ -106,8 +104,6 @@ async function initTools(opts: InitToolsOpts): Promise<{ tools: ToolsService; to
   const tools = new ToolsService({
     registry: toolRegistry,
     gatewayUrl: opts.gatewayUrl,
-    boundary: opts.boundary,
-    boundaryAllowlist: opts.boundaryAllowlist,
   });
   await tools.connect();
   setGatewayCall((target, method, params) => tools.call(target, method, params));
@@ -248,12 +244,9 @@ export async function start(): Promise<void> {
     paths: { dataDir, workspaceDir },
   };
 
-  const fsBoundary = config.fsBoundary?.enabled !== false ? workspaceDir : undefined;
   const { tools, toolCounts } = await initTools({
     extensionCtx,
     gatewayUrl,
-    boundary: fsBoundary,
-    boundaryAllowlist: config.fsBoundary?.allowlist,
   });
 
   const { McpClientManager } = await import('../../mcp/client.js');

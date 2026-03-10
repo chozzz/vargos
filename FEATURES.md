@@ -174,9 +174,7 @@
 
 | Feature | Status |
 |---------|--------|
-| Boundary path validation (symlink-aware traversal prevention) | ✅ |
 | MCP HTTP bearer token authentication | ✅ |
-| ToolsService boundary injection (gateway RPC callers) | ✅ |
 | Config file permissions (0o600, owner-only) | ✅ |
 | Error sanitization (API keys/tokens scrubbed from logs) | ✅ |
 | User-facing error classification (auth/timeout/transient) | ✅ |

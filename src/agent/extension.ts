@@ -43,11 +43,6 @@ function createParamsSchema(zodSchema: import('zod').ZodSchema): ToolDefinition[
   return (jsonSchema.definitions?.parameters || jsonSchema) as ToolDefinition['parameters'];
 }
 
-interface BoundaryOpts {
-  boundary?: string;
-  allowlist?: string[];
-}
-
 /**
  * Wrap a Vargos MCP tool into Pi SDK ToolDefinition format
  */
@@ -55,7 +50,6 @@ function wrapVargosTool(
   tool: Tool,
   workingDir: string,
   sessionKey: string = 'default',
-  boundaryOpts?: BoundaryOpts,
 ): ToolDefinition {
   const parameters = tool.jsonSchema
     ? (tool.jsonSchema as ToolDefinition['parameters'])
@@ -77,8 +71,6 @@ function wrapVargosTool(
         sessionKey,
         workingDir,
         call: gatewayCallFn,
-        boundary: boundaryOpts?.boundary,
-        boundaryAllowlist: boundaryOpts?.allowlist,
       };
 
       const paramsStr = Object.entries(params).map(([k, v]) => `${k}=${JSON.stringify(v).slice(0, 100)}`).join(', ');
@@ -128,10 +120,9 @@ function wrapVargosTool(
 export function createVargosCustomTools(
   workingDir: string,
   sessionKey: string = 'default',
-  boundaryOpts?: BoundaryOpts,
 ): ToolDefinition[] {
   const tools = toolRegistry.list();
-  return tools.map(tool => wrapVargosTool(tool, workingDir, sessionKey, boundaryOpts));
+  return tools.map(tool => wrapVargosTool(tool, workingDir, sessionKey));
 }
 
 /**

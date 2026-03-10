@@ -22,9 +22,7 @@ export const editTool: Tool = {
   formatCall: (args) => String(args.path || ''),
   execute: async (args: unknown, context: ToolContext) => {
     const params = EditParameters.parse(args);
-    const resolved = await resolveFsPath(params.path, context);
-    if (!resolved.ok) return resolved.error;
-    const { filePath } = resolved;
+    const filePath = resolveFsPath(params.path, context);
 
     try {
       // Read existing content

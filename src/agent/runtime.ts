@@ -92,8 +92,6 @@ export interface PiAgentConfig {
   compaction?: CompactionConfig;
   thinkingLevel?: string;
   verbose?: boolean;
-  fsBoundary?: string;
-  fsBoundaryAllowlist?: string[];
 }
 
 export interface PiAgentRunResult {
@@ -297,18 +295,11 @@ export class PiAgentRuntime {
    */
   private classifyResponse(
     rawContent: unknown,
-    entries: Array<{ type: string }>,
+    hadToolCalls: boolean,
   ): { response: string | undefined; isThinkingOnly: boolean } {
     if (!isThinkingOnlyContent(rawContent)) {
       return { response: undefined, isThinkingOnly: false };
     }
-
-    const hadToolCalls = entries.some(e => {
-      if ((e as { type: string }).type !== 'message') return false;
-      const msg = (e as SessionMessageEntry).message;
-      if (!msg || msg.role !== 'assistant' || !Array.isArray(msg.content)) return false;
-      return (msg.content as Array<{ type?: string }>).some(b => b?.type === 'tool_use');
-    });
 
     const response = hadToolCalls
       ? 'I completed the task but couldn\'t generate a summary. Check the results directly.'
@@ -360,7 +351,7 @@ export class PiAgentRuntime {
 
     if (!response.trim()) {
       if (rawContent) {
-        const { response: fallback, isThinkingOnly } = this.classifyResponse(rawContent, sessionEntries);
+        const { response: fallback, isThinkingOnly } = this.classifyResponse(rawContent, runToolCalls.length > 0);
         if (isThinkingOnly) {
           log.info(`thinking-only response for ${sessionKey}${fallback ? ' (had tool calls, sending fallback)' : ' — skipping delivery'}`);
 

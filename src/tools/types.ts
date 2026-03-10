@@ -30,10 +30,6 @@ export interface ToolContext {
   abortSignal?: AbortSignal;
   /** Gateway RPC — call other services through the gateway */
   call?: <T = unknown>(target: string, method: string, params?: unknown) => Promise<T>;
-  /** Absolute path that fs tools must remain within (prevents traversal attacks) */
-  boundary?: string;
-  /** Additional paths outside boundary that are permitted */
-  boundaryAllowlist?: string[];
 }
 
 export interface Tool {

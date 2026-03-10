@@ -373,10 +373,6 @@ export class AgentService extends ServiceClient {
     const runId = generateId('run');
 
     const workspaceDir = params.workspaceDir ?? this.workspaceDir;
-    const boundary = config.fsBoundary;
-    const fsBoundary =
-      boundary?.enabled !== false ? workspaceDir : undefined;
-    const fsBoundaryAllowlist = boundary?.allowlist;
 
     return {
       sessionKey,
@@ -395,8 +391,6 @@ export class AgentService extends ServiceClient {
       thinkingLevel: params.thinkingLevel,
       verbose: params.verbose,
       runId,
-      fsBoundary,
-      fsBoundaryAllowlist,
     };
   }
 
