@@ -42,7 +42,6 @@ export class AgentService extends ServiceClient {
   private cachedConfig: VargosConfig | null = null;
   private configLoad: Promise<VargosConfig | null> | null = null;
   private coordinator: SubagentCoordinator;
-  private activeRunIds = new Map<string, { sessionKey: string }>(); // Track active runs for tool streaming
   private stats = {
     totalTokens: { input: 0, output: 0 },
     totalToolCalls: 0,
@@ -71,7 +70,6 @@ export class AgentService extends ServiceClient {
     );
 
     // Subscribe to lifecycle stream events to forward tool calls through gateway
-    this.runtime.onStream((event) => this.handleLifecycleEvent(event));
   }
 
   async disconnect(): Promise<void> {
@@ -162,13 +160,7 @@ export class AgentService extends ServiceClient {
     this.stats.totalRuns++;
     this.emit('run.started', { sessionKey: params.sessionKey, runId: config.runId });
 
-    // Track active run for tool streaming
-    if (config.runId) {
-      this.activeRunIds.set(config.runId!, { sessionKey: params.sessionKey });
-    }
-
-    // Subscribe to streaming events (including tool call tracking)
-    const streamCleanup = this.subscribeToStream(config.runId!);
+    const streamCleanup = this.subscribeToStream(config.runId!, params.sessionKey);
 
     try {
       const result = await this.runtime.run(config);
@@ -194,38 +186,8 @@ export class AgentService extends ServiceClient {
 
       return result;
     } finally {
-      // Clean up tracking
-      if (config.runId) {
-        this.activeRunIds.delete(config.runId);
-      }
       streamCleanup();
     }
-  }
-
-  /**
-   * Handle lifecycle stream events and forward tool calls through the gateway
-   */
-  private handleLifecycleEvent(event: AgentStreamEvent): void {
-    if (event.type !== 'tool') return;
-
-    const runInfo = Array.from(this.activeRunIds.entries()).find(([_, info]) => 
-      info.sessionKey === event.sessionKey
-    );
-    
-    if (!runInfo) return;
-
-    const [runId] = runInfo;
-
-    // Publish tool event through gateway
-    this.emit('run.tool', {
-      runId,
-      sessionKey: event.sessionKey,
-      toolName: event.toolName,
-      phase: event.phase,
-      args: event.args,
-      result: event.result,
-      timestamp: event.timestamp,
-    });
   }
 
   private async handleInboundMessage(payload: Record<string, unknown>): Promise<void> {
@@ -439,14 +401,15 @@ export class AgentService extends ServiceClient {
     };
   }
 
-  private subscribeToStream(runId: string): () => void {
+  private subscribeToStream(runId: string, sessionKey: string): () => void {
     const handler = (event: AgentStreamEvent) => {
       if (event.runId !== runId) return;
       if (event.type === 'assistant') {
-        this.emit('run.delta', { runId, sessionKey: event.sessionKey, type: 'text_delta', data: event.content });
+        this.emit('run.delta', { runId, sessionKey, type: 'text_delta', data: event.content });
       } else if (event.type === 'tool') {
         if (event.phase === 'start') this.stats.totalToolCalls++;
-        this.emit('run.delta', { runId, sessionKey: event.sessionKey, type: `tool_${event.phase}`, data: event.toolName });
+        this.emit('run.delta', { runId, sessionKey, type: `tool_${event.phase}`, data: event.toolName });
+        this.emit('run.tool', { runId, sessionKey, toolName: event.toolName, phase: event.phase, args: event.args, result: event.result });
       }
     };
 

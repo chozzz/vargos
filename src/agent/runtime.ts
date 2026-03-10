@@ -460,10 +460,10 @@ export class PiAgentRuntime {
       }
 
       if (event.type === 'tool_execution_start') {
-        this.lifecycle.streamTool(runId, event.toolName, 'start', {});
         const tool = toolRegistry.get(event.toolName);
         const args = event.args as Record<string, unknown> | undefined;
         const summary = tool?.formatCall && args ? tool.formatCall(args) : '';
+        this.lifecycle.streamTool(runId, event.toolName, 'start', summary || args);
         log.info(`tool: ${event.toolName}(${summary})`);
         // Collect for training data enrichment
         runToolCalls?.push({ name: event.toolName, ...(args && { args }) });
@@ -471,17 +471,18 @@ export class PiAgentRuntime {
 
       if (event.type === 'tool_execution_end') {
         const toolName = (event as unknown as { toolName?: string }).toolName;
-        this.lifecycle.streamTool(runId, toolName ?? 'unknown', 'end', {}, {});
         const tool = toolName ? toolRegistry.get(toolName) : undefined;
+        let resultSummary: string | undefined;
         if (tool?.formatResult && event.result) {
-          log.info(`tool end: ${tool.name} ${tool.formatResult(event.result as ToolResult)}`);
+          resultSummary = tool.formatResult(event.result as ToolResult);
         } else if (event.result) {
           const content = Array.isArray(event.result.content)
             ? (event.result.content as Array<{ text?: string; data?: string }>).map(c => c.text || c.data || '').join('\n')
             : String(event.result);
-          const preview = content.slice(0, 200);
-          log.info(`tool end: ${preview}${content.length > 200 ? '...' : ''}`);
+          resultSummary = content.slice(0, 200);
         }
+        this.lifecycle.streamTool(runId, toolName ?? 'unknown', 'end', undefined, resultSummary);
+        if (resultSummary) log.info(`tool end: ${resultSummary.slice(0, 200)}${resultSummary.length > 200 ? '...' : ''}`);
       }
 
       if (event.type === 'message_end') {
