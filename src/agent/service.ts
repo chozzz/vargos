@@ -395,7 +395,9 @@ export class AgentService extends ServiceClient {
       channel: params.channel,
       bootstrapOverrides: params.bootstrapOverrides,
       compaction: config.compaction,
-      thinkingLevel: params.thinkingLevel,
+      thinkingLevel: params.thinkingLevel ?? config.agent.thinkingLevel ?? 'high',
+      thinkingBudgets: config.agent.thinkingBudgets,
+      maxRetryDelayMs: config.agent.maxRetryDelayMs ?? 30_000,
       verbose: params.verbose,
       runId,
     };

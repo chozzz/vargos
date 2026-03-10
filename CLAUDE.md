@@ -105,7 +105,9 @@ Extensions register tools via `VargosExtension.register(ctx)` → `ctx.registerT
 
 Adapters implement `ChannelAdapter` (`src/channels/types.ts`). Base class (`src/channels/base-adapter.ts`) provides shared logic.
 
-**Chat directives** (`src/lib/directives.ts`): Users can prefix messages with `/think:<level>` (off/low/medium/high) or `/verbose` to override per-message inference settings. Directives are parsed and stripped in `AgentService` before the task reaches the agent — the agent never sees the raw directive tokens.
+**Thinking level**: `config.agent.thinkingLevel` sets the default (default: `high`). Controls extended thinking token budget per LLM call. Optional `config.agent.thinkingBudgets` sets per-level token caps (e.g. `{ low: 2048, medium: 8192, high: 16384 }`).
+
+**Chat directives** (`src/lib/directives.ts`): Users can prefix messages with `/think:<level>` (off/low/medium/high) or `/verbose` to override per-message inference settings. Directives override the default thinking level for that message only. Directives are parsed and stripped in `AgentService` before the task reaches the agent — the agent never sees the raw directive tokens.
 
 **Message debouncing**: `BaseChannelAdapter` uses `createMessageDebouncer` (`src/lib/debounce.ts`) to batch rapid messages from the same sender before triggering an agent run. Default delay is 2000ms; configurable per channel via `debounceMs` in `config.json`. Media messages (photo, audio, video) bypass the debouncer and flush any pending text immediately so they are processed in order.
 
@@ -141,7 +143,7 @@ Command tree is data-driven in `src/cli/tree.ts` — a `MenuNode[]` array that d
 
 **Structured retry** (`src/lib/retry.ts`): `withRetry(fn, config)` wraps any async operation with exponential backoff and optional jitter. Config: `maxRetries` (default 3), `baseMs` (default 1000), `maxMs` (default 30_000), `jitter` (default true), `shouldRetry` predicate, `signal` for abort. The gateway auto-reconnect and other transient-failure paths use this utility.
 
-**Retryable error detection** (`src/agent/runtime.ts`): `isRetryableError()` identifies network errors, JSON parse failures, HTTP 502/503/529, and abort signals as safe to retry within an agent run.
+**Retryable error detection** (`src/agent/runtime.ts`): `isRetryableError()` identifies network errors, JSON parse failures, and HTTP 502/503/529 as safe to retry within an agent run. `promptWithRetry` retries up to 2 times with exponential backoff (1s, 2s). `config.agent.maxRetryDelayMs` (default 30s) caps server-requested retry delays via the Pi SDK.
 
 **Centralized error store** (`src/lib/error-store.ts`): `appendError()` persists classified errors to `~/.vargos/errors.jsonl` as append-only JSONL. Auto-classifies via `classifyError()`, sanitizes API keys. `readErrors({ sinceHours })` reads back entries with optional time filter. Hook points: runtime run failures, tool execution errors, gateway reconnect exhaustion.
 

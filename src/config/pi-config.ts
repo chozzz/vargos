@@ -32,12 +32,23 @@ export interface SubagentConfig {
   model?: string;               // optional model profile for subagents
 }
 
+/** Token budgets per thinking level */
+export interface ThinkingBudgets {
+  minimal?: number;
+  low?: number;
+  medium?: number;
+  high?: number;
+}
+
 /** Agent references into the models map */
 export interface AgentRef {
   primary: string;
   fallback?: string;
   media?: Record<string, string>;  // media type → model profile name
   subagents?: SubagentConfig;
+  thinkingLevel?: string;          // default thinking level (off/low/medium/high, default: "high")
+  thinkingBudgets?: ThinkingBudgets;
+  maxRetryDelayMs?: number;        // cap server-requested retry delays (default: 30000)
 }
 
 /** @deprecated Use ModelProfile instead — kept for migration compatibility */

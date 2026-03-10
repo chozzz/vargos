@@ -92,6 +92,8 @@ export interface PiAgentConfig {
   bootstrapOverrides?: Record<string, string>;
   compaction?: CompactionConfig;
   thinkingLevel?: string;
+  thinkingBudgets?: { minimal?: number; low?: number; medium?: number; high?: number };
+  maxRetryDelayMs?: number;
   verbose?: boolean;
 }
 
@@ -176,8 +178,13 @@ export class PiAgentRuntime {
       const { session, sessionManager } = await buildPiSession(config);
 
       if (config.thinkingLevel) {
-        // Cast: ThinkingLevel from pi-agent-core is not re-exported; we validate upstream
         session.agent.setThinkingLevel(config.thinkingLevel as Parameters<typeof session.agent.setThinkingLevel>[0]);
+      }
+      if (config.thinkingBudgets) {
+        session.agent.thinkingBudgets = config.thinkingBudgets;
+      }
+      if (config.maxRetryDelayMs) {
+        session.agent.maxRetryDelayMs = config.maxRetryDelayMs;
       }
 
       if (config.verbose) {
