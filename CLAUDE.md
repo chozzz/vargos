@@ -51,7 +51,7 @@ All services extend `ServiceClient` (`src/gateway/service-client.ts`), which han
 
 | Service | Directory | Key Methods | Events |
 |---------|-----------|-------------|--------|
-| **agent** | `src/agent/` | `agent.run`, `agent.abort` | `run.started`, `run.delta`, `run.completed` |
+| **agent** | `src/agent/` | `agent.run`, `agent.abort` | `run.started`, `run.delta`, `run.tool`, `run.completed` |
 | **tools** | `src/tools/` | `tool.execute`, `tool.list` | — |
 | **sessions** | `src/sessions/` | `session.list`, `session.get`, `session.create`, `session.addMessage` | `session.created`, `session.message` |
 | **channels** | `src/channels/` | `channel.send`, `channel.sendMedia`, `channel.list` | `message.received`, `channel.connected` |
@@ -143,11 +143,17 @@ Command tree is data-driven in `src/cli/tree.ts` — a `MenuNode[]` array that d
 
 **Retryable error detection** (`src/agent/runtime.ts`): `isRetryableError()` identifies network errors, JSON parse failures, HTTP 502/503/529, and abort signals as safe to retry within an agent run.
 
-**Centralized error store** (`src/lib/error-store.ts`): `appendError()` persists classified errors to `~/.vargos/errors.jsonl` as append-only JSONL. Auto-classifies via `classifyError()`, sanitizes API keys. Hook points: runtime run failures, tool execution errors, gateway reconnect exhaustion.
+**Centralized error store** (`src/lib/error-store.ts`): `appendError()` persists classified errors to `~/.vargos/errors.jsonl` as append-only JSONL. Auto-classifies via `classifyError()`, sanitizes API keys. `readErrors({ sinceHours })` reads back entries with optional time filter. Hook points: runtime run failures, tool execution errors, gateway reconnect exhaustion.
+
+**Error review scheduler** (`src/cron/tasks/error-review.ts`): ephemeral cron task that fires daily (default `0 20 * * *` UTC = 6am AEST). Before-fire hook skips when no errors in the look-back window (default 24h). Prompts the agent to read `errors.jsonl`, group by class/pattern, and write actionable findings to HEARTBEAT.md. Config: `config.errorReview` (`enabled`, `schedule`, `sinceHours`, `notify`, `prompt`).
 
 ### Skills Directory
 
 Reusable prompt recipes stored as `~/.vargos/workspace/skills/<name>/SKILL.md` with YAML frontmatter (name, description, tags). Three-phase lifecycle: **discover** (scanner reads frontmatter at prompt-build time → manifest in system prompt) → **activate** (`skill_load` tool reads full content) → **execute** (agent follows instructions using existing tools). Agents can create new skills via `write` tool — they appear on the next run automatically. Scanner: `src/lib/skills.ts`. Prompt injection: `buildSkillsSection()` in `src/agent/prompt.ts`.
+
+### Agent Definitions
+
+Lightweight routing aliases at `~/.vargos/workspace/agents/<name>.md` with YAML frontmatter only (name, description, skills[], optional model). No body — skills are the single source of behavior. When `sessions_spawn({ agent: "name" })` is called, the agent's skills are resolved, loaded, and concatenated as the sub-agent's role. Scanner: `src/lib/agents.ts`. Prompt injection: `buildAgentsSection()` in `src/agent/prompt.ts`.
 
 ## Domain Boundary Rules
 

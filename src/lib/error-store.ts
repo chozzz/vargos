@@ -33,3 +33,29 @@ export async function appendError(
   const filePath = path.join(resolveDataDir(), 'errors.jsonl');
   await fs.appendFile(filePath, JSON.stringify(full) + '\n', 'utf-8');
 }
+
+/** Read errors from the store, optionally filtered to the last N hours. */
+export async function readErrors(opts?: { sinceHours?: number }): Promise<ErrorEntry[]> {
+  const filePath = path.join(resolveDataDir(), 'errors.jsonl');
+  let raw: string;
+  try {
+    raw = await fs.readFile(filePath, 'utf-8');
+  } catch {
+    return [];
+  }
+
+  const cutoff = opts?.sinceHours
+    ? new Date(Date.now() - opts.sinceHours * 3600_000).toISOString()
+    : undefined;
+
+  const entries: ErrorEntry[] = [];
+  for (const line of raw.split('\n')) {
+    if (!line.trim()) continue;
+    try {
+      const entry = JSON.parse(line) as ErrorEntry;
+      if (cutoff && entry.ts < cutoff) continue;
+      entries.push(entry);
+    } catch { /* skip malformed lines */ }
+  }
+  return entries;
+}
