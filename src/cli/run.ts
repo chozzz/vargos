@@ -3,6 +3,7 @@ import { pickText } from './pick.js';
 import { connectToGateway } from './client.js';
 import { cliSessionKey } from '../sessions/keys.js';
 import { toMessage } from '../lib/error.js';
+import { formatToolEvent } from './tool-display.js';
 
 export async function run(args?: string[]): Promise<void> {
   let task = args?.join(' ') || '';
@@ -19,6 +20,7 @@ export async function run(args?: string[]): Promise<void> {
   const sessionKey = cliSessionKey('run');
   const client = await connectToGateway();
   client.onDelta((delta) => process.stdout.write(delta));
+  client.onTool((event) => process.stderr.write(formatToolEvent(event)));
   client.startThinking();
 
   try {

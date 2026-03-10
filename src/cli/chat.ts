@@ -2,6 +2,7 @@ import readline from 'node:readline';
 import chalk from 'chalk';
 import { connectToGateway } from './client.js';
 import { toMessage } from '../lib/error.js';
+import { formatToolEvent } from './tool-display.js';
 
 const SESSION_KEY = 'cli:chat';
 
@@ -19,6 +20,7 @@ export async function chat(): Promise<void> {
   });
 
   client.onDelta((delta) => process.stdout.write(delta));
+  client.onTool((event) => process.stderr.write(formatToolEvent(event)));
 
   console.log(chalk.gray('  Type a message to chat. Ctrl+C to exit.\n'));
   rl.prompt();
@@ -46,17 +48,12 @@ export async function chat(): Promise<void> {
     rl.prompt();
   });
 
-  const cleanup = async () => {
+  process.on('SIGINT', async () => {
     rl.close();
     await client.disconnect();
-  };
-
-  process.on('SIGINT', async () => {
-    await cleanup();
     process.exit(0);
   });
 
-  // Keep alive until readline closes (Ctrl+D)
   await new Promise<void>((resolve) => {
     rl.on('close', async () => {
       await client.disconnect();
