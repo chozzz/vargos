@@ -35,7 +35,7 @@ export function classifyError(msg: string): ErrorClass {
   if (/\b(timeout|timed?\s*out|etimedout|deadline exceeded)\b/.test(lower)) {
     return 'timeout';
   }
-  if (/\b(502|503|529|econnreset|econnrefused|network|socket hang up|fetch failed|retry)\b/.test(lower)) {
+  if (/\b(502|503|529|econnreset|econnrefused|network|socket hang up|fetch failed|retry)\b/.test(lower) || lower.includes('upstream error')) {
     return 'transient';
   }
   return 'unknown';
