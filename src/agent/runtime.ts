@@ -16,7 +16,7 @@ import { toolRegistry } from '../tools/registry.js';
 import type { ToolResult } from '../tools/types.js';
 import { createLogger } from '../lib/logger.js';
 import { generateId } from '../lib/id.js';
-import { toMessage, classifyError } from '../lib/error.js';
+import { toMessage, classifyError, type ErrorClass } from '../lib/error.js';
 import { appendError } from '../lib/error-store.js';
 
 const log = createLogger('runtime');
@@ -29,16 +29,17 @@ import { sanitizeHistory, toAgentMessages, prepareHistory } from './history.js';
 import { getVargosToolNames } from './extension.js';
 import { buildPiSession } from './session-setup.js';
 
-/** Patterns for retryable errors not covered by classifyError */
-const RETRYABLE_PARSE_PATTERNS = ['after json', 'unexpected token', 'end of json'];
+/** Errors we know are permanent — don't retry these. */
+const NON_RETRYABLE_CLASSES: Set<ErrorClass> = new Set(['auth', 'rate_limit']);
+const NON_RETRYABLE_PATTERNS = ['abort', 'cancelled', 'canceled'];
 
-/** Check if an error message indicates a transient/retryable failure. */
+/** Check if an error message indicates a retryable failure.
+ *  Default-retry: everything except auth, rate limit, and intentional aborts. */
 export function isRetryableError(message: string | undefined): boolean {
   if (!message) return false;
-  const cls = classifyError(message);
-  if (cls === 'transient' || cls === 'timeout') return true;
+  if (NON_RETRYABLE_CLASSES.has(classifyError(message))) return false;
   const lower = message.toLowerCase();
-  return RETRYABLE_PARSE_PATTERNS.some(p => lower.includes(p));
+  return !NON_RETRYABLE_PATTERNS.some(p => lower.includes(p));
 }
 
 /**

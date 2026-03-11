@@ -139,18 +139,20 @@ describe('isRetryableError', () => {
   it('does not retry abort errors (intentional cancellation)', () => {
     expect(isRetryableError('The operation was aborted')).toBe(false);
     expect(isRetryableError('AbortError: signal is aborted')).toBe(false);
+    expect(isRetryableError('Request cancelled by user')).toBe(false);
   });
 
-  it('does not match overly broad "unexpected" strings', () => {
-    expect(isRetryableError('unexpected field in response schema')).toBe(false);
-    expect(isRetryableError('Unexpected error occurred')).toBe(false);
-  });
-
-  it('does not retry non-transient errors', () => {
+  it('does not retry auth or rate limit errors', () => {
     expect(isRetryableError('Invalid API key')).toBe(false);
+    expect(isRetryableError('401 Unauthorized')).toBe(false);
     expect(isRetryableError('Rate limit exceeded')).toBe(false);
-    expect(isRetryableError('Model not found')).toBe(false);
-    expect(isRetryableError('Context length exceeded')).toBe(false);
-    expect(isRetryableError('Permission denied')).toBe(false);
+    expect(isRetryableError('429 Too Many Requests')).toBe(false);
+  });
+
+  it('retries unknown provider errors by default', () => {
+    expect(isRetryableError('Upstream error from Parasail: list index out of range')).toBe(true);
+    expect(isRetryableError('Model not found')).toBe(true);
+    expect(isRetryableError('Internal server error')).toBe(true);
+    expect(isRetryableError('something completely unexpected')).toBe(true);
   });
 });
