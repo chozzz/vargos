@@ -72,6 +72,8 @@ describe('classifyError', () => {
     expect(classifyError('ECONNREFUSED')).toBe('transient');
     expect(classifyError('fetch failed')).toBe('transient');
     expect(classifyError('socket hang up')).toBe('transient');
+    expect(classifyError('Upstream error from Parasail: list index out of range')).toBe('transient');
+    expect(classifyError('Upstream error from Venice: list index out of range')).toBe('transient');
   });
 
   it('returns unknown for unrecognized errors', () => {
