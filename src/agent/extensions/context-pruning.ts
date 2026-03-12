@@ -272,20 +272,50 @@ export function pruneContextMessages(
 }
 
 /**
+ * Strip image blocks from all messages — primary model is not expected to handle media.
+ * Keeps text blocks intact so descriptions/metadata from MCP tools are preserved.
+ */
+export function stripImageBlocks(messages: AgentMessage[]): AgentMessage[] {
+  let changed = false;
+  const result: AgentMessage[] = [];
+
+  for (const msg of messages) {
+    const m = msg as { role?: string; content?: unknown };
+    if (!Array.isArray(m.content)) { result.push(msg); continue; }
+
+    const hasImage = (m.content as ContentBlock[]).some(b => b.type === 'image');
+    if (!hasImage) { result.push(msg); continue; }
+
+    changed = true;
+    const filtered = (m.content as ContentBlock[]).filter(b => b.type !== 'image');
+    if (filtered.length === 0) {
+      filtered.push(asText('[Image content removed — model does not support vision]'));
+    }
+    result.push({ ...msg, content: filtered } as AgentMessage);
+  }
+
+  return changed ? result : messages;
+}
+
+/**
  * Create the context pruning Pi SDK extension.
- * Hooks the 'context' event to prune old tool results before each LLM call.
+ * Hooks the 'context' event to strip images and prune old tool results before each LLM call.
  */
 export function createContextPruningExtension(cfg?: ContextPruningConfig): (api: ExtensionAPI) => void {
   const settings = resolveSettings(cfg);
 
   return (api: ExtensionAPI) => {
     api.on('context', (event, ctx) => {
-      const contextWindow = ctx.model?.contextWindow;
-      if (!contextWindow || contextWindow <= 0) return;
+      // Strip image blocks — primary model doesn't handle media
+      let messages = stripImageBlocks(event.messages);
 
-      const pruned = pruneContextMessages(event.messages, settings, contextWindow);
-      if (pruned !== event.messages) {
-        return { messages: pruned };
+      const contextWindow = ctx.model?.contextWindow;
+      if (contextWindow && contextWindow > 0) {
+        messages = pruneContextMessages(messages, settings, contextWindow);
+      }
+
+      if (messages !== event.messages) {
+        return { messages };
       }
     });
   };

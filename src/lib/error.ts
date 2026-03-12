@@ -20,7 +20,7 @@ export function sanitizeError(msg: string): string {
     .replace(/(api[_-]?key|token|secret|password|authorization)[=:]\s*["']?[^\s"',}{]+/gi, '$1=***');
 }
 
-export type ErrorClass = 'transient' | 'auth' | 'timeout' | 'rate_limit' | 'unknown';
+export type ErrorClass = 'transient' | 'auth' | 'timeout' | 'rate_limit' | 'capability' | 'unknown';
 
 /** Classify an error message for user-facing display. */
 export function classifyError(msg: string): ErrorClass {
@@ -38,6 +38,10 @@ export function classifyError(msg: string): ErrorClass {
   if (/\b(502|503|529|econnreset|econnrefused|network|socket hang up|fetch failed|retry)\b/.test(lower)) {
     return 'transient';
   }
+  // Model capability mismatches — not retryable
+  if (/no endpoints found|not support|unsupported.*model|model.*not.*available/i.test(lower)) {
+    return 'capability';
+  }
   return 'unknown';
 }
 
@@ -52,6 +56,8 @@ export function friendlyError(errorClass: ErrorClass): string {
       return 'Too many requests — please wait a moment before trying again.';
     case 'timeout':
       return 'That request timed out. Please try again.';
+    case 'capability':
+      return 'The current model doesn\'t support that request. The admin may need to check the model config.';
     case 'unknown':
       return 'Something went wrong on my end. Please try again.';
   }
