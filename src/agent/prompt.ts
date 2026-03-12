@@ -311,11 +311,13 @@ function buildSystemSection(options: {
 }): string {
   const now = new Date();
   const tz = options.userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const dateParts = new Intl.DateTimeFormat('en', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now);
+  const dp = Object.fromEntries(dateParts.filter(p => p.type !== 'literal').map(p => [p.type, p.value]));
 
   const lines = [
     '## System',
     '',
-    `Date: ${now.toLocaleDateString('sv-SE', { timeZone: tz })}`,
+    `Date: ${dp.year}-${dp.month}-${dp.day}`,
     `Time: ${now.toLocaleTimeString('en-GB', { timeZone: tz, hour12: false })} (${tz})`,
     `OS: ${process.platform} ${process.arch}`,
     `Host: ${os.hostname()}`,
