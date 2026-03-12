@@ -74,7 +74,7 @@ describe('buildSystemPrompt', () => {
       expect(result).not.toContain('You are Vargos');
     });
 
-    it('includes Tooling section with tool names', async () => {
+    it('includes Tooling section with tool count', async () => {
       const dir = await makeTmpDir();
       const result = await buildSystemPrompt({
         mode: 'full',
@@ -82,8 +82,7 @@ describe('buildSystemPrompt', () => {
         toolNames: ['read', 'exec'],
       });
       expect(result).toContain('## Tooling');
-      expect(result).toContain('- read:');
-      expect(result).toContain('- exec:');
+      expect(result).toContain('2 built-in tools available');
     });
 
     it('includes Workspace section with path', async () => {

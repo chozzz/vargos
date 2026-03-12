@@ -34,7 +34,7 @@ const BOOTSTRAP_FILES = [
   'TOOLS.md',
 ];
 
-const DEFAULT_BOOTSTRAP_MAX_CHARS = 20000;
+const DEFAULT_BOOTSTRAP_MAX_CHARS = 6000;
 
 /**
  * Build system prompt from workspace context files
@@ -95,6 +95,11 @@ export async function buildSystemPrompt(options: SystemPromptOptions): Promise<s
     sections.push(`## Additional Context\n\n${options.extraSystemPrompt}`);
   }
 
+  // Sandwich: echo critical channel rules at the end for recency bias
+  if (options.channel) {
+    sections.push(buildChannelReminder());
+  }
+
   // Join all sections
   return sections.filter(Boolean).join('\n\n');
 }
@@ -106,18 +111,18 @@ async function buildToolingSection(toolNames: string[]): Promise<string> {
     for (const t of tools) externalNames.add(t.name);
   }
 
+  // Built-in tools are sent via the API tools field with full schemas.
+  // Only list a count here — the model sees descriptions in the tool definitions.
+  const builtinCount = toolNames.filter(n => !externalNames.has(n)).length;
+
   const lines = [
     '## Tooling',
     '',
-    'Available tools (use exactly as listed):',
+    `${builtinCount} built-in tools available (schemas provided via tool definitions).`,
+    'Use tools naturally. Wait for results before proceeding.',
   ];
 
-  for (const name of toolNames) {
-    if (externalNames.has(name)) continue;
-    const desc = toolRegistry.get(name)?.description || 'Available tool';
-    lines.push(`- ${name}: ${desc}`);
-  }
-
+  // External MCP tools need context since they come from external servers
   if (external.size > 0) {
     const toolNameSet = new Set(toolNames);
     lines.push('');
@@ -137,19 +142,15 @@ async function buildToolingSection(toolNames: string[]): Promise<string> {
 
   lines.push(
     '',
-    'Use tools naturally to complete tasks. When using tools, wait for results before proceeding.',
-    'Tool names are case-sensitive. Call tools exactly as listed.',
-    '',
     '### Shell & Git',
     '',
     'The `exec` tool runs any shell command. Common patterns:',
-    '- **Git:** `git clone`, `git checkout -b`, `git push`, `git diff`, `git log`',
-    '- **GitHub CLI:** `gh repo clone owner/repo`, `gh pr create`, `gh issue list`, `gh run list`',
-    '- **Node/Python:** `npm install`, `pnpm build`, `pip install`, `python script.py`',
-    '- **System:** `ls`, `find`, `grep`, `curl`, `wget`, `tar`, `zip`',
+    '- Git: clone, checkout -b, push, diff, log',
+    '- GitHub CLI: gh repo clone, gh pr create, gh issue list',
+    '- Node/Python: npm install, pnpm build, pip install',
+    '- System: ls, find, grep, curl, wget',
     '',
-    'For long-running commands, use `process` to run in background and monitor with poll/log.',
-    'Check TOOLS.md for environment-specific notes.',
+    'For long-running commands, use `process` to run in background.',
   );
 
   return lines.join('\n');
@@ -290,6 +291,16 @@ function buildChannelSection(channel: string, sessionKey?: string): string {
   );
 
   return lines.join('\n');
+}
+
+/** Sandwich echo — repeat the most-violated rules at prompt end for recency bias */
+function buildChannelReminder(): string {
+  return [
+    '## Reminder',
+    '',
+    'This is a plain-text chat. Write plain text only — no markdown syntax.',
+    'Deliver media files via channel_send_media, not as text paths.',
+  ].join('\n');
 }
 
 function buildSystemSection(options: {
