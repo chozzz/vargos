@@ -67,6 +67,76 @@ Files larger than 6,000 characters are truncated using a 70/20 head/tail strateg
 | `minimal-subagent` | All 3 files | Identity, Tooling, Workspace, System | Sub-agent sessions |
 | `none` | None | "You are a helpful assistant." | Bare fallback |
 
+## Heartbeat Flow
+
+The heartbeat is a periodic cron task that polls the agent to perform maintenance. It runs on a separate config key (`config.heartbeat`), not inside `cron.tasks` — it's registered as an ephemeral cron job at boot via `createHeartbeatTask()`.
+
+### Config
+
+```jsonc
+{
+  "heartbeat": {
+    "enabled": true,
+    "every": "*/30 * * * *",       // cron expression (default: every 30 min)
+    "notify": ["whatsapp:61423222658"],  // optional: deliver results to channel
+    "activeHours": {
+      "start": "08:00",
+      "end": "22:00",
+      "timezone": "Australia/Sydney"
+    }
+  }
+}
+```
+
+### Skip conditions
+
+Every tick, three checks run before the agent is invoked:
+
+1. **Active hours** — outside the configured window → skip
+2. **Agent busy** — another run is in progress → skip
+3. **HEARTBEAT.md empty** — no actionable tasks (only headers/comments) → skip
+
+This means heartbeat costs zero API calls when there's nothing to do.
+
+### Example flow
+
+```
+:30 — Cron fires heartbeat
+       ├─ Active hours? Yes (14:30 Sydney)
+       ├─ Agent busy? No
+       └─ HEARTBEAT.md has tasks? Yes
+           → Agent run starts with prompt:
+             "Heartbeat poll. Read HEARTBEAT.md for your checklist."
+
+       Agent reads HEARTBEAT.md:
+         - Write today's daily summary
+         - Curate memory: promote old dailies, prune stale pointers
+
+       Agent writes memory/2026-03-13.md, promotes old dailies,
+       updates MEMORY.md index.
+
+       Agent responds: HEARTBEAT_OK
+       → Transcript pruned (last 2 messages removed from cron session)
+       → No notification sent (HEARTBEAT_OK = no-op)
+
+:00 — Cron fires heartbeat
+       ├─ HEARTBEAT.md has tasks? Yes (same checklist)
+       ├─ Agent reads HEARTBEAT.md, checks daily already written
+       └─ Nothing to do → responds: HEARTBEAT_OK
+       → Pruned, no notification
+
+       (If the agent finds something actionable — e.g. stale bootstrap
+        file — it reports the finding instead of HEARTBEAT_OK.
+        That response is delivered to notify targets.)
+```
+
+### Architecture split
+
+- **AGENTS.md** = permanent knowledge (HOW to do memory maintenance, bootstrap hygiene, etc.)
+- **HEARTBEAT.md** = ephemeral task queue (WHAT to check this cycle)
+
+The agent reads HEARTBEAT.md each poll and follows AGENTS.md for procedures. Users edit HEARTBEAT.md to add/remove tasks; the agent never modifies it.
+
 ## Key Design Decisions
 
 - **Only 3 files are auto-injected** (AGENTS, SOUL, TOOLS). MEMORY.md and HEARTBEAT.md are accessed on-demand — memory via `memory_search` tools, heartbeat via the cron task reading the file directly.
