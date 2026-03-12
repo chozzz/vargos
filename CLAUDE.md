@@ -125,6 +125,16 @@ Adapters implement `ChannelAdapter` (`src/channels/types.ts`). Base class (`src/
 
 **Event subscriptions**: channel service subscribes to `run.started` (start typing + init reactions), `run.delta` (track tool phases for reactions), `run.completed` (stop typing + seal reactions).
 
+### Heartbeat
+
+Periodic maintenance cron configured under `config.heartbeat` (separate from `cron.tasks`). Registered as an ephemeral cron job at boot via `createHeartbeatTask()` in `src/cron/tasks/heartbeat.ts`. Default interval: every 30 minutes.
+
+**Skip logic** (zero API cost when idle): skips if outside active hours, agent is busy, or HEARTBEAT.md is empty/comments-only.
+
+**Architecture split**: AGENTS.md has permanent procedures (HOW), HEARTBEAT.md has the task queue (WHAT). Agent reads HEARTBEAT.md each poll, follows AGENTS.md for procedures.
+
+**Transcript pruning**: HEARTBEAT_OK responses (no-op) are pruned from the cron session immediately to prevent context pollution. Only actionable responses are kept and delivered to `notify` targets.
+
 ### Cron Notifications
 
 Cron tasks support an optional `notify` array of channel targets (e.g. `["whatsapp:61423222658"]`). After a run completes, results are delivered to each target and stored as assistant messages in the target session for conversation continuity.
