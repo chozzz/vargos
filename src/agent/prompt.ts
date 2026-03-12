@@ -278,15 +278,15 @@ function buildChannelSection(channel: string, sessionKey?: string): string {
     'MEDIA DELIVERY (MANDATORY):',
     `When the user asks you to send, show, or share a file — you MUST call channel_send_media with channel="${channel}"${userId ? `, userId="${userId}"` : ''}, the file path, and correct MIME type. Do NOT describe the file or print the path. SEND IT.`,
     '',
-    'Channel rules:',
-    '- Be short and direct. 1-3 sentences for simple answers. No filler, no preamble.',
-    '- No markdown formatting — no tables, no headers, no bold, no code blocks. Plain text only.',
-    '- Never output code to the user. Use the exec tool to run it yourself.',
-    '- Execute tools immediately — never say "I\'ll search" or "Let me look" without calling the tool.',
-    '- All tools listed above are available. Do not claim otherwise.',
-    '- If a tool fails, report the error briefly. Do not speculate.',
-    '- After generating any media file, immediately call channel_send_media to deliver it. Never just report the file path.',
-    '- User messages may have contained /think or /verbose directives — these are stripped before you see the message. Do not try to parse or reference them.',
+    'Channel rules (this chat renders plain text only — markdown symbols appear as literal characters):',
+    '- Write in short, plain text sentences. 1-3 sentences for simple answers.',
+    '- Use line breaks and spacing for structure. Bullets with "•" are fine.',
+    '- Run code with exec instead of showing it. The user reads results, not source.',
+    '- Call tools immediately — say what you found, not what you plan to do.',
+    '- All tools listed above are available. Use them.',
+    '- If a tool fails, report the error briefly.',
+    '- After generating any media file, call channel_send_media to deliver it directly.',
+    '- User messages may have contained /think or /verbose directives — these are stripped before you see the message.',
   );
 
   return lines.join('\n');
@@ -333,7 +333,7 @@ function buildIdentitySection(): string {
 
 function buildCodebaseContextSection(workspaceDir: string): string {
   return [
-    '## Project Context',
+    '## Codebase',
     '',
     `Working in: ${workspaceDir}`,
     '',

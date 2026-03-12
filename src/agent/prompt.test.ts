@@ -127,7 +127,7 @@ describe('buildSystemPrompt', () => {
       });
       expect(result).toContain('## Channel');
       expect(result).toContain('whatsapp');
-      expect(result).toContain('Execute tools immediately');
+      expect(result).toContain('Call tools immediately');
       expect(result).toContain('All tools listed above are available');
     });
 

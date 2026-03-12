@@ -70,7 +70,6 @@ export class TelegramAdapter extends BaseChannelAdapter {
     await this.apiCall('sendMessage', {
       chat_id: chatId,
       text,
-      parse_mode: 'Markdown',
     });
   }
 
