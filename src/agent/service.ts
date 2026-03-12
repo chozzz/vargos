@@ -330,6 +330,15 @@ export class AgentService extends ServiceClient {
       result = await this.runAgent({ sessionKey, task: 'Provide your response. Summarize what you found or did.' });
     }
 
+    // Prune HEARTBEAT_OK exchanges — prevent context pollution from no-op heartbeats
+    if (result.success && result.response && stripHeartbeatToken(result.response) === null) {
+      // Response was only HEARTBEAT_OK — remove the prompt + response (2 messages)
+      await this.call('sessions', 'session.truncateMessages', { sessionKey, count: 2 })
+        .catch(err => log.debug(`heartbeat prune: ${err}`));
+      log.debug(`heartbeat pruned: ${triggerId}`);
+      return;
+    }
+
     if (!notify?.length) return;
 
     // If subagents were spawned, skip — coordinator.routeParentResult handles delivery after re-trigger

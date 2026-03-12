@@ -35,6 +35,8 @@ export interface ISessionService {
 
   addMessage(message: Omit<SessionMessage, 'id' | 'timestamp'>): Promise<SessionMessage>;
   getMessages(sessionKey: string, options?: { limit?: number; before?: Date }): Promise<SessionMessage[]>;
+  /** Remove the last N messages from a session (for transcript pruning). */
+  truncateMessages(sessionKey: string, count: number): Promise<number>;
 
   initialize(): Promise<void>;
   close(): Promise<void>;

@@ -254,6 +254,24 @@ export class FileSessionService extends EventEmitter implements ISessionService 
     return fullMessage;
   }
 
+  async truncateMessages(sessionKey: string, count: number): Promise<number> {
+    if (count <= 0) return 0;
+    const filePath = this.getSessionPath(sessionKey);
+    let content: string;
+    try {
+      content = await fs.readFile(filePath, 'utf-8');
+    } catch {
+      return 0;
+    }
+    const lines = content.trim().split('\n').filter(Boolean);
+    if (lines.length <= 1) return 0; // only metadata line
+
+    const toRemove = Math.min(count, lines.length - 1); // never remove metadata
+    const kept = lines.slice(0, lines.length - toRemove);
+    await fs.writeFile(filePath, kept.join('\n') + '\n', 'utf-8');
+    return toRemove;
+  }
+
   async getMessages(
     sessionKey: string,
     options: { limit?: number; before?: Date } = {}

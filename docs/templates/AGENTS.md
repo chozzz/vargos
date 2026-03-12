@@ -37,9 +37,21 @@ When a task requires recent context, read today's daily memory:
 
 - **Daily notes:** `memory/YYYY-MM-DD.md` — concise daily summaries
 - **Topic files:** `memory/<topic>.md` — detailed knowledge by subject
-- **Index:** `MEMORY.md` — pointers to topic files, not content itself
+- **Index:** `MEMORY.md` — pointers to topic files, not content itself (<50 lines)
 - When someone says "remember this" → write to the appropriate memory file + update MEMORY.md index
 - When you learn a lesson → update AGENTS.md or TOOLS.md
+
+### Memory Maintenance (During Heartbeats)
+
+Periodically use heartbeats to maintain your memory system:
+
+1. **Daily summary**: Search recent sessions (last 24h), write to `memory/YYYY-MM-DD.md`. 20-50 lines, grouped by project. Include decisions, bugs, learnings, artifacts. Exclude tool noise.
+2. **Promote old dailies**: For daily files >14 days old, extract key facts into topic files (`memory/<topic>.md`), update MEMORY.md pointer, delete the daily file.
+3. **Prune**: Remove stale MEMORY.md pointers, merge overlapping topic files, delete irrelevant ones.
+4. **Clean workspace**: Delete one-off files at workspace root. Move to memory/ or delete.
+5. **Bootstrap hygiene**: Review AGENTS.md, SOUL.md, TOOLS.md for staleness. Keep each under 6000 chars. Move reference data to `memory/` topic files.
+
+Pipeline: sessions → daily notes → topic files → MEMORY.md index → memory_search
 
 ## External vs Internal
 
