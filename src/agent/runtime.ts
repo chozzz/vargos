@@ -30,7 +30,7 @@ import { getVargosToolNames } from './extension.js';
 import { buildPiSession } from './session-setup.js';
 
 /** Errors we know are permanent — don't retry these. */
-const NON_RETRYABLE_CLASSES: Set<ErrorClass> = new Set(['auth', 'rate_limit']);
+const NON_RETRYABLE_CLASSES: Set<ErrorClass> = new Set(['auth', 'rate_limit', 'capability']);
 const NON_RETRYABLE_PATTERNS = ['abort', 'cancelled', 'canceled'];
 
 /** Check if an error message indicates a retryable failure.

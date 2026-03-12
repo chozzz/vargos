@@ -74,6 +74,12 @@ describe('classifyError', () => {
     expect(classifyError('socket hang up')).toBe('transient');
   });
 
+  it('detects capability errors', () => {
+    expect(classifyError('404 No endpoints found that support image input')).toBe('capability');
+    expect(classifyError('model does not support tool use')).toBe('capability');
+    expect(classifyError('unsupported model for this request')).toBe('capability');
+  });
+
   it('returns unknown for unrecognized errors', () => {
     expect(classifyError('something broke')).toBe('unknown');
     expect(classifyError('null pointer exception')).toBe('unknown');
@@ -95,6 +101,10 @@ describe('friendlyError', () => {
 
   it('timeout', () => {
     expect(friendlyError('timeout')).toContain('timed out');
+  });
+
+  it('capability', () => {
+    expect(friendlyError('capability')).toContain('model');
   });
 
   it('unknown', () => {
