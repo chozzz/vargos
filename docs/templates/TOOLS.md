@@ -2,22 +2,28 @@
 
 Skills define _how_ tools work. This file is for _your_ specifics.
 
-## What Goes Here
+## Projects
 
-- Project paths and repo locations
+List your repos so the agent can find them without asking:
+
+```markdown
+| Project | Path | Description |
+|---------|------|-------------|
+| myapp | ~/dev/myapp | Main web app (React, pnpm) |
+| api | ~/dev/api | Backend service (Go) |
+```
+
+## What Else Goes Here
+
 - SSH hosts and aliases
 - API endpoints and service URLs
 - Device/hardware specifics
+- Quick commands you use often
 - Anything environment-specific
 
 ## Examples
 
 ```markdown
-### Projects
-
-- vargos → ~/apps/vargos (TypeScript, pnpm)
-- frontend → ~/dev/webapp (React, bun)
-
 ### Services
 
 - postgres → localhost:5432, db: myapp
@@ -31,11 +37,6 @@ Skills define _how_ tools work. This file is for _your_ specifics.
 
 - GPU → RTX 4090, CUDA 12.x
 ```
-
-## Why Separate?
-
-Bootstrap files are shared across sessions. Your setup is yours.
-Keeping them apart means you can update one without touching the other.
 
 ---
 

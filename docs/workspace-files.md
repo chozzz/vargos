@@ -8,17 +8,43 @@ Templates live in `docs/templates/`. They're copied once on first boot — after
 
 | File | Purpose | Injected |
 |------|---------|----------|
-| **AGENTS.md** | Workspace rules: session start protocol, memory conventions, external-vs-internal policy, communication etiquette. The agent's operating manual. | Every session (full + minimal). |
-| **SOUL.md** | Identity, personality, boundaries, user profile. Agent embodies this persona. Contains the "Your Human" section (name, timezone, preferences) — previously in USER.md. | Every session (full + minimal). |
-| **TOOLS.md** | Environment-specific notes: device names, SSH hosts, service IPs, quick commands. Keeps env details separate from tool definitions. | Every session (full + minimal). |
+| **AGENTS.md** | Workspace rules: self-awareness, context discovery protocol, memory conventions, external-vs-internal policy. The agent's operating manual. | Every session (full + minimal). |
+| **SOUL.md** | Identity, personality, boundaries, user profile. Agent embodies this persona. Contains the "Your Human" section (name, timezone, preferences). | Every session (full + minimal). |
+| **TOOLS.md** | Environment-specific notes: project paths, device names, SSH hosts, service IPs, quick commands. The agent's cheat sheet for finding things without asking. | Every session (full + minimal). |
 | **HEARTBEAT.md** | Periodic task list for heartbeat cron. Split into `## Tasks` (executable) and `## Notes` (advisory). Empty or comment-only = heartbeat skipped. | Not injected. Read by heartbeat cron. |
-| **MEMORY.md** | Curated long-term memory. Agent retrieves via `memory_search` / `memory_get` when needed. | Not injected. Tool-accessible. |
+| **MEMORY.md** | Long-term memory **index**. Contains pointers to `memory/<topic>.md` files, not content itself. Should stay under 50 lines. | Not injected. Tool-accessible. |
 
 ### Removed Files
 
-- **USER.md** — Merged into SOUL.md's "Your Human" section. One file for the complete agent-user relationship.
-- **BOOTSTRAP.md** — Removed. First-run onboarding is handled by the setup wizard, not a self-deleting file.
-- **ARCHITECTURE.md** — Never existed as a template. Codebase context is handled by `buildCodebaseContextSection()` in prompt.ts.
+- **USER.md** — Merged into SOUL.md's "Your Human" section.
+- **BOOTSTRAP.md** — Removed. First-run onboarding is handled by the setup wizard.
+
+## Memory Architecture
+
+```
+sessions (raw conversations)
+    ↓ heartbeat
+memory/YYYY-MM-DD.md (daily summaries)
+    ↓ heartbeat curation (>14 days old)
+memory/<topic>.md (curated topic files)
+    ↓ indexed in
+MEMORY.md (pointers only, <50 lines)
+    ↓ retrieved via
+memory_search / memory_get (agent tools)
+```
+
+**Key principle:** MEMORY.md is an index, not a store. Detailed content lives in topic files under `memory/`. The heartbeat cron promotes daily notes into topic files and keeps the index lean.
+
+## Context Discovery
+
+AGENTS.md includes a "Context Discovery" protocol that teaches the agent to find information before asking the user:
+
+1. **Sessions** — `sessions_list` + `sessions_history` for conversation history
+2. **Memory** — `memory_search` + `read` for workspace knowledge
+3. **Filesystem** — project paths from TOOLS.md, explored via `exec`
+4. **Web** — `web_fetch` or `browser` for external context
+
+This prevents the common failure mode where the agent asks the user for context it could find itself (e.g., "where is the vaditaslim repo?" when it's listed in TOOLS.md, or "I can't access WhatsApp" when sessions are stored locally).
 
 ## Prompt Injection Order
 
@@ -46,3 +72,5 @@ Files larger than 20,000 characters are truncated using a 70/20 head/tail strate
 - **Only 3 files are auto-injected** (AGENTS, SOUL, TOOLS). MEMORY.md and HEARTBEAT.md are accessed on-demand — memory via `memory_search` tools, heartbeat via the cron task reading the file directly.
 - **Identity is delegated to SOUL.md.** The hardcoded identity section says "Your name and personality are defined in SOUL.md" — single source of truth, no conflicts.
 - **Bootstrap files load in all modes.** The same 3 lean files load in both full and minimal mode for consistent behavior.
+- **MEMORY.md is an index.** Content lives in `memory/<topic>.md` topic files. This prevents MEMORY.md from bloating (which happened when it stored full competitive analyses and architecture reviews inline).
+- **TOOLS.md includes project paths.** The agent can resolve project names to filesystem paths without asking the user.
