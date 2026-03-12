@@ -52,7 +52,7 @@ export async function buildSystemPrompt(options: SystemPromptOptions): Promise<s
   sections.push(await buildToolingSection(toolNames));
   sections.push(buildWorkspaceSection(workspaceDir));
 
-  if (mode === 'full') {
+  if (mode === 'full' && !options.channel) {
     sections.push(buildCodebaseContextSection(workspaceDir));
   }
 
@@ -315,7 +315,7 @@ function buildSystemSection(options: {
   const lines = [
     '## System',
     '',
-    `Date: ${now.toISOString().slice(0, 10)}`,
+    `Date: ${now.toLocaleDateString('sv-SE', { timeZone: tz })}`,
     `Time: ${now.toLocaleTimeString('en-GB', { timeZone: tz, hour12: false })} (${tz})`,
     `OS: ${process.platform} ${process.arch}`,
     `Host: ${os.hostname()}`,

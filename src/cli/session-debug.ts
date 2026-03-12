@@ -41,15 +41,19 @@ export async function sessionDebug(args?: string[]): Promise<void> {
     const toolNames = tools.map(t => t.name);
     const mode = resolvePromptMode(sessionKey);
 
-    // Derive channel from session key (e.g. "whatsapp-123" → "whatsapp")
-    const channel = sessionKey.match(/^(whatsapp|telegram)/)?.[1];
+    // Derive channel from session key (e.g. "whatsapp:123" or "whatsapp-123" → "whatsapp")
+    const channel = sessionKey.match(/^(whatsapp|telegram)[:\-]/)?.[1];
+    // Normalize dash-form to colon-form for userId extraction (filesystem uses dashes)
+    const normalizedKey = channel
+      ? sessionKey.replace(`${channel}-`, `${channel}:`)
+      : sessionKey;
 
     const systemPrompt = await buildSystemPrompt({
       mode,
       workspaceDir,
       toolNames,
       channel,
-      sessionKey,
+      sessionKey: normalizedKey,
     });
 
     const converted = toAgentMessages(messages);
