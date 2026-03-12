@@ -12,7 +12,7 @@
 
 ## Notes
 <!-- Guidance the agent reads but does not act on during heartbeat -->
-- Bootstrap files (AGENTS, SOUL, TOOLS) are injected into every session — keep them lean.
+- Bootstrap files (AGENTS, SOUL, TOOLS) are injected into every session — keep each under 6000 chars (truncated beyond that). Move reference data to `memory/` topic files.
 - MEMORY.md is an index — store content in `memory/<topic>.md` files, not in MEMORY.md itself.
 - MEMORY.md should stay under 50 lines.
 - Prefer deleting stale content over accumulating disclaimers.
