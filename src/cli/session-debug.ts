@@ -41,10 +41,15 @@ export async function sessionDebug(args?: string[]): Promise<void> {
     const toolNames = tools.map(t => t.name);
     const mode = resolvePromptMode(sessionKey);
 
+    // Derive channel from session key (e.g. "whatsapp-123" → "whatsapp")
+    const channel = sessionKey.match(/^(whatsapp|telegram)/)?.[1];
+
     const systemPrompt = await buildSystemPrompt({
       mode,
       workspaceDir,
       toolNames,
+      channel,
+      sessionKey,
     });
 
     const converted = toAgentMessages(messages);
