@@ -64,7 +64,7 @@ GatewayServer → SessionsService → SessionReaper → MemoryContext → ToolsS
 
 ### Agent Runtime
 
-`PiAgentRuntime` (`src/agent/runtime.ts`) wraps `@mariozechner/pi-coding-agent`. `SessionMessageQueue` serializes runs per session to prevent race conditions. System prompt is assembled from workspace bootstrap files (`~/.vargos/workspace/*.md`). Tools are wrapped into Pi SDK format via `src/agent/extension.ts`.
+`PiAgentRuntime` (`src/agent/runtime.ts`) wraps `@mariozechner/pi-coding-agent`. `SessionMessageQueue` serializes runs per session to prevent race conditions. System prompt (~13K chars) is assembled from workspace bootstrap files (`~/.vargos/workspace/*.md`). Built-in tool descriptions are sent via the API tools field (not duplicated in the prompt); only MCP external tools are listed in the prompt for server context. Tools are wrapped into Pi SDK format via `src/agent/extension.ts`.
 
 **History injection pipeline** (`src/agent/history.ts`):
 1. Convert session messages → agent messages (inject `subagent_announce` and `media_transform` as user messages)
@@ -75,7 +75,7 @@ GatewayServer → SessionsService → SessionReaper → MemoryContext → ToolsS
 6. Prepend preamble when messages are dropped so agent knows context was lost
 
 **In-run compaction** (Pi SDK extensions in `src/agent/extensions/`):
-- `context-pruning.ts` — soft-trims old tool results before each LLM call (head+tail at 30% ratio, hard-clear at 50%)
+- `context-pruning.ts` — strips image blocks (model doesn't support vision), soft-trims old tool results before each LLM call (head+tail at 30% ratio, hard-clear at 50%)
 - `compaction-safeguard.ts` — multi-stage hierarchical summarization when SDK triggers auto-compact
 
 **Empty response retry**: cron/webhook runs retry once if the model returns a thinking-only response with no visible output.
@@ -118,6 +118,10 @@ Adapters implement `ChannelAdapter` (`src/channels/types.ts`). Base class (`src/
 **Link understanding** (`src/channels/link-expand.ts`): URLs in inbound channel messages are auto-expanded — fetched and appended as readable text under a `---\n[Expanded links]` separator. Configurable via `config.linkExpand`: `enabled`, `maxUrls` (default 3), `maxCharsPerUrl` (default 8000), `timeoutMs` (default 5000). Private/internal IPs are filtered out. Expansion failures are silently ignored.
 
 **Media delivery**: Two mechanisms — `channel_send_media` tool (explicit, agent-initiated) and `extractMediaPaths` (passive regex fallback that scans `channel.send` text for file paths). The explicit tool is preferred; the passive path exists as a safety net.
+
+**Markdown stripping** (`src/lib/strip-markdown.ts`): All outbound `channel.send` text passes through `stripMarkdown()` before delivery — deterministic plain-text conversion as a safety net regardless of model compliance. Strips headers, bold/italic, code blocks, links, blockquotes.
+
+**System prompt for channels**: Uses sandwich pattern — channel rules appear in both the `## Channel` section (mid-prompt) and `## Reminder` section (end of prompt) to exploit LLM recency bias. Channel rules use positive framing ("Write in plain text") rather than negative ("No markdown") per prompting research.
 
 **Event subscriptions**: channel service subscribes to `run.started` (start typing + init reactions), `run.delta` (track tool phases for reactions), `run.completed` (stop typing + seal reactions).
 

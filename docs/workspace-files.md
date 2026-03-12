@@ -56,7 +56,7 @@ The prompt builder (`src/agent/prompt.ts`) injects bootstrap files in this order
 | 2 | SOUL.md |
 | 3 | TOOLS.md |
 
-Files larger than 20,000 characters are truncated using a 70/20 head/tail strategy — the middle is dropped to preserve both the beginning and end.
+Files larger than 6,000 characters are truncated using a 70/20 head/tail strategy — the middle is dropped to preserve both the beginning and end. Keep bootstrap files lean; the agent can `read` full files on demand.
 
 ## Prompt Modes
 
@@ -74,3 +74,6 @@ Files larger than 20,000 characters are truncated using a 70/20 head/tail strate
 - **Bootstrap files load in all modes.** The same 3 lean files load in both full and minimal mode for consistent behavior.
 - **MEMORY.md is an index.** Content lives in `memory/<topic>.md` topic files. This prevents MEMORY.md from bloating (which happened when it stored full competitive analyses and architecture reviews inline).
 - **TOOLS.md includes project paths.** The agent can resolve project names to filesystem paths without asking the user.
+- **Built-in tools are not listed in the prompt.** Tool schemas are sent via the API tools field. Only MCP external tools are listed in the prompt for server grouping context.
+- **Channel rules use sandwich pattern.** For channel sessions, critical rules appear in both the `## Channel` section and a `## Reminder` section at the very end of the prompt. Research shows LLMs attend best to the start and end of long prompts (primacy + recency), so the most-violated rules get recency reinforcement.
+- **Markdown is stripped deterministically.** Outbound channel messages pass through `stripMarkdown()` as a safety net, regardless of how well the model follows the plain-text instruction.
