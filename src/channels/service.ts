@@ -16,6 +16,7 @@ import { extractMediaPaths } from './media-extract.js';
 import { channelSessionKey } from '../sessions/keys.js';
 import { createLogger } from '../lib/logger.js';
 import { toMessage } from '../lib/error.js';
+import { stripMarkdown } from '../lib/strip-markdown.js';
 import { StatusReactionController } from './status-reactions.js';
 import { expandLinks } from './link-expand.js';
 import type { LinkExpandConfig } from '../config/pi-config.js';
@@ -113,9 +114,10 @@ export class ChannelService extends ServiceClient {
         const { channel, userId, text } = p as { channel: string; userId: string; text: string };
         const adapter = this.adapters.get(channel);
         if (!adapter) throw new Error(`No adapter for channel: ${channel}`);
-        log.info(`send: ${channel}:${userId} (${text.length} chars)`);
+        const cleaned = stripMarkdown(text);
+        log.info(`send: ${channel}:${userId} (${cleaned.length} chars)`);
         try {
-          await deliverReply((chunk) => adapter.send(userId, chunk), text);
+          await deliverReply((chunk) => adapter.send(userId, chunk), cleaned);
         } catch (err) {
           log.error(`send failed: ${channel}:${userId}: ${err}`);
           throw err;
