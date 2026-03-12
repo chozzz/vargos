@@ -131,4 +131,18 @@ describe('SessionsService', () => {
     expect(msgEvt).toBeDefined();
     expect((msgEvt!.payload as any).role).toBe('user');
   });
+
+  it('truncates trailing messages', async () => {
+    await caller.call('sessions', 'session.create', { sessionKey: 'trunc-test', kind: 'cron', metadata: {} });
+    await caller.call('sessions', 'session.addMessage', { sessionKey: 'trunc-test', content: 'msg1', role: 'user' });
+    await caller.call('sessions', 'session.addMessage', { sessionKey: 'trunc-test', content: 'msg2', role: 'assistant' });
+    await caller.call('sessions', 'session.addMessage', { sessionKey: 'trunc-test', content: 'msg3', role: 'user' });
+
+    const removed = await caller.call<number>('sessions', 'session.truncateMessages', { sessionKey: 'trunc-test', count: 2 });
+    expect(removed).toBe(2);
+
+    const messages = await caller.call<SessionMessage[]>('sessions', 'session.getMessages', { sessionKey: 'trunc-test' });
+    expect(messages.length).toBe(1);
+    expect(messages[0].content).toBe('msg1');
+  });
 });

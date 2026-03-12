@@ -2,7 +2,7 @@
  * Sessions service — manages session state, history, and lifecycle
  *
  * Methods: session.list, session.get, session.create, session.delete,
- *          session.addMessage, session.getMessages
+ *          session.addMessage, session.getMessages, session.truncateMessages
  * Events:  session.created, session.message
  */
 
@@ -30,6 +30,7 @@ export class SessionsService extends ServiceClient {
         'session.delete',
         'session.addMessage',
         'session.getMessages',
+        'session.truncateMessages',
       ],
       events: ['session.created', 'session.message'],
       subscriptions: [],
@@ -74,6 +75,12 @@ export class SessionsService extends ServiceClient {
         return this.sessions.getMessages(
           p.sessionKey as string,
           p as { limit?: number; before?: Date },
+        );
+
+      case 'session.truncateMessages':
+        return this.sessions.truncateMessages(
+          p.sessionKey as string,
+          p.count as number,
         );
 
       default:
