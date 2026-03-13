@@ -15,7 +15,7 @@ export const skillLoadTool: Tool = {
   name: 'skill_load',
   description: 'Load a skill by name to get its full instructions. Use after seeing the skill in the Available Skills list.',
   parameters: SkillLoadParameters,
-  formatCall: (args) => `skill_load(${args.name})`,
+  formatCall: (args) => `name=${args.name}`,
   formatResult: (result) => result.isError ? 'not found' : 'loaded',
   execute: async (args: unknown, context) => {
     const { name } = SkillLoadParameters.parse(args);

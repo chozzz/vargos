@@ -178,7 +178,20 @@ export class PiAgentRuntime {
       this.lifecycle.startRun(runId, config.sessionKey);
       log.debug(`Lifecycle started: runId=${runId}`);
 
-      const { session, sessionManager } = await buildPiSession(config);
+      if (config.verbose) {
+        config = {
+          ...config,
+          extraSystemPrompt: [
+            config.extraSystemPrompt,
+            'User requested verbose mode. Provide detailed, thorough responses.',
+          ].filter(Boolean).join('\n\n'),
+        };
+      }
+
+      // Build system prompt before session so the SDK uses it as _baseSystemPrompt
+      // (prevents the SDK from resetting to its own prompt on each agent.prompt() call)
+      const systemPromptText = await this.buildSystemPromptText(config);
+      const { session, sessionManager } = await buildPiSession({ ...config, systemPrompt: systemPromptText });
 
       if (config.thinkingLevel) {
         session.agent.setThinkingLevel(config.thinkingLevel as Parameters<typeof session.agent.setThinkingLevel>[0]);
@@ -190,17 +203,6 @@ export class PiAgentRuntime {
         session.agent.maxRetryDelayMs = config.maxRetryDelayMs;
       }
 
-      if (config.verbose) {
-        config = {
-          ...config,
-          extraSystemPrompt: [
-            config.extraSystemPrompt,
-            'User requested verbose mode. Provide detailed, thorough responses.',
-          ].filter(Boolean).join('\n\n'),
-        };
-      }
-
-      await this.injectSystemPrompt(session, config);
       await this.injectHistory(session, config);
 
       const runToolCalls: Array<{ name: string; args?: unknown }> = [];
@@ -236,9 +238,9 @@ export class PiAgentRuntime {
     }
   }
 
-  private async injectSystemPrompt(session: AgentSession, config: PiAgentConfig): Promise<void> {
+  private async buildSystemPromptText(config: PiAgentConfig): Promise<string> {
     const promptMode = resolvePromptMode(config.sessionKey);
-    const systemPromptText = await buildSystemPrompt({
+    const text = await buildSystemPrompt({
       mode: promptMode,
       workspaceDir: config.workspaceDir,
       toolNames: getVargosToolNames(),
@@ -249,8 +251,8 @@ export class PiAgentRuntime {
       channel: config.channel,
       bootstrapOverrides: config.bootstrapOverrides,
     });
-    session.agent.setSystemPrompt(systemPromptText);
-    log.debug(`system prompt: ${systemPromptText.length} chars, mode=${promptMode}`);
+    log.debug(`system prompt: ${text.length} chars, mode=${promptMode}`);
+    return text;
   }
 
   private async injectHistory(session: AgentSession, config: PiAgentConfig): Promise<void> {
