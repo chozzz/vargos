@@ -66,6 +66,8 @@ GatewayServer → SessionsService → SessionReaper → MemoryContext → ToolsS
 
 `PiAgentRuntime` (`src/agent/runtime.ts`) wraps `@mariozechner/pi-coding-agent`. `SessionMessageQueue` serializes runs per session to prevent race conditions. System prompt (~13K chars) is assembled from workspace bootstrap files (`~/.vargos/workspace/*.md`). Built-in tool descriptions are sent via the API tools field (not duplicated in the prompt); only MCP external tools are listed in the prompt for server context. Tools are wrapped into Pi SDK format via `src/agent/extension.ts`.
 
+**Pi SDK prompt ownership**: Vargos builds the system prompt before session creation and passes it to the `DefaultResourceLoader` as `systemPrompt`. This makes the SDK's `_baseSystemPrompt` our prompt (not its 40K default). `agentsFilesOverride` returns empty to prevent ancestor CLAUDE.md/AGENTS.md duplication. See `src/agent/session-setup.ts`.
+
 **History injection pipeline** (`src/agent/history.ts`):
 1. Convert session messages → agent messages (inject `subagent_announce` and `media_transform` as user messages)
 2. Sanitize: repair tool result pairing, merge consecutive same-role messages
@@ -170,6 +172,8 @@ Reusable prompt recipes stored as `~/.vargos/workspace/skills/<name>/SKILL.md` w
 ### Agent Definitions
 
 Lightweight routing aliases at `~/.vargos/workspace/agents/<name>.md` with YAML frontmatter only (name, description, skills[], optional model). No body — skills are the single source of behavior. When `sessions_spawn({ agent: "name" })` is called, the agent's skills are resolved, loaded, and concatenated as the sub-agent's role. Scanner: `src/lib/agents.ts`. Prompt injection: `buildAgentsSection()` in `src/agent/prompt.ts`.
+
+See [runtime.md](./docs/runtime.md) for full execution flow, skill lifecycle, and agent activation details.
 
 ## Domain Boundary Rules
 
