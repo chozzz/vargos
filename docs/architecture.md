@@ -217,7 +217,7 @@ Manages external messaging adapters. Each channel type (WhatsApp, Telegram) runs
 
 ### Tools Service
 
-Exposes MCP tools as gateway-callable methods. Also serves MCP clients directly.
+Exposes tools as gateway-callable methods. Also bridges to MCP clients.
 
 | Method | Params | Description |
 |--------|--------|-------------|

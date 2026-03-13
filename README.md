@@ -1,10 +1,10 @@
 # Vargos
 
-**Local-first agent runtime built on a WebSocket service mesh.** Run agents with any LLM, route conversations through WhatsApp and Telegram, schedule tasks, trigger webhooks, and expose tools via MCP — all from isolated services on your machine.
+**Self-hosted agent OS.** Give any LLM persistent memory, multi-channel presence, tools, scheduling, and sub-agent orchestration — all on your hardware.
 
 ## What It Does
 
-- **WebSocket service mesh** — isolated services communicate through a typed protocol with RPC, pub/sub events, and streaming
+- **Gateway architecture** — isolated services communicate through a typed WebSocket protocol with RPC, pub/sub events, and streaming
 - **Any LLM** — Anthropic, OpenAI, Google, OpenRouter, Ollama, LM Studio, Groq, Together, DeepSeek, Mistral, Fireworks, Perplexity
 - **Multi-channel messaging** — route agent conversations through WhatsApp and Telegram
 - **24 built-in tools** — files, shell, browser automation, memory, sessions, cron, processes, and more

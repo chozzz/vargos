@@ -50,7 +50,7 @@ export function buildOpenApiSpec(tools: ToolSchema[], version: string): Record<s
   }
   return {
     openapi: '3.1.0',
-    info: { title: 'Vargos', version, description: 'MCP runtime tool API' },
+    info: { title: 'Vargos', version, description: 'Vargos agent OS tool API' },
     paths,
     components: {
       schemas: {

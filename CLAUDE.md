@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Vargos is a TypeScript/Node.js MCP runtime for agents. It runs as a local WebSocket gateway service that exposes tools via the Model Context Protocol (MCP) and routes agent conversations through messaging channels (WhatsApp, Telegram).
+Vargos is a self-hosted agent OS built in TypeScript/Node.js. It gives LLM agents persistent memory, multi-channel presence (WhatsApp, Telegram, CLI), tool access, scheduled autonomy, and sub-agent orchestration — all over a local WebSocket gateway on your hardware.
 
 See [FEATURES.md](./FEATURES.md) for a full feature inventory and status.
 
