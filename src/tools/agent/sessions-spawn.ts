@@ -26,7 +26,8 @@ const log = createLogger('sessions-spawn');
 const SessionsSpawnParameters = z.object({
   task: z.string().describe('Task description for the sub-agent'),
   agent: z.string().optional().describe('Named agent definition to use (loads from workspace/agents/<name>.md). Overrides role and pre-loads the agent\'s skills.'),
-  role: z.string().optional().describe('Persona/role for the sub-agent. Overrides SOUL.md for this sub-agent. Ignored if agent is set.'),
+  skills: z.array(z.string()).optional().describe('Skills to load and inject into the sub-agent. Merged with agent skills if both set. Each skill name maps to workspace/skills/<name>/SKILL.md.'),
+  role: z.string().optional().describe('Persona/role for the sub-agent. Overrides SOUL.md for this sub-agent. Ignored if agent or skills are set.'),
   agentId: z.string().optional().describe('Optional agent ID to use'),
   label: z.string().optional().describe('Optional label for the session'),
   model: z.string().optional().describe('Model to use (e.g., gpt-4o-mini)'),
@@ -64,23 +65,39 @@ export const sessionsSpawnTool: Tool = {
       const childKey = subagentSessionKey(context.sessionKey);
       const timeout = params.runTimeoutSeconds ?? defaultTimeout;
 
-      // Resolve agent definition if specified
+      // Resolve role from agent definition and/or explicit skills
       let role = params.role;
       let model = params.model;
+      const skillNames: string[] = [];
+
       if (params.agent) {
         const agentDef = await loadAgent(context.workingDir, params.agent);
         if (agentDef) {
-          const parts: string[] = [];
-          for (const skillName of agentDef.skills) {
-            const skillContent = await loadSkill(context.workingDir, skillName);
-            if (skillContent) parts.push(skillContent);
-          }
-          if (parts.length) role = parts.join('\n\n---\n\n');
+          skillNames.push(...agentDef.skills);
           if (agentDef.model && !model) model = agentDef.model;
           log.info(`loaded agent: ${params.agent} (${agentDef.skills.length} skills)`);
         } else {
           log.info(`agent not found: ${params.agent}, using role as fallback`);
         }
+      }
+
+      // Merge explicit skills (deduplicated, agent skills first)
+      if (params.skills?.length) {
+        for (const s of params.skills) {
+          if (!skillNames.includes(s)) skillNames.push(s);
+        }
+      }
+
+      // Load and concatenate skill content
+      if (skillNames.length) {
+        const parts: string[] = [];
+        for (const name of skillNames) {
+          const content = await loadSkill(context.workingDir, name);
+          if (content) parts.push(content);
+          else log.info(`skill not found: ${name}`);
+        }
+        if (parts.length) role = parts.join('\n\n---\n\n');
+        log.info(`injected ${parts.length} skills: ${skillNames.join(', ')}`);
       }
 
       // Create child session

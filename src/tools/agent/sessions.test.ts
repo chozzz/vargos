@@ -133,5 +133,60 @@ describe('session tools', () => {
       expect(agentRunCall).toBeDefined();
       expect(agentRunCall![2]).not.toHaveProperty('bootstrapOverrides');
     });
+
+    it('should load skills and inject as bootstrapOverrides', async () => {
+      const skillContent = '# Debug\nYou are a debugger.';
+      const { loadSkill } = await import('../../lib/skills.js');
+      const { vi: vitest } = await import('vitest');
+      // Mock loadSkill at module level
+      const mod = await import('../../lib/skills.js');
+      vitest.spyOn(mod, 'loadSkill').mockResolvedValue(skillContent);
+
+      const ctx = createMockContext();
+      await sessionsSpawnTool.execute({
+        task: 'Debug the auth flow',
+        skills: ['debugger'],
+      }, ctx);
+
+      const agentRunCall = (ctx.call as ReturnType<typeof vi.fn>).mock.calls.find(
+        (c: unknown[]) => c[0] === 'agent' && c[1] === 'agent.run',
+      );
+      expect(agentRunCall).toBeDefined();
+      expect(agentRunCall![2]).toHaveProperty('bootstrapOverrides');
+      expect(agentRunCall![2].bootstrapOverrides['SOUL.md']).toContain('debugger');
+
+      vitest.restoreAllMocks();
+    });
+
+    it('should merge agent skills with explicit skills (deduplicated)', async () => {
+      const mod = await import('../../lib/skills.js');
+      const agentMod = await import('../../lib/agents.js');
+      const { vi: vitest } = await import('vitest');
+
+      vitest.spyOn(agentMod, 'loadAgent').mockResolvedValue({
+        name: 'reviewer', description: 'Code reviewer', skills: ['code-review'],
+      });
+      vitest.spyOn(mod, 'loadSkill').mockImplementation(async (_dir, name) => `# ${name}`);
+
+      const ctx = createMockContext();
+      await sessionsSpawnTool.execute({
+        task: 'Review and simplify',
+        agent: 'reviewer',
+        skills: ['simplify', 'code-review'], // code-review duplicated — should dedupe
+      }, ctx);
+
+      const agentRunCall = (ctx.call as ReturnType<typeof vi.fn>).mock.calls.find(
+        (c: unknown[]) => c[0] === 'agent' && c[1] === 'agent.run',
+      );
+      expect(agentRunCall).toBeDefined();
+      const role = agentRunCall![2].bootstrapOverrides['SOUL.md'];
+      // code-review appears once (from agent), simplify added after
+      const parts = role.split('\n\n---\n\n');
+      expect(parts).toHaveLength(2);
+      expect(parts[0]).toBe('# code-review');
+      expect(parts[1]).toBe('# simplify');
+
+      vitest.restoreAllMocks();
+    });
   });
 });
