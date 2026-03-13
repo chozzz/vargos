@@ -48,6 +48,7 @@ export interface PiSessionConfig {
   maxTokens?: number;
   contextWindow?: number;
   compaction?: CompactionConfig;
+  systemPrompt?: string;
 }
 
 export interface PiSessionResult {
@@ -124,6 +125,12 @@ export async function buildPiSession(config: PiSessionConfig): Promise<PiSession
     noSkills: true,
     noPromptTemplates: true,
     noThemes: true,
+    // Vargos owns the system prompt — feed it here so the SDK uses it as
+    // _baseSystemPrompt. Without this, the SDK builds its own default prompt
+    // and resets to it on every prompt() call via emitBeforeAgentStart.
+    ...(config.systemPrompt && { systemPrompt: config.systemPrompt }),
+    // Suppress ancestor CLAUDE.md/AGENTS.md loading — Vargos injects bootstrap files itself
+    agentsFilesOverride: () => ({ agentsFiles: [] }),
   });
   await resourceLoader.reload();
 
