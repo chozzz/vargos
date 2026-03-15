@@ -21,7 +21,8 @@ export async function indexSessions(
     });
 
     for (const file of sessionFiles) {
-      const chunks = await indexSessionFile(file, embed);
+      const relPath = path.relative(sessionsDir, file);
+      const chunks = await indexSessionFile(file, relPath, embed);
       allChunks.push(...chunks);
     }
   } catch (err) {
@@ -33,18 +34,18 @@ export async function indexSessions(
 
 export async function indexSessionFile(
   filePath: string,
+  relPath: string,
   embed: EmbedFn,
 ): Promise<MemoryChunk[]> {
   try {
     const content = await fs.readFile(filePath, 'utf-8');
     const stat = await fs.stat(filePath);
-    const fileName = path.basename(filePath, '.jsonl');
 
     const lines = content.trim().split('\n').filter(Boolean);
     if (lines.length === 0) return [];
 
     const session = JSON.parse(lines[0]) as { sessionKey?: string; label?: string; agentId?: string };
-    const sessionPath = `sessions/${fileName}.jsonl`;
+    const sessionPath = relPath;
 
     const chunks: MemoryChunk[] = [];
     for (let i = 1; i < lines.length; i++) {

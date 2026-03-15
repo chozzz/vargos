@@ -66,11 +66,35 @@ Each session key maps to an independent conversation. Sessions do **not** share 
 
 ## Storage
 
-Sessions are stored as JSONL files in `~/.vargos/sessions/` by `FileSessionService`. Each file contains:
+Sessions are stored in `~/.vargos/sessions/` by `FileSessionService`. Directory structure:
+
+```
+~/.vargos/sessions/
+├── cli-chat/                      # Root session directory
+│   └── cli-chat.jsonl             # Main JSONL: metadata + messages
+├── whatsapp-61423222658/          # Another root session
+│   ├── whatsapp-61423222658.jsonl
+│   ├── subagents/                 # Subagent children
+│   │   ├── subagent-1708865240123-x7k2q/
+│   │   │   └── subagent-1708865240123-x7k2q.jsonl
+│   │   └── subagent-1708865240125-y8m3r/
+│   │       └── subagent-1708865240125-y8m3r.jsonl
+│   └── tool-results/              # Per-call results for parent session
+│       ├── abc123-uuid.json
+│       └── def456-uuid.json
+└── cron-daily-report-1708865234567/
+    ├── cron-daily-report-1708865234567.jsonl
+    └── tool-results/
+        └── xyz789-uuid.json
+```
+
+Each JSONL file (e.g., `cli-chat.jsonl`) contains:
 - Line 0: session metadata (key, kind, timestamps)
 - Remaining lines: individual messages (role, content, timestamp, metadata)
 
-File names use base64url-encoded session keys (e.g., `Y2xpOmNoYXQ.jsonl` for `cli:chat`).
+Subagent sessions are stored in their parent's `subagents/<subagent-dir>/` directory. Tool results are one JSON file per tool call, named by `toolCallId`, under the session's `tool-results/` directory.
+
+Path resolution is centralized in `src/config/paths.ts` via `resolveSessionDir(sessionKey)`, which handles both root sessions and subagent nesting automatically.
 
 The Pi SDK runs in-memory only — no session files from the LLM runtime. All persistence goes through `FileSessionService`. Before each agent run, history is loaded from `FileSessionService`, converted to `AgentMessage[]` via `toAgentMessages()`, sanitized, and injected into the Pi SDK session.
 
