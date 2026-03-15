@@ -46,6 +46,20 @@ export function resolveSessionsDir(): string {
   return path.join(resolveDataDir(), 'sessions');
 }
 
+/** Resolve the directory for a session key, honoring subagent nesting. */
+export function resolveSessionDir(sessionKey: string, sessionsDir?: string): string {
+  const base = sessionsDir ?? resolveSessionsDir();
+  const sanitize = (s: string) => s.replace(/:/g, '-');
+  const subIdx = sessionKey.indexOf(':subagent:');
+  if (subIdx >= 0) {
+    const rootKey = sessionKey.slice(0, subIdx);
+    const subPart = sessionKey.slice(subIdx + 1); // "subagent:1234-abc"
+    return path.join(base, sanitize(rootKey), 'subagents', sanitize(subPart));
+  }
+  const safe = sanitize(sessionKey);
+  return path.join(base, safe);
+}
+
 export function resolveMediaDir(sessionKey?: string): string {
   const base = path.join(resolveDataDir(), 'media');
   return sessionKey ? path.join(base, sessionKey.replace(/:/g, '-')) : base;

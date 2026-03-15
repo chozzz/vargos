@@ -143,7 +143,12 @@ Cron tasks support an optional `notify` array of channel targets (e.g. `["whatsa
 
 ### Session Storage
 
-JSONL files under `~/.vargos/sessions/`. First line is metadata, subsequent lines are messages. Session keys (e.g. `whatsapp:+61...`) map to nested directory paths.
+JSONL files in `~/.vargos/sessions/`, organized by session key:
+- Root sessions: `~/.vargos/sessions/<session-dir>/<session-dir>.jsonl`
+- Subagent children: `~/.vargos/sessions/<root-session-dir>/subagents/<subagent-dir>/<subagent-dir>.jsonl`
+- Tool results: `~/.vargos/sessions/<session-dir>/tool-results/<toolCallId>.json` (one file per tool call)
+
+Each JSONL contains: line 0 (metadata) + remaining lines (messages). Paths are resolved centrally via `resolveSessionDir(sessionKey)` in `src/config/paths.ts`.
 
 **Session reaper** (`src/sessions/reaper.ts`): deterministic TTL-based cleanup runs at boot + every 6 hours. Deletes cron sessions >7 days and subagent sessions >3 days. Never touches `main` sessions (long-lived user/channel sessions).
 

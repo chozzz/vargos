@@ -12,8 +12,12 @@ import type { Tool, ToolContext } from '../tools/types.js';
 import { createLogger } from '../lib/logger.js';
 import { toMessage } from '../lib/error.js';
 import { appendError } from '../lib/error-store.js';
+import { appendToolResult, charsToTokens } from '../lib/tool-store.js';
 
 const log = createLogger('tools');
+
+/** Tool results above this threshold get a warning prepended */
+const LARGE_RESULT_TOKEN_THRESHOLD = 5_000;
 
 // Gateway call function injected by start.ts after services connect
 type GatewayCallFn = <T>(target: string, method: string, params?: unknown) => Promise<T>;
@@ -56,13 +60,22 @@ function wrapVargosTool(
     ? (tool.jsonSchema as ToolDefinition['parameters'])
     : createParamsSchema(tool.parameters);
 
+  const storeResult = (
+    toolCallId: string, sk: string, toolName: string,
+    args: Record<string, unknown>, text: string, isError: boolean,
+  ) => appendToolResult({
+    ts: new Date().toISOString(), toolCallId, sessionKey: sk,
+    tool: toolName, args, resultChars: text.length,
+    isError, preview: text.slice(0, 500).replace(/\n/g, ' '),
+  }).catch(e => log.debug(`tool store: ${e}`));
+
   return {
     name: tool.name,
     label: tool.name,
     description: tool.description,
     parameters,
     execute: async (
-      _toolCallId: string,
+      toolCallId: string,
       params: Record<string, unknown>,
       _onUpdate: AgentToolUpdateCallback<unknown> | undefined,
       _ctx: { cwd: string },
@@ -81,8 +94,11 @@ function wrapVargosTool(
         const result = await tool.execute(params, toolContext);
 
         const resultText = result.content.map(c => c.type === 'text' ? c.text : `[${c.type}]`).join(' ');
-        const preview = resultText.slice(0, 200).replace(/\n/g, ' ');
-        log.debug(`${tool.name} ${result.isError ? 'err' : 'ok'}: ${preview}${resultText.length > 200 ? '...' : ''}`);
+        const resultChars = resultText.length;
+        const resultTokens = charsToTokens(resultChars);
+        const preview = resultText.slice(0, 500).replace(/\n/g, ' ');
+        log.debug(`${tool.name} ${result.isError ? 'err' : 'ok'} (${resultTokens} tokens): ${preview.slice(0, 200)}${resultChars > 200 ? '...' : ''}`);
+        storeResult(toolCallId, sessionKey, tool.name, params, resultText, !!result.isError);
 
         // Convert Vargos ToolResult to Pi SDK AgentToolResult
         const content = result.content.map(block => {
@@ -98,6 +114,13 @@ function wrapVargosTool(
           return { type: 'text' as const, text: '' };
         });
 
+        // Warn agent about large results that risk filling context
+        if (resultTokens > LARGE_RESULT_TOKEN_THRESHOLD && content.length > 0 && content[0].type === 'text') {
+          const warning = `⚠ Large tool response (~${(resultTokens / 1000).toFixed(1)}k tokens). Extract what you need and avoid additional large calls.\n\n`;
+          content[0] = { type: 'text' as const, text: warning + content[0].text };
+          log.info(`${tool.name}: large result warning (${resultTokens} tokens)`);
+        }
+
         return {
           content,
           details: {},
@@ -107,6 +130,7 @@ function wrapVargosTool(
         log.debug(`${tool.name} error: ${message}`);
         appendError({ tool: tool.name, sessionKey, message })
           .catch(e => log.debug(`error store: ${e}`));
+        storeResult(toolCallId, sessionKey, tool.name, params, message, true);
         return {
           content: [{ type: 'text', text: `Error: ${message}` }],
           details: { error: message },

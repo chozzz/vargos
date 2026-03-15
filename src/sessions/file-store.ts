@@ -12,6 +12,7 @@ import {
   type Session,
   type SessionMessage,
 } from './types.js';
+import { resolveSessionDir } from '../config/paths.js';
 
 export interface FileSessionConfig {
   baseDir: string;
@@ -75,17 +76,8 @@ export class FileSessionService extends EventEmitter implements ISessionService 
   }
 
   private getSessionPath(sessionKey: string): string {
-    const subIdx = sessionKey.indexOf(':subagent:');
-    const sanitize = (s: string) => s.replace(/:/g, '-');
-
-    if (subIdx >= 0) {
-      const rootKey = sessionKey.slice(0, subIdx);
-      const subPart = sessionKey.slice(subIdx + 1); // "subagent:1234-abc"
-      return path.join(this.sessionsDir, sanitize(rootKey), `${sanitize(subPart)}.jsonl`);
-    }
-
-    const safe = sanitize(sessionKey);
-    return path.join(this.sessionsDir, safe, `${safe}.jsonl`);
+    const dir = resolveSessionDir(sessionKey, this.sessionsDir);
+    return path.join(dir, `${path.basename(dir)}.jsonl`);
   }
 
   private async loadSession(sessionKey: string): Promise<SessionFile | null> {
@@ -196,7 +188,7 @@ export class FileSessionService extends EventEmitter implements ISessionService 
   }
 
   async list(options: { kind?: Session['kind']; limit?: number } = {}): Promise<Session[]> {
-    const files = await glob('**/*.jsonl', { cwd: this.sessionsDir, absolute: true });
+    const files = await glob(['*/*.jsonl', '*/subagents/*/*.jsonl'], { cwd: this.sessionsDir, absolute: true });
     const sessions: Session[] = [];
 
     for (const file of files) {
