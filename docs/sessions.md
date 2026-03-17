@@ -10,6 +10,7 @@ Sessions persist conversation history and provide isolation between different in
 | `cli:run:<timestamp>` | `cli:run:1708865234567` | CLI `vargos run` | full | 50 turns |
 | `whatsapp:<userId>` | `whatsapp:61423222658` | WhatsApp adapter | full | 30 turns |
 | `telegram:<chatId>` | `telegram:123456` | Telegram adapter | full | 30 turns |
+| `twilio:<callSid>` | `twilio:CA1234567890abcdef` | Twilio adapter (planned) | full | 30 turns |
 | `cron:<taskId>:<timestamp>` | `cron:daily-report:1708865234567` | Cron service | minimal | 10 turns |
 | `webhook:<hookId>:<timestamp>` | `webhook:github-pr:1708865234567` | Webhook service | minimal | 10 turns |
 | `<parent>:subagent:<timestamp>-<rand>` | `cli:chat:subagent:1708865240123-x7k2q` | `sessions_spawn` tool | minimal-subagent | inherits root |
