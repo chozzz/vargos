@@ -180,6 +180,18 @@ Lightweight routing aliases at `~/.vargos/workspace/agents/<name>.md` with YAML 
 
 See [runtime.md](./docs/runtime.md) for full execution flow, skill lifecycle, and agent activation details.
 
+## Planned Capabilities
+
+The following features are confirmed in the roadmap but not yet implemented:
+
+**Voice Integration** — STT/TTS bridge via LocalAI (port 8090). Transparent transcription of WhatsApp/Telegram voice notes; optional voice replies (`voiceReplyMode: always | mirror | never`). Twilio phone channel support with concurrent call sessions via Media Streams WebSocket.
+
+**Outbound Voice Calls** — Tool-based model: `phone_call(to, instructions, persona?)` initiates Twilio call, spawns subagent session for autonomous voice conversation, returns transcript + summary. Use case: cron tasks that need to call and gather information.
+
+**Guest Voice Agent Plugins** — Hospitality support: resolve caller ID → load guest profile + persona from `~/.vargos/workspace/guests/<id>.md` → voice session with shared hotel-concierge skill pack. Concurrent calls isolated per callSid.
+
+**Web UI / Observability** — New `WebService` exposing agent runs, sessions, cron tasks, channels, memory, and config via HTTP + Server-Sent Events. Real-time streaming deltas and tool execution visibility. Same auth pattern as MCP bridge (bearer token).
+
 ## Domain Boundary Rules
 
 ESLint enforces strict domain isolation via `no-restricted-imports`. Each domain directory can only import from:

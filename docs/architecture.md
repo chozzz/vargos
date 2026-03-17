@@ -389,3 +389,55 @@ Sub-agents get a `minimal-subagent` system prompt (no memory recall, heartbeats,
 4. Agent streams deltas back as events (UI receives them in real-time)
 5. Agent completes, UI receives run.completed
 ```
+
+---
+
+## Planned Extensions
+
+The following architectural dimensions are **planned but not yet implemented**. They represent confirmed design directions for future phases.
+
+### 1. Voice Integration (Planned)
+
+**Inbound voice support** (STT):
+- Extract shared audio handler from WhatsApp + Telegram adapters → `src/channels/audio.ts`
+- Discriminated union for `ChannelConfig` and widen `ChannelAdapter.type` to `string`
+- Transparent transcription via `src/lib/voice.ts` calling LocalAI port 8090
+- Agent receives transcript as text; `metadata.voice = { originalPath, durationMs, mimeType }`
+- Fallback: `[Voice message saved: /path]` + `metadata.transcribed: false` on failure
+
+**Outbound voice replies** (TTS):
+- Per-channel config: `voiceReplyMode: 'always' | 'mirror' | 'never'`
+- Mirror mode replies as voice only when inbound was a voice note
+
+**Twilio phone channel**:
+- New `VoiceChannelAdapter` with `startProcessing(callSid)`, `stopProcessing(callSid)`, `dial(to)`
+- HTTP server for TwiML webhooks
+- Bridges Twilio Media Streams WebSocket ↔ LocalAI Realtime API WebSocket
+- Session key: `twilio:<callSid>` or `twilio:<phoneNumber>`
+
+### 2. Outbound Voice Calls (Planned)
+
+Tool-based model: `phone_call(to, instructions, persona?)` initiates Twilio call → spawns voice subagent session → agent converses autonomously → transcript + summary returned as tool result.
+
+**Use case example**: cron task fires → agent calls insurance company → records transcript and terms → delivers report to `notify` targets.
+
+### 3. Guest Voice Agent Plugins (Planned)
+
+Hospitality/concierge support via TwilioAdapter:
+- Caller ID resolution → guest profile lookup at `~/.vargos/workspace/guests/<id>.md`
+- Guest-specific persona loading (language, name, skills[], booking context)
+- Per-callSid session isolation (concurrent calls supported)
+- Shared skill pack via `~/.vargos/workspace/skills/hotel-concierge/SKILL.md`
+
+### 4. Web UI / Observability Service (Planned)
+
+New `WebService` (`src/web/`) — a ServiceClient pattern identical to `WebhookService` and `McpBridge`:
+- Real-time agent run streaming (deltas, tool calls via Server-Sent Events)
+- Session browser (list, read, replay)
+- Tool call history (`tool-results/<id>.json`)
+- Cron management (list, add, remove, trigger)
+- Channel status + configuration
+- Memory/workspace explorer
+- Config editor (with validation)
+- HTTP + SSE bridge to gateway RPC + events
+- Auth via bearer token (same as MCP bridge)

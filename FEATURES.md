@@ -211,4 +211,9 @@
 
 | Feature | Status |
 |---------|--------|
+| Voice Integration (STT/TTS via LocalAI) | 📋 |
+| Twilio phone channel adapter | 📋 |
+| Outbound voice calls (phone_call tool) | 📋 |
+| Guest voice agent plugins (hospitality) | 📋 |
+| Web UI / Observability service (HTTP+SSE) | 📋 |
 | Session cost tracking | 📋 |
