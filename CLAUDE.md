@@ -107,6 +107,13 @@ Extensions register tools via `VargosExtension.register(ctx)` → `ctx.registerT
 
 Adapters implement `ChannelAdapter` (`src/channels/types.ts`). Base class (`src/channels/base-adapter.ts`) provides shared logic.
 
+**Multi-instance config**: `config.channels` is an array of `ChannelEntry` objects. Each entry has `id` (unique instance name, e.g. `telegram-bakabit`) and `type` (platform, e.g. `telegram`). Multiple entries with the same `type` but different `id` are how you run two WhatsApp accounts or two Telegram bots. Session keys and adapter map keys use `id`, not `type`. Example:
+```json
+{ "id": "telegram-work", "type": "telegram", "botToken": "...", "allowFrom": ["..."] }
+```
+
+**Per-channel model**: add `"model": "<profile-name>"` to any channel entry to override `config.agent.model` for runs triggered from that channel. The profile must exist in `config.models`. Precedence: per-run `model` param > channel `model` > global `agent.model`.
+
 **Thinking level**: `config.agent.thinkingLevel` sets the default (default: `high`). Controls extended thinking token budget per LLM call. Optional `config.agent.thinkingBudgets` sets per-level token caps (e.g. `{ low: 2048, medium: 8192, high: 16384 }`).
 
 **Chat directives** (`src/lib/directives.ts`): Users can prefix messages with `/think:<level>` (off/low/medium/high) or `/verbose` to override per-message inference settings. Directives override the default thinking level for that message only. Directives are parsed and stripped in `AgentService` before the task reaches the agent — the agent never sees the raw directive tokens.

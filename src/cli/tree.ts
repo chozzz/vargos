@@ -66,7 +66,11 @@ export function buildTree(): MenuNode[] {
     ]),
 
     group('channels', [
-      leaf('send', 'Send a message to a channel target', './channels.js', 'send'),
+      leaf('send', 'Send message to channel', './channels.js', 'send'),
+      group('setup', [
+        leaf('telegram', 'Enter bot token from @BotFather', './channels.js', 'setupTelegram'),
+        leaf('whatsapp', 'Scan QR code to connect', './channels.js', 'setupWhatsApp'),
+      ]),
     ]),
 
     group('cron', [

@@ -15,6 +15,7 @@ const GATEWAY_URL = `ws://127.0.0.1:${PORT}`;
 // Mock adapter
 class MockAdapter implements ChannelAdapter {
   readonly type: ChannelType = 'whatsapp';
+  readonly instanceId: string = 'whatsapp';
   status: ChannelStatus = 'connected';
   sentMessages: Array<{ to: string; text: string }> = [];
   typingRecipients = new Set<string>();
@@ -86,8 +87,9 @@ describe('ChannelService', () => {
   });
 
   it('lists adapters', async () => {
-    const list = await subscriber.call<Array<{ type: string; status: string }>>('channel', 'channel.list');
+    const list = await subscriber.call<Array<{ instanceId: string; type: string; status: string }>>('channel', 'channel.list');
     expect(list.length).toBe(1);
+    expect(list[0].instanceId).toBe('whatsapp');
     expect(list[0].type).toBe('whatsapp');
     expect(list[0].status).toBe('connected');
   });

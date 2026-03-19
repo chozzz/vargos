@@ -3,7 +3,7 @@
  * Receives text DMs via Baileys, parses messages, hands off to ChannelService
  */
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import type { WASocket } from '@whiskeysockets/baileys';
 import type { OnInboundMessageFn } from '../types.js';
@@ -24,12 +24,12 @@ export class WhatsAppAdapter extends BaseChannelAdapter {
   // Track latest messageId per userId for reaction support
   private latestMessageId = new Map<string, string>();
 
-  constructor(allowFrom?: string[], onInboundMessage?: OnInboundMessageFn, debounceMs?: number) {
+  constructor(instanceId: string, allowFrom?: string[], onInboundMessage?: OnInboundMessageFn, debounceMs?: number) {
     // WA normalizes phone numbers by stripping leading +
     const normalized = allowFrom?.length
       ? allowFrom.map(p => p.replace(/^\+/, ''))
       : undefined;
-    super('whatsapp', normalized, onInboundMessage, debounceMs);
+    super(instanceId, 'whatsapp', normalized, onInboundMessage, debounceMs);
   }
 
   async initialize(): Promise<void> {
@@ -43,7 +43,13 @@ export class WhatsAppAdapter extends BaseChannelAdapter {
     }
 
     this.status = 'connecting';
-    this.authDir = path.join(resolveChannelsDir(), 'whatsapp');
+    this.authDir = path.join(resolveChannelsDir(), this.instanceId);
+
+    const creds = path.join(this.authDir, 'creds.json');
+    if (!existsSync(creds)) {
+      this.status = 'error';
+      throw new Error(`No auth state found at ${this.authDir} — run "vargos channels setup ${this.type}" to pair this instance`);
+    }
 
     try {
       this.sock = await createWhatsAppSocket(this.authDir, {
@@ -195,13 +201,13 @@ export class WhatsAppAdapter extends BaseChannelAdapter {
   protected override async handleBatch(id: string, messages: string[]): Promise<void> {
     const messageId = this.latestMessageId.get(id);
     const text = messages.join('\n');
-    this.log.info(`batch for whatsapp:${id}: "${text.slice(0, 80)}"`);
+    this.log.info(`batch for ${this.instanceId}:${id}: "${text.slice(0, 80)}"`);
     await this.routeToService(id, text, messageId ? { messageId } : undefined);
   }
 
   private async handleMedia(msg: WhatsAppInboundMessage): Promise<void> {
     const userId = this.buildUserId(msg.jid);
-    const sessionKey = `whatsapp:${userId}`;
+    const sessionKey = `${this.instanceId}:${userId}`;
 
     const typeLabels: Record<string, string> = {
       audio: 'Voice message', video: 'Video message',

@@ -55,11 +55,14 @@ export interface AgentRef {
 export type AgentConfig = ModelProfile;
 
 export interface ChannelEntry {
+  id: string;
+  type: string;
   enabled?: boolean;
   botToken?: string;
   allowFrom?: string[];
   /** Debounce window in ms before batched messages are forwarded (default: 2000) */
   debounceMs?: number;
+  model?: string;
 }
 
 export interface GatewayConfig {
@@ -164,7 +167,7 @@ export interface LinkExpandConfig {
 export interface VargosConfig {
   models: Record<string, ModelProfile>;
   agent: AgentRef;
-  channels?: Record<string, ChannelEntry>;
+  channels?: ChannelEntry[];
   compaction?: CompactionConfig;
   cron?: CronConfig;
   gateway?: GatewayConfig;
@@ -229,6 +232,14 @@ export async function loadConfig(dataDir: string): Promise<VargosConfig | null> 
   // Try reading config.json
   try {
     const raw = JSON.parse(await fs.readFile(configPath, 'utf-8'));
+
+    // Migrate channels object → array form
+    if (raw.channels && !Array.isArray(raw.channels) && typeof raw.channels === 'object') {
+      raw.channels = Object.entries(raw.channels as Record<string, unknown>).map(
+        ([type, entry]) => ({ id: type, type, ...(entry as object) }),
+      );
+      await saveConfig(dataDir, raw as unknown as VargosConfig);
+    }
 
     // Current format — has models map
     if (raw.models && raw.agent?.primary) return raw as VargosConfig;
@@ -358,22 +369,20 @@ async function migrateLegacyPiSdk(workspaceDir: string): Promise<ModelProfile | 
   return profile;
 }
 
-/** Read legacy channels.json array format → record format */
-async function readLegacyChannels(dataDir: string): Promise<Record<string, ChannelEntry> | null> {
+/** Read legacy channels.json array format → array form */
+async function readLegacyChannels(dataDir: string): Promise<ChannelEntry[] | null> {
   try {
     const raw = JSON.parse(await fs.readFile(path.join(dataDir, 'channels.json'), 'utf-8'));
     const arr = raw.channels as Array<{ type: string; enabled?: boolean; botToken?: string; allowFrom?: string[] }>;
     if (!Array.isArray(arr) || arr.length === 0) return null;
 
-    const result: Record<string, ChannelEntry> = {};
-    for (const ch of arr) {
-      const entry: ChannelEntry = {};
+    return arr.map((ch) => {
+      const entry: ChannelEntry = { id: ch.type, type: ch.type };
       if (ch.enabled !== undefined) entry.enabled = ch.enabled;
       if (ch.botToken) entry.botToken = ch.botToken;
       if (ch.allowFrom) entry.allowFrom = ch.allowFrom;
-      result[ch.type] = entry;
-    }
-    return result;
+      return entry;
+    });
   } catch { /* missing */ }
   return null;
 }

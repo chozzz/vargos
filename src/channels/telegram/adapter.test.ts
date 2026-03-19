@@ -46,7 +46,7 @@ describe('TelegramAdapter media handling', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     inboundCalls.length = 0;
-    adapter = new TelegramAdapter('test-token', undefined, mockOnInbound);
+    adapter = new TelegramAdapter('telegram', 'test-token', undefined, mockOnInbound);
     mockRequest = vi.spyOn(adapter as any, 'request') as ReturnType<typeof vi.fn>;
     // Prevent pollLoop from consuming mocked request slots
     vi.spyOn(adapter as any, 'pollLoop').mockResolvedValue(undefined);
@@ -292,6 +292,42 @@ describe('TelegramAdapter media handling', () => {
       await adapter.initialize();
       adapter.startTyping('42');
       adapter.stopTyping('42');
+    });
+  });
+
+  describe('instanceId routing', () => {
+    it('routes inbound messages using instanceId not platform type', async () => {
+      const calls: Array<{ channel: string; userId: string }> = [];
+      const onInbound: OnInboundMessageFn = vi.fn(async (channel, userId) => {
+        calls.push({ channel, userId });
+      });
+
+      const a = new TelegramAdapter('telegram-bakabit', 'test-token', undefined, onInbound);
+      const req = vi.spyOn(a as any, 'request') as ReturnType<typeof vi.fn>;
+      vi.spyOn(a as any, 'pollLoop').mockResolvedValue(undefined);
+      req.mockResolvedValueOnce(tgResponse({ id: 1, is_bot: true, first_name: 'Bot', username: 'testbot' }));
+
+      await a.initialize();
+      await a.start();
+
+      vi.useFakeTimers();
+      const handleUpdate = (a as any).handleUpdate.bind(a);
+      handleUpdate({
+        update_id: 99,
+        message: {
+          message_id: 999,
+          chat: { id: 42, type: 'private' },
+          from: { id: 99, is_bot: false, first_name: 'User' },
+          date: 1700000000,
+          text: 'hello',
+        },
+      } satisfies TelegramUpdate);
+
+      await vi.advanceTimersByTimeAsync(3000);
+      vi.useRealTimers();
+
+      expect(calls[0].channel).toBe('telegram-bakabit');
+      await a.stop();
     });
   });
 });

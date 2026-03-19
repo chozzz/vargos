@@ -73,9 +73,17 @@ export function validateConfig(config: VargosConfig): ValidationResult {
 
   // Channel validation
   if (config.channels) {
-    for (const [type, ch] of Object.entries(config.channels)) {
-      if (type === 'telegram' && ch.enabled !== false && !ch.botToken) {
-        warnings.push(`channels.${type}: missing botToken — telegram will not work`);
+    const channelIds = new Set<string>();
+    for (const ch of config.channels) {
+      if (ch.type === 'telegram' && ch.enabled !== false && !ch.botToken) {
+        warnings.push(`channels.${ch.id}: missing botToken — telegram will not work`);
+      }
+      if (ch.id && channelIds.has(ch.id)) {
+        errors.push(`channels: duplicate channel id "${ch.id}"`);
+      }
+      if (ch.id) channelIds.add(ch.id);
+      if (ch.model && !config.models[ch.model]) {
+        warnings.push(`channels.${ch.id}: model "${ch.model}" not found in models`);
       }
     }
   }
