@@ -7,13 +7,12 @@ import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import type { WASocket } from '@whiskeysockets/baileys';
 import type { OnInboundMessageFn } from '../types.js';
-import { BaseChannelAdapter } from '../base-adapter.js';
+import { InboundMediaHandler, type InboundMediaSource } from '../media-handler.js';
 import { createWhatsAppSocket, type WhatsAppInboundMessage } from './session.js';
-import { saveMedia } from '../../lib/media.js';
-import { resolveChannelsDir, resolveMediaDir } from '../../config/paths.js';
+import { resolveChannelsDir } from '../../config/paths.js';
 import { Reconnector } from '../../lib/reconnect.js';
 
-export class WhatsAppAdapter extends BaseChannelAdapter {
+export class WhatsAppAdapter extends InboundMediaHandler {
   readonly type = 'whatsapp' as const;
 
   private sock: WASocket | null = null;
@@ -205,41 +204,44 @@ export class WhatsAppAdapter extends BaseChannelAdapter {
     await this.routeToService(id, text, messageId ? { messageId } : undefined);
   }
 
+  protected async resolveMedia(msg: unknown): Promise<InboundMediaSource | null> {
+    const m = msg as WhatsAppInboundMessage;
+    if (!m.mediaBuffer) return null;
+
+    const mimeDefaults: Record<string, string> = {
+      image: 'image/jpeg', audio: 'audio/ogg', video: 'video/mp4', document: 'application/pdf',
+    };
+    // Strip codec params (e.g. "audio/ogg; codecs=opus" → "audio/ogg")
+    const rawMime = m.mimeType?.split(';')[0].trim();
+    const mimeType = rawMime || mimeDefaults[m.mediaType!] || 'application/octet-stream';
+    return {
+      buffer: m.mediaBuffer,
+      mimeType,
+      mediaType: (m.mediaType as InboundMediaSource['mediaType']) ?? 'document',
+      caption: m.caption,
+    };
+  }
+
   private async handleMedia(msg: WhatsAppInboundMessage): Promise<void> {
     const userId = this.buildUserId(msg.jid);
     const sessionKey = `${this.instanceId}:${userId}`;
 
-    const typeLabels: Record<string, string> = {
-      audio: 'Voice message', video: 'Video message',
-      document: 'Document', sticker: 'Sticker',
-    };
-
-    if (msg.mediaBuffer) {
-      const isImage = msg.mediaType === 'image';
-      const mimeDefaults: Record<string, string> = {
-        image: 'image/jpeg', audio: 'audio/ogg', video: 'video/mp4', document: 'application/pdf',
+    if (!msg.mediaBuffer) {
+      // Media without buffer — fallback text
+      const typeLabels: Record<string, string> = {
+        audio: 'Voice message', video: 'Video message', document: 'Document', sticker: 'Sticker',
       };
-      // Strip codec params (e.g. "audio/ogg; codecs=opus" → "audio/ogg")
-      const rawMime = msg.mimeType?.split(';')[0].trim();
-      const mimeType = rawMime || mimeDefaults[msg.mediaType!] || 'application/octet-stream';
-      const savedPath = await saveMedia({ buffer: msg.mediaBuffer, sessionKey, mimeType, mediaDir: resolveMediaDir() });
-      const base64 = msg.mediaBuffer.toString('base64');
-      const media = { type: msg.mediaType!, data: base64, mimeType, path: savedPath };
       const label = typeLabels[msg.mediaType!] || 'Media';
-
-      if (isImage) {
-        const caption = msg.caption || 'User sent an image.';
-        const images = [{ data: base64, mimeType }];
-        await this.routeToService(userId, `${caption}\n\n[Image saved: ${savedPath}]`, { images, media });
-      } else {
-        await this.routeToService(userId, `${msg.caption || `${label} received`}\n\n[${label} saved: ${savedPath}]`, { media });
-      }
+      await this.routeToService(userId, msg.caption ? `[${label}] ${msg.caption}` : `[${label} received]`);
       return;
     }
 
-    // Media without buffer — fallback text
-    const label = typeLabels[msg.mediaType!] || 'Media';
-    await this.routeToService(userId, msg.caption ? `[${label}] ${msg.caption}` : `[${label} received]`);
+    await this.processInboundMedia(
+      msg,
+      userId,
+      sessionKey,
+      (text, metadata) => this.routeToService(userId, text, metadata),
+    );
   }
 
   private scheduleReconnect(): void {
