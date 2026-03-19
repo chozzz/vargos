@@ -2,50 +2,58 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { TelegramUpdate } from './types.js';
 import type { OnInboundMessageFn } from '../types.js';
 
-// Track inbound message calls
 const inboundCalls: Array<{ channel: string; userId: string; content: string; metadata?: Record<string, unknown> }> = [];
 
 const mockOnInbound: OnInboundMessageFn = vi.fn(async (channel, userId, content, metadata) => {
   inboundCalls.push({ channel, userId, content, metadata });
 });
 
-// Mock saveMedia
 vi.mock('../../lib/media.js', () => ({
   saveMedia: vi.fn(async () => '/tmp/saved-media.jpg'),
 }));
 
-// Mock deliverReply
 vi.mock('../delivery.js', () => ({
   deliverReply: vi.fn(async () => {}),
 }));
 
-// Mock fetch globally for apiCall + downloadFile
-const mockFetch = vi.fn();
-vi.stubGlobal('fetch', mockFetch);
-
 import { TelegramAdapter } from './adapter.js';
 
-function telegramResponse<T>(result: T) {
+/** Build a mock FetchLike response as returned by the adapter's request() helper */
+function tgResponse<T>(result: T) {
   return {
     ok: true,
+    status: 200,
+    statusText: 'OK',
     json: async () => ({ ok: true, result }),
-    arrayBuffer: async () => new ArrayBuffer(0),
+    buffer: async () => Buffer.from(JSON.stringify({ ok: true, result })),
+  };
+}
+
+function binaryResponse(data: Buffer) {
+  return {
+    ok: true,
+    status: 200,
+    statusText: 'OK',
+    json: async () => ({}),
+    buffer: async () => data,
   };
 }
 
 describe('TelegramAdapter media handling', () => {
   let adapter: TelegramAdapter;
+  let mockRequest: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     vi.clearAllMocks();
     inboundCalls.length = 0;
-
-    // Mock getMe for initialize()
-    mockFetch.mockResolvedValueOnce(
-      telegramResponse({ id: 1, is_bot: true, first_name: 'Bot', username: 'testbot' }),
-    );
-
     adapter = new TelegramAdapter('test-token', undefined, mockOnInbound);
+    mockRequest = vi.spyOn(adapter as any, 'request') as ReturnType<typeof vi.fn>;
+    // Prevent pollLoop from consuming mocked request slots
+    vi.spyOn(adapter as any, 'pollLoop').mockResolvedValue(undefined);
+    // First call is always getMe from initialize()
+    mockRequest.mockResolvedValueOnce(
+      tgResponse({ id: 1, is_bot: true, first_name: 'Bot', username: 'testbot' }),
+    );
   });
 
   afterEach(async () => {
@@ -67,24 +75,55 @@ describe('TelegramAdapter media handling', () => {
       },
     };
 
-    // Text messages are debounced — no immediate call
     expect(inboundCalls).toHaveLength(0);
   });
 
-  it('should handle photo updates with file download', async () => {
+  it('should treat /start as a regular text message through the debouncer', async () => {
+    vi.useFakeTimers();
+
     await adapter.initialize();
     await adapter.start();
 
-    // Mock getFile response
-    mockFetch.mockResolvedValueOnce(
-      telegramResponse({ file_id: 'f1', file_unique_id: 'u1', file_path: 'photos/file_0.jpg' }),
+    const handleUpdate = (adapter as any).handleUpdate.bind(adapter);
+
+    // Should not throw — /start is not special-cased
+    expect(() =>
+      handleUpdate({
+        update_id: 10,
+        message: {
+          message_id: 1000,
+          chat: { id: 42, type: 'private' },
+          from: { id: 99, is_bot: false, first_name: 'User' },
+          date: 1700000000,
+          text: '/start',
+        },
+      } satisfies TelegramUpdate),
+    ).not.toThrow();
+
+    // Text messages are debounced — not delivered immediately
+    expect(inboundCalls).toHaveLength(0);
+
+    // After debounce window, message is delivered normally
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(inboundCalls).toHaveLength(1);
+    expect(inboundCalls[0].content).toBe('/start');
+    expect(inboundCalls[0].userId).toBe('42');
+
+    vi.useRealTimers();
+  });
+
+  it('should handle photo updates with file download', async () => {
+    // getFile response
+    mockRequest.mockResolvedValueOnce(
+      tgResponse({ file_id: 'f1', file_unique_id: 'u1', file_path: 'photos/file_0.jpg' }),
     );
-    // Mock file download
-    const fakeImageData = new Uint8Array([0xFF, 0xD8, 0xFF, 0xE0]).buffer;
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      arrayBuffer: async () => fakeImageData,
-    });
+    // binary download
+    mockRequest.mockResolvedValueOnce(
+      binaryResponse(Buffer.from([0xFF, 0xD8, 0xFF, 0xE0])),
+    );
+
+    await adapter.initialize();
+    await adapter.start();
 
     const handleUpdate = (adapter as any).handleUpdate.bind(adapter);
     handleUpdate({
@@ -106,7 +145,6 @@ describe('TelegramAdapter media handling', () => {
       expect(inboundCalls.length).toBeGreaterThanOrEqual(1);
     });
 
-    // Routes through onInboundMessage
     expect(inboundCalls[0].channel).toBe('telegram');
     expect(inboundCalls[0].userId).toBe('42');
     expect(inboundCalls[0].content).toContain('Look at this');
@@ -115,15 +153,15 @@ describe('TelegramAdapter media handling', () => {
   });
 
   it('should handle voice updates with file download', async () => {
+    mockRequest.mockResolvedValueOnce(
+      tgResponse({ file_id: 'v1', file_unique_id: 'vu1', file_path: 'voice/file_0.oga' }),
+    );
+    mockRequest.mockResolvedValueOnce(
+      binaryResponse(Buffer.from([0x4F, 0x67, 0x67, 0x53])),
+    );
+
     await adapter.initialize();
     await adapter.start();
-
-    // Mock getFile + file download
-    mockFetch.mockResolvedValueOnce(
-      telegramResponse({ file_id: 'v1', file_unique_id: 'vu1', file_path: 'voice/file_0.oga' }),
-    );
-    const fakeAudio = new Uint8Array([0x4F, 0x67, 0x67, 0x53]).buffer;
-    mockFetch.mockResolvedValueOnce({ ok: true, arrayBuffer: async () => fakeAudio });
 
     const handleUpdate = (adapter as any).handleUpdate.bind(adapter);
     handleUpdate({
@@ -133,12 +171,7 @@ describe('TelegramAdapter media handling', () => {
         chat: { id: 42, type: 'private' },
         from: { id: 99, is_bot: false, first_name: 'User' },
         date: 1700000000,
-        voice: {
-          file_id: 'v1',
-          file_unique_id: 'vu1',
-          duration: 7,
-          mime_type: 'audio/ogg',
-        },
+        voice: { file_id: 'v1', file_unique_id: 'vu1', duration: 7, mime_type: 'audio/ogg' },
       },
     } satisfies TelegramUpdate);
 
@@ -147,20 +180,19 @@ describe('TelegramAdapter media handling', () => {
     });
 
     expect(inboundCalls[0].channel).toBe('telegram');
-    // Voice messages don't pass images
     expect(inboundCalls[0].metadata?.images).toBeUndefined();
   });
 
   it('should handle audio updates with file download and caption', async () => {
+    mockRequest.mockResolvedValueOnce(
+      tgResponse({ file_id: 'a1', file_unique_id: 'au1', file_path: 'music/file_0.mp3' }),
+    );
+    mockRequest.mockResolvedValueOnce(
+      binaryResponse(Buffer.from([0xFF, 0xFB, 0x90, 0x00])),
+    );
+
     await adapter.initialize();
     await adapter.start();
-
-    // Mock getFile + file download
-    mockFetch.mockResolvedValueOnce(
-      telegramResponse({ file_id: 'a1', file_unique_id: 'au1', file_path: 'music/file_0.mp3' }),
-    );
-    const fakeAudio = new Uint8Array([0xFF, 0xFB, 0x90, 0x00]).buffer;
-    mockFetch.mockResolvedValueOnce({ ok: true, arrayBuffer: async () => fakeAudio });
 
     const handleUpdate = (adapter as any).handleUpdate.bind(adapter);
     handleUpdate({
@@ -170,13 +202,7 @@ describe('TelegramAdapter media handling', () => {
         chat: { id: 42, type: 'private' },
         from: { id: 99, is_bot: false, first_name: 'User' },
         date: 1700000000,
-        audio: {
-          file_id: 'a1',
-          file_unique_id: 'au1',
-          duration: 180,
-          mime_type: 'audio/mpeg',
-          title: 'Song',
-        },
+        audio: { file_id: 'a1', file_unique_id: 'au1', duration: 180, mime_type: 'audio/mpeg', title: 'Song' },
         caption: 'Listen to this song',
       },
     } satisfies TelegramUpdate);
@@ -209,17 +235,15 @@ describe('TelegramAdapter media handling', () => {
   });
 
   it('should pick largest photo from array', async () => {
+    mockRequest.mockResolvedValueOnce(
+      tgResponse({ file_id: 'largest', file_unique_id: 'x', file_path: 'photos/big.jpg' }),
+    );
+    mockRequest.mockResolvedValueOnce(
+      binaryResponse(Buffer.from([1, 2, 3])),
+    );
+
     await adapter.initialize();
     await adapter.start();
-
-    // Mock getFile — should be called with 'largest' file_id
-    mockFetch.mockResolvedValueOnce(
-      telegramResponse({ file_id: 'largest', file_unique_id: 'x', file_path: 'photos/big.jpg' }),
-    );
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
-    });
 
     const handleUpdate = (adapter as any).handleUpdate.bind(adapter);
     handleUpdate({
@@ -242,11 +266,12 @@ describe('TelegramAdapter media handling', () => {
     });
 
     // Verify getFile was called with the largest photo's file_id
-    const getFileCall = mockFetch.mock.calls.find(
-      (call) => typeof call[0] === 'string' && call[0].includes('getFile'),
+    // request(url, options, body) — getFile call has file_id in the body
+    const getFileCall = mockRequest.mock.calls.find(
+      (call: unknown[]) => typeof call[0] === 'string' && (call[0] as string).includes('getFile'),
     );
     expect(getFileCall).toBeDefined();
-    const body = JSON.parse(getFileCall![1]?.body as string);
+    const body = JSON.parse(getFileCall![2].toString('utf-8'));
     expect(body.file_id).toBe('largest');
   });
 
@@ -255,10 +280,9 @@ describe('TelegramAdapter media handling', () => {
       await adapter.initialize();
       adapter.startTyping('42');
 
-      // Should call sendChatAction
       await vi.waitFor(() => {
-        const typingCall = mockFetch.mock.calls.find(
-          (call) => typeof call[0] === 'string' && call[0].includes('sendChatAction'),
+        const typingCall = mockRequest.mock.calls.find(
+          (call: unknown[]) => typeof call[0] === 'string' && (call[0] as string).includes('sendChatAction'),
         );
         expect(typingCall).toBeDefined();
       });
@@ -268,7 +292,6 @@ describe('TelegramAdapter media handling', () => {
       await adapter.initialize();
       adapter.startTyping('42');
       adapter.stopTyping('42');
-      // No error — interval cleared
     });
   });
 });

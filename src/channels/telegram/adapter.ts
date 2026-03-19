@@ -1,9 +1,12 @@
 /**
  * Telegram channel adapter
- * Uses raw fetch against Bot API with long-polling
+ * Uses Node.js https module (family: 4) against Bot API with long-polling.
+ * Note: Node.js fetch tries IPv6 via Happy Eyeballs even when IPv6 is unreachable,
+ * causing ETIMEDOUT. Forcing family: 4 bypasses this.
  * Text-only private chats, no SDK dependency
  */
 
+import https from 'node:https';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { OnInboundMessageFn } from '../types.js';
@@ -23,6 +26,14 @@ const API_BASE = 'https://api.telegram.org/bot';
 const API_FILE_BASE = 'https://api.telegram.org/file/bot';
 const POLL_TIMEOUT_S = 30;
 const RECONNECT_DELAY_MS = 5000;
+
+interface FetchLike {
+  ok: boolean;
+  status: number;
+  statusText: string;
+  json(): Promise<unknown>;
+  buffer(): Promise<Buffer>;
+}
 
 export class TelegramAdapter extends BaseChannelAdapter {
   readonly type = 'telegram' as const;
@@ -82,21 +93,33 @@ export class TelegramAdapter extends BaseChannelAdapter {
     };
     const { method, field } = methodMap[mediaType] ?? { method: 'sendDocument', field: 'document' };
 
-    const buffer = readFileSync(filePath);
+    const fileBuffer = readFileSync(filePath);
     const fileName = path.basename(filePath);
-    const blob = new Blob([buffer], { type: mimeType });
+    const boundary = `----TelegramBoundary${Date.now()}`;
 
-    const form = new FormData();
-    form.append('chat_id', recipientId);
-    form.append(field, blob, fileName);
-    if (caption) form.append('caption', caption);
+    const parts: Buffer[] = [];
+    const addField = (name: string, value: string) => {
+      parts.push(Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`,
+      ));
+    };
+    addField('chat_id', recipientId);
+    if (caption) addField('caption', caption);
+    parts.push(Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="${field}"; filename="${fileName}"\r\nContent-Type: ${mimeType}\r\n\r\n`,
+    ));
+    parts.push(fileBuffer);
+    parts.push(Buffer.from(`\r\n--${boundary}--\r\n`));
+    const body = Buffer.concat(parts);
 
     const url = `${API_BASE}${this.botToken}/${method}`;
-    const res = await fetch(url, {
+    const res = await this.request(url, {
       method: 'POST',
-      body: form,
-      signal: this.abortController?.signal,
-    });
+      headers: {
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
+        'Content-Length': String(body.length),
+      },
+    }, body);
 
     if (!res.ok) {
       throw new Error(`Telegram API ${method} failed: ${res.status} ${res.statusText}`);
@@ -152,7 +175,6 @@ export class TelegramAdapter extends BaseChannelAdapter {
     const chatId = String(msg.chat.id);
 
     if (msg.photo || msg.voice || msg.audio) {
-      // Flush any pending text so it reaches the agent before the media message
       this.debouncer.flush(chatId);
       this.handleMedia(chatId, msg).catch((err) => {
         this.log.debug(`handleMedia error for ${chatId}: ${err}`);
@@ -169,16 +191,14 @@ export class TelegramAdapter extends BaseChannelAdapter {
     if (!file.file_path) throw new Error('No file_path returned from getFile');
 
     const url = `${API_FILE_BASE}${this.botToken}/${file.file_path}`;
-    const res = await fetch(url, { signal: this.abortController?.signal });
+    const res = await this.request(url, { method: 'GET' });
     if (!res.ok) throw new Error(`File download failed: ${res.status}`);
-
-    return Buffer.from(await res.arrayBuffer());
+    return res.buffer();
   }
 
   private async handleMedia(chatId: string, msg: TelegramMessage): Promise<void> {
     const sessionKey = `telegram:${chatId}`;
 
-    // Photo — pick largest (last in array)
     if (msg.photo?.length) {
       const largest = msg.photo[msg.photo.length - 1];
       this.log.debug(`received photo from ${chatId}`);
@@ -198,9 +218,7 @@ export class TelegramAdapter extends BaseChannelAdapter {
       return;
     }
 
-    // Voice / audio
     const fileId = msg.voice?.file_id ?? msg.audio?.file_id;
-    // Strip codec params (e.g. "audio/ogg; codecs=opus" → "audio/ogg")
     const rawMime = (msg.voice?.mime_type ?? msg.audio?.mime_type)?.split(';')[0].trim();
     const mimeType = rawMime || 'audio/ogg';
     const duration = msg.voice?.duration ?? msg.audio?.duration;
@@ -221,12 +239,11 @@ export class TelegramAdapter extends BaseChannelAdapter {
 
   private async apiCall<T>(method: string, params?: Record<string, unknown>): Promise<T> {
     const url = `${API_BASE}${this.botToken}/${method}`;
-    const res = await fetch(url, {
+    const body = params ? JSON.stringify(params) : undefined;
+    const res = await this.request(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: params ? JSON.stringify(params) : undefined,
-      signal: this.abortController?.signal,
-    });
+    }, body ? Buffer.from(body) : undefined);
 
     if (!res.ok) {
       throw new Error(`Telegram API ${method} failed: ${res.status} ${res.statusText}`);
@@ -238,5 +255,53 @@ export class TelegramAdapter extends BaseChannelAdapter {
     }
 
     return data.result;
+  }
+
+  /** https.request wrapper forcing IPv4 — avoids Node.js fetch Happy Eyeballs IPv6 ETIMEDOUT */
+  private request(
+    url: string,
+    options: { method?: string; headers?: Record<string, string> },
+    body?: Buffer,
+  ): Promise<FetchLike> {
+    return new Promise((resolve, reject) => {
+      const signal = this.abortController?.signal;
+      if (signal?.aborted) return reject(new Error('aborted'));
+
+      const parsed = new URL(url);
+      const req = https.request(
+        {
+          hostname: parsed.hostname,
+          port: parsed.port || 443,
+          path: parsed.pathname + parsed.search,
+          method: options.method ?? 'GET',
+          headers: options.headers,
+          family: 4,
+        },
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (chunk: Buffer) => chunks.push(chunk));
+          res.on('end', () => {
+            const buf = Buffer.concat(chunks);
+            resolve({
+              ok: res.statusCode! >= 200 && res.statusCode! < 300,
+              status: res.statusCode!,
+              statusText: res.statusMessage ?? '',
+              json: () => Promise.resolve(JSON.parse(buf.toString('utf-8'))),
+              buffer: () => Promise.resolve(buf),
+            });
+          });
+          res.on('error', reject);
+        },
+      );
+
+      req.on('error', reject);
+
+      const onAbort = () => req.destroy(new Error('aborted'));
+      signal?.addEventListener('abort', onAbort, { once: true });
+      req.on('close', () => signal?.removeEventListener('abort', onAbort));
+
+      if (body) req.write(body);
+      req.end();
+    });
   }
 }
