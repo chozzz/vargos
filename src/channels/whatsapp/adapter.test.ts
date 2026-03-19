@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { WASocket } from '@whiskeysockets/baileys';
+import { AdapterTestHarness } from '../test-utils/harness.js';
 
 // Stub external deps that adapter imports
 vi.mock('node:fs', async (importOriginal) => {
@@ -16,7 +17,7 @@ vi.mock('../../lib/debounce.js', () => ({
     cancelAll: vi.fn(),
   }),
 }));
-vi.mock('../../lib/media.js', () => ({ saveMedia: vi.fn() }));
+vi.mock('../../lib/media.js', () => ({ saveMedia: vi.fn(async () => '/tmp/saved-media.jpg') }));
 vi.mock('../delivery.js', () => ({
   deliverReply: async (send: Function, text: string) => send(text),
 }));
@@ -40,6 +41,8 @@ import { WhatsAppAdapter } from './adapter.js';
 import { createWhatsAppSocket } from './session.js';
 import { existsSync } from 'node:fs';
 
+const harness = new AdapterTestHarness();
+
 function mockSocket(): WASocket {
   return {
     sendMessage: vi.fn().mockResolvedValue(undefined),
@@ -54,6 +57,7 @@ describe('WhatsAppAdapter', () => {
   let sock: WASocket;
 
   beforeEach(() => {
+    harness.reset();
     adapter = new WhatsAppAdapter('whatsapp');
     sock = mockSocket();
     // Inject mock socket via private field

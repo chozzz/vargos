@@ -17,9 +17,7 @@ import type {
   TelegramMessage,
   TelegramFile,
 } from './types.js';
-import { BaseChannelAdapter } from '../base-adapter.js';
-import { saveMedia } from '../../lib/media.js';
-import { resolveMediaDir } from '../../config/paths.js';
+import { InboundMediaHandler, type InboundMediaSource } from '../media-handler.js';
 import { sleep } from '../../lib/sleep.js';
 
 const API_BASE = 'https://api.telegram.org/bot';
@@ -35,7 +33,7 @@ interface FetchLike {
   buffer(): Promise<Buffer>;
 }
 
-export class TelegramAdapter extends BaseChannelAdapter {
+export class TelegramAdapter extends InboundMediaHandler {
   readonly type = 'telegram' as const;
 
   private botToken: string;
@@ -196,44 +194,43 @@ export class TelegramAdapter extends BaseChannelAdapter {
     return res.buffer();
   }
 
-  private async handleMedia(chatId: string, msg: TelegramMessage): Promise<void> {
-    const sessionKey = `telegram:${chatId}`;
+  protected async resolveMedia(msg: unknown): Promise<InboundMediaSource | null> {
+    const m = msg as { tgMsg: TelegramMessage; chatId: string };
+    const { tgMsg } = m;
 
-    if (msg.photo?.length) {
-      const largest = msg.photo[msg.photo.length - 1];
-      this.log.debug(`received photo from ${chatId}`);
-
-      try {
-        const buffer = await this.downloadFile(largest.file_id);
-        const mimeType = 'image/jpeg';
-        const savedPath = await saveMedia({ buffer, sessionKey, mimeType, mediaDir: resolveMediaDir() });
-        const base64 = buffer.toString('base64');
-        const caption = msg.caption || 'User sent an image.';
-        const images = [{ data: base64, mimeType }];
-        const media = { type: 'image', data: base64, mimeType, path: savedPath };
-        await this.routeToService(chatId, `${caption}\n\n[Image saved: ${savedPath}]`, { images, media });
-      } catch (err) {
-        this.log.debug(`photo download failed for ${chatId}: ${err}`);
-      }
-      return;
+    if (tgMsg.photo?.length) {
+      const largest = tgMsg.photo[tgMsg.photo.length - 1];
+      const buffer = await this.downloadFile(largest.file_id);
+      return { buffer, mimeType: 'image/jpeg', mediaType: 'image', caption: tgMsg.caption };
     }
 
-    const fileId = msg.voice?.file_id ?? msg.audio?.file_id;
-    const rawMime = (msg.voice?.mime_type ?? msg.audio?.mime_type)?.split(';')[0].trim();
-    const mimeType = rawMime || 'audio/ogg';
-    const duration = msg.voice?.duration ?? msg.audio?.duration;
-    const label = msg.voice ? 'Voice message' : 'Audio message';
+    const fileId = tgMsg.voice?.file_id ?? tgMsg.audio?.file_id;
+    if (!fileId) return null;
 
-    this.log.debug(`received ${label.toLowerCase()} from ${chatId} (${duration}s)`);
+    const rawMime = (tgMsg.voice?.mime_type ?? tgMsg.audio?.mime_type)?.split(';')[0].trim();
+    const mimeType = rawMime || 'audio/ogg';
+    const duration = tgMsg.voice?.duration ?? tgMsg.audio?.duration;
+    // Distinguish voice vs audio for label; caption is formatted downstream
+    const label = tgMsg.voice ? 'Voice message' : 'Audio message';
+    const caption = tgMsg.caption || `[${label}, ${duration}s]`;
+    const buffer = await this.downloadFile(fileId);
+    return { buffer, mimeType, mediaType: 'audio', caption, duration };
+  }
+
+  private async handleMedia(chatId: string, msg: TelegramMessage): Promise<void> {
+    const sessionKey = `${this.instanceId}:${chatId}`;
+    const label = msg.photo?.length ? 'photo' : (msg.voice ? 'voice' : 'audio');
+    this.log.debug(`received ${label} from ${chatId}`);
 
     try {
-      const buffer = await this.downloadFile(fileId!);
-      const savedPath = await saveMedia({ buffer, sessionKey, mimeType, mediaDir: resolveMediaDir() });
-      const base64 = buffer.toString('base64');
-      const media = { type: 'audio', data: base64, mimeType, path: savedPath };
-      await this.routeToService(chatId, `${msg.caption || `[${label}, ${duration}s]`}\n\n[${label} saved: ${savedPath}]`, { media });
+      await this.processInboundMedia(
+        { tgMsg: msg, chatId },
+        chatId,
+        sessionKey,
+        (text, metadata) => this.routeToService(chatId, text, metadata),
+      );
     } catch (err) {
-      this.log.debug(`audio download failed for ${chatId}: ${err}`);
+      this.log.debug(`${label} download failed for ${chatId}: ${err}`);
     }
   }
 

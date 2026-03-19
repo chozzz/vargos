@@ -14,15 +14,10 @@ export {
   isSubagentSessionKey,
   getSubagentDepth,
   canSpawnSubagent,
+  channelSessionKey,
   cronSessionKey,
   parseSessionKey,
 } from '../lib/subagent.js';
-
-// ── Builders ────────────────────────────────────────────────────────────────
-
-export function channelSessionKey(channel: string, userId: string): string {
-  return `${channel}:${userId}`;
-}
 
 export function webhookSessionKey(hookId: string): string {
   return `webhook:${hookId}:${Date.now()}`;

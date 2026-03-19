@@ -3,10 +3,25 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { sessionsListTool } from './sessions-list.js';
-import { sessionsSendTool } from './sessions-send.js';
-import { sessionsSpawnTool } from './sessions-spawn.js';
-import { ToolContext, getFirstTextContent } from '../types.js';
+import { SessionsExtension } from './sessions/index.js';
+import type { Tool, ToolContext } from '../types.js';
+import { getFirstTextContent } from '../types.js';
+
+// Collect tools registered by SessionsExtension
+function buildTools(): Record<string, Tool> {
+  const tools: Record<string, Tool> = {};
+  const ext = new SessionsExtension();
+  ext.register({
+    registerTool: (t: Tool) => { tools[t.name] = t; },
+    paths: { dataDir: '/tmp', workspaceDir: '/tmp' },
+  });
+  return tools;
+}
+
+const tools = buildTools();
+const sessionsListTool = tools['sessions_list'];
+const sessionsSendTool = tools['sessions_send'];
+const sessionsSpawnTool = tools['sessions_spawn'];
 
 // In-memory session store for mocking
 function createMockContext(sessionKey = 'test-session'): ToolContext {
@@ -136,7 +151,6 @@ describe('session tools', () => {
 
     it('should load skills and inject as bootstrapOverrides', async () => {
       const skillContent = '# Debug\nYou are a debugger.';
-      const { loadSkill } = await import('../../lib/skills.js');
       const { vi: vitest } = await import('vitest');
       // Mock loadSkill at module level
       const mod = await import('../../lib/skills.js');

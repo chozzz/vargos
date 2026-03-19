@@ -13,7 +13,7 @@ import { ServiceClient } from '../gateway/service-client.js';
 import type { ChannelAdapter } from './types.js';
 import { deliverReply } from './delivery.js';
 import { extractMediaPaths } from './media-extract.js';
-import { channelSessionKey } from '../sessions/keys.js';
+import { channelSessionKey } from '../lib/subagent.js';
 import { createLogger } from '../lib/logger.js';
 import { toMessage } from '../lib/error.js';
 import { stripMarkdown } from '../lib/strip-markdown.js';

@@ -1,12 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { TelegramUpdate } from './types.js';
 import type { OnInboundMessageFn } from '../types.js';
-
-const inboundCalls: Array<{ channel: string; userId: string; content: string; metadata?: Record<string, unknown> }> = [];
-
-const mockOnInbound: OnInboundMessageFn = vi.fn(async (channel, userId, content, metadata) => {
-  inboundCalls.push({ channel, userId, content, metadata });
-});
+import { AdapterTestHarness, tgResponse, binaryResponse } from '../test-utils/harness.js';
 
 vi.mock('../../lib/media.js', () => ({
   saveMedia: vi.fn(async () => '/tmp/saved-media.jpg'),
@@ -18,35 +13,14 @@ vi.mock('../delivery.js', () => ({
 
 import { TelegramAdapter } from './adapter.js';
 
-/** Build a mock FetchLike response as returned by the adapter's request() helper */
-function tgResponse<T>(result: T) {
-  return {
-    ok: true,
-    status: 200,
-    statusText: 'OK',
-    json: async () => ({ ok: true, result }),
-    buffer: async () => Buffer.from(JSON.stringify({ ok: true, result })),
-  };
-}
-
-function binaryResponse(data: Buffer) {
-  return {
-    ok: true,
-    status: 200,
-    statusText: 'OK',
-    json: async () => ({}),
-    buffer: async () => data,
-  };
-}
-
 describe('TelegramAdapter media handling', () => {
   let adapter: TelegramAdapter;
   let mockRequest: ReturnType<typeof vi.fn>;
+  const harness = new AdapterTestHarness();
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    inboundCalls.length = 0;
-    adapter = new TelegramAdapter('telegram', 'test-token', undefined, mockOnInbound);
+    harness.reset();
+    adapter = new TelegramAdapter('telegram', 'test-token', undefined, harness.mockOnInbound);
     mockRequest = vi.spyOn(adapter as any, 'request') as ReturnType<typeof vi.fn>;
     // Prevent pollLoop from consuming mocked request slots
     vi.spyOn(adapter as any, 'pollLoop').mockResolvedValue(undefined);
@@ -75,7 +49,7 @@ describe('TelegramAdapter media handling', () => {
       },
     };
 
-    expect(inboundCalls).toHaveLength(0);
+    expect(harness.inboundCalls).toHaveLength(0);
   });
 
   it('should treat /start as a regular text message through the debouncer', async () => {
@@ -101,13 +75,13 @@ describe('TelegramAdapter media handling', () => {
     ).not.toThrow();
 
     // Text messages are debounced — not delivered immediately
-    expect(inboundCalls).toHaveLength(0);
+    expect(harness.inboundCalls).toHaveLength(0);
 
     // After debounce window, message is delivered normally
     await vi.advanceTimersByTimeAsync(3000);
-    expect(inboundCalls).toHaveLength(1);
-    expect(inboundCalls[0].content).toBe('/start');
-    expect(inboundCalls[0].userId).toBe('42');
+    expect(harness.inboundCalls).toHaveLength(1);
+    expect(harness.inboundCalls[0].content).toBe('/start');
+    expect(harness.inboundCalls[0].userId).toBe('42');
 
     vi.useRealTimers();
   });
@@ -142,14 +116,14 @@ describe('TelegramAdapter media handling', () => {
     } satisfies TelegramUpdate);
 
     await vi.waitFor(() => {
-      expect(inboundCalls.length).toBeGreaterThanOrEqual(1);
+      expect(harness.inboundCalls.length).toBeGreaterThanOrEqual(1);
     });
 
-    expect(inboundCalls[0].channel).toBe('telegram');
-    expect(inboundCalls[0].userId).toBe('42');
-    expect(inboundCalls[0].content).toContain('Look at this');
-    expect(inboundCalls[0].metadata?.images).toHaveLength(1);
-    expect((inboundCalls[0].metadata?.images as any)[0].mimeType).toBe('image/jpeg');
+    expect(harness.inboundCalls[0].channel).toBe('telegram');
+    expect(harness.inboundCalls[0].userId).toBe('42');
+    expect(harness.inboundCalls[0].content).toContain('Look at this');
+    expect(harness.inboundCalls[0].metadata?.images).toHaveLength(1);
+    expect((harness.inboundCalls[0].metadata?.images as any)[0].mimeType).toBe('image/jpeg');
   });
 
   it('should handle voice updates with file download', async () => {
@@ -176,11 +150,11 @@ describe('TelegramAdapter media handling', () => {
     } satisfies TelegramUpdate);
 
     await vi.waitFor(() => {
-      expect(inboundCalls.length).toBeGreaterThanOrEqual(1);
+      expect(harness.inboundCalls.length).toBeGreaterThanOrEqual(1);
     });
 
-    expect(inboundCalls[0].channel).toBe('telegram');
-    expect(inboundCalls[0].metadata?.images).toBeUndefined();
+    expect(harness.inboundCalls[0].channel).toBe('telegram');
+    expect(harness.inboundCalls[0].metadata?.images).toBeUndefined();
   });
 
   it('should handle audio updates with file download and caption', async () => {
@@ -208,10 +182,10 @@ describe('TelegramAdapter media handling', () => {
     } satisfies TelegramUpdate);
 
     await vi.waitFor(() => {
-      expect(inboundCalls.length).toBeGreaterThanOrEqual(1);
+      expect(harness.inboundCalls.length).toBeGreaterThanOrEqual(1);
     });
 
-    expect(inboundCalls[0].channel).toBe('telegram');
+    expect(harness.inboundCalls[0].channel).toBe('telegram');
   });
 
   it('should skip non-private chats', async () => {
@@ -231,7 +205,7 @@ describe('TelegramAdapter media handling', () => {
     } satisfies TelegramUpdate);
 
     await new Promise((r) => setTimeout(r, 50));
-    expect(inboundCalls).toHaveLength(0);
+    expect(harness.inboundCalls).toHaveLength(0);
   });
 
   it('should pick largest photo from array', async () => {
@@ -262,7 +236,7 @@ describe('TelegramAdapter media handling', () => {
     } satisfies TelegramUpdate);
 
     await vi.waitFor(() => {
-      expect(inboundCalls.length).toBeGreaterThanOrEqual(1);
+      expect(harness.inboundCalls.length).toBeGreaterThanOrEqual(1);
     });
 
     // Verify getFile was called with the largest photo's file_id
