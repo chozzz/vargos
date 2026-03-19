@@ -38,10 +38,10 @@ describe('loadConfig', () => {
 
   it('loads config with models + channels', async () => {
     const config = validConfig({
-      channels: {
-        whatsapp: { enabled: true, allowFrom: ['+123'] },
-        telegram: { enabled: true, botToken: '123:ABC' },
-      },
+      channels: [
+        { id: 'whatsapp', type: 'whatsapp', enabled: true, allowFrom: ['+123'] },
+        { id: 'telegram', type: 'telegram', enabled: true, botToken: '123:ABC' },
+      ],
     });
     await fs.writeFile(path.join(tmpDir, 'config.json'), JSON.stringify(config));
 
@@ -75,7 +75,8 @@ describe('loadConfig', () => {
     const result = await loadConfig(tmpDir);
     expect(result?.models.anthropic.provider).toBe('anthropic');
     expect(result?.agent.primary).toBe('anthropic');
-    expect(result?.channels?.telegram?.botToken).toBe('123:ABC');
+    const tgEntry = result?.channels?.find(ch => ch.id === 'telegram');
+    expect(tgEntry?.botToken).toBe('123:ABC');
   });
 
   it('migrates flat workspace/config.json → models map', async () => {
@@ -122,7 +123,8 @@ describe('loadConfig', () => {
     await fs.writeFile(path.join(tmpDir, 'channels.json'), JSON.stringify(channels));
 
     const result = await loadConfig(tmpDir);
-    expect(result?.channels?.telegram).toEqual({ enabled: true, botToken: '123:ABC' });
+    const tgEntry = result?.channels?.find(ch => ch.id === 'telegram');
+    expect(tgEntry).toMatchObject({ id: 'telegram', type: 'telegram', enabled: true, botToken: '123:ABC' });
 
     // channels.json renamed
     const files = await fs.readdir(tmpDir);
@@ -151,7 +153,7 @@ describe('saveConfig', () => {
     const config = validConfig({
       models: { ollama: { provider: 'ollama', model: 'qwen3', baseUrl: 'http://localhost:11434' } },
       agent: { primary: 'ollama' },
-      channels: { whatsapp: { enabled: true } },
+      channels: [{ id: 'whatsapp', type: 'whatsapp', enabled: true }],
     });
     await saveConfig(tmpDir, config);
     const loaded = await loadConfig(tmpDir);

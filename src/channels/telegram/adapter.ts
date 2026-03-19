@@ -44,8 +44,8 @@ export class TelegramAdapter extends BaseChannelAdapter {
   private polling = false;
   private abortController: AbortController | null = null;
 
-  constructor(botToken: string, allowFrom?: string[], onInboundMessage?: OnInboundMessageFn, debounceMs?: number) {
-    super('telegram', allowFrom, onInboundMessage, debounceMs);
+  constructor(instanceId: string, botToken: string, allowFrom?: string[], onInboundMessage?: OnInboundMessageFn, debounceMs?: number) {
+    super(instanceId, 'telegram', allowFrom, onInboundMessage, debounceMs);
     this.botToken = botToken;
   }
 

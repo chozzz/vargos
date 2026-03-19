@@ -51,12 +51,13 @@ export class ChannelService extends ServiceClient {
    * Register and start an adapter. The service wires it into the event pipeline.
    */
   async addAdapter(adapter: ChannelAdapter): Promise<void> {
-    this.adapters.set(adapter.type, adapter);
+    this.adapters.set(adapter.instanceId, adapter);
   }
 
-  listAdapters(): Array<{ type: string; status: string }> {
-    return Array.from(this.adapters.entries()).map(([type, a]) => ({
-      type,
+  listAdapters(): Array<{ instanceId: string; type: string; status: string }> {
+    return Array.from(this.adapters.values()).map((a) => ({
+      instanceId: a.instanceId,
+      type: a.type,
       status: a.status,
     }));
   }

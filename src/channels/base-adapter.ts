@@ -10,6 +10,7 @@ import { createLogger } from '../lib/logger.js';
 
 export abstract class BaseChannelAdapter implements ChannelAdapter {
   abstract readonly type: ChannelType;
+  readonly instanceId: string;
   status: ChannelStatus = 'disconnected';
 
   protected dedupe = createDedupeCache({ ttlMs: 120_000 });
@@ -21,10 +22,11 @@ export abstract class BaseChannelAdapter implements ChannelAdapter {
   protected typingFailures = new Map<string, number>();
   protected readonly log;
 
-  constructor(channelType: ChannelType, allowFrom?: string[], onInboundMessage?: OnInboundMessageFn, debounceMs?: number) {
+  constructor(instanceId: string, channelType: ChannelType, allowFrom?: string[], onInboundMessage?: OnInboundMessageFn, debounceMs?: number) {
+    this.instanceId = instanceId;
     this.allowFrom = allowFrom?.length ? new Set(allowFrom) : null;
     this.onInboundMessage = onInboundMessage;
-    this.log = createLogger(channelType);
+    this.log = createLogger(instanceId);
     this.debouncer = createMessageDebouncer(
       (id, messages) => {
         this.handleBatch(id, messages).catch((err) => {
@@ -91,12 +93,12 @@ export abstract class BaseChannelAdapter implements ChannelAdapter {
       this.log.error('No inbound message handler — cannot process message');
       return;
     }
-    await this.onInboundMessage(this.type, userId, content, metadata);
+    await this.onInboundMessage(this.instanceId, userId, content, metadata);
   }
 
   protected async handleBatch(id: string, messages: string[]): Promise<void> {
     const text = messages.join('\n');
-    this.log.info(`batch for ${this.type}:${id}: "${text.slice(0, 80)}"`);
+    this.log.info(`batch for ${this.instanceId}:${id}: "${text.slice(0, 80)}"`);
     await this.routeToService(id, text);
   }
 

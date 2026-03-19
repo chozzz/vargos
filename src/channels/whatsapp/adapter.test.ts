@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { WASocket } from '@whiskeysockets/baileys';
 
 // Stub external deps that adapter imports
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+  return { ...actual, existsSync: vi.fn(() => true) };
+});
 vi.mock('./session.js', () => ({ createWhatsAppSocket: vi.fn() }));
 vi.mock('../../lib/dedupe.js', () => ({
   createDedupeCache: () => ({ add: () => true }),
@@ -34,6 +38,7 @@ vi.mock('../../lib/logger.js', () => ({
 
 import { WhatsAppAdapter } from './adapter.js';
 import { createWhatsAppSocket } from './session.js';
+import { existsSync } from 'node:fs';
 
 function mockSocket(): WASocket {
   return {
@@ -49,7 +54,7 @@ describe('WhatsAppAdapter', () => {
   let sock: WASocket;
 
   beforeEach(() => {
-    adapter = new WhatsAppAdapter();
+    adapter = new WhatsAppAdapter('whatsapp');
     sock = mockSocket();
     // Inject mock socket via private field
     (adapter as any).sock = sock;
@@ -142,7 +147,7 @@ describe('WhatsAppAdapter', () => {
   describe('handleInbound — text path normalizes JID', () => {
     it('strips @s.whatsapp.net before routing', async () => {
       const onInbound = vi.fn().mockResolvedValue(undefined);
-      const a = new WhatsAppAdapter(undefined, onInbound);
+      const a = new WhatsAppAdapter('whatsapp', undefined, onInbound);
       (a as any).sock = sock;
 
       // Simulate handleInbound with a text message
@@ -162,7 +167,7 @@ describe('WhatsAppAdapter', () => {
   describe('routeToService', () => {
     it('calls onInboundMessage callback', async () => {
       const onInbound = vi.fn().mockResolvedValue(undefined);
-      const adapterWithCb = new WhatsAppAdapter(undefined, onInbound);
+      const adapterWithCb = new WhatsAppAdapter('whatsapp', undefined, onInbound);
       (adapterWithCb as any).sock = sock;
 
       await (adapterWithCb as any).routeToService('61423222658', 'test message');
@@ -196,6 +201,42 @@ describe('WhatsAppAdapter', () => {
 
       expect(mockReset).toHaveBeenCalledOnce();
       expect((adapter as any).status).toBe('connected');
+    });
+  });
+
+  describe('start — auth state guard', () => {
+    it('throws and sets status to error when creds.json is missing', async () => {
+      vi.mocked(existsSync).mockReturnValueOnce(false);
+
+      await expect(adapter.start()).rejects.toThrow('No auth state found');
+      expect((adapter as any).status).toBe('error');
+    });
+
+    it('proceeds normally when creds.json exists', async () => {
+      vi.mocked(existsSync).mockReturnValueOnce(true);
+      vi.mocked(createWhatsAppSocket).mockResolvedValueOnce(sock);
+
+      await adapter.start();
+
+      expect(createWhatsAppSocket).toHaveBeenCalled();
+    });
+  });
+
+  describe('instanceId routing', () => {
+    it('routes inbound messages using instanceId not platform type', async () => {
+      const onInbound = vi.fn().mockResolvedValue(undefined);
+      const a = new WhatsAppAdapter('whatsapp-personal', undefined, onInbound);
+      (a as any).sock = sock;
+
+      (a as any).handleInbound({
+        jid: '61423222658@s.whatsapp.net',
+        text: 'hey',
+        fromMe: false,
+        isGroup: false,
+        messageId: 'msg-2',
+      });
+
+      expect(onInbound).toHaveBeenCalledWith('whatsapp-personal', '61423222658', 'hey', { messageId: 'msg-2' });
     });
   });
 });

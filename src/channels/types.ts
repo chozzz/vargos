@@ -3,19 +3,9 @@
  * Each channel (WhatsApp, Telegram, etc.) implements ChannelAdapter
  */
 
-export type ChannelType = 'whatsapp' | 'telegram';
+/** Platform type — 'whatsapp' | 'telegram' | custom string for future adapters */
+export type ChannelType = 'whatsapp' | 'telegram' | (string & {});
 export type ChannelStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
-
-export interface ChannelConfig {
-  type: ChannelType;
-  enabled: boolean;
-  /** Telegram bot token */
-  botToken?: string;
-  /** Whitelist of sender IDs (phone numbers / chat IDs). Empty = accept all. */
-  allowFrom?: string[];
-  /** Debounce window in ms before batched messages are forwarded (default: 2000) */
-  debounceMs?: number;
-}
 
 export type OnInboundMessageFn = (
   channel: string,
@@ -26,6 +16,8 @@ export type OnInboundMessageFn = (
 
 export interface ChannelAdapter {
   readonly type: ChannelType;
+  /** Unique instance id from config.id — used as session key prefix and adapter map key */
+  readonly instanceId: string;
   status: ChannelStatus;
 
   /** One-time initialization (load auth state, etc.) */

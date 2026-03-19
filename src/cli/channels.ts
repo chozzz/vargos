@@ -6,6 +6,7 @@ export async function send(args?: string[]): Promise<void> {
   if (!args || args.length < 2) {
     console.error(chalk.red('  Usage: vargos channels send <target> <message>'));
     console.error(chalk.gray('  Example: vargos channels send whatsapp:61400000000 "Hello!"'));
+    console.error(chalk.gray('  Example: vargos channels send telegram:123456789 "Hello!"'));
     process.exit(1);
   }
 
@@ -33,4 +34,45 @@ export async function send(args?: string[]): Promise<void> {
   } finally {
     await client.disconnect();
   }
+}
+
+export async function setup(args?: string[]): Promise<void> {
+  const { setupWhatsApp, setupTelegram } = await import('../channels/onboard.js');
+
+  if (args?.[0] === 'whatsapp') {
+    await setupWhatsApp();
+    return;
+  }
+  if (args?.[0] === 'telegram') {
+    await setupTelegram();
+    return;
+  }
+
+  // Interactive if no args
+  const channel = args?.[0];
+  if (channel === 'whatsapp') {
+    await setupWhatsApp();
+  } else if (channel === 'telegram') {
+    await setupTelegram();
+  } else {
+    console.log(chalk.cyan('\n  Channel Setup\n'));
+    console.log('  Usage:');
+    console.log('    vargos channels setup whatsapp   Scan QR code to connect WhatsApp');
+    console.log('    vargos channels setup telegram   Enter bot token to connect Telegram\n');
+    console.log('  Examples:');
+    console.log('    vargos channels setup whatsapp');
+    console.log('    vargos channels setup telegram\n');
+    console.log('  For WhatsApp: You will see a QR code to scan with your phone.');
+    console.log('  For Telegram: You will be prompted for your bot token from @BotFather.\n');
+  }
+}
+
+export async function setupTelegram(): Promise<void> {
+  const { setupTelegram } = await import('../channels/onboard.js');
+  await setupTelegram();
+}
+
+export async function setupWhatsApp(): Promise<void> {
+  const { setupWhatsApp } = await import('../channels/onboard.js');
+  await setupWhatsApp();
 }

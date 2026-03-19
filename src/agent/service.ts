@@ -388,7 +388,11 @@ export class AgentService extends ServiceClient {
     const config = existing ?? await this.getConfig();
     if (!config) throw new Error('No config.json — run: vargos config');
 
-    const primary = resolveModel(config);
+    // Per-channel model override: look up channel entry by id
+    const channelEntry = params.channel
+      ? config.channels?.find((ch) => ch.id === params.channel)
+      : undefined;
+    const primary = resolveModel(config, params.model ?? channelEntry?.model);
     const apiKey = resolveApiKey(primary) || (LOCAL_PROVIDERS.has(primary.provider) ? 'local' : undefined);
 
     const sessionKey = params.sessionKey;
@@ -400,7 +404,7 @@ export class AgentService extends ServiceClient {
       sessionKey,
       workspaceDir,
       task: params.task,
-      model: params.model ?? primary.model,
+      model: primary.model,
       provider: params.provider ?? primary.provider,
       apiKey,
       baseUrl: primary.baseUrl,

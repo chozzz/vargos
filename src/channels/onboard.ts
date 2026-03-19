@@ -11,7 +11,7 @@ import { addChannelConfig } from './config.js';
 import { resolveChannelsDir, resolveDataDir } from '../config/paths.js';
 import { createWhatsAppSocket } from './whatsapp/session.js';
 import { TelegramAdapter } from './telegram/adapter.js';
-import type { ChannelConfig } from './types.js';
+import type { ChannelEntry } from '../config/pi-config.js';
 import type { WASocket } from '@whiskeysockets/baileys';
 import { toMessage } from '../lib/error.js';
 
@@ -29,10 +29,21 @@ async function promptAllowFrom(label: string, example: string): Promise<string[]
   return input.split(',').map((s) => s.trim()).filter(Boolean);
 }
 
+async function promptInstanceId(defaultId: string): Promise<string> {
+  const input = await pickText(`Instance ID (letters, digits, hyphens — e.g. "${defaultId}")`, { placeholder: defaultId });
+  const id = (input ?? '').trim() || defaultId;
+  if (!/^[a-z0-9-]+$/.test(id)) {
+    log.warn(`Invalid id "${id}" — using "${defaultId}"`);
+    return defaultId;
+  }
+  return id;
+}
+
 export async function setupWhatsApp(): Promise<void> {
   log.info('WhatsApp Setup');
 
-  const authDir = path.join(resolveChannelsDir(), 'whatsapp');
+  const instanceId = await promptInstanceId('whatsapp');
+  const authDir = path.join(resolveChannelsDir(), instanceId);
   try {
     await fs.rm(authDir, { recursive: true, force: true });
   } catch { /* ignore */ }
@@ -87,7 +98,7 @@ export async function setupWhatsApp(): Promise<void> {
       log.success(`Connected as ${connectedName}`);
 
       const allowFrom = await promptAllowFrom('phone numbers', '+1234567890');
-      const config: ChannelConfig = { type: 'whatsapp', enabled: true, allowFrom };
+      const config: ChannelEntry = { id: instanceId, type: 'whatsapp', enabled: true, allowFrom };
       await addChannelConfig(config);
       log.success(`Saved to ${resolveDataDir()}/config.json`);
     } else {
@@ -112,14 +123,15 @@ export async function setupTelegram(): Promise<void> {
     return;
   }
 
-  const adapter = new TelegramAdapter(token);
+  const instanceId = await promptInstanceId('telegram');
+  const adapter = new TelegramAdapter(instanceId, token);
 
   try {
     await adapter.initialize();
     log.success('Telegram bot verified');
 
     const allowFrom = await promptAllowFrom('chat IDs', '12345678');
-    const config: ChannelConfig = { type: 'telegram', enabled: true, botToken: token, allowFrom };
+    const config: ChannelEntry = { id: instanceId, type: 'telegram', enabled: true, botToken: token, allowFrom };
     await addChannelConfig(config);
     log.success(`Saved to ${resolveDataDir()}/config.json`);
   } catch (err) {

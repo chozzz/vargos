@@ -95,7 +95,7 @@ describe('validateConfig', () => {
   it('telegram channel without botToken produces warning', () => {
     const result = validateConfig({
       ...validConfig(),
-      channels: { telegram: { enabled: true } },
+      channels: [{ id: 'telegram', type: 'telegram', enabled: true }],
     });
     expect(result.valid).toBe(true);
     expect(result.warnings).toEqual(expect.arrayContaining([expect.stringMatching(/botToken/)]));
@@ -104,7 +104,7 @@ describe('validateConfig', () => {
   it('disabled telegram channel without botToken produces no warning', () => {
     const result = validateConfig({
       ...validConfig(),
-      channels: { telegram: { enabled: false } },
+      channels: [{ id: 'telegram', type: 'telegram', enabled: false }],
     });
     expect(result.warnings).toHaveLength(0);
   });

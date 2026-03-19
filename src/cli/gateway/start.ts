@@ -5,7 +5,7 @@ import { ToolsService } from '../../tools/service.js';
 import { SessionsService } from '../../sessions/service.js';
 import { CronService } from '../../cron/service.js';
 import { ChannelService } from '../../channels/service.js';
-import type { ChannelType, OnInboundMessageFn } from '../../channels/types.js';
+import type { OnInboundMessageFn } from '../../channels/types.js';
 import { AgentService } from '../../agent/service.js';
 import { McpBridge } from '../../mcp/server.js';
 import { toolRegistry } from '../../tools/registry.js';
@@ -316,10 +316,10 @@ export async function start(): Promise<void> {
     const { createAdapter } = await import('../../channels/factory.js');
     const onInbound: OnInboundMessageFn = (ch, userId, content, metadata) =>
       channels.onInboundMessage(ch, userId, content, metadata);
-    for (const [type, chConfig] of Object.entries(config.channels)) {
+    for (const chConfig of config.channels) {
       if (chConfig.enabled === false) continue;
       try {
-        const adapter = createAdapter({ type: type as ChannelType, enabled: true, ...chConfig }, onInbound);
+        const adapter = createAdapter(chConfig, onInbound);
         await channels.addAdapter(adapter);
         await adapter.initialize();
         await adapter.start();
@@ -331,11 +331,12 @@ export async function start(): Promise<void> {
             const deadline = setTimeout(finish, 3000);
           });
         }
-        serviceStatuses.push({ name: 'Channel', ok: true, detail: `${type} ${adapter.status}` });
+        serviceStatuses.push({ name: 'Channel', ok: true, detail: `${chConfig.id} (${chConfig.type}) ${adapter.status}` });
       } catch (err) {
         const msg = toMessage(err);
-        const hint = classifyChannelError(type, msg);
-        serviceStatuses.push({ name: 'Channel', ok: false, detail: `${type} — ${hint}` });
+        const hint = classifyChannelError(chConfig.type, msg);
+        log.error(`Channel ${chConfig.id} (${chConfig.type}) failed to start: ${msg} — ${hint}`);
+        serviceStatuses.push({ name: 'Channel', ok: false, detail: `${chConfig.id} (${chConfig.type}) error: ${msg}` });
       }
     }
   }

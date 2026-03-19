@@ -8,7 +8,7 @@ class TestAdapter extends BaseChannelAdapter {
   batches: Array<{ id: string; messages: string[] }> = [];
 
   constructor(onInbound?: (channel: string, userId: string, content: string) => Promise<void>, debounceMs?: number) {
-    super('whatsapp', [], onInbound, debounceMs);
+    super('whatsapp', 'whatsapp', [], onInbound, debounceMs);
   }
 
   async initialize() { this.status = 'connected' as ChannelStatus; }
