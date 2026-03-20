@@ -339,12 +339,7 @@ Gateway pings services periodically. If a service disconnects, its routes and su
    → Parent synthesizes and delivers final response via channel.send
 ```
 
-Limits enforced by `sessions_spawn`:
-- **Depth:** `agent.subagents.maxSpawnDepth` (default 3)
-- **Breadth:** `agent.subagents.maxChildren` (default 10) per parent session
-- **Timeout:** `agent.subagents.runTimeoutSeconds` (default 300s) per sub-agent
-
-Sub-agents get a `minimal-subagent` system prompt (no memory recall, heartbeats, or codebase context) to reduce token cost.
+Limits (depth, breadth, timeout) are configured under `agent.subagents` — see [configuration.md](./configuration.md#agent). Sub-agents get a `minimal-subagent` prompt (no memory recall, heartbeats, or codebase context).
 
 ### Browser UI → Live Agent Streaming
 

@@ -64,7 +64,7 @@ export ANTHROPIC_API_KEY=sk-...
 
 **maxTokens too low:** Increase `maxTokens` in the model profile. Some models default to very low limits.
 
-**Thinking-only response:** The model produced thinking tokens but no text output. This is treated as a successful empty response. Try rephrasing the prompt or using a different model.
+**Thinking-only response:** Model returned thinking tokens but no text. See [runtime.md](./runtime.md#empty-response-handling) for retry behavior. Try rephrasing or switching models.
 
 ## Session Accumulation
 

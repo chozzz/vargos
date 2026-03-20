@@ -22,10 +22,7 @@ Session key construction is centralized in `src/sessions/keys.ts`. Builder funct
 
 ## Behaviors Driven by Session Key
 
-**Prompt mode** (`src/agent/prompt.ts`):
-- `full` — all sections, orchestration guidance, memory recall (channels, CLI)
-- `minimal` — cron jobs only (tooling, workspace, heartbeat, bootstrap files)
-- `minimal-subagent` — subagents (tooling, workspace, bootstrap files, focused worker guidance; no memory, heartbeats, or codebase context)
+**Prompt mode** — see [runtime.md](./runtime.md#prompt-modes) for full breakdown.
 
 **History limit** (`src/agent/history.ts`):
 - Derived from the root session key (before `:subagent:`)
@@ -34,10 +31,7 @@ Session key construction is centralized in `src/sessions/keys.ts`. Builder funct
 - Everything else: 50 turns
 - Subagents inherit the limit of their root session
 
-**Subagent spawning** (`src/sessions/keys.ts`):
-- Depth limit: `agent.subagents.maxSpawnDepth` (default 3)
-- Breadth limit: `agent.subagents.maxChildren` (default 10) active children per parent
-- Run timeout: `agent.subagents.runTimeoutSeconds` (default 300)
+**Subagent spawning** limits — see [configuration.md](./configuration.md#agent) for `agent.subagents` defaults.
 
 ## Subagent Lifecycle
 
