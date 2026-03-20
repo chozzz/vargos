@@ -30,10 +30,10 @@ src/
   # Domain modules (each owns its types, service, implementation)
   agent/         Agent service, Pi runtime, lifecycle, prompt, queue, history, context-pruning, compaction
   sessions/      Session service, file-store, keys, types
-  channels/      Channel service, delivery, factory, whatsapp/, telegram/
+  channels/      Channel service, delivery, factory, media-handler, whatsapp/, telegram/, test-utils/
   cron/          Cron service, tasks/heartbeat
   memory/        Memory service, context, sqlite/postgres storage, types
-  tools/         Tool service, registry, base, fs/, web/, agent/, memory/
+  tools/         Tool service, registry, base, lib/ (gateway-tool factory), fs/, web/, agent/ (CronExtension, SessionsExtension), memory/
   services/      Shared services (browser, process, webhooks)
 
   # Edge layers
@@ -199,21 +199,24 @@ Wraps the Pi agent runtime. Handles agent execution, streaming, and subagent spa
 
 ### Channel Service
 
-Manages external messaging adapters. Each channel type (WhatsApp, Telegram) runs as an adapter within this service.
+Manages external messaging adapters. Each adapter is a named instance (`instanceId` from `config.channels[].id`). Multiple instances of the same platform are supported (e.g., two WhatsApp accounts). Adapters extend `InboundMediaHandler` for a shared media processing pipeline.
 
 | Method | Params | Description |
 |--------|--------|-------------|
-| `channel.send` | `{ channel, userId, text }` | Send message to user |
+| `channel.send` | `{ channel, userId, text }` | Send message to user (`channel` = `instanceId`) |
+| `channel.sendMedia` | `{ channel, userId, filePath, mimeType, caption? }` | Send media file |
 | `channel.status` | `{ channel? }` | Adapter health |
-| `channel.list` | — | List active channels |
+| `channel.list` | — | List active adapters |
 
 **Events emitted:**
 
 | Event | Payload | Description |
 |-------|---------|-------------|
-| `message.received` | `{ channel, userId, sessionKey, type, content, metadata }` | Inbound message |
+| `message.received` | `{ channel, userId, sessionKey, content, metadata }` | Inbound message |
 | `channel.connected` | `{ channel }` | Adapter connected |
 | `channel.disconnected` | `{ channel, reason }` | Adapter lost connection |
+
+**Orphan recovery**: on boot, scans main channel sessions for user messages without an assistant response and re-emits them so no message is silently dropped after a crash.
 
 ### Tools Service
 
@@ -317,27 +320,30 @@ Gateway pings services periodically. If a service disconnects, its routes and su
 ### WhatsApp DM → Agent → Reply
 
 ```
-1. WhatsApp adapter receives DM
+1. WhatsApp adapter (instanceId="whatsapp-personal") receives DM from 614...
 2. Channel service emits:
    { type: "event", source: "channel", event: "message.received",
-     payload: { channel: "whatsapp", userId: "123", text: "hello", sessionKey: "wa:123" } }
+     payload: { channel: "whatsapp-personal", userId: "61423222658",
+                sessionKey: "whatsapp-personal:61423222658", content: "hello" } }
 
 3. Gateway routes to agent service (subscribed to "message.received")
 
 4. Agent service calls tools:
    { type: "req", target: "tools", method: "tool.execute",
-     params: { name: "read", args: { path: "/foo" }, context: { sessionKey: "wa:123" } } }
+     params: { name: "read", args: { path: "/foo" },
+               context: { sessionKey: "whatsapp-personal:61423222658" } } }
 
 5. Tools service responds:
    { type: "res", id: "...", ok: true, payload: { content: [...] } }
 
 6. Agent streams to UI:
    { type: "event", source: "agent", event: "run.delta",
-     payload: { sessionKey: "wa:123", delta: "Based on the file..." } }
+     payload: { sessionKey: "whatsapp-personal:61423222658", delta: "Based on the file..." } }
 
 7. Agent calls channel to reply:
    { type: "req", target: "channel", method: "channel.send",
-     params: { channel: "whatsapp", userId: "123", text: "Here's what I found..." } }
+     params: { channel: "whatsapp-personal", userId: "61423222658",
+               text: "Here's what I found..." } }
 ```
 
 ### Cron Trigger → Agent Execution

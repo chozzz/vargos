@@ -180,12 +180,12 @@ export async function start(): Promise<void> {
 
   let config = await loadConfig(dataDir);
   if (!config && process.stdin.isTTY) {
-    const { runFirstRunSetup } = await import('../../config/onboard.js');
+    const { runFirstRunSetup } = await import('../onboard.js');
     await runFirstRunSetup(dataDir, workspaceDir);
     config = await loadConfig(dataDir);
   }
   if (config && !config.storage && process.stdin.isTTY) {
-    const { setupStorage } = await import('../../config/onboard.js');
+    const { setupStorage } = await import('../onboard.js');
     await setupStorage(dataDir);
     config = await loadConfig(dataDir);
   }

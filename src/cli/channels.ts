@@ -37,7 +37,7 @@ export async function send(args?: string[]): Promise<void> {
 }
 
 export async function setup(args?: string[]): Promise<void> {
-  const { setupWhatsApp, setupTelegram } = await import('../channels/onboard.js');
+  const { setupWhatsApp, setupTelegram } = await import('./onboard-channels.js');
 
   if (args?.[0] === 'whatsapp') {
     await setupWhatsApp();
@@ -68,11 +68,11 @@ export async function setup(args?: string[]): Promise<void> {
 }
 
 export async function setupTelegram(): Promise<void> {
-  const { setupTelegram } = await import('../channels/onboard.js');
+  const { setupTelegram } = await import('./onboard-channels.js');
   await setupTelegram();
 }
 
 export async function setupWhatsApp(): Promise<void> {
-  const { setupWhatsApp } = await import('../channels/onboard.js');
+  const { setupWhatsApp } = await import('./onboard-channels.js');
   await setupWhatsApp();
 }
