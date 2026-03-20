@@ -59,7 +59,7 @@ When `notify` is set on a hook, the agent delivers its response to each target a
 }
 ```
 
-This uses the same delivery mechanism as cron task notifications — results are injected into the recipient's channel session for context, then sent via `channel.send`.
+Uses the same delivery mechanism as cron notifications — see [configuration.md](./configuration.md#cron) for details.
 
 ## CLI Commands
 

@@ -81,15 +81,7 @@ Built-in tool schemas are sent via the API tools field — only MCP external too
 
 ### Bootstrap Files
 
-Loaded from workspace directory. Max 6,000 chars each (70/20 head/tail truncation when larger):
-
-| File | Purpose |
-|------|---------|
-| `AGENTS.md` | Workspace rules, memory conventions, context discovery |
-| `SOUL.md` | Persona, identity, boundaries, user profile |
-| `TOOLS.md` | Environment-specific notes (IPs, devices, commands) |
-
-Injection order: AGENTS.md → SOUL.md → TOOLS.md. `MEMORY.md` and `HEARTBEAT.md` are not auto-injected; memory is retrieved on-demand via tools, heartbeat reads its file during cron execution.
+AGENTS.md → SOUL.md → TOOLS.md, injected in that order. Max 6,000 chars each (70/20 head/tail truncation). `MEMORY.md` and `HEARTBEAT.md` are not auto-injected. See [workspace-files.md](./workspace-files.md) for full file reference.
 
 ## Skills
 

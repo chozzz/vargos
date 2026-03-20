@@ -105,7 +105,7 @@ For MCP clients that expect stdio transport:
 }
 ```
 
-The HTTP server requires `bearerToken` for authentication. All requests must include `Authorization: Bearer <token>`. If no token is configured, the MCP HTTP server is skipped at boot (a warning is logged). CORS preflight (OPTIONS) requests are allowed without auth.
+See [configuration.md](./configuration.md#mcp) for full config reference. If `bearerToken` is not set, the HTTP server is skipped at boot.
 
 ### OpenAPI
 
@@ -186,32 +186,7 @@ Memory search uses `MemoryContext` (`memory/context.ts`) for hybrid scoring: vec
 
 Vargos connects to external MCP servers at gateway boot. Their tools are discovered automatically and available to the agent as `<server>:<tool_name>`.
 
-```jsonc
-{
-  "mcpServers": {
-    "atlassian": {
-      "command": "uvx",
-      "args": ["mcp-atlassian"],
-      "env": {
-        "JIRA_URL": "https://mycompany.atlassian.net",
-        "JIRA_USERNAME": "you@company.com",
-        "JIRA_API_TOKEN": "..."
-      }
-    },
-    "github": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-github"],
-      "env": { "GITHUB_PERSONAL_ACCESS_TOKEN": "..." }
-    }
-  }
-}
-```
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `command` | string | yes | Executable to spawn (e.g. `uvx`, `npx`) |
-| `args` | string[] | no | Command arguments |
-| `env` | object | no | Environment variables passed to the process |
+See [configuration.md](./configuration.md#mcp) for the full `mcpServers` config schema and examples.
 | `enabled` | boolean | no | Whether to connect (default: `true`) |
 
 If a server fails to start, the gateway logs a warning and continues — it won't block boot. See [configuration.md](./configuration.md) for the full config reference.
