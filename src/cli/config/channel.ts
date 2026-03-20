@@ -29,7 +29,7 @@ export async function edit(): Promise<void> {
   ]);
   if (channel === null) return;
 
-  const { setupWhatsApp, setupTelegram } = await import('../../channels/onboard.js');
+  const { setupWhatsApp, setupTelegram } = await import('../onboard-channels.js');
   if (channel === 'whatsapp') await setupWhatsApp();
   else await setupTelegram();
 }

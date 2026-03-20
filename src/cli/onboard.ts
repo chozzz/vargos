@@ -6,8 +6,8 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { intro, outro, text, select, confirm, log, isCancel } from '@clack/prompts';
-import { loadConfig, saveConfig, type ModelProfile, type StorageConfig, type VargosConfig } from './pi-config.js';
-import { LOCAL_PROVIDERS } from './validate.js';
+import { loadConfig, saveConfig, type ModelProfile, type StorageConfig, type VargosConfig } from '../config/pi-config.js';
+import { LOCAL_PROVIDERS } from '../config/validate.js';
 
 const SOUL_PLACEHOLDERS = ['[Your name]', '[Preferred name]', '[they/them, he/him, she/her, etc.]', '[e.g., UTC, EST, PST]'];
 
@@ -297,7 +297,7 @@ async function setupChannels(): Promise<void> {
   });
   if (isCancel(channel)) return;
 
-  const { setupWhatsApp, setupTelegram } = await import('../channels/onboard.js');
+  const { setupWhatsApp, setupTelegram } = await import('./onboard-channels.js');
   if (channel === 'whatsapp') await setupWhatsApp();
   else await setupTelegram();
 }

@@ -48,6 +48,8 @@
 | Feature | Status |
 |---------|--------|
 | Tool registry with extension groups | ✅ |
+| VargosExtension class pattern (CronExtension, SessionsExtension) | ✅ |
+| defineGatewayTool factory (Zod parse + RPC + format) | ✅ |
 | Pi SDK tool wrapping | ✅ |
 | Tool formatting (formatCall/formatResult) | ✅ |
 | Skills directory (SKILL.md discovery, skill_load tool) | ✅ |
@@ -108,14 +110,20 @@
 | Feature | Status |
 |---------|--------|
 | WhatsApp (Baileys, QR auth, multi-device) | ✅ |
-| Telegram (Bot API, long-polling) | ✅ |
+| Telegram (Bot API, long-polling, IPv4 forced) | ✅ |
+| Multi-instance channels (named id + type per entry) | ✅ |
+| Per-channel model override | ✅ |
 | Message deduplication (2min TTL) | ✅ |
 | Message debouncing (configurable, media flush) | ✅ |
 | Chat directives (/think, /verbose per-message) | ✅ |
 | Typing indicators (circuit breaker, TTL auto-stop) | ✅ |
 | Status reactions | ✅ |
-| User allowlisting | ✅ |
+| User allowlisting (WhatsApp + Telegram) | ✅ |
+| Auth guard — fail fast if creds missing | ✅ |
+| Orphaned message recovery on restart | ✅ |
+| Boot resilience — channel failure doesn't abort others | ✅ |
 | Media extraction + channel_send_media tool | ✅ |
+| Shared inbound media pipeline (InboundMediaHandler) | ✅ |
 | Channel onboarding (interactive QR/token setup) | ✅ |
 
 ## Media

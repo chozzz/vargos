@@ -8,13 +8,15 @@ Sessions persist conversation history and provide isolation between different in
 |--------|---------|-----------|-------------|---------------|
 | `cli:chat` | `cli:chat` | CLI `vargos chat` | full | 50 turns |
 | `cli:run:<timestamp>` | `cli:run:1708865234567` | CLI `vargos run` | full | 50 turns |
-| `whatsapp:<userId>` | `whatsapp:61423222658` | WhatsApp adapter | full | 30 turns |
-| `telegram:<chatId>` | `telegram:123456` | Telegram adapter | full | 30 turns |
+| `<instanceId>:<userId>` | `whatsapp-personal:61423222658` | Channel adapter | full | 30 turns |
+| `<instanceId>:<userId>` | `telegram-bakabit:123456` | Channel adapter | full | 30 turns |
 | `twilio:<callSid>` | `twilio:CA1234567890abcdef` | Twilio adapter (planned) | full | 30 turns |
 | `cron:<taskId>:<timestamp>` | `cron:daily-report:1708865234567` | Cron service | minimal | 10 turns |
 | `webhook:<hookId>:<timestamp>` | `webhook:github-pr:1708865234567` | Webhook service | minimal | 10 turns |
 | `<parent>:subagent:<timestamp>-<rand>` | `cli:chat:subagent:1708865240123-x7k2q` | `sessions_spawn` tool | minimal-subagent | inherits root |
 | `mcp:default` | `mcp:default` | MCP bridge | full | 50 turns |
+
+Channel session keys use the channel's `instanceId` (from `config.channels[].id`) — not the platform type. This supports multiple instances of the same platform (e.g., two WhatsApp accounts with different `id` values each get their own session namespace).
 
 Session key construction is centralized in `src/sessions/keys.ts`. Builder functions: `channelSessionKey()`, `cronSessionKey()`, `webhookSessionKey()`, `cliSessionKey()`, `subagentSessionKey()`.
 
@@ -71,16 +73,16 @@ Sessions are stored in `~/.vargos/sessions/` by `FileSessionService`. Directory 
 
 ```
 ~/.vargos/sessions/
-├── cli-chat/                      # Root session directory
-│   └── cli-chat.jsonl             # Main JSONL: metadata + messages
-├── whatsapp-61423222658/          # Another root session
-│   ├── whatsapp-61423222658.jsonl
-│   ├── subagents/                 # Subagent children
+├── cli-chat/                                    # Root session directory
+│   └── cli-chat.jsonl                           # Main JSONL: metadata + messages
+├── whatsapp-personal-61423222658/               # Channel session (instanceId:userId)
+│   ├── whatsapp-personal-61423222658.jsonl
+│   ├── subagents/                               # Subagent children
 │   │   ├── subagent-1708865240123-x7k2q/
 │   │   │   └── subagent-1708865240123-x7k2q.jsonl
 │   │   └── subagent-1708865240125-y8m3r/
 │   │       └── subagent-1708865240125-y8m3r.jsonl
-│   └── tool-results/              # Per-call results for parent session
+│   └── tool-results/                            # Per-call results for parent session
 │       ├── abc123-uuid.json
 │       └── def456-uuid.json
 └── cron-daily-report-1708865234567/
@@ -129,7 +131,7 @@ Assistant messages are enriched at write-time with metadata for fine-tuning and 
 
 - **Chat sessions** (`cli:chat`) persist across restarts — resume where you left off
 - **Run sessions** (`cli:run:<ts>`) use a unique timestamp key per invocation — each run is a fresh session
-- **Channel sessions** (`whatsapp:*`, `telegram:*`) are keyed by sender ID — one session per contact
+- **Channel sessions** (`<instanceId>:<userId>`) are keyed by sender ID per instance — one session per contact per channel instance
 - **Cron sessions** (`cron:<taskId>:<ts>`) get a fresh session per fire via timestamp suffix
 - **Webhook sessions** (`webhook:<hookId>:<ts>`) get a fresh session per fire via timestamp suffix
 - **Subagent sessions** (`*:subagent:*`) include timestamp + random suffix, always fresh

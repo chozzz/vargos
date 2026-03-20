@@ -4,13 +4,13 @@
  */
 
 import chalk from 'chalk';
-import { pickText } from '../cli/pick.js';
+import { pickText } from './pick.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { addChannelConfig } from './config.js';
+import { addChannelConfig } from '../channels/config.js';
 import { resolveChannelsDir, resolveDataDir } from '../config/paths.js';
-import { createWhatsAppSocket } from './whatsapp/session.js';
-import { TelegramAdapter } from './telegram/adapter.js';
+import { createWhatsAppSocket } from '../channels/whatsapp/session.js';
+import { TelegramAdapter } from '../channels/telegram/adapter.js';
 import type { ChannelEntry } from '../config/pi-config.js';
 import type { WASocket } from '@whiskeysockets/baileys';
 import { toMessage } from '../lib/error.js';
