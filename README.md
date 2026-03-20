@@ -191,9 +191,8 @@ pnpm lint                 # ESLint + typecheck
 - **[Architecture](./docs/architecture.md)** — Protocol spec, service contracts, message flows
 - **[Channels](./docs/channels.md)** — WhatsApp and Telegram setup
 - **[Webhooks](./docs/webhooks.md)** — Inbound HTTP triggers, transforms, routing
-- **[MCP](./docs/mcp.md)** — MCP server, tool list, client integration
+- **[MCP](./docs/mcp.md)** — MCP server, tools, client integration
 - **[Sessions](./docs/sessions.md)** — Session types, storage, lifecycle
-- **[Extensions](./docs/extensions.md)** — Tool system, writing extensions
 - **[Runtime](./docs/runtime.md)** — Agent runtime, prompt layers, streaming
 - **[Workspace Files](./docs/workspace-files.md)** — Workspace structure and files
 - **[Troubleshooting](./docs/troubleshooting.md)** — Common issues and fixes

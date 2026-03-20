@@ -21,19 +21,6 @@ vargos config channel            # Select WhatsApp
 
 Auth state is saved to `~/.vargos/channels/whatsapp/` and persists across restarts.
 
-**Config:**
-
-```jsonc
-{
-  "channels": {
-    "whatsapp": {
-      "enabled": true,
-      "allowFrom": ["+1234567890"]  // optional, empty = accept all
-    }
-  }
-}
-```
-
 **Re-link (new QR code):**
 
 ```bash
@@ -57,20 +44,6 @@ Uses the official Bot API with long-polling. No webhook setup required.
 vargos config channel            # Select Telegram, paste token
 ```
 
-**Config:**
-
-```jsonc
-{
-  "channels": {
-    "telegram": {
-      "enabled": true,
-      "botToken": "123456789:ABCdef...",
-      "allowFrom": ["987654321"]   // optional, chat IDs (not usernames)
-    }
-  }
-}
-```
-
 **Finding your chat ID:**
 
 Message your bot, then:
@@ -79,23 +52,7 @@ Message your bot, then:
 curl https://api.telegram.org/bot<TOKEN>/getUpdates | jq '.result[0].message.chat.id'
 ```
 
-## Both Channels
-
-```jsonc
-{
-  "channels": {
-    "whatsapp": {
-      "enabled": true,
-      "allowFrom": ["+1234567890"]
-    },
-    "telegram": {
-      "enabled": true,
-      "botToken": "123456789:ABCdef...",
-      "allowFrom": ["987654321"]
-    }
-  }
-}
-```
+For full channel config reference, see [configuration.md](./configuration.md#channels).
 
 ## Message Flow
 
@@ -175,4 +132,27 @@ Private/internal IPs are filtered out. Expansion failures are silently ignored.
 | Dependency | `@whiskeysockets/baileys` | None (raw fetch) |
 | Reconnect | Automatic with backoff | Automatic retry after 5s |
 
-See [configuration.md](./configuration.md) for full config reference.
+## Common Issues
+
+**WhatsApp QR won't scan:**
+
+1. Ensure your phone has internet access
+2. Try relinking: `rm -rf ~/.vargos/channels/whatsapp/ && vargos gateway restart`
+3. Scan the QR code within 30 seconds
+
+**WhatsApp disconnects after linking:**
+
+Auth state may be corrupted. Delete and re-link:
+
+```bash
+rm -rf ~/.vargos/channels/whatsapp/
+vargos gateway restart
+```
+
+The adapter reconnects automatically with exponential backoff, except for `logged_out` or `forbidden` states.
+
+**Telegram bot not responding:**
+
+1. Verify bot token: `curl https://api.telegram.org/bot<TOKEN>/getMe`
+2. Check `allowFrom` — if set, only listed chat IDs receive responses
+3. Ensure the bot hasn't been blocked or deactivated
