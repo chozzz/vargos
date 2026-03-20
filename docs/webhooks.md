@@ -10,33 +10,7 @@ Webhooks let external services trigger agent tasks via HTTP. A GitHub push, a mo
 4. Vargos creates a fresh session (`webhook:<hookId>:<timestamp>`), applies an optional transform to the payload, and fires a `webhook.trigger` event
 5. The agent service picks up the event, runs the task, and optionally delivers results to channel targets
 
-## Configuration
-
-```jsonc
-{
-  "webhooks": {
-    "port": 9002,
-    "host": "127.0.0.1",
-    "hooks": [
-      {
-        "id": "github-pr",
-        "token": "your-secret-token",
-        "description": "GitHub pull request events",
-        "transform": "./transforms/github.js",
-        "notify": ["whatsapp:614..."]
-      }
-    ]
-  }
-}
-```
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `id` | string | yes | URL-safe identifier (`[a-z0-9_-]+`) |
-| `token` | string | yes | Bearer token for authentication |
-| `transform` | string | no | Module path for custom payload transform |
-| `notify` | string[] | no | Channel targets for result delivery |
-| `description` | string | no | Human-readable description |
+For full configuration reference, see [configuration.md](./configuration.md#webhooks).
 
 ## HTTP Endpoint
 
@@ -113,4 +87,4 @@ The `webhook.trigger` event payload:
 }
 ```
 
-See [configuration.md](./configuration.md) for the full config reference and [architecture.md](./architecture.md) for the gateway protocol.
+See [architecture.md](./architecture.md) for the gateway protocol.

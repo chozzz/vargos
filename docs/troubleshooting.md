@@ -60,39 +60,6 @@ export ANTHROPIC_API_KEY=sk-...
 
 **Local providers:** Ollama and LM Studio require `"apiKey": "local"` in the model profile (dummy value for Pi SDK auth).
 
-## WhatsApp Issues
-
-**QR won't scan:**
-
-1. Ensure your phone has internet access
-2. Try relinking: `rm -rf ~/.vargos/channels/whatsapp/ && vargos gateway restart`
-3. Scan the QR code within 30 seconds
-
-**Disconnects after linking:**
-
-Auth state may be corrupted. Delete and re-link:
-
-```bash
-rm -rf ~/.vargos/channels/whatsapp/
-vargos gateway restart
-```
-
-The adapter reconnects automatically with exponential backoff, except for `logged_out` or `forbidden` states.
-
-## Telegram Issues
-
-**Bot not responding:**
-
-1. Verify bot token: `curl https://api.telegram.org/bot<TOKEN>/getMe`
-2. Check `allowFrom` — if set, only listed chat IDs receive responses
-3. Ensure the bot hasn't been blocked or deactivated
-
-**Finding chat ID:**
-
-```bash
-curl https://api.telegram.org/bot<TOKEN>/getUpdates | jq '.result[0].message.chat.id'
-```
-
 ## Empty Responses
 
 **maxTokens too low:** Increase `maxTokens` in the model profile. Some models default to very low limits.

@@ -81,7 +81,7 @@ Built-in tool schemas are sent via the API tools field — only MCP external too
 
 ### Bootstrap Files
 
-Loaded from workspace directory. Max 6,000 chars each (70/20 head/tail truncation):
+Loaded from workspace directory. Max 6,000 chars each (70/20 head/tail truncation when larger):
 
 | File | Purpose |
 |------|---------|
@@ -89,7 +89,7 @@ Loaded from workspace directory. Max 6,000 chars each (70/20 head/tail truncatio
 | `SOUL.md` | Persona, identity, boundaries, user profile |
 | `TOOLS.md` | Environment-specific notes (IPs, devices, commands) |
 
-`MEMORY.md` and `HEARTBEAT.md` are not auto-injected. Memory is retrieved on-demand via tools. Heartbeat reads HEARTBEAT.md via tool call during its cron run.
+Injection order: AGENTS.md → SOUL.md → TOOLS.md. `MEMORY.md` and `HEARTBEAT.md` are not auto-injected; memory is retrieved on-demand via tools, heartbeat reads its file during cron execution.
 
 ## Skills
 
@@ -281,4 +281,4 @@ The runtime registers models with the Pi SDK dynamically:
 
 When the model returns only thinking tokens (no text content), the runtime treats it as an empty response. For cron/webhook sessions, it retries once with a re-prompt. For channels, it skips delivery silently.
 
-See [extensions.md](./extensions.md) for tool details, [sessions.md](./sessions.md) for session lifecycle, [architecture.md](./architecture.md) for protocol spec.
+See [mcp.md](./mcp.md) for tool details, [sessions.md](./sessions.md) for session lifecycle, [architecture.md](./architecture.md) for protocol spec.

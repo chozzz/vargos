@@ -85,7 +85,7 @@ cli/           → everything (composition root)
    └───────┘ └────────┘ └─────┘ └─────┘ └──────┘ └────────┘ └──────┘
 ```
 
-The gateway is a **dumb router** — it knows nothing about agents, tools, or channels. It routes frames between services based on a registration table. Adding a service means connecting and registering, nothing else. See [extensions.md](./extensions.md) for tool implementations and channel adapters.
+The gateway is a **dumb router** — it knows nothing about agents, tools, or channels. It routes frames between services based on a registration table. Adding a service means connecting and registering, nothing else. See [mcp.md](./mcp.md) for tool implementations and channel adapters.
 
 ---
 
@@ -177,9 +177,11 @@ abstract class ServiceClient {
 
 ## Services
 
+For full event payloads and subscription flow, see [events.md](./events.md).
+
 ### Agent Service
 
-Wraps the Pi agent runtime. Handles agent execution, streaming, and subagent spawning. See [runtime.md](./runtime.md) for internals.
+Wraps the Pi agent runtime. Handles agent execution, streaming, and subagent spawning. See [runtime.md](./runtime.md) for internals. Subscribes to `message.received`, `cron.trigger`, `webhook.trigger`.
 
 | Method | Params | Description |
 |--------|--------|-------------|
@@ -187,19 +189,9 @@ Wraps the Pi agent runtime. Handles agent execution, streaming, and subagent spa
 | `agent.abort` | `{ sessionKey }` | Cancel running agent |
 | `agent.status` | `{ sessionKey }` | Check if agent is running |
 
-**Events emitted:**
-
-| Event | Payload | Description |
-|-------|---------|-------------|
-| `run.started` | `{ sessionKey, runId }` | Agent execution began |
-| `run.delta` | `{ sessionKey, runId, delta, tools?, cost? }` | Streaming text delta |
-| `run.completed` | `{ sessionKey, runId, response, success }` | Agent finished |
-
-**Subscribes to:** `message.received`, `cron.trigger`
-
 ### Channel Service
 
-Manages external messaging adapters. Each adapter is a named instance (`instanceId` from `config.channels[].id`). Multiple instances of the same platform are supported (e.g., two WhatsApp accounts). Adapters extend `InboundMediaHandler` for a shared media processing pipeline.
+Manages external messaging adapters. Each adapter is a named instance (`instanceId` from `config.channels[].id`). Multiple instances of the same platform are supported (e.g., two WhatsApp accounts). Adapters extend `InboundMediaHandler` for a shared media processing pipeline. On boot, scans main channel sessions for orphaned user messages and re-emits them so no message is silently dropped after a crash.
 
 | Method | Params | Description |
 |--------|--------|-------------|
@@ -207,16 +199,6 @@ Manages external messaging adapters. Each adapter is a named instance (`instance
 | `channel.sendMedia` | `{ channel, userId, filePath, mimeType, caption? }` | Send media file |
 | `channel.status` | `{ channel? }` | Adapter health |
 | `channel.list` | — | List active adapters |
-
-**Events emitted:**
-
-| Event | Payload | Description |
-|-------|---------|-------------|
-| `message.received` | `{ channel, userId, sessionKey, content, metadata }` | Inbound message |
-| `channel.connected` | `{ channel }` | Adapter connected |
-| `channel.disconnected` | `{ channel, reason }` | Adapter lost connection |
-
-**Orphan recovery**: on boot, scans main channel sessions for user messages without an assistant response and re-emits them so no message is silently dropped after a crash.
 
 ### Tools Service
 
@@ -241,13 +223,6 @@ Manages session state, history, and lifecycle.
 | `session.addMessage` | `{ sessionKey, role, content }` | Append message |
 | `session.getMessages` | `{ sessionKey, limit? }` | Get transcript |
 
-**Events emitted:**
-
-| Event | Payload | Description |
-|-------|---------|-------------|
-| `session.created` | `{ sessionKey, kind }` | New session |
-| `session.message` | `{ sessionKey, role, content }` | Message added |
-
 ### Cron Service
 
 Scheduled task execution. Fires events that the agent service subscribes to.
@@ -260,28 +235,14 @@ Scheduled task execution. Fires events that the agent service subscribes to.
 | `cron.remove` | `{ id }` | Remove task |
 | `cron.run` | `{ id }` | Trigger task immediately |
 
-**Events emitted:**
-
-| Event | Payload | Description |
-|-------|---------|-------------|
-| `cron.trigger` | `{ taskId, task, sessionKey, notify? }` | Task fired |
-
 ### Webhook Service
 
-Receives inbound HTTP triggers and fires agent tasks. See [webhooks.md](./webhooks.md) for configuration.
+Receives inbound HTTP triggers and fires agent tasks. See [webhooks.md](./webhooks.md) for configuration. HTTP-driven only; no subscriptions.
 
 | Method | Params | Description |
 |--------|--------|-------------|
 | `webhook.list` | — | List configured hooks (tokens stripped) |
 | `webhook.status` | — | Get fire stats for all hooks |
-
-**Events emitted:**
-
-| Event | Payload | Description |
-|-------|---------|-------------|
-| `webhook.trigger` | `{ hookId, task, sessionKey, notify }` | Webhook fired |
-
-**Subscribes to:** nothing (HTTP-driven)
 
 ### Gateway Methods
 
