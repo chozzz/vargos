@@ -22,23 +22,25 @@ Vargos is a **service-oriented system** where independent services communicate t
 ```
 src/
   # Cross-cutting infrastructure
-  lib/           Pure utilities (logger, dedupe, debounce, errors, media, mask, schedule, spinner, editor)
+  lib/           Pure utilities (logger, dedupe, debounce, errors, media, mask)
   config/        Config loading, validation, workspace, paths
-  protocol/      Wire protocol (frame types, Zod schemas)
-  gateway/       WS server, router, event bus, registry, ServiceClient base, methods/events
+  gateway/       WS server, router, event bus, registry, ServiceClient base, protocol
 
-  # Domain modules (each owns its types, service, implementation)
-  agent/         Agent service, Pi runtime, lifecycle, prompt, queue, history, context-pruning, compaction
-  sessions/      Session service, file-store, keys, types
-  channels/      Channel service, delivery, factory, media-handler, whatsapp/, telegram/, test-utils/
-  cron/          Cron service, tasks/heartbeat
-  memory/        Memory service, context, sqlite/postgres storage, types
-  tools/         Tool service, registry, base, lib/ (gateway-tool factory), fs/, web/, agent/ (CronExtension, SessionsExtension), memory/
-  services/      Shared services (browser, process, webhooks)
+  # Domain services (each owns its types, service, implementation)
+  services/
+    agent/       Agent service, Pi runtime, lifecycle, prompt, queue, history, compaction, extensions/
+    sessions/    Session service, file-store, keys, types, reaper
+    channels/    Channel service, adapters, media pipeline, whatsapp/, telegram/
+    cron/        Cron service, tasks/heartbeat
+    memory/      Memory service, context, sqlite/postgres storage, types
+    tools/       Tool service, registry, extensions (fs/, web/, agent/, memory/)
 
-  # Edge layers
-  mcp/           MCP-to-gateway RPC bridge (stdio + HTTP)
-  cli/           Composition root, interactive menu, config wizards
+  # External adapters
+  edge/
+    mcp/         MCP-to-gateway bridge (stdio + HTTP, bearer auth)
+    webhooks/    Inbound HTTP triggers
+
+  index.ts       Entry point
 ```
 
 ---
@@ -48,19 +50,17 @@ src/
 Each domain module owns its types, service client, and implementation. Domains communicate via gateway RPC — never by importing each other directly. ESLint enforces this via `no-restricted-imports`.
 
 ```
-lib/           → nothing (pure utilities)
-config/        → lib/
-protocol/      → nothing (wire format only)
-gateway/       → protocol/
-agent/         → gateway/, config/, lib/, tools/, sessions/ (DI only)
-sessions/      → gateway/, config/, lib/
-channels/      → gateway/, config/, lib/
-cron/          → gateway/, config/, lib/
-memory/        → config/, lib/
-tools/         → gateway/, config/, lib/, services/
-services/      → lib/
-mcp/           → gateway/, config/
-cli/           → everything (composition root)
+lib/                   → nothing (pure utilities)
+config/                → lib/
+gateway/               → lib/ (protocol lives here)
+services/agent/        → gateway/, config/, lib/
+services/sessions/     → gateway/, config/, lib/
+services/channels/     → gateway/, config/, lib/
+services/cron/         → gateway/, config/, lib/
+services/memory/       → config/, lib/
+services/tools/        → gateway/, config/, lib/ (+ internal browser/process)
+edge/mcp/              → gateway/, config/
+edge/webhooks/         → gateway/, config/
 ```
 
 ---
@@ -393,7 +393,7 @@ Hospitality/concierge support via TwilioAdapter:
 
 ### 4. Web UI / Observability Service (Planned)
 
-New `WebService` (`src/web/`) — a ServiceClient pattern identical to `WebhookService` and `McpBridge`:
+New `WebService` (`src/edge/web/`) — a ServiceClient pattern identical to `WebhookService` and `McpBridge`:
 - Real-time agent run streaming (deltas, tool calls via Server-Sent Events)
 - Session browser (list, read, replay)
 - Tool call history (`tool-results/<id>.json`)

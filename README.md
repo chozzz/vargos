@@ -28,15 +28,6 @@ pnpm install
 
 # Start the runtime
 pnpm start
-
-# Interactive CLI
-pnpm cli
-
-# Chat with your agent
-pnpm chat
-
-# One-shot task
-pnpm cli run "Analyze this codebase"
 ```
 
 First run prompts for LLM provider, model, and API key.
@@ -44,20 +35,17 @@ First run prompts for LLM provider, model, and API key.
 ## Architecture
 
 ```
-CLI / MCP Clients / Webhooks
+MCP Clients / Webhooks
        │
        │ WebSocket
        ▼
 ┌──────────────────────────────────────────────────────┐
-│  Gateway                                             │
-│  Request/Response/Event frames                       │
-│  Router + Event Bus + Service Registry               │
+│  Gateway  (router + event bus + service registry)    │
 └──┬───────┬───────┬───────┬───────┬───────┬───────────┘
    ▼       ▼       ▼       ▼       ▼       ▼
- Agent   Tools  Sessions Channels  Cron  Webhooks
-  │                        │
-  ▼                        ▼
-MCP Bridge          WhatsApp / Telegram
+ Agent   Tools  Sessions Channels  Cron  Memory
+
+Edge:  src/edge/mcp/  (MCP bridge)   src/edge/webhooks/  (inbound triggers)
 ```
 
 Each service is isolated — no shared state, communication only through the gateway protocol.
@@ -93,35 +81,11 @@ Each service is isolated — no shared state, communication only through the gat
 
 ## CLI
 
+```bash
+vargos        # start gateway + all services
 ```
-vargos                              Interactive menu
-vargos chat                         Chat session
-vargos run <task>                   One-shot task
-vargos health                       Config + connectivity check
 
-vargos gateway start                Start gateway + all services
-vargos gateway stop                 Stop running gateway
-vargos gateway restart              Restart gateway
-vargos gateway status               Check gateway process status
-vargos gateway inspect              Show registered services, methods, events, tools
-
-vargos config llm show|edit         LLM provider/model/key
-vargos config channel show|edit     Channel config
-vargos config context show|edit     Context files
-vargos config compaction show|edit  Context pruning & safeguard settings
-vargos config heartbeat show|edit   Heartbeat schedule
-vargos config heartbeat tasks       Edit HEARTBEAT.md
-
-vargos sessions list                Show all sessions
-vargos sessions history <key>       Show session transcript
-vargos sessions debug <key>         Show system prompt + processed history
-
-vargos channels send <target> <msg> Send a message to a channel target
-vargos cron list|add|remove|trigger Scheduled task management
-vargos cron logs [filter]           View past cron executions
-vargos webhooks list                Show configured webhooks
-vargos webhooks status              Show webhook fire stats
-```
+The interactive CLI is being rebuilt. See [docs/cli.md](./docs/cli.md).
 
 ## Configuration
 
@@ -175,19 +139,19 @@ See [docs/mcp.md](./docs/mcp.md) for transport options, OpenAPI spec, and extern
 ## Development
 
 ```bash
-pnpm install              # Install deps
-pnpm start                # Start runtime
-pnpm test                 # Tests (watch mode)
-pnpm run test:run         # Tests (single run)
-pnpm run typecheck        # TypeScript check
-pnpm lint                 # ESLint + typecheck
+pnpm install          # Install deps
+pnpm start            # Start runtime
+pnpm test             # Tests (watch mode)
+pnpm run test:run     # Tests (single run)
+pnpm run typecheck    # TypeScript check
+pnpm lint             # ESLint + typecheck
 ```
 
 ## Documentation
 
 - **[Getting Started](./docs/getting-started.md)** — Install, first run, config wizard
 - **[Configuration](./docs/configuration.md)** — Config reference, model profiles, API keys
-- **[CLI](./docs/cli.md)** — Commands, gateway lifecycle, chat/run modes
+- **[CLI](./docs/cli.md)** — Commands and gateway lifecycle
 - **[Architecture](./docs/architecture.md)** — Protocol spec, service contracts, message flows
 - **[Channels](./docs/channels.md)** — WhatsApp and Telegram setup
 - **[Webhooks](./docs/webhooks.md)** — Inbound HTTP triggers, transforms, routing

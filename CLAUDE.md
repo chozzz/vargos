@@ -15,10 +15,7 @@ See [FEATURES.md](./FEATURES.md) for a full feature inventory and status.
 pnpm install                # install deps (postinstall rebuilds better-sqlite3)
 
 # Run
-pnpm start                  # start gateway + all services (tsx src/cli/index.ts gateway start)
-pnpm cli                    # interactive CLI menu
-pnpm chat                   # start a chat session
-pnpm cli run "task"         # run a one-shot task
+pnpm start                  # start gateway + all services (tsx src/index.ts)
 
 # Build & check
 pnpm build                  # tsc
@@ -28,7 +25,7 @@ pnpm run typecheck          # tsc --noEmit
 pnpm test                   # watch mode
 pnpm run test:run           # single run
 # Run a single test file:
-npx vitest run src/agent/queue.test.ts
+npx vitest run src/services/agent/queue.test.ts
 
 # Lint
 pnpm lint                   # eslint + typecheck
@@ -40,7 +37,7 @@ pnpm lint                   # eslint + typecheck
 
 Every component is an isolated **service** that connects to a central WebSocket gateway (`src/gateway/server.ts`, default port 9000). Services communicate exclusively through typed RPC requests and pub/sub events — no shared state or cross-domain imports.
 
-Wire protocol (`src/protocol/index.ts`) defines three frame types validated with Zod:
+Wire protocol (`src/gateway/protocol.ts`) defines three frame types validated with Zod:
 - `RequestFrame` — RPC call to a target service
 - `ResponseFrame` — RPC response
 - `EventFrame` — pub/sub broadcast
@@ -51,24 +48,24 @@ All services extend `ServiceClient` (`src/gateway/service-client.ts`), which han
 
 | Service | Directory | Key Methods | Events |
 |---------|-----------|-------------|--------|
-| **agent** | `src/agent/` | `agent.run`, `agent.abort` | `run.started`, `run.delta`, `run.tool`, `run.completed` |
-| **tools** | `src/tools/` | `tool.execute`, `tool.list` | — |
-| **sessions** | `src/sessions/` | `session.list`, `session.get`, `session.create`, `session.addMessage` | `session.created`, `session.message` |
-| **channels** | `src/channels/` | `channel.send`, `channel.sendMedia`, `channel.list` | `message.received`, `channel.connected` |
-| **cron** | `src/cron/` | `cron.list`, `cron.add`, `cron.remove` | `cron.trigger` |
-| **mcp** | `src/mcp/` | MCP bridge (HTTP on port 9001 + stdio, bearer auth) | — |
+| **agent** | `src/services/agent/` | `agent.run`, `agent.abort` | `run.started`, `run.delta`, `run.tool`, `run.completed` |
+| **tools** | `src/services/tools/` | `tool.execute`, `tool.list` | — |
+| **sessions** | `src/services/sessions/` | `session.list`, `session.get`, `session.create`, `session.addMessage` | `session.created`, `session.message` |
+| **channels** | `src/services/channels/` | `channel.send`, `channel.sendMedia`, `channel.list` | `message.received`, `channel.connected` |
+| **cron** | `src/services/cron/` | `cron.list`, `cron.add`, `cron.remove` | `cron.trigger` |
+| **mcp** | `src/edge/mcp/` | MCP bridge (HTTP on port 9001 + stdio, bearer auth) | — |
 
-### Boot Sequence (`src/cli/gateway/start.ts`)
+### Boot Sequence (`src/gateway/start.ts`)
 
 GatewayServer → SessionsService → SessionReaper → MemoryContext → ToolsService → CronService → AgentService → ChannelService → McpBridge
 
 ### Agent Runtime
 
-`PiAgentRuntime` (`src/agent/runtime.ts`) wraps `@mariozechner/pi-coding-agent`. `SessionMessageQueue` serializes runs per session to prevent race conditions. System prompt (~13K chars) is assembled from workspace bootstrap files (`~/.vargos/workspace/*.md`). Built-in tool descriptions are sent via the API tools field (not duplicated in the prompt); only MCP external tools are listed in the prompt for server context. Tools are wrapped into Pi SDK format via `src/agent/extension.ts`.
+`PiAgentRuntime` (`src/services/agent/runtime.ts`) wraps `@mariozechner/pi-coding-agent`. `SessionMessageQueue` serializes runs per session to prevent race conditions. System prompt (~13K chars) is assembled from workspace bootstrap files (`~/.vargos/workspace/*.md`). Built-in tool descriptions are sent via the API tools field (not duplicated in the prompt); only MCP external tools are listed in the prompt for server context. Tools are wrapped into Pi SDK format via `src/services/agent/extension.ts`.
 
-**Pi SDK prompt ownership**: Vargos builds the system prompt before session creation and passes it to the `DefaultResourceLoader` as `systemPrompt`. This makes the SDK's `_baseSystemPrompt` our prompt (not its 40K default). `agentsFilesOverride` returns empty to prevent ancestor CLAUDE.md/AGENTS.md duplication. See `src/agent/session-setup.ts`.
+**Pi SDK prompt ownership**: Vargos builds the system prompt before session creation and passes it to the `DefaultResourceLoader` as `systemPrompt`. This makes the SDK's `_baseSystemPrompt` our prompt (not its 40K default). `agentsFilesOverride` returns empty to prevent ancestor CLAUDE.md/AGENTS.md duplication. See `src/services/agent/session-setup.ts`.
 
-**History injection pipeline** (`src/agent/history.ts`):
+**History injection pipeline** (`src/services/agent/history.ts`):
 1. Convert session messages → agent messages (inject `subagent_announce` and `media_transform` as user messages)
 2. Sanitize: repair tool result pairing, merge consecutive same-role messages
 3. Truncate oversized tool results (>30% of context window) with head+tail strategy
@@ -76,7 +73,7 @@ GatewayServer → SessionsService → SessionReaper → MemoryContext → ToolsS
 5. Turn-limit fallback: hard ceiling (30 for channels, 10 for cron, 50 for CLI)
 6. Prepend preamble when messages are dropped so agent knows context was lost
 
-**In-run compaction** (Pi SDK extensions in `src/agent/extensions/`):
+**In-run compaction** (Pi SDK extensions in `src/services/agent/extensions/`):
 - `context-pruning.ts` — strips image blocks (model doesn't support vision), soft-trims old tool results before each LLM call (head+tail at 30% ratio, hard-clear at 50%)
 - `compaction-safeguard.ts` — multi-stage hierarchical summarization when SDK triggers auto-compact
 
@@ -90,7 +87,7 @@ Parent agents delegate subtasks via `sessions_spawn` tool → child sessions run
 
 ### Tool System
 
-Tools are organized in extension groups under `src/tools/` (fs, web, agent, memory). Each tool implements:
+Tools are organized in extension groups under `src/services/tools/` (fs, web, agent, memory). Each tool implements:
 ```typescript
 interface Tool {
   name: string;
@@ -103,9 +100,9 @@ interface Tool {
 ```
 Extensions register tools via `VargosExtension.register(ctx)` → `ctx.registerTool()` into the singleton `ToolRegistry`.
 
-### Channels (`src/channels/`)
+### Channels (`src/services/channels/`)
 
-Adapters implement `ChannelAdapter` (`src/channels/types.ts`). Base class (`src/channels/base-adapter.ts`) provides shared logic.
+Adapters implement `ChannelAdapter` (`src/services/channels/types.ts`). Base class (`src/services/channels/base-adapter.ts`) provides shared logic.
 
 **Multi-instance config**: `config.channels` is an array of `ChannelEntry` objects. Each entry has `id` (unique instance name, e.g. `telegram-bakabit`) and `type` (platform, e.g. `telegram`). Multiple entries with the same `type` but different `id` are how you run two WhatsApp accounts or two Telegram bots. Session keys and adapter map keys use `id`, not `type`. Example:
 ```json
@@ -122,9 +119,9 @@ Adapters implement `ChannelAdapter` (`src/channels/types.ts`). Base class (`src/
 
 **Typing indicators**: circuit breaker stops after 3 consecutive failures; TTL safety auto-stops after 120s to prevent zombie indicators.
 
-**Status reactions** (`src/channels/status-reactions.ts`): `StatusReactionController` drives emoji reactions on the triggering message through agent phases: queued (👀) → thinking (🤔) → tool (🔧) → done (👍) / error (❗). Transient phases are debounced (500ms), terminal phases are immediate and seal the controller. Requires `react()` method on the adapter (implemented on WhatsApp via Baileys, Telegram via `setMessageReaction`).
+**Status reactions** (`src/services/channels/status-reactions.ts`): `StatusReactionController` drives emoji reactions on the triggering message through agent phases: queued (👀) → thinking (🤔) → tool (🔧) → done (👍) / error (❗). Transient phases are debounced (500ms), terminal phases are immediate and seal the controller. Requires `react()` method on the adapter (implemented on WhatsApp via Baileys, Telegram via `setMessageReaction`).
 
-**Link understanding** (`src/channels/link-expand.ts`): URLs in inbound channel messages are auto-expanded — fetched and appended as readable text under a `---\n[Expanded links]` separator. Configurable via `config.linkExpand`: `enabled`, `maxUrls` (default 3), `maxCharsPerUrl` (default 8000), `timeoutMs` (default 5000). Private/internal IPs are filtered out. Expansion failures are silently ignored.
+**Link understanding** (`src/services/channels/link-expand.ts`): URLs in inbound channel messages are auto-expanded — fetched and appended as readable text under a `---\n[Expanded links]` separator. Configurable via `config.linkExpand`: `enabled`, `maxUrls` (default 3), `maxCharsPerUrl` (default 8000), `timeoutMs` (default 5000). Private/internal IPs are filtered out. Expansion failures are silently ignored.
 
 **Media delivery**: Two mechanisms — `channel_send_media` tool (explicit, agent-initiated) and `extractMediaPaths` (passive regex fallback that scans `channel.send` text for file paths). The explicit tool is preferred; the passive path exists as a safety net.
 
@@ -136,7 +133,7 @@ Adapters implement `ChannelAdapter` (`src/channels/types.ts`). Base class (`src/
 
 ### Heartbeat
 
-Periodic maintenance cron configured under `config.heartbeat` (separate from `cron.tasks`). Registered as an ephemeral cron job at boot via `createHeartbeatTask()` in `src/cron/tasks/heartbeat.ts`. Default interval: every 30 minutes.
+Periodic maintenance cron configured under `config.heartbeat` (separate from `cron.tasks`). Registered as an ephemeral cron job at boot via `createHeartbeatTask()` in `src/services/cron/tasks/heartbeat.ts`. Default interval: every 30 minutes.
 
 **Skip logic** (zero API cost when idle): skips if outside active hours, agent is busy, or HEARTBEAT.md is empty/comments-only.
 
@@ -157,21 +154,17 @@ JSONL files in `~/.vargos/sessions/`, organized by session key:
 
 Each JSONL contains: line 0 (metadata) + remaining lines (messages). Paths are resolved centrally via `resolveSessionDir(sessionKey)` in `src/config/paths.ts`.
 
-**Session reaper** (`src/sessions/reaper.ts`): deterministic TTL-based cleanup runs at boot + every 6 hours. Deletes cron sessions >7 days and subagent sessions >3 days. Never touches `main` sessions (long-lived user/channel sessions).
+**Session reaper** (`src/services/sessions/reaper.ts`): deterministic TTL-based cleanup runs at boot + every 6 hours. Deletes cron sessions >7 days and subagent sessions >3 days. Never touches `main` sessions (long-lived user/channel sessions).
 
-### Memory System (`src/memory/`)
+### Memory System (`src/services/memory/`)
 
 Hybrid semantic + text search over `~/.vargos/workspace/*.md`. Chunks text, supports OpenAI embeddings (fallback: trigram-hash vectors) + BM25 scoring. Backends: SQLite (`better-sqlite3`) or PostgreSQL (pgvector).
-
-### CLI
-
-Command tree is data-driven in `src/cli/tree.ts` — a `MenuNode[]` array that drives both the interactive menu and CLI argument routing.
 
 ### Error Handling & Retry
 
 **Structured retry** (`src/lib/retry.ts`): `withRetry(fn, config)` wraps any async operation with exponential backoff and optional jitter. Config: `maxRetries` (default 3), `baseMs` (default 1000), `maxMs` (default 30_000), `jitter` (default true), `shouldRetry` predicate, `signal` for abort. The gateway auto-reconnect and other transient-failure paths use this utility.
 
-**Retryable error detection** (`src/agent/runtime.ts`): `isRetryableError()` identifies network errors, JSON parse failures, and HTTP 502/503/529 as safe to retry within an agent run. `promptWithRetry` retries up to 2 times with exponential backoff (1s, 2s). `config.agent.maxRetryDelayMs` (default 30s) caps server-requested retry delays via the Pi SDK.
+**Retryable error detection** (`src/services/agent/runtime.ts`): `isRetryableError()` identifies network errors, JSON parse failures, and HTTP 502/503/529 as safe to retry within an agent run. `promptWithRetry` retries up to 2 times with exponential backoff (1s, 2s). `config.agent.maxRetryDelayMs` (default 30s) caps server-requested retry delays via the Pi SDK.
 
 **Centralized error store** (`src/lib/error-store.ts`): `appendError()` persists classified errors to `~/.vargos/errors.jsonl` as append-only JSONL. Auto-classifies via `classifyError()`, sanitizes API keys. `readErrors({ sinceHours })` reads back entries with optional time filter. Hook points: runtime run failures, tool execution errors, gateway reconnect exhaustion.
 
@@ -179,11 +172,11 @@ Command tree is data-driven in `src/cli/tree.ts` — a `MenuNode[]` array that d
 
 ### Skills Directory
 
-Reusable prompt recipes stored as `~/.vargos/workspace/skills/<name>/SKILL.md` with YAML frontmatter (name, description, tags). Three-phase lifecycle: **discover** (scanner reads frontmatter at prompt-build time → manifest in system prompt) → **activate** (`skill_load` tool reads full content) → **execute** (agent follows instructions using existing tools). Agents can create new skills via `write` tool — they appear on the next run automatically. Scanner: `src/lib/skills.ts`. Prompt injection: `buildSkillsSection()` in `src/agent/prompt.ts`.
+Reusable prompt recipes stored as `~/.vargos/workspace/skills/<name>/SKILL.md` with YAML frontmatter (name, description, tags). Three-phase lifecycle: **discover** (scanner reads frontmatter at prompt-build time → manifest in system prompt) → **activate** (`skill_load` tool reads full content) → **execute** (agent follows instructions using existing tools). Agents can create new skills via `write` tool — they appear on the next run automatically. Scanner: `src/lib/skills.ts`. Prompt injection: `buildSkillsSection()` in `src/services/agent/prompt.ts`.
 
 ### Agent Definitions
 
-Lightweight routing aliases at `~/.vargos/workspace/agents/<name>.md` with YAML frontmatter only (name, description, skills[], optional model). No body — skills are the single source of behavior. When `sessions_spawn({ agent: "name" })` is called, the agent's skills are resolved, loaded, and concatenated as the sub-agent's role. Scanner: `src/lib/agents.ts`. Prompt injection: `buildAgentsSection()` in `src/agent/prompt.ts`.
+Lightweight routing aliases at `~/.vargos/workspace/agents/<name>.md` with YAML frontmatter only (name, description, skills[], optional model). No body — skills are the single source of behavior. When `sessions_spawn({ agent: "name" })` is called, the agent's skills are resolved, loaded, and concatenated as the sub-agent's role. Scanner: `src/lib/agents.ts`. Prompt injection: `buildAgentsSection()` in `src/services/agent/prompt.ts`.
 
 See [runtime.md](./docs/runtime.md) for full execution flow, skill lifecycle, and agent activation details.
 
@@ -204,12 +197,11 @@ The following features are confirmed in the roadmap but not yet implemented:
 ESLint enforces strict domain isolation via `no-restricted-imports`. Each domain directory can only import from:
 - Its own files
 - `src/lib/` (pure utilities)
-- `src/protocol/` (wire protocol types)
 - `src/config/` (configuration)
-- `src/gateway/` (service client base)
-- **Exception:** `src/tools/` may also import `src/services/`
+- `src/gateway/` (service client base + protocol)
+- **Exception:** `src/services/tools/` may also import `src/services/browser` and `src/services/process` (within tools)
 
-`src/lib/` cannot import from any domain module. Cross-domain communication must go through gateway RPC.
+`src/lib/` cannot import from any domain module. `src/edge/` adapters cannot import each other. Cross-domain communication must go through gateway RPC.
 
 ## Data Paths
 
