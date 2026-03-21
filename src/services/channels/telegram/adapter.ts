@@ -41,6 +41,7 @@ export class TelegramAdapter extends InboundMediaHandler {
   private offset = 0;
   private polling = false;
   private abortController: AbortController | null = null;
+  private latestMessageId = new Map<string, string>();
 
   constructor(instanceId: string, botToken: string, allowFrom?: string[], onInboundMessage?: OnInboundMessageFn, debounceMs?: number) {
     super(instanceId, 'telegram', allowFrom, onInboundMessage, debounceMs);
@@ -181,7 +182,15 @@ export class TelegramAdapter extends InboundMediaHandler {
     }
 
     this.log.debug(`received from ${chatId}: ${msg.text!.slice(0, 80)}`);
+    this.latestMessageId.set(chatId, String(msg.message_id));
     this.debouncer.push(chatId, msg.text!);
+  }
+
+  protected override async handleBatch(id: string, messages: string[]): Promise<void> {
+    const messageId = this.latestMessageId.get(id);
+    const text = messages.join('\n');
+    this.log.debug(`batch for ${this.instanceId}:${id}: "${text.slice(0, 80)}"`);
+    await this.routeToService(id, text, messageId ? { messageId } : undefined);
   }
 
   private async downloadFile(fileId: string): Promise<Buffer> {
