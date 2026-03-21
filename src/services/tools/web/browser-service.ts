@@ -6,8 +6,8 @@
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { chromium, Browser, Page, BrowserContext } from 'playwright';
-import { resolveDataDir } from '../config/paths.js';
-import { generateId } from '../lib/id.js';
+import { resolveDataDir } from '../../../config/paths.js';
+import { generateId } from '../../../lib/id.js';
 
 const MAX_SESSIONS = 5;
 const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes

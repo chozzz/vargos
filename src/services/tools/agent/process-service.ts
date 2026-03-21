@@ -5,7 +5,7 @@
 
 import { spawn, ChildProcessWithoutNullStreams } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { generateId } from '../lib/id.js';
+import { generateId } from '../../../lib/id.js';
 
 export interface ProcessSession {
   id: string;

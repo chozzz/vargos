@@ -6,7 +6,7 @@
 import { z } from 'zod';
 import { BaseTool } from '../base.js';
 import { ToolContext, ToolResult, textResult, errorResult, imageResult } from '../types.js';
-import { getBrowserService } from '../../browser.js';
+import { getBrowserService } from './browser-service.js';
 
 const BrowserAction = z.enum([
   'start', 'stop', 'list',

@@ -138,7 +138,7 @@ async function teardown(services: BootedServices, dataDir: string): Promise<void
   await services.tools.disconnect();
   await services.sessions.disconnect();
   await getMemoryContext().close().catch(() => {});
-  const { getBrowserService } = await import('../services/browser.js');
+  const { getBrowserService } = await import('../services/tools/web/browser-service.js');
   const browser = getBrowserService();
   await browser.closeAll().catch(() => {});
   browser.dispose();

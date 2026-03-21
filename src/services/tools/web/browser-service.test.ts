@@ -33,7 +33,7 @@ vi.mock('playwright', () => {
   };
 });
 
-import { BrowserService } from './browser.js';
+import { BrowserService } from './browser-service.js';
 
 let service: BrowserService;
 
