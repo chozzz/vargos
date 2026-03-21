@@ -20,7 +20,7 @@ import { timingSafeEqual, createHash } from 'node:crypto';
 import { ServiceClient } from '../../gateway/service-client.js';
 import { toMessage } from '../../lib/error.js';
 import { resolveWorkspaceDir } from '../../config/paths.js';
-import type { ToolResult } from '../../tools/types.js';
+import type { ToolResult } from '../../services/tools/types.js';
 
 interface ToolSchema { name: string; description: string; parameters: Record<string, unknown> }
 

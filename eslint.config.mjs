@@ -24,103 +24,102 @@ export default tseslint.config(
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
-          group: ["*/agent/*", "*/sessions/*", "*/channels/*", "*/cron/*", "*/memory/*", "*/tools/*", "*/services/*", "*/gateway/*", "*/edge/*"],
+          group: ["*/services/*", "*/gateway/*", "*/edge/*", "*/config/*"],
           message: "lib/ is pure utilities — cannot import from domain or infrastructure modules",
         }],
       }],
     },
   },
-  // agent/ — communicates with other domains via gateway RPC only
+  // services/agent/ — communicates with other domains via gateway RPC only
   {
-    files: ["src/agent/**/*.ts"],
-    ignores: ["src/agent/**/*.test.ts"],
+    files: ["src/services/agent/**/*.ts"],
+    ignores: ["src/services/agent/**/*.test.ts"],
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
-          group: ["*/channels/*", "*/cron/*", "*/memory/*", "*/edge/*"],
+          group: ["*/services/channels/*", "*/services/cron/*", "*/services/memory/*", "*/edge/*"],
           message: "agent/ communicates with other domains via gateway RPC only",
         }],
       }],
     },
   },
-  // sessions/ — no cross-domain imports
+  // services/sessions/ — no cross-domain imports
   {
-    files: ["src/sessions/**/*.ts"],
-    ignores: ["src/sessions/**/*.test.ts"],
+    files: ["src/services/sessions/**/*.ts"],
+    ignores: ["src/services/sessions/**/*.test.ts"],
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
-          group: ["*/agent/*", "*/channels/*", "*/cron/*", "*/memory/*", "*/tools/*", "*/services/*", "*/edge/*"],
+          group: ["*/services/agent/*", "*/services/channels/*", "*/services/cron/*", "*/services/memory/*", "*/services/tools/*", "*/edge/*"],
           message: "sessions/ communicates with other domains via gateway RPC only",
         }],
       }],
     },
   },
-  // channels/ — no cross-domain imports
+  // services/channels/ — no cross-domain imports
   {
-    files: ["src/channels/**/*.ts"],
-    ignores: ["src/channels/**/*.test.ts"],
+    files: ["src/services/channels/**/*.ts"],
+    ignores: ["src/services/channels/**/*.test.ts"],
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
-          group: ["*/agent/*", "*/sessions/*", "*/cron/*", "*/memory/*", "*/tools/*", "*/services/*", "*/edge/*"],
+          group: ["*/services/agent/*", "*/services/sessions/*", "*/services/cron/*", "*/services/memory/*", "*/services/tools/*", "*/edge/*"],
           message: "channels/ communicates with other domains via gateway RPC only",
         }],
       }],
     },
   },
-  // cron/ — no cross-domain imports
+  // services/cron/ — no cross-domain imports
   {
-    files: ["src/cron/**/*.ts"],
-    ignores: ["src/cron/**/*.test.ts"],
+    files: ["src/services/cron/**/*.ts"],
+    ignores: ["src/services/cron/**/*.test.ts"],
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
-          group: ["*/agent/*", "*/sessions/*", "*/channels/*", "*/memory/*", "*/tools/*", "*/services/*", "*/edge/*"],
+          group: ["*/services/agent/*", "*/services/sessions/*", "*/services/channels/*", "*/services/memory/*", "*/services/tools/*", "*/edge/*"],
           message: "cron/ communicates with other domains via gateway RPC only",
         }],
       }],
     },
   },
-  // memory/ — no cross-domain imports
+  // services/memory/ — no cross-domain imports
   {
-    files: ["src/memory/**/*.ts"],
-    ignores: ["src/memory/**/*.test.ts"],
+    files: ["src/services/memory/**/*.ts"],
+    ignores: ["src/services/memory/**/*.test.ts"],
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
-          group: ["*/agent/*", "*/sessions/*", "*/channels/*", "*/cron/*", "*/tools/*", "*/services/*", "*/edge/*"],
+          group: ["*/services/agent/*", "*/services/sessions/*", "*/services/channels/*", "*/services/cron/*", "*/services/tools/*", "*/edge/*"],
           message: "memory/ communicates with other domains via gateway RPC only",
         }],
       }],
     },
   },
-  // tools/ — can import services/ (ProcessService, BrowserService)
+  // services/tools/ — can import services/browser + services/process
   {
-    files: ["src/tools/**/*.ts"],
-    ignores: ["src/tools/**/*.test.ts"],
+    files: ["src/services/tools/**/*.ts"],
+    ignores: ["src/services/tools/**/*.test.ts"],
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
-          group: ["*/agent/*", "*/sessions/*", "*/channels/*", "*/cron/*", "*/memory/*", "*/edge/*"],
-          message: "tools/ cannot import from other domain modules (except services/)",
+          group: ["*/services/agent/*", "*/services/sessions/*", "*/services/channels/*", "*/services/cron/*", "*/services/memory/*", "*/edge/*"],
+          message: "tools/ cannot import from other domain services (browser/process are allowed)",
         }],
       }],
     },
   },
-  // edge/ — can import gateway/ and domain services but not cross-edge
+  // edge/ — external adapters, can talk to gateway and services
   {
     files: ["src/edge/**/*.ts"],
     ignores: ["src/edge/**/*.test.ts"],
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
-          group: ["*/cli/*"],
-          message: "edge/ adapters cannot import from cli/",
+          group: ["*/edge/mcp/*", "*/edge/webhooks/*"],
+          message: "edge adapters cannot import from each other",
         }],
       }],
     },
   },
-  // gateway/ — can import all domains (it's the orchestration layer)
-  // No restrictions needed; gateway/start.ts intentionally imports everything
+  // gateway/ — orchestration layer, no restrictions (intentionally imports everything)
 );

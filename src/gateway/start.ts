@@ -1,27 +1,27 @@
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { GatewayServer } from './server.js';
-import { ToolsService } from '../tools/service.js';
-import { SessionsService } from '../sessions/service.js';
-import { CronService } from '../cron/service.js';
-import { ChannelService } from '../channels/service.js';
-import type { OnInboundMessageFn } from '../channels/types.js';
-import { AgentService } from '../agent/service.js';
+import { ToolsService } from '../services/tools/service.js';
+import { SessionsService } from '../services/sessions/service.js';
+import { CronService } from '../services/cron/service.js';
+import { ChannelService } from '../services/channels/service.js';
+import type { OnInboundMessageFn } from '../services/channels/types.js';
+import { AgentService } from '../services/agent/service.js';
 import { McpBridge } from '../edge/mcp/server.js';
-import { toolRegistry } from '../tools/registry.js';
-import { FileSessionService } from '../sessions/file-store.js';
-import { PiAgentRuntime } from '../agent/runtime.js';
-import { initializeMemoryContext, getMemoryContext } from '../memory/context.js';
+import { toolRegistry } from '../services/tools/registry.js';
+import { FileSessionService } from '../services/sessions/file-store.js';
+import { PiAgentRuntime } from '../services/agent/runtime.js';
+import { initializeMemoryContext, getMemoryContext } from '../services/memory/context.js';
 import { resolveDataDir, resolveWorkspaceDir, resolveCacheDir, resolveGatewayUrl, initPaths } from '../config/paths.js';
-import type { MemoryStorage } from '../memory/types.js';
+import type { MemoryStorage } from '../services/memory/types.js';
 import { loadConfig, saveConfig } from '../config/pi-config.js';
 import type { VargosConfig } from '../config/pi-config.js';
 import { validateConfig, checkLocalProvider } from '../config/validate.js';
 import { initializeWorkspace, isWorkspaceInitialized } from '../config/workspace.js';
-import type { ExtensionContext } from '../tools/extension.js';
-import { setGatewayCall } from '../agent/extension.js';
+import type { ExtensionContext } from '../services/tools/extension.js';
+import { setGatewayCall } from '../services/agent/extension.js';
 import { extractLoaderArgs } from '../lib/loader-args.js';
-import { reapSessions } from '../sessions/reaper.js';
+import { reapSessions } from '../services/sessions/reaper.js';
 import { acquireLock, releaseLock } from './lock.js';
 import { toMessage, classifyError, sanitizeError } from '../lib/error.js';
 import { writePidFile, removePidFile } from './pid.js';
@@ -75,7 +75,7 @@ async function resolveMemoryStorage(config: VargosConfig, dataDir: string, log: 
   const storageType = config.storage?.type ?? 'sqlite';
   if (storageType === 'postgres' && config.storage?.url) {
     try {
-      const { MemoryPostgresStorage } = await import('../memory/postgres-storage.js');
+      const { MemoryPostgresStorage } = await import('../services/memory/postgres-storage.js');
       const pg = new MemoryPostgresStorage({ url: config.storage.url });
       await pg.initialize();
       return pg;
@@ -83,7 +83,7 @@ async function resolveMemoryStorage(config: VargosConfig, dataDir: string, log: 
       log(`  ⚠ PostgreSQL unavailable (${sanitizeError(toMessage(err))}) — falling back to SQLite`);
     }
   }
-  const { MemorySQLiteStorage } = await import('../memory/sqlite-storage.js');
+  const { MemorySQLiteStorage } = await import('../services/memory/sqlite-storage.js');
   return new MemorySQLiteStorage({ dbPath: path.join(resolveCacheDir(), 'memory.db') });
 }
 
@@ -95,10 +95,10 @@ interface InitToolsOpts {
 async function initTools(opts: InitToolsOpts): Promise<{ tools: ToolsService; toolCounts: Record<string, number> }> {
   const toolCounts: Record<string, number> = {};
   const extensionModules = await Promise.all([
-    import('../tools/fs/index.js'),
-    import('../tools/web/index.js'),
-    import('../tools/agent/index.js'),
-    import('../tools/memory/index.js'),
+    import('../services/tools/fs/index.js'),
+    import('../services/tools/web/index.js'),
+    import('../services/tools/agent/index.js'),
+    import('../services/tools/memory/index.js'),
   ]);
   for (let i = 0; i < extensionModules.length; i++) {
     const before = toolRegistry.list().length;
@@ -281,7 +281,7 @@ export async function start(): Promise<void> {
   serviceStatuses.push({ name: 'Agent', ok: true });
 
   if (config.heartbeat?.enabled) {
-    const { createHeartbeatTask } = await import('../cron/tasks/heartbeat.js');
+    const { createHeartbeatTask } = await import('../services/cron/tasks/heartbeat.js');
     createHeartbeatTask(cron, config.heartbeat, workspaceDir, () => runtime.listActiveRuns().length);
   }
 
@@ -302,7 +302,7 @@ export async function start(): Promise<void> {
   await channels.connect();
 
   if (config.channels) {
-    const { createAdapter } = await import('../channels/factory.js');
+    const { createAdapter } = await import('../services/channels/factory.js');
     const onInbound: OnInboundMessageFn = (ch, userId, content, metadata) =>
       channels.onInboundMessage(ch, userId, content, metadata);
     for (const chConfig of config.channels) {
