@@ -240,7 +240,7 @@ export class WhatsAppAdapter extends InboundMediaHandler {
       msg,
       userId,
       sessionKey,
-      (text, metadata) => this.routeToService(userId, text, metadata),
+      (text, metadata) => this.routeToService(userId, text, { ...metadata, messageId: msg.messageId }),
     );
   }
 

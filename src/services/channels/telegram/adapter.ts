@@ -236,7 +236,7 @@ export class TelegramAdapter extends InboundMediaHandler {
         { tgMsg: msg, chatId },
         chatId,
         sessionKey,
-        (text, metadata) => this.routeToService(chatId, text, metadata),
+        (text, metadata) => this.routeToService(chatId, text, { ...metadata, messageId: String(msg.message_id) }),
       );
     } catch (err) {
       this.log.debug(`${label} download failed for ${chatId}: ${err}`);
