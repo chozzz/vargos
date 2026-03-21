@@ -3,7 +3,7 @@
  */
 
 import type { WebSocket } from 'ws';
-import type { ServiceRegistration } from '../protocol/index.js';
+import type { ServiceRegistration } from './protocol.js';
 
 interface ServiceEntry {
   registration: ServiceRegistration;

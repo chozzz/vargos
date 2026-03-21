@@ -12,7 +12,7 @@ import {
   type ResponseFrame,
   type EventFrame,
   type Frame,
-} from '../protocol/index.js';
+} from './protocol.js';
 import { Router } from './router.js';
 import { EventBus } from './bus.js';
 import { ServiceRegistry } from './registry.js';

@@ -14,7 +14,7 @@ import {
   type ResponseFrame,
   type Frame,
   type ServiceRegistration,
-} from '../protocol/index.js';
+} from './protocol.js';
 import { Reconnector } from '../lib/reconnect.js';
 import { toMessage } from '../lib/error.js';
 import { appendError } from '../lib/error-store.js';

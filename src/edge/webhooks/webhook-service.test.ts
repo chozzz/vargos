@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { GatewayServer } from '../gateway/server.js';
-import { ServiceClient } from '../gateway/service-client.js';
+import { GatewayServer } from '../../gateway/server.js';
+import { ServiceClient } from '../../gateway/service-client.js';
 import { WebhookService } from './service.js';
 import { passthroughTransform, loadTransform } from './transform.js';
 import type { WebhookHook, WebhookStatus } from './types.js';

@@ -10,9 +10,9 @@
 
 import http from 'node:http';
 import { timingSafeEqual, createHash } from 'node:crypto';
-import { ServiceClient } from '../gateway/service-client.js';
-import { webhookSessionKey } from '../sessions/keys.js';
-import { createLogger } from '../lib/logger.js';
+import { ServiceClient } from '../../gateway/service-client.js';
+import { webhookSessionKey } from '../../sessions/keys.js';
+import { createLogger } from '../../lib/logger.js';
 import { passthroughTransform, loadTransform } from './transform.js';
 import type { WebhookHook, WebhookStatus } from './types.js';
 

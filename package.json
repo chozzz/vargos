@@ -29,12 +29,10 @@
     "CONTRIBUTING.md"
   ],
   "bin": {
-    "vargos": "./dist/cli/index.js"
+    "vargos": "./dist/index.js"
   },
   "scripts": {
-    "start": "tsx src/cli/index.ts gateway start",
-    "cli": "tsx src/cli/index.ts",
-    "chat": "tsx src/cli/index.ts chat",
+    "start": "tsx src/index.ts",
     "build": "tsc",
     "prepare": "tsc",
     "test": "vitest",

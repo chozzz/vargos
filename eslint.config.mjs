@@ -24,21 +24,20 @@ export default tseslint.config(
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
-          group: ["*/agent/*", "*/sessions/*", "*/channels/*", "*/cron/*", "*/memory/*", "*/tools/*", "*/services/*", "*/gateway/*", "*/mcp/*", "*/cli/*"],
+          group: ["*/agent/*", "*/sessions/*", "*/channels/*", "*/cron/*", "*/memory/*", "*/tools/*", "*/services/*", "*/gateway/*", "*/edge/*"],
           message: "lib/ is pure utilities — cannot import from domain or infrastructure modules",
         }],
       }],
     },
   },
   // agent/ — communicates with other domains via gateway RPC only
-  // Exception: agent/runtime.ts takes ISessionService via DI
   {
     files: ["src/agent/**/*.ts"],
     ignores: ["src/agent/**/*.test.ts"],
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
-          group: ["*/channels/*", "*/cron/*", "*/memory/*", "*/mcp/*", "*/cli/*"],
+          group: ["*/channels/*", "*/cron/*", "*/memory/*", "*/edge/*"],
           message: "agent/ communicates with other domains via gateway RPC only",
         }],
       }],
@@ -51,20 +50,20 @@ export default tseslint.config(
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
-          group: ["*/agent/*", "*/channels/*", "*/cron/*", "*/memory/*", "*/tools/*", "*/services/*", "*/mcp/*", "*/cli/*"],
+          group: ["*/agent/*", "*/channels/*", "*/cron/*", "*/memory/*", "*/tools/*", "*/services/*", "*/edge/*"],
           message: "sessions/ communicates with other domains via gateway RPC only",
         }],
       }],
     },
   },
-  // channels/ — no cross-domain imports (except gateway for RPC types)
+  // channels/ — no cross-domain imports
   {
     files: ["src/channels/**/*.ts"],
     ignores: ["src/channels/**/*.test.ts"],
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
-          group: ["*/agent/*", "*/sessions/*", "*/cron/*", "*/memory/*", "*/tools/*", "*/services/*", "*/mcp/*", "*/cli/*"],
+          group: ["*/agent/*", "*/sessions/*", "*/cron/*", "*/memory/*", "*/tools/*", "*/services/*", "*/edge/*"],
           message: "channels/ communicates with other domains via gateway RPC only",
         }],
       }],
@@ -77,7 +76,7 @@ export default tseslint.config(
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
-          group: ["*/agent/*", "*/sessions/*", "*/channels/*", "*/memory/*", "*/tools/*", "*/services/*", "*/mcp/*", "*/cli/*"],
+          group: ["*/agent/*", "*/sessions/*", "*/channels/*", "*/memory/*", "*/tools/*", "*/services/*", "*/edge/*"],
           message: "cron/ communicates with other domains via gateway RPC only",
         }],
       }],
@@ -90,7 +89,7 @@ export default tseslint.config(
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
-          group: ["*/agent/*", "*/sessions/*", "*/channels/*", "*/cron/*", "*/tools/*", "*/services/*", "*/mcp/*", "*/cli/*"],
+          group: ["*/agent/*", "*/sessions/*", "*/channels/*", "*/cron/*", "*/tools/*", "*/services/*", "*/edge/*"],
           message: "memory/ communicates with other domains via gateway RPC only",
         }],
       }],
@@ -103,10 +102,25 @@ export default tseslint.config(
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
-          group: ["*/agent/*", "*/sessions/*", "*/channels/*", "*/cron/*", "*/memory/*", "*/mcp/*", "*/cli/*"],
+          group: ["*/agent/*", "*/sessions/*", "*/channels/*", "*/cron/*", "*/memory/*", "*/edge/*"],
           message: "tools/ cannot import from other domain modules (except services/)",
         }],
       }],
     },
   },
+  // edge/ — can import gateway/ and domain services but not cross-edge
+  {
+    files: ["src/edge/**/*.ts"],
+    ignores: ["src/edge/**/*.test.ts"],
+    rules: {
+      "no-restricted-imports": ["error", {
+        patterns: [{
+          group: ["*/cli/*"],
+          message: "edge/ adapters cannot import from cli/",
+        }],
+      }],
+    },
+  },
+  // gateway/ — can import all domains (it's the orchestration layer)
+  // No restrictions needed; gateway/start.ts intentionally imports everything
 );
