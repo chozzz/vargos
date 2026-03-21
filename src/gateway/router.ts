@@ -3,7 +3,7 @@
  */
 
 import type { WebSocket } from 'ws';
-import type { RequestFrame } from '../protocol/index.js';
+import type { RequestFrame } from './protocol.js';
 
 export class Router {
   private routes = new Map<string, WebSocket>();

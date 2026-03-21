@@ -6,12 +6,12 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { z } from 'zod';
-import type { McpServerEntry } from '../config/pi-config.js';
-import type { ToolRegistry } from '../tools/registry.js';
-import type { Tool, ToolContent, ToolResult } from '../tools/types.js';
-import { errorResult } from '../tools/types.js';
-import { createLogger } from '../lib/logger.js';
-import { toMessage } from '../lib/error.js';
+import type { McpServerEntry } from '../../config/pi-config.js';
+import type { ToolRegistry } from '../../tools/registry.js';
+import type { Tool, ToolContent, ToolResult } from '../../tools/types.js';
+import { errorResult } from '../../tools/types.js';
+import { createLogger } from '../../lib/logger.js';
+import { toMessage } from '../../lib/error.js';
 
 const log = createLogger('mcp');
 

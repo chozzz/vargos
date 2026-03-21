@@ -17,10 +17,10 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import http from 'node:http';
 import { timingSafeEqual, createHash } from 'node:crypto';
-import { ServiceClient } from '../gateway/service-client.js';
-import { toMessage } from '../lib/error.js';
-import { resolveWorkspaceDir } from '../config/paths.js';
-import type { ToolResult } from '../tools/types.js';
+import { ServiceClient } from '../../gateway/service-client.js';
+import { toMessage } from '../../lib/error.js';
+import { resolveWorkspaceDir } from '../../config/paths.js';
+import type { ToolResult } from '../../tools/types.js';
 
 interface ToolSchema { name: string; description: string; parameters: Record<string, unknown> }
 

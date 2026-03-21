@@ -1,41 +1,40 @@
 import path from 'node:path';
 import { createRequire } from 'node:module';
-import { GatewayServer } from '../../gateway/server.js';
-import { ToolsService } from '../../tools/service.js';
-import { SessionsService } from '../../sessions/service.js';
-import { CronService } from '../../cron/service.js';
-import { ChannelService } from '../../channels/service.js';
-import type { OnInboundMessageFn } from '../../channels/types.js';
-import { AgentService } from '../../agent/service.js';
-import { McpBridge } from '../../mcp/server.js';
-import { toolRegistry } from '../../tools/registry.js';
-import { FileSessionService } from '../../sessions/file-store.js';
-import { PiAgentRuntime } from '../../agent/runtime.js';
-import { initializeMemoryContext, getMemoryContext } from '../../memory/context.js';
-import { resolveDataDir, resolveWorkspaceDir, resolveCacheDir, resolveGatewayUrl, initPaths } from '../../config/paths.js';
-import type { MemoryStorage } from '../../memory/types.js';
-import { loadConfig, saveConfig } from '../../config/pi-config.js';
-import type { VargosConfig } from '../../config/pi-config.js';
-import { validateConfig, checkLocalProvider } from '../../config/validate.js';
-import { initializeWorkspace, isWorkspaceInitialized } from '../../config/workspace.js';
-import type { ExtensionContext } from '../../tools/extension.js';
-import { setGatewayCall } from '../../agent/extension.js';
-import { extractLoaderArgs } from '../../lib/loader-args.js';
-import { reapSessions } from '../../sessions/reaper.js';
-import { acquireLock, releaseLock } from '../lock.js';
-import { toMessage, classifyError, sanitizeError } from '../../lib/error.js';
-import { writePidFile, removePidFile } from '../pid.js';
+import { GatewayServer } from './server.js';
+import { ToolsService } from '../tools/service.js';
+import { SessionsService } from '../sessions/service.js';
+import { CronService } from '../cron/service.js';
+import { ChannelService } from '../channels/service.js';
+import type { OnInboundMessageFn } from '../channels/types.js';
+import { AgentService } from '../agent/service.js';
+import { McpBridge } from '../edge/mcp/server.js';
+import { toolRegistry } from '../tools/registry.js';
+import { FileSessionService } from '../sessions/file-store.js';
+import { PiAgentRuntime } from '../agent/runtime.js';
+import { initializeMemoryContext, getMemoryContext } from '../memory/context.js';
+import { resolveDataDir, resolveWorkspaceDir, resolveCacheDir, resolveGatewayUrl, initPaths } from '../config/paths.js';
+import type { MemoryStorage } from '../memory/types.js';
+import { loadConfig, saveConfig } from '../config/pi-config.js';
+import type { VargosConfig } from '../config/pi-config.js';
+import { validateConfig, checkLocalProvider } from '../config/validate.js';
+import { initializeWorkspace, isWorkspaceInitialized } from '../config/workspace.js';
+import type { ExtensionContext } from '../tools/extension.js';
+import { setGatewayCall } from '../agent/extension.js';
+import { extractLoaderArgs } from '../lib/loader-args.js';
+import { reapSessions } from '../sessions/reaper.js';
+import { acquireLock, releaseLock } from './lock.js';
+import { toMessage, classifyError, sanitizeError } from '../lib/error.js';
+import { writePidFile, removePidFile } from './pid.js';
 import {
   renderBanner,
   renderServices,
   renderMcp,
   renderReady,
-  renderNextSteps,
   type ServiceStatus,
-} from '../banner.js';
+} from './banner.js';
 
 const require = createRequire(import.meta.url);
-const { version: VERSION } = require('../../../package.json');
+const { version: VERSION } = require('../../package.json');
 
 const TOOL_GROUPS = ['fs', 'web', 'agent', 'memory'] as const;
 
@@ -68,15 +67,15 @@ interface BootedServices {
   agent: AgentService;
   channels: ChannelService;
   mcpBridge: McpBridge;
-  mcpClients: import('../../mcp/client.js').McpClientManager;
-  webhooks?: import('../../webhooks/service.js').WebhookService;
+  mcpClients: import('../edge/mcp/client.js').McpClientManager;
+  webhooks?: import('../edge/webhooks/service.js').WebhookService;
 }
 
 async function resolveMemoryStorage(config: VargosConfig, dataDir: string, log: (s: string) => void): Promise<MemoryStorage> {
   const storageType = config.storage?.type ?? 'sqlite';
   if (storageType === 'postgres' && config.storage?.url) {
     try {
-      const { MemoryPostgresStorage } = await import('../../memory/postgres-storage.js');
+      const { MemoryPostgresStorage } = await import('../memory/postgres-storage.js');
       const pg = new MemoryPostgresStorage({ url: config.storage.url });
       await pg.initialize();
       return pg;
@@ -84,7 +83,7 @@ async function resolveMemoryStorage(config: VargosConfig, dataDir: string, log: 
       log(`  ⚠ PostgreSQL unavailable (${sanitizeError(toMessage(err))}) — falling back to SQLite`);
     }
   }
-  const { MemorySQLiteStorage } = await import('../../memory/sqlite-storage.js');
+  const { MemorySQLiteStorage } = await import('../memory/sqlite-storage.js');
   return new MemorySQLiteStorage({ dbPath: path.join(resolveCacheDir(), 'memory.db') });
 }
 
@@ -96,10 +95,10 @@ interface InitToolsOpts {
 async function initTools(opts: InitToolsOpts): Promise<{ tools: ToolsService; toolCounts: Record<string, number> }> {
   const toolCounts: Record<string, number> = {};
   const extensionModules = await Promise.all([
-    import('../../tools/fs/index.js'),
-    import('../../tools/web/index.js'),
-    import('../../tools/agent/index.js'),
-    import('../../tools/memory/index.js'),
+    import('../tools/fs/index.js'),
+    import('../tools/web/index.js'),
+    import('../tools/agent/index.js'),
+    import('../tools/memory/index.js'),
   ]);
   for (let i = 0; i < extensionModules.length; i++) {
     const before = toolRegistry.list().length;
@@ -139,7 +138,7 @@ async function teardown(services: BootedServices, dataDir: string): Promise<void
   await services.tools.disconnect();
   await services.sessions.disconnect();
   await getMemoryContext().close().catch(() => {});
-  const { getBrowserService } = await import('../../services/browser.js');
+  const { getBrowserService } = await import('../services/browser.js');
   const browser = getBrowserService();
   await browser.closeAll().catch(() => {});
   browser.dispose();
@@ -178,19 +177,9 @@ export async function start(): Promise<void> {
     await initializeWorkspace({ workspaceDir });
   }
 
-  let config = await loadConfig(dataDir);
-  if (!config && process.stdin.isTTY) {
-    const { runFirstRunSetup } = await import('../onboard.js');
-    await runFirstRunSetup(dataDir, workspaceDir);
-    config = await loadConfig(dataDir);
-  }
-  if (config && !config.storage && process.stdin.isTTY) {
-    const { setupStorage } = await import('../onboard.js');
-    await setupStorage(dataDir);
-    config = await loadConfig(dataDir);
-  }
+  const config = await loadConfig(dataDir);
   if (!config) {
-    log('  No config found. Run: vargos config');
+    log('  No config found. Create ~/.vargos/config.json to get started.');
     process.exit(1);
   }
 
@@ -201,7 +190,7 @@ export async function start(): Promise<void> {
     process.exit(1);
   }
 
-  const { resolveModel } = await import('../../config/pi-config.js');
+  const { resolveModel } = await import('../config/pi-config.js');
   const primary = resolveModel(config);
   const primaryName = config.agent.primary;
 
@@ -255,7 +244,7 @@ export async function start(): Promise<void> {
     gatewayUrl,
   });
 
-  const { McpClientManager } = await import('../../mcp/client.js');
+  const { McpClientManager } = await import('../edge/mcp/client.js');
   const mcpClients = new McpClientManager(toolRegistry);
   const mcpServerCount = await mcpClients.connectAll(config.mcpServers);
   if (mcpServerCount > 0) {
@@ -292,7 +281,7 @@ export async function start(): Promise<void> {
   serviceStatuses.push({ name: 'Agent', ok: true });
 
   if (config.heartbeat?.enabled) {
-    const { createHeartbeatTask } = await import('../../cron/tasks/heartbeat.js');
+    const { createHeartbeatTask } = await import('../cron/tasks/heartbeat.js');
     createHeartbeatTask(cron, config.heartbeat, workspaceDir, () => runtime.listActiveRuns().length);
   }
 
@@ -313,7 +302,7 @@ export async function start(): Promise<void> {
   await channels.connect();
 
   if (config.channels) {
-    const { createAdapter } = await import('../../channels/factory.js');
+    const { createAdapter } = await import('../channels/factory.js');
     const onInbound: OnInboundMessageFn = (ch, userId, content, metadata) =>
       channels.onInboundMessage(ch, userId, content, metadata);
     for (const chConfig of config.channels) {
@@ -335,7 +324,7 @@ export async function start(): Promise<void> {
       } catch (err) {
         const msg = toMessage(err);
         const hint = classifyChannelError(chConfig.type, msg);
-        log.error(`Channel ${chConfig.id} (${chConfig.type}) failed to start: ${msg} — ${hint}`);
+        log(`Channel ${chConfig.id} (${chConfig.type}) failed to start: ${msg} — ${hint}`);
         serviceStatuses.push({ name: 'Channel', ok: false, detail: `${chConfig.id} (${chConfig.type}) error: ${msg}` });
       }
     }
@@ -345,9 +334,9 @@ export async function start(): Promise<void> {
   channels.recoverOrphanedMessages().catch(err =>
     log(`  ⚠ message recovery failed: ${toMessage(err)}`));
 
-  let webhooks: import('../../webhooks/service.js').WebhookService | undefined;
+  let webhooks: import('../edge/webhooks/service.js').WebhookService | undefined;
   if (config.webhooks?.hooks?.length) {
-    const { WebhookService } = await import('../../webhooks/service.js');
+    const { WebhookService } = await import('../edge/webhooks/service.js');
     webhooks = new WebhookService({
       gatewayUrl,
       hooks: config.webhooks.hooks,
@@ -396,8 +385,6 @@ export async function start(): Promise<void> {
     tools: totalTools,
     bootMs: Date.now() - bootStart,
   });
-  renderNextSteps();
-
   const booted: BootedServices = { gateway, sessions, tools, cron, agent, channels, mcpBridge, mcpClients, webhooks };
 
   const shutdown = async () => {

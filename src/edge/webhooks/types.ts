@@ -1,4 +1,4 @@
-export type { WebhookHook } from '../config/pi-config.js';
+export type { WebhookHook } from '../../config/pi-config.js';
 
 export interface WebhookStatus {
   id: string;
