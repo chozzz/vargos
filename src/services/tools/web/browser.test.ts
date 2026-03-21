@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import { BrowserTool } from './browser.js';
 import { ToolContext, getFirstTextContent } from '../types.js';
-import { getBrowserService } from '../../browser.js';
+import { getBrowserService } from './browser-service.js';
 
 // Check if browser is available (cached after first call)
 let _browserAvailable: boolean | null = null;
