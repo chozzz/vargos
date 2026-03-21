@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ToolRegistry } from '../../tools/registry.js';
+import { ToolRegistry } from '../../services/tools/registry.js';
 
 // Capture listChanged config from Client constructor
 let capturedListChanged: { tools?: { onChanged: (err: Error | null, tools: unknown[]) => void } } | undefined;

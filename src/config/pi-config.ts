@@ -4,7 +4,7 @@
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { CronTaskInput } from '../cron/types.js';
+import type { CronTaskInput } from '../services/cron/types.js';
 
 const PI_AGENT_DIR = 'agent';
 const CONFIG_FILE = 'config.json';
