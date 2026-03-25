@@ -1,0 +1,106 @@
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+import { z } from 'zod';
+import { on } from '../../gateway/decorators.js';
+import type { Bus } from '../../gateway/bus.js';
+import type { EventMap, LogLevel } from '../../gateway/events.js';
+import { setLoggerBus } from '../../lib/logger.js';
+import { getDataPaths } from '../../lib/paths.js';
+import { classifyError } from '../../lib/error.js';
+
+interface LogEntry {
+  ts:       string;
+  level:    LogLevel;
+  service:  string;
+  message:  string;
+  data?:    unknown;
+}
+
+function ts(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
+         `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${Math.floor(d.getMilliseconds() / 100)}`;
+}
+
+export class LogService {
+  private logFile: string | null = null;
+  private currentDate = '';
+
+  @on('log')
+  onLog(payload: EventMap['log']): void {
+    const { level, service, message, data } = payload;
+    const line = `${ts()} [${service}] ${message}${data ? ' ' + JSON.stringify(data) : ''}`;
+    console.error(line);
+
+    if (level === 'warn' || level === 'error') {
+      this.persist({ ts: new Date().toISOString(), level, service, message, data }).catch(() => {});
+    }
+  }
+
+  @on('error.search', {
+    description: 'Search persisted log entries by level and/or service.',
+    schema: z.object({
+      sinceMs:  z.number().optional().describe('Only return entries newer than this many ms ago'),
+      service:  z.string().optional(),
+      level:    z.enum(['debug', 'info', 'warn', 'error']).optional(),
+    }),
+    format: (r) => {
+      const rows = (r as { entries: LogEntry[] }).entries;
+      return rows.length ? rows.map(e => `[${e.ts}] ${e.level} ${e.service}: ${e.message}`).join('\n') : 'No entries found.';
+    },
+  })
+  async search(params: EventMap['error.search']['params']): Promise<EventMap['error.search']['result']> {
+    const file = this.todayFile();
+    let raw: string;
+    try {
+      raw = await fs.readFile(file, 'utf-8');
+    } catch {
+      return [];
+    }
+
+    const cutoff = params.sinceMs ? new Date(Date.now() - params.sinceMs).toISOString() : undefined;
+
+    const entries = [];
+    for (const line of raw.split('\n')) {
+      if (!line.trim()) continue;
+      try {
+        const entry = JSON.parse(line) as LogEntry;
+        if (cutoff && entry.ts < cutoff) continue;
+        if (params.level && entry.level !== params.level) continue;
+        if (params.service && entry.service !== params.service) continue;
+        entries.push({
+          service:   entry.service,
+          error:     entry.message,
+          context:   entry.data as Record<string, unknown> | undefined,
+          timestamp: new Date(entry.ts).getTime(),
+        });
+      } catch { /* skip */ }
+    }
+    return entries;
+  }
+
+  private todayFile(): string {
+    const date = new Date().toISOString().slice(0, 10);
+    if (date !== this.currentDate) {
+      this.currentDate = date;
+      this.logFile = path.join(getDataPaths().logsDir, `logs-${date}.jsonl`);
+    }
+    return this.logFile!;
+  }
+
+  private async persist(entry: LogEntry): Promise<void> {
+    const file = this.todayFile();
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.appendFile(file, JSON.stringify(entry) + '\n');
+  }
+}
+
+// ── Boot ─────────────────────────────────────────────────────────────────────
+
+export async function boot(bus: Bus): Promise<{ stop?(): void }> {
+  const svc = new LogService();
+  bus.registerService(svc);
+  setLoggerBus(bus);
+  return {};
+}
