@@ -30,7 +30,7 @@ export type ChannelType   = z.infer<typeof ChannelTypeSchema>;
 
 export const ModelProfileSchema = z.object({
   name:        z.string(),
-  provider:    z.enum(['anthropic', 'openai', 'ollama', 'openrouter']),
+  provider:    z.enum(['anthropic', 'openai', 'ollama', 'openrouter', 'google']),
   model:       z.string(),
   apiKey:      z.string().optional(),
   baseUrl:     z.string().url().optional(),

@@ -32,7 +32,7 @@
     "vargos": "./dist/index.js"
   },
   "scripts": {
-    "start": "tsx src/index.ts",
+    "start": "tsx index.ts",
     "build": "tsc",
     "prepare": "tsc",
     "test": "vitest",

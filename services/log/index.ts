@@ -72,7 +72,7 @@ export class LogService {
         entries.push({
           service:   entry.service,
           error:     entry.message,
-          context:   entry.data as Record<string, unknown> | undefined,
+          context:   entry.data as import('../../gateway/events.js').Json | undefined,
           timestamp: new Date(entry.ts).getTime(),
         });
       } catch { /* skip */ }

@@ -17,7 +17,7 @@ export class WorkspaceService {
       return skills.map(s => `${s.name}: ${s.description}`).join('\n') || 'No skills found.';
     },
   })
-  async listSkills(): Promise<EventMap['workspace.listSkills']['result']> {
+  async listSkills(_params: EventMap['workspace.listSkills']['params']): Promise<EventMap['workspace.listSkills']['result']> {
     const { workspaceDir } = getDataPaths();
     return scanSkills(workspaceDir);
   }

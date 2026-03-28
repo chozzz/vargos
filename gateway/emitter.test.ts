@@ -28,6 +28,8 @@ describe('EventEmitterBus', () => {
       const bus = new EventEmitterBus();
       bus.on('session.get', async (params) => ({
         sessionKey: params.sessionKey,
+        kind: 'main' as const,
+        metadata: {},
         createdAt: new Date(),
         updatedAt: new Date(),
       }));
@@ -52,6 +54,7 @@ describe('EventEmitterBus', () => {
       bus.on('session.get', async (params) => ({
         sessionKey: params.sessionKey,
         kind: 'main' as const,
+        metadata: {},
         createdAt: new Date(),
         updatedAt: new Date(),
       }));
@@ -97,16 +100,17 @@ describe('EventEmitterBus', () => {
         async get(params: EventMap['session.get']['params']): Promise<EventMap['session.get']['result']> {
           return {
             sessionKey: params.sessionKey,
-            taskId: 'heartbeat',
-            createdAt: new Date(),
-            updatedAt: new Date(),
+            kind:       'cron',
+            metadata:   { taskId: 'heartbeat' },
+            createdAt:  new Date(),
+            updatedAt:  new Date(),
           };
         }
       }
 
       new SessionService(bus);
       const result = await bus.call('session.get', { sessionKey: 'cron:heartbeat' });
-      expect(result.taskId).toBe('heartbeat');
+      expect(result.metadata.taskId).toBe('heartbeat');
     });
 
     it('multiple @on handlers on one service all wire up', () => {

@@ -4,13 +4,12 @@ import { z } from 'zod';
 import { glob } from 'tinyglobby';
 import { on } from '../../gateway/decorators.js';
 import type { Bus } from '../../gateway/bus.js';
-import type { EventMap, SessionCreateParams, SessionAddMessageParams } from '../../gateway/events.js';
+import type { EventMap, SessionCreateParams, SessionAddMessageParams, Session, Message } from '../../gateway/events.js';
 import { createLogger, emitError } from '../../lib/logger.js';
 import { getDataPaths, resolveSessionDir, sessionKeyToDir } from '../../lib/paths.js';
 import { paginate } from '../../lib/paginate.js';
-import type { Session, Message } from './schemas.js';
 
-export type { Session, Message, MessageRole } from './schemas.js';
+export type { Session, Message, MessageRole } from '../../gateway/events.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 

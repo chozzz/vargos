@@ -44,4 +44,7 @@ export interface Bus {
 
   /** Invoke a callable event and await the result. */
   call<E extends CallableEventKey>(event: E, params: EventParams<E>): Promise<EventResult<E>>;
+
+  /** Wire all @on-decorated methods on a service instance to this bus. */
+  registerService(service: object): void;
 }
