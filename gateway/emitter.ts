@@ -123,7 +123,7 @@ export class EventEmitterBus implements Bus {
    * Used by services (like MCP) to dynamically register tools after boot.
    * Returns an unsubscribe function to remove the tool.
    */
-  registerToolDirect(event: string, handler: (params: unknown) => Promise<unknown>, schema: ToolSchema): () => void {
+  registerTool(event: string, handler: (params: unknown) => Promise<unknown>, schema: ToolSchema): () => void {
     // Register in the callable registry
     this.callableRegistry.set(event, schema);
 

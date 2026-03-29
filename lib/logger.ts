@@ -18,7 +18,7 @@ function ts(): string {
 export function createLogger(service: string) {
   function write(level: 'debug' | 'info' | 'warn' | 'error', message: string, data?: Json) {
     if (_bus) {
-      _bus.emit('log', { level, service, message, ...(data !== undefined ? { data } : {}) });
+      _bus.emit('log.onLog', { level, service, message, ...(data !== undefined ? { data } : {}) });
     } else {
       console.error(`${ts()} [${service}] ${level.toUpperCase()} ${message}`, data ?? '');
     }

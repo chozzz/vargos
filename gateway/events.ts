@@ -80,10 +80,7 @@ export interface EventMap {
   // ── Pure events ────────────────────────────────────────────────────────────
 
   /** Structured log line — LogService subscribes and handles output + persistence. */
-  'log': { level: LogLevel; service: string; message: string; data?: Json };
-
-  /** Emitted when new callable events are added at runtime (e.g. dynamic service registration). */
-  'tools.onRegistered': { events: string[] };
+  'log.onLog': { level: LogLevel; service: string; message: string; data?: Json };
 
   /** Streaming LLM chunk from an active agent run. */
   'agent.onDelta': { sessionKey: string; chunk: string };
@@ -172,8 +169,8 @@ export interface EventMap {
   'memory.write': { params: { path: string; content: string; mode?: 'overwrite' | 'append' }; result: void };
   'memory.stats': { params: Record<string, never>; result: { files: number; chunks: number; lastSync: Date | null } };
 
-  // Errors
-  'error.search': { params: { sinceMs?: number; service?: string; level?: LogLevel }; result: ErrorEntry[] };
+  // Errors / Log
+  'log.search': { params: { sinceMs?: number; service?: string; level?: LogLevel }; result: ErrorEntry[] };
 
   // Bus introspection
   'bus.search': { params: { query?: string }; result: EventMetadata[] };

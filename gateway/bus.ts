@@ -53,9 +53,9 @@ export interface Bus {
   /** Bootstrap a service (or the bus itself if no service provided) by wiring all @on and @register decorated methods to this bus. */
   bootstrap(service?: object): void;
 
-  /** Register a new callable tool at runtime (used by services like MCP). Returns an unsubscribe function. */
-  registerToolDirect(event: string, handler: (params: unknown) => Promise<unknown>, schema: import('./decorators.js').ToolSchema): () => void;
+  /** Register a new callable tool at runtime (used by services like MCP). Returns unsubscribe function. */
+  registerTool(event: string, handler: (params: unknown) => Promise<unknown>, schema: import('./decorators.js').ToolSchema): () => void;
 
-  /** Unregister a callable tool that was previously registered at runtime. Returns true if it was removed. */
+  /** Unregister a callable tool that was previously registered at runtime. */
   unregisterTool(event: string): boolean;
 }

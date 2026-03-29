@@ -27,8 +27,8 @@ export class LogService {
   private logFile: string | null = null;
   private currentDate = '';
 
-  @on('log')
-  onLog(payload: EventMap['log']): void {
+  @on('log.onLog')
+  onLog(payload: EventMap['log.onLog']): void {
     const { level, service, message, data } = payload;
     const line = `${ts()} [${service}] ${message}${data ? ' ' + JSON.stringify(data) : ''}`;
     console.error(line);
@@ -38,7 +38,7 @@ export class LogService {
     }
   }
 
-  @register('error.search', {
+  @register('log.search', {
     description: 'Search persisted log entries by level and/or service.',
     schema: z.object({
       sinceMs:  z.number().optional().describe('Only return entries newer than this many ms ago'),
@@ -46,7 +46,7 @@ export class LogService {
       level:    z.enum(['debug', 'info', 'warn', 'error']).optional(),
     }),
   })
-  async search(params: EventMap['error.search']['params']): Promise<EventMap['error.search']['result']> {
+  async search(params: EventMap['log.search']['params']): Promise<EventMap['log.search']['result']> {
     const file = this.todayFile();
     let raw: string;
     try {

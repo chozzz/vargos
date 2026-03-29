@@ -44,11 +44,11 @@ Usage:
     if (trimmed === '.inspect') {
       try {
         const events = await client.call('bus.search' as never, {} as never);
-        const eventList = (events as Array<{ event: string; description: string; type: string }>);
-        console.log('\n📡 Available Events:\n');
+        const eventList = (events as Array<{ event: string; description: string; type: string }>)
+          .filter(e => e.type === 'tool');
+        console.log('\n🔧 Available Tools:\n');
         eventList.forEach(e => {
-          const icon = e.type === 'tool' ? '🔧' : '📢';
-          console.log(`${icon} ${e.event.padEnd(30)} ${e.description}`);
+          console.log(`${e.event.padEnd(30)} ${e.description}`);
         });
         console.log();
       } catch (err) {
