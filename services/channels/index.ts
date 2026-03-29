@@ -60,7 +60,7 @@ export class ChannelService {
     this.bus.on('agent.onCompleted', (payload) => this.onAgentCompleted(payload));
 
     // Start all configured channels after boot completes
-    this.bus.on('bus.ready', () => this.startAllConfigured());
+    this.bus.on('bus.onReady', () => this.startAllConfigured());
   }
 
   async stop(): Promise<void> {

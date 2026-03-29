@@ -102,7 +102,7 @@ export interface EventMap {
   'config.changed': AppConfig;
 
   /** Emitted after all services are registered — signals boot completion. Deferred startup can proceed. */
-  'bus.ready': Record<string, never>;
+  'bus.onReady': Record<string, never>;
 
   // ── Callable events ────────────────────────────────────────────────────────
 
@@ -166,6 +166,17 @@ export interface EventMap {
 
   // Errors
   'error.search': { params: { sinceMs?: number; service?: string; level?: LogLevel }; result: ErrorEntry[] };
+
+  // Bus introspection
+  'bus.inspect': { params: Record<string, never>; result: { events: EventMetadata[] } };
+  'bus.inspectEvent': { params: { event: string }; result: EventMetadata | null };
+}
+
+export interface EventMetadata {
+  event: string;
+  description: string;
+  type: 'pure' | 'callable';
+  schema?: { params?: unknown; result?: unknown };
 }
 
 // ─── Runtime callable set ─────────────────────────────────────────────────────
@@ -186,4 +197,5 @@ export const CALLABLE_EVENTS = new Set<keyof EventMap>([
   'webhook.search',
   'memory.search', 'memory.read', 'memory.write', 'memory.stats',
   'error.search',
+  'bus.inspect', 'bus.inspectEvent',
 ]);

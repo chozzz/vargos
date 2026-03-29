@@ -33,6 +33,7 @@
   },
   "scripts": {
     "start": "tsx index.ts",
+    "cli": "tsx src/cli/index.ts",
     "build": "tsc",
     "prepare": "tsc",
     "test": "vitest",

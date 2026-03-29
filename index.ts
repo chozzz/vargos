@@ -1,4 +1,5 @@
 import { EventEmitterBus } from './gateway/emitter.js';
+import { startTCPServer } from './gateway/tcp-server.js';
 import { createLogger } from './lib/logger.js';
 
 // ── Boot order ────────────────────────────────────────────────────────────────
@@ -39,7 +40,18 @@ for (const [label, load] of SERVICES) {
 }
 
 // Signal that boot is complete — deferred startup can proceed
-bus.emit('bus.ready', {});
+bus.emit('bus.onReady', {});
+
+// Start TCP server for CLI access
+const tcpHost = process.env.BUS_HOST || '127.0.0.1';
+const tcpPort = parseInt(process.env.BUS_PORT || '9000', 10);
+try {
+  const tcpStopper = await startTCPServer(bus, tcpHost, tcpPort);
+  stoppers.push(tcpStopper);
+} catch (err) {
+  log.error(`failed to start TCP server: ${err instanceof Error ? err.message : String(err)}`);
+  process.exit(1);
+}
 
 log.info('ready\n\n');
 
