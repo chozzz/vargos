@@ -5,6 +5,9 @@ import { CALLABLE_EVENTS } from './events.js';
 import type { Bus, HandlerOf, CallableEventKey, PureEventKey } from './bus.js';
 import { HANDLERS } from './decorators.js';
 import type { EventParams, EventResult } from './bus.js';
+import { createLogger } from '../lib/logger.js';
+
+const log = createLogger('bus');
 
 // Internal wire types — never exposed through Bus
 type ReqPayload  = { params: unknown; _cid: string };
@@ -67,6 +70,7 @@ export class EventEmitterBus implements Bus {
    */
   registerService(service: object): void {
     const entries = (service as HasHandlers)[HANDLERS] ?? [];
+    log.info(`registerService: ${service.constructor.name} → [${entries.map(e => e.event).join(', ')}]`);
     for (const { event, method } of entries) {
       const fn = (service as Record<string, unknown>)[method];
       if (typeof fn !== 'function') continue;

@@ -95,6 +95,15 @@ export interface EventMap {
   'channel.onConnected':    { instanceId: string; type: string };
   'channel.onDisconnected': { instanceId: string };
 
+  /** Inbound message from a channel adapter — AgentService subscribes to handle the run. */
+  'channel.inbound': {
+    channel: string;
+    userId: string;
+    sessionKey: string;
+    content: string;
+    metadata?: Record<string, unknown>;
+  };
+
   /** Broadcast whenever config changes via config.set. */
   'config.changed': AppConfig;
 

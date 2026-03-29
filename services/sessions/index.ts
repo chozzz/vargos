@@ -84,7 +84,7 @@ export class SessionsService {
     },
   })
   async search(params: EventMap['session.search']['params']): Promise<EventMap['session.search']['result']> {
-    const all = await this.listAll();
+    const all = (await this.listAll()).map(r => r.session);
     const q   = params.query?.toLowerCase();
     const filtered = q ? all.filter(s => s.sessionKey.toLowerCase().includes(q)) : all;
     filtered.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
@@ -93,9 +93,8 @@ export class SessionsService {
 
   @on('session.delete')
   async delete(params: EventMap['session.delete']['params']): Promise<void> {
-    const filePath = this.filePath(params.sessionKey);
-    await fs.unlink(filePath).catch(() => {});
-    await fs.rmdir(path.dirname(filePath)).catch(() => {});
+    const dir = path.dirname(this.filePath(params.sessionKey));
+    await fs.rm(dir, { recursive: true, force: true });
     this.log.info(`deleted: ${params.sessionKey}`);
   }
 
@@ -160,10 +159,10 @@ export class SessionsService {
     await fs.writeFile(filePath, lines.join('\n') + '\n');
   }
 
-  private async listAll(): Promise<Session[]> {
+  private async listAll(): Promise<Array<{ session: Session; dir: string }>> {
     const { sessionsDir } = getDataPaths();
     const files = await glob(['*/*.jsonl', '*/subagents/*/*.jsonl'], { cwd: sessionsDir, absolute: true }).catch(() => []);
-    const sessions: Session[] = [];
+    const results: Array<{ session: Session; dir: string }> = [];
 
     for (const file of files) {
       try {
@@ -171,11 +170,12 @@ export class SessionsService {
         if (!first) continue;
         const raw = JSON.parse(first) as Session;
         if (!raw.sessionKey) continue;
-        sessions.push({ ...raw, createdAt: new Date(raw.createdAt), updatedAt: new Date(raw.updatedAt) });
+        const session = { ...raw, createdAt: new Date(raw.createdAt), updatedAt: new Date(raw.updatedAt) };
+        results.push({ session, dir: path.dirname(file) });
       } catch { /* skip */ }
     }
 
-    return sessions;
+    return results;
   }
 
   private inferKind(sessionKey: string): Session['kind'] {
@@ -187,17 +187,23 @@ export class SessionsService {
   // ── Reaper ────────────────────────────────────────────────────────────────
 
   async reap(): Promise<void> {
-    const now    = Date.now();
-    const cronTtl    = 7 * DAY_MS;
+    const now         = Date.now();
+    const cronTtl     = 7 * DAY_MS;
     const subagentTtl = 3 * DAY_MS;
 
-    const all = await this.listAll();
-    let pruned = 0;
+    const all    = await this.listAll();
+    let pruned   = 0;
 
-    for (const session of all) {
+    for (const { session, dir } of all) {
       const age = now - session.updatedAt.getTime();
-      if (session.kind === 'cron'    && age > cronTtl)     { await this.delete({ sessionKey: session.sessionKey }); pruned++; }
-      if (session.kind === 'subagent' && age > subagentTtl) { await this.delete({ sessionKey: session.sessionKey }); pruned++; }
+      const expired =
+        (session.kind === 'cron'     && age > cronTtl) ||
+        (session.kind === 'subagent' && age > subagentTtl);
+      if (!expired) continue;
+
+      await fs.rm(dir, { recursive: true, force: true });
+      this.log.info(`deleted: ${session.sessionKey}`);
+      pruned++;
     }
 
     if (pruned) this.log.info(`reaper: pruned ${pruned} session(s)`);

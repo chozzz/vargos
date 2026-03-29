@@ -87,6 +87,7 @@ export const WebhookEntrySchema = z.object({
   name:      z.string(),
   token:     z.string(),
   transform: z.string().optional(),  // path to JS/TS transform file
+  notify:    z.array(z.string()).optional(),
 });
 
 export type WebhookEntry = z.infer<typeof WebhookEntrySchema>;
