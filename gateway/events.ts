@@ -4,14 +4,8 @@
 //   Pure     — flat payload, use bus.emit / @on
 //   Callable — { params, result }, use bus.call / @on (wired as request/reply)
 
-export type { ThinkingLevel, PromptMode, ChannelEntry, CronTask, CronAddParams, CronUpdateParams, WebhookEntry } from '../config/schemas.js';
-import type { ThinkingLevel, PromptMode, ChannelEntry, CronTask, CronAddParams, CronUpdateParams, WebhookEntry } from '../config/schemas.js';
-
-export type { Json } from '../config/schemas.js';
-import type { Json } from '../config/schemas.js';
-
-export type { AppConfig } from '../config/index.js';
-import type { AppConfig } from '../config/index.js';
+export type { ThinkingLevel, PromptMode, ChannelEntry, CronTask, CronAddParams, CronUpdateParams, WebhookEntry, Json, AppConfig } from '../services/config/index.js';
+import type { ThinkingLevel, PromptMode, ChannelEntry, CronTask, CronAddParams, CronUpdateParams, WebhookEntry, Json, AppConfig } from '../services/config/index.js';
 
 // ─── Domain types ─────────────────────────────────────────────────────────────
 
@@ -106,6 +100,9 @@ export interface EventMap {
 
   /** Broadcast whenever config changes via config.set. */
   'config.changed': AppConfig;
+
+  /** Emitted after all services are registered — signals boot completion. Deferred startup can proceed. */
+  'bus.ready': Record<string, never>;
 
   // ── Callable events ────────────────────────────────────────────────────────
 

@@ -4,7 +4,7 @@
  */
 
 import { extractUrls, isAllowedUrl, fetchUrlContent } from '../../lib/url-expand.js';
-import type { LinkExpandConfig } from '../../config/schemas.js';
+import type { LinkExpandConfig } from '../../services/config/index.js';
 
 export type { LinkExpandConfig };
 

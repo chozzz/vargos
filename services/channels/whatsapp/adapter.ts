@@ -47,14 +47,14 @@ export class WhatsAppAdapter extends InboundMediaHandler {
     if (!existsSync(creds)) {
       this.status = 'error';
       throw new Error(
-        `No auth state found at ${this.authDir} — run "vargos channels setup whatsapp ${this.instanceId}" to pair`,
+        `No auth state found at ${this.authDir} — run "vargos channels register whatsapp ${this.instanceId}" to pair`,
       );
     }
 
     try {
       this.sock = await createWhatsAppSocket(this.authDir, {
         onQR: () => {
-          this.log.debug('scan the QR code above with WhatsApp > Linked Devices');
+          this.log.info('scan the QR code above with WhatsApp > Linked Devices');
         },
         onConnected: (name) => {
           this.log.debug(`connected as ${name}`);
@@ -62,7 +62,7 @@ export class WhatsAppAdapter extends InboundMediaHandler {
           this.reconnector.reset();
         },
         onDisconnected: (reason) => {
-          this.log.debug(`disconnected: ${reason}`);
+          this.log.info(`disconnected: ${reason}`);
           this.sock = null;
           if (reason === 'logged_out' || reason === 'forbidden') {
             this.status = 'error';

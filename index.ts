@@ -38,7 +38,10 @@ for (const [label, load] of SERVICES) {
   }
 }
 
-log.info('ready');
+// Signal that boot is complete — deferred startup can proceed
+bus.emit('bus.ready', {});
+
+log.info('ready\n\n');
 
 // ── Shutdown ──────────────────────────────────────────────────────────────────
 

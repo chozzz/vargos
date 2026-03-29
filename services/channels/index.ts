@@ -19,8 +19,7 @@ import { z } from 'zod';
 import { on } from '../../gateway/decorators.js';
 import type { Bus } from '../../gateway/bus.js';
 import type { EventMap, ChannelInfo, Pagination } from '../../gateway/events.js';
-import type { AppConfig } from '../../config/index.js';
-import type { ChannelEntry, TelegramChannel, WhatsAppChannel } from '../../config/schemas.js';
+import type { AppConfig, ChannelEntry, TelegramChannel, WhatsAppChannel } from '../../services/config/index.js';
 import { createLogger } from '../../lib/logger.js';
 import { toMessage } from '../../lib/error.js';
 import { stripMarkdown } from '../../lib/strip-markdown.js';
@@ -55,24 +54,13 @@ export class ChannelService {
   constructor(
     private readonly bus: Bus,
     private readonly config: AppConfig,
-  ) {}
-
-  async start(): Promise<void> {
-    // Wire bus subscriptions before starting adapters
+  ) {
+    // Wire bus subscriptions
     this.bus.on('agent.onTool', (payload) => this.onAgentTool(payload));
     this.bus.on('agent.onCompleted', (payload) => this.onAgentCompleted(payload));
 
-    // Register all configured channels
-    for (const entry of this.config.channels) {
-      try {
-        await this.startChannel(entry);
-      } catch (err) {
-        log.error(`failed to start channel ${entry.id}: ${toMessage(err)}`);
-      }
-    }
-
-    this.bus.registerService(this);
-    log.info(`started with ${this.adapters.size} adapter(s)`);
+    // Start all configured channels after boot completes
+    this.bus.on('bus.ready', () => this.startAllConfigured());
   }
 
   async stop(): Promise<void> {
@@ -336,6 +324,19 @@ export class ChannelService {
         return null;
     }
   }
+
+  private async startAllConfigured(): Promise<void> {
+    for (const entry of this.config.channels) {
+      try {
+        await this.startChannel(entry);
+      } catch (err) {
+        log.error(`failed to start channel ${entry.id}: ${toMessage(err)}`);
+      }
+    }
+    if (this.adapters.size > 0) {
+      log.info(`started ${this.adapters.size} channel(s)`);
+    }
+  }
 }
 
 // ── Boot ───────────────────────────────────────────────────────────────────────
@@ -343,6 +344,7 @@ export class ChannelService {
 export async function boot(bus: Bus): Promise<{ stop(): Promise<void> }> {
   const config = await bus.call('config.get', {});
   const svc = new ChannelService(bus, config);
-  await svc.start();
+  bus.registerService(svc);
+  log.info(`registered with ${config.channels.length} channel(s) configured (not started)`);
   return { stop: () => svc.stop() };
 }

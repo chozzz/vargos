@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { ModelProfile } from '../config/schemas.js';
+import type { ModelProfile } from '../services/config/index.js';
 
 export interface MediaAttachment {
   type: 'audio' | 'image' | 'video' | 'document';

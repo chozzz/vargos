@@ -19,8 +19,8 @@ import { z } from 'zod';
 import { on } from '../../gateway/decorators.js';
 import type { Bus } from '../../gateway/bus.js';
 import type { EventMap } from '../../gateway/events.js';
-import type { AppConfig } from '../../config/index.js';
-import type { CronTask, CronAddParams, CronUpdateParams, HeartbeatConfig } from '../../config/schemas.js';
+import type { AppConfig, CronTask, CronAddParams, CronUpdateParams } from '../../services/config/index.js';
+import type { HeartbeatConfig } from '../../services/config/schemas.js';
 import { createLogger } from '../../lib/logger.js';
 import { toMessage } from '../../lib/error.js';
 import { getDataPaths } from '../../lib/paths.js';
@@ -69,9 +69,6 @@ export class CronService {
       'agent.onCompleted',
       (payload) => this.onAgentCompleted(payload),
     );
-
-    this.bus.registerService(this);
-    log.info(`started with ${this.config.cron.tasks.length} tasks`);
   }
 
   stop(): void {
@@ -358,5 +355,7 @@ export async function boot(bus: Bus): Promise<{ stop(): void }> {
   const config = await bus.call('config.get', {});
   const svc = new CronService(bus, config);
   svc.start();
+  bus.registerService(svc);
+  log.info(`started with ${config.cron.tasks.length} tasks`);
   return { stop: () => svc.stop() };
 }

@@ -12,7 +12,7 @@ import { z } from 'zod';
 import { on } from '../../gateway/decorators.js';
 import type { Bus } from '../../gateway/bus.js';
 import type { EventMap, AgentExecuteParams } from '../../gateway/events.js';
-import type { AppConfig } from '../../config/index.js';
+import type { AppConfig, ModelProfile } from '../../services/config/index.js';
 import { getDataPaths } from '../../lib/paths.js';
 import { createLogger } from '../../lib/logger.js';
 import { generateId } from '../../lib/id.js';
@@ -23,7 +23,6 @@ import { parseTarget } from '../../lib/channel-target.js';
 import { isSubagentSessionKey } from '../../lib/subagent.js';
 import { parseDirectives } from '../../lib/directives.js';
 import { transformMedia, type MediaAttachment } from '../../lib/media.js';
-import type { ModelProfile } from '../../config/schemas.js';
 import { PiAgentRuntime, type PiAgentConfig, type PiAgentRunResult } from './runtime.js';
 
 const log = createLogger('agent');
