@@ -38,7 +38,7 @@
     "prepare": "tsc",
     "test": "vitest",
     "test:run": "vitest run",
-    "lint": "eslint src/**/*.ts && tsc --noEmit",
+    "lint": "eslint 'src/**/*.ts' '**/__tests__/**/*.ts' && tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "postinstall": "pnpm rebuild better-sqlite3"
   },

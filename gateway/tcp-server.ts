@@ -125,32 +125,6 @@ async function handleRequest(
     return; // No response for subscription
   }
 
-  // Handle bus introspection
-  if (method === 'bus.inspect') {
-    const events = bus.getAllEventMetadata();
-    socket.write(
-      JSON.stringify({
-        jsonrpc: '2.0',
-        result: { events },
-        id,
-      }) + '\n',
-    );
-    return;
-  }
-
-  if (method === 'bus.inspectEvent') {
-    const { event } = params as { event: string };
-    const metadata = bus.getEventMetadata(event as never);
-    socket.write(
-      JSON.stringify({
-        jsonrpc: '2.0',
-        result: metadata,
-        id,
-      }) + '\n',
-    );
-    return;
-  }
-
   // Handle RPC call
   if (!CALLABLE_EVENTS.has(method as CallableEventKey)) {
     socket.write(

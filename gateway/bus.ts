@@ -47,10 +47,4 @@ export interface Bus {
 
   /** Wire all @on-decorated methods on a service instance to this bus. */
   registerService(service: object): void;
-
-  /** Get metadata for all registered events (from @on tool schemas). */
-  getAllEventMetadata(): EventMetadata[];
-
-  /** Get metadata for a specific event. */
-  getEventMetadata(event: string): EventMetadata | null;
 }

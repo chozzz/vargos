@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
-import { EventEmitterBus } from './emitter.js';
-import { on } from './decorators.js';
-import type { EventMap } from './events.js';
+import { EventEmitterBus } from '../emitter.js';
+import { on } from '../decorators.js';
+import type { EventMap } from '../events.js';
 
 describe('EventEmitterBus', () => {
   describe('pure events', () => {

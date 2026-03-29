@@ -6,7 +6,6 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { toolRegistry } from '../tools/registry.js';
 import { isSubagentSessionKey } from '../../lib/subagent.js';
 import { scanSkills } from '../../lib/skills.js';
 import { scanAgents } from '../../lib/agents.js';
@@ -89,34 +88,12 @@ export async function buildSystemPrompt(options: SystemPromptOptions): Promise<s
 }
 
 async function buildToolingSection(toolNames: string[]): Promise<string> {
-  const { external } = toolRegistry.getGroups();
-  const externalNames = new Set<string>();
-  for (const tools of external.values()) {
-    for (const t of tools) externalNames.add(t.name);
-  }
-
-  const builtinCount = toolNames.filter(n => !externalNames.has(n)).length;
-
   const lines = [
     '## Tooling',
     '',
-    `${builtinCount} built-in tools available (schemas provided via tool definitions).`,
+    `${toolNames.length} tools available (schemas provided via tool definitions).`,
     'Use tools naturally. Wait for results before proceeding.',
   ];
-
-  if (external.size > 0) {
-    const toolNameSet = new Set(toolNames);
-    lines.push('', '### Connected External Tools', '',
-      'These tools are live — call them directly like any other tool.');
-    for (const [server, tools] of external) {
-      const visible = tools.filter(t => toolNameSet.has(t.name));
-      if (visible.length === 0) continue;
-      lines.push('', `**${server}** (${visible.length} tools):`);
-      for (const tool of visible) {
-        lines.push(`- ${tool.name}: ${tool.description}`);
-      }
-    }
-  }
 
   lines.push(
     '', '### Shell & Git', '',
@@ -224,7 +201,7 @@ function buildChannelSection(channel: string, sessionKey?: string): string {
   lines.push(
     '',
     'MEDIA DELIVERY (MANDATORY):',
-    `When the user asks you to send, show, or share a file — you MUST call channel_send_media with channel="${channel}"${userId ? `, userId="${userId}"` : ''}, the file path, and correct MIME type. Do NOT describe the file or print the path. SEND IT.`,
+    `When the user asks you to send, show, or share a file — you MUST call channel.sendMedia with sessionKey, the file path, and correct MIME type. Do NOT describe the file or print the path. SEND IT.`,
     '',
     'Channel rules (this chat renders plain text only — markdown symbols appear as literal characters):',
     '- Write in short, plain text sentences. 1-3 sentences for simple answers.',
@@ -233,7 +210,7 @@ function buildChannelSection(channel: string, sessionKey?: string): string {
     '- Call tools immediately — say what you found, not what you plan to do.',
     '- All tools listed above are available. Use them.',
     '- If a tool fails, report the error briefly.',
-    '- After generating any media file, call channel_send_media to deliver it directly.',
+    '- After generating any media file, call channel.sendMedia to deliver it directly.',
     '- User messages may have contained /think or /verbose directives — these are stripped before you see the message.',
   );
 
@@ -244,7 +221,7 @@ function buildChannelReminder(): string {
   return [
     '## Reminder', '',
     'This is a plain-text chat. Write plain text only — no markdown syntax.',
-    'Deliver media files via channel_send_media, not as text paths.',
+    'Deliver media files via channel.sendMedia, not as text paths.',
   ].join('\n');
 }
 
@@ -315,7 +292,7 @@ function buildOrchestrationSection(sessionKey?: string): string {
     '- A single tool call or short sequence completes the task',
     '- The user asks for your direct judgment (summarize, explain, advise)',
     '',
-    'Delegate via sessions_spawn when:',
+    'Delegate via agent.spawn when:',
     '- The task has two or more independent phases that can run in parallel',
     '- Execution will take more than a minute (research, file processing, builds)',
     '- The task touches multiple domains (e.g., fetch + analyze + write)',
@@ -327,8 +304,8 @@ function buildOrchestrationSection(sessionKey?: string): string {
     '4. **Synthesize**: Combine results into a coherent response. Report what was done and what it means.',
     '',
     'Examples:',
-    '  sessions_spawn({ agent: "code-reviewer", task: "Review the auth module changes" })',
-    '  sessions_spawn({ task: "Research AI ethics frameworks", role: "You are a research analyst. Focus on regulatory frameworks." })',
+    '  agent.spawn({ task: "Review the auth module changes", agent: "code-reviewer" })',
+    '  agent.spawn({ task: "Research AI ethics frameworks", role: "You are a research analyst. Focus on regulatory frameworks." })',
     '',
     'For large iterative tasks (process N items, scan N files, summarize N days):',
     '- Spawn a batch of sub-agents (up to the concurrency limit), not one mega-agent',
@@ -347,7 +324,7 @@ async function buildAgentsSection(workspaceDir: string): Promise<string | null> 
 
   const lines = [
     '## Available Agents', '',
-    'Use `sessions_spawn({ agent: "<name>", task: "..." })` to delegate to a specialist.',
+    'Use `agent.spawn({ agent: "<name>", task: "..." })` to delegate to a specialist.',
     '',
     ...agents.map(a => {
       const extras: string[] = [];
@@ -367,7 +344,7 @@ async function buildSkillsSection(workspaceDir: string): Promise<string | null> 
 
   const lines = [
     '## Available Skills', '',
-    'Load a skill with `skill_load` to get full instructions.',
+    'Load a skill with `workspace.loadSkill` to get full instructions.',
     '',
     ...skills.map(s => {
       const tags = s.tags.length ? ` [${s.tags.join(', ')}]` : '';

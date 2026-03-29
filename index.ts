@@ -14,7 +14,6 @@ const SERVICES: Array<[string, () => Promise<{ boot(bus: EventEmitterBus): Promi
   ['web', () => import('./services/web/index.js')],
   ['workspace', () => import('./services/workspace/index.js')],
   ['memory', () => import('./services/memory/index.js')],
-  ['tools', () => import('./services/tools/index.js')],
   ['agent', () => import('./services/agent/index.js')],
   ['cron', () => import('./services/cron/index.js')],
   ['channels', () => import('./services/channels/index.js')],
@@ -28,6 +27,9 @@ const bus = new EventEmitterBus();
 const log = createLogger('boot');
 const stoppers: Array<() => unknown> = [];
 
+// Bus self-registers for introspection via @on decorators
+bus.registerService(bus);
+
 for (const [label, load] of SERVICES) {
   try {
     const { boot } = await load();
@@ -39,8 +41,6 @@ for (const [label, load] of SERVICES) {
   }
 }
 
-// Signal that boot is complete — deferred startup can proceed
-bus.emit('bus.onReady', {});
 
 // Start TCP server for CLI access
 const tcpHost = process.env.BUS_HOST || '127.0.0.1';
@@ -53,6 +53,8 @@ try {
   process.exit(1);
 }
 
+// Signal that boot is complete — deferred startup can proceed
+bus.emit('bus.onReady', {});
 log.info('ready\n\n');
 
 // ── Shutdown ──────────────────────────────────────────────────────────────────

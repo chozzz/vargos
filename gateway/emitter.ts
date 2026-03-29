@@ -1,9 +1,10 @@
 import EventEmitter from 'node:events';
 import { randomUUID } from 'node:crypto';
+import { z } from 'zod';
 import type { EventMap, EventMetadata } from './events.js';
 import { CALLABLE_EVENTS } from './events.js';
 import type { Bus, HandlerOf, CallableEventKey, PureEventKey } from './bus.js';
-import { HANDLERS, TOOL_SCHEMAS, type ToolSchema } from './decorators.js';
+import { on, HANDLERS, TOOL_SCHEMAS, type ToolSchema } from './decorators.js';
 import type { EventParams, EventResult } from './bus.js';
 import { createLogger } from '../lib/logger.js';
 import { zodToJsonSchema } from 'zod-to-json-schema';
@@ -17,6 +18,14 @@ type AnyHandler  = (payload: unknown) => unknown;
 type HasHandlers = { [HANDLERS]?: Array<{ event: keyof EventMap; method: string }> };
 
 const DEFAULT_CALL_TIMEOUT_MS = 30_000;
+
+/**
+ * Predicate: is this event metadata a usable tool?
+ * (callable, has a description, and has a schema)
+ */
+export function isToolEvent(metadata: EventMetadata): boolean {
+  return metadata.type === 'callable' && metadata.description !== '(no description)' && !!metadata.schema;
+}
 
 export class EventEmitterBus implements Bus {
   private readonly ee = new EventEmitter();
@@ -88,9 +97,16 @@ export class EventEmitterBus implements Bus {
     }
   }
 
-  getAllEventMetadata(): EventMetadata[] {
+  @on('bus.search', {
+    description: 'Search all callable bus events. Optionally filter by query string.',
+    schema: z.object({
+      query: z.string().optional().describe('Filter events by name substring'),
+    }),
+  })
+  async search(params: EventMap['bus.search']['params']): Promise<EventMetadata[]> {
     const result: EventMetadata[] = [];
     for (const event of CALLABLE_EVENTS) {
+      if (params.query && !String(event).includes(params.query)) continue;
       const toolSchema = this.toolSchemas.get(event as string);
       result.push({
         event: event as string,
@@ -102,14 +118,20 @@ export class EventEmitterBus implements Bus {
     return result;
   }
 
-  getEventMetadata(event: string): EventMetadata | null {
-    const isCallable = CALLABLE_EVENTS.has(event as CallableEventKey);
+  @on('bus.inspect', {
+    description: 'Get detailed metadata for a specific bus event.',
+    schema: z.object({
+      event: z.string().describe('Event name to inspect'),
+    }),
+  })
+  async inspect(params: EventMap['bus.inspect']['params']): Promise<EventMetadata | null> {
+    const isCallable = CALLABLE_EVENTS.has(params.event as CallableEventKey);
     if (!isCallable) {
       return null; // Only return callable events
     }
-    const toolSchema = this.toolSchemas.get(event);
+    const toolSchema = this.toolSchemas.get(params.event);
     return {
-      event,
+      event: params.event,
       description: toolSchema?.description || '(no description)',
       type: 'callable',
       schema: toolSchema ? { params: zodToJsonSchema(toolSchema.schema) } : undefined,

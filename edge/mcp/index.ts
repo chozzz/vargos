@@ -1,8 +1,8 @@
 /**
- * MCP edge service — translates MCP protocol to direct tool registry calls.
+ * MCP edge service — translates MCP protocol to bus event calls.
  *
- * ListToolsRequest  → toolRegistry.list()
- * CallToolRequest   → toolRegistry.get(name)?.execute(args, context)
+ * ListToolsRequest  → bus.search()
+ * CallToolRequest   → bus.call(eventName, args)
  *
  * Supports HTTP (StreamableHTTP) transport on port 9001.
  * Bearer token auth from config.mcp.bearerToken.
@@ -20,11 +20,11 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import type { Bus } from '../../gateway/bus.js';
+import { isToolEvent } from '../../gateway/emitter.js';
 import type { AppConfig } from '../../services/config/index.js';
 import { createLogger } from '../../lib/logger.js';
 import { toMessage } from '../../lib/error.js';
 import { getDataPaths } from '../../lib/paths.js';
-import { toolRegistry } from '../../services/tools/registry.js';
 
 const log = createLogger('mcp');
 
@@ -99,9 +99,13 @@ export class McpEdge {
       }
 
       if (req.url === '/openapi.json' && req.method === 'GET') {
-        const spec = buildOpenApiSpec();
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(spec, null, 2));
+        this.buildOpenApiSpec().then(spec => {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(spec, null, 2));
+        }).catch(err => {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: toMessage(err) }));
+        });
         return;
       }
 
@@ -140,24 +144,25 @@ export class McpEdge {
   // ── MCP handlers ───────────────────────────────────────────────────────────
 
   private setupHandlers(): void {
-    this.mcpServer.setRequestHandler(ListToolsRequestSchema, () => {
-      const tools = toolRegistry.list();
+    this.mcpServer.setRequestHandler(ListToolsRequestSchema, async () => {
+      const metadata = await this.bus.call('bus.search', {});
+      const tools = metadata.filter(isToolEvent);
       return {
-        tools: tools.map(t => ({
-          name:        t.name,
-          description: t.description,
-          inputSchema: (t.jsonSchema ?? zodToJsonSchema(t.parameters)) as Record<string, unknown>,
+        tools: tools.map(m => ({
+          name:        m.event,
+          description: m.description,
+          inputSchema: (m.schema?.params ?? {}) as Record<string, unknown>,
         })),
       };
     });
 
     this.mcpServer.setRequestHandler(CallToolRequestSchema, async (request): Promise<CallToolResult> => {
       const { name, arguments: args } = request.params;
-      const { workspaceDir } = getDataPaths();
       const sessionKey = (args as Record<string, unknown>)?.sessionKey as string || 'mcp:default';
 
-      const tool = toolRegistry.get(name);
-      if (!tool) {
+      // Check if event exists in bus
+      const metadata = await this.bus.call('bus.inspect', { event: name });
+      if (!metadata || metadata.type !== 'callable') {
         return {
           content: [{ type: 'text', text: `Unknown tool: ${name}` }],
           isError: true,
@@ -165,12 +170,10 @@ export class McpEdge {
       }
 
       try {
-        const result = await tool.execute(args, {
-          sessionKey,
-          workingDir: workspaceDir,
-          bus: this.bus,
-        });
-        return { content: result.content, isError: result.isError };
+        const result = await this.bus.call(name as never, args);
+        // Convert result to MCP format
+        const resultText = result && typeof result === 'object' ? JSON.stringify(result) : String(result);
+        return { content: [{ type: 'text', text: resultText }], isError: false };
       } catch (err) {
         return {
           content: [{ type: 'text', text: toMessage(err) }],
@@ -179,30 +182,48 @@ export class McpEdge {
       }
     });
   }
-}
 
-// ── OpenAPI spec builder ───────────────────────────────────────────────────────
+  private async buildOpenApiSpec(): Promise<Record<string, unknown>> {
+    const metadata = await this.bus.call('bus.search', {});
+    const tools = metadata.filter(isToolEvent);
+    const paths: Record<string, unknown> = {};
 
-function buildOpenApiSpec(): Record<string, unknown> {
-  const tools = toolRegistry.list();
-  const paths: Record<string, unknown> = {};
-
-  for (const t of tools) {
-    const schema = (t.jsonSchema ?? zodToJsonSchema(t.parameters)) as Record<string, unknown>;
-    paths[`/tools/${t.name}`] = {
-      post: {
-        operationId: t.name,
-        summary:     t.description,
-        requestBody: {
-          required: true,
-          content: { 'application/json': { schema } },
+    for (const m of tools) {
+      paths[`/tools/${m.event}`] = {
+        post: {
+          operationId: m.event,
+          summary:     m.description,
+          requestBody: {
+            required: true,
+            content: { 'application/json': { schema: m.schema?.params ?? {} } },
+          },
+          responses: {
+            '200': {
+              description: 'Tool result',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/ToolResult' },
+                },
+              },
+            },
+          },
         },
-        responses: {
-          '200': {
-            description: 'Tool result',
-            content: {
-              'application/json': {
-                schema: { $ref: '#/components/schemas/ToolResult' },
+      };
+    }
+
+    return {
+      openapi: '3.1.0',
+      info:    { title: 'Vargos', version: VERSION, description: 'Vargos agent OS tool API' },
+      paths,
+      components: {
+        schemas: {
+          ToolResult: {
+            type: 'object',
+            required: ['content'],
+            properties: {
+              content: {
+                type: 'array',
+                items: { type: 'object' },
               },
             },
           },
@@ -210,44 +231,6 @@ function buildOpenApiSpec(): Record<string, unknown> {
       },
     };
   }
-
-  return {
-    openapi: '3.1.0',
-    info:    { title: 'Vargos', version: VERSION, description: 'Vargos agent OS tool API' },
-    paths,
-    components: {
-      schemas: {
-        ToolResult: {
-          type: 'object',
-          required: ['content'],
-          properties: {
-            content: {
-              type:  'array',
-              items: {
-                oneOf: [
-                  {
-                    type:       'object',
-                    required:   ['type', 'text'],
-                    properties: { type: { const: 'text' }, text: { type: 'string' } },
-                  },
-                  {
-                    type:       'object',
-                    required:   ['type', 'data', 'mimeType'],
-                    properties: {
-                      type:     { const: 'image' },
-                      data:     { type: 'string', description: 'Base64-encoded image' },
-                      mimeType: { type: 'string' },
-                    },
-                  },
-                ],
-              },
-            },
-            isError: { type: 'boolean' },
-          },
-        },
-      },
-    },
-  };
 }
 
 // ── Boot ───────────────────────────────────────────────────────────────────────

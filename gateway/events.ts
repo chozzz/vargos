@@ -75,7 +75,7 @@ export interface EventMap {
   'log': { level: LogLevel; service: string; message: string; data?: Json };
 
   /** Emitted when new callable events are added at runtime (e.g. dynamic service registration). */
-  'tools.registered': { events: string[] };
+  'tools.onRegistered': { events: string[] };
 
   /** Streaming LLM chunk from an active agent run. */
   'agent.onDelta': { sessionKey: string; chunk: string };
@@ -90,7 +90,7 @@ export interface EventMap {
   'channel.onDisconnected': { instanceId: string };
 
   /** Inbound message from a channel adapter — AgentService subscribes to handle the run. */
-  'channel.inbound': {
+  'channel.onInbound': {
     channel: string;
     userId: string;
     sessionKey: string;
@@ -99,7 +99,7 @@ export interface EventMap {
   };
 
   /** Broadcast whenever config changes via config.set. */
-  'config.changed': AppConfig;
+  'config.onChanged': AppConfig;
 
   /** Emitted after all services are registered — signals boot completion. Deferred startup can proceed. */
   'bus.onReady': Record<string, never>;
@@ -112,7 +112,7 @@ export interface EventMap {
 
   // Agent
   'agent.execute': { params: AgentExecuteParams; result: { response: string } };
-  'agent.spawn':   { params: { task: string; model?: string; role?: string }; result: { sessionKey: string; response: string } };
+  'agent.spawn':   { params: { sessionKey: string; task: string; agent?: string; role?: string; model?: string }; result: { sessionKey: string; response: string } };
   'agent.abort':   { params: { sessionKey: string }; result: { aborted: boolean } };
   'agent.status':  { params: { sessionKey?: string }; result: { activeRuns: string[] } };
 
@@ -168,8 +168,8 @@ export interface EventMap {
   'error.search': { params: { sinceMs?: number; service?: string; level?: LogLevel }; result: ErrorEntry[] };
 
   // Bus introspection
-  'bus.inspect': { params: Record<string, never>; result: { events: EventMetadata[] } };
-  'bus.inspectEvent': { params: { event: string }; result: EventMetadata | null };
+  'bus.search': { params: { query?: string }; result: EventMetadata[] };
+  'bus.inspect': { params: { event: string }; result: EventMetadata | null };
 }
 
 export interface EventMetadata {
@@ -197,5 +197,5 @@ export const CALLABLE_EVENTS = new Set<keyof EventMap>([
   'webhook.search',
   'memory.search', 'memory.read', 'memory.write', 'memory.stats',
   'error.search',
-  'bus.inspect', 'bus.inspectEvent',
+  'bus.search', 'bus.inspect',
 ]);

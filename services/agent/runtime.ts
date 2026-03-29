@@ -9,9 +9,8 @@ import {
   type CompactionResult,
   type SessionMessageEntry,
 } from '@mariozechner/pi-coding-agent';
-import { toolRegistry } from '../tools/registry.js';
-import type { ToolResult } from '../tools/types.js';
 import type { Bus } from '../../gateway/bus.js';
+import { isToolEvent } from '../../gateway/emitter.js';
 import type { Json } from '../../gateway/events.js';
 import { createLogger } from '../../lib/logger.js';
 import { generateId } from '../../lib/id.js';
@@ -21,7 +20,6 @@ import { buildSystemPrompt, resolvePromptMode } from './prompt.js';
 import { AgentLifecycle, type AgentStreamEvent } from './lifecycle.js';
 import { SessionMessageQueue } from './queue.js';
 import { sanitizeHistory, toAgentMessages, prepareHistory } from './history.js';
-import { getVargosToolNames } from './extension.js';
 import { buildPiSession, type CompactionConfig } from './session-setup.js';
 
 const log = createLogger('runtime');
@@ -202,10 +200,15 @@ export class PiAgentRuntime {
 
   private async buildSystemPromptText(config: PiAgentConfig): Promise<string> {
     const promptMode = resolvePromptMode(config.sessionKey);
+    // Get tool names from bus metadata (only callable events with descriptions)
+    const metadata = await this.bus.call('bus.search', {});
+    const toolNames = metadata
+      .filter(isToolEvent)
+      .map(m => m.event);
     const text = await buildSystemPrompt({
       mode: promptMode,
       workspaceDir: config.workspaceDir,
-      toolNames: getVargosToolNames(),
+      toolNames,
       extraSystemPrompt: config.extraSystemPrompt,
       userTimezone: config.userTimezone,
       repoRoot: config.workspaceDir,
@@ -332,7 +335,7 @@ export class PiAgentRuntime {
       response,
       tokensUsed: tokenSummary(inputTokens, outputTokens),
       duration,
-      ...(runToolCalls.some(tc => tc.name === 'sessions_spawn') && { spawnedSubagents: true }),
+      ...(runToolCalls.some(tc => tc.name === 'agent.spawn') && { spawnedSubagents: true }),
     };
   }
 
@@ -392,21 +395,16 @@ export class PiAgentRuntime {
       }
 
       if (event.type === 'tool_execution_start') {
-        const tool = toolRegistry.get(event.toolName);
         const args = event.args as Record<string, unknown> | undefined;
-        const summary = tool?.formatCall && args ? tool.formatCall(args) : '';
-        this.lifecycle.streamTool(runId, event.toolName, 'start', summary || args);
-        log.info(`tool: ${event.toolName}(${summary})`);
+        this.lifecycle.streamTool(runId, event.toolName, 'start', args);
+        log.info(`tool: ${event.toolName}`);
         runToolCalls?.push({ name: event.toolName, ...(args && { args }) });
       }
 
       if (event.type === 'tool_execution_end') {
         const toolName = (event as unknown as { toolName?: string }).toolName;
-        const tool = toolName ? toolRegistry.get(toolName) : undefined;
         let resultSummary: string | undefined;
-        if (tool?.formatResult && event.result) {
-          resultSummary = tool.formatResult(event.result as ToolResult);
-        } else if (event.result) {
+        if (event.result) {
           const content = Array.isArray(event.result.content)
             ? (event.result.content as Array<{ text?: string; data?: string }>).map(c => c.text || c.data || '').join('\n')
             : String(event.result);

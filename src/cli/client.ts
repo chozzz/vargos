@@ -8,6 +8,7 @@ import type { CallableEventKey, HandlerOf, EventParams, EventResult } from '../.
 import type { EventMap } from '../../gateway/events.js';
 
 const log = createLogger('cli-client');
+const SOCKET_TIMEOUT = 300_000;
 
 interface JSONRPCRequest {
   jsonrpc: '2.0';
@@ -40,7 +41,7 @@ export class TCPBusClient {
   constructor(
     private host: string = '127.0.0.1',
     private port: number = 9000,
-  ) {}
+  ) { }
 
   async connect(): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -66,7 +67,7 @@ export class TCPBusClient {
         this.processBuffer();
       });
 
-      this.socket.setTimeout(30_000);
+      this.socket.setTimeout(SOCKET_TIMEOUT);
       this.socket.on('timeout', () => {
         log.warn('Connection timeout');
         this.socket?.destroy();

@@ -43,10 +43,10 @@ Usage:
     // Inspect commands
     if (trimmed === '.inspect') {
       try {
-        const result = await client.call('bus.inspect' as never, {} as never);
-        const events = (result as { events: Array<{ event: string; description: string; type: string }> }).events;
+        const events = await client.call('bus.search' as never, {} as never);
+        const eventList = (events as Array<{ event: string; description: string; type: string }>);
         console.log('\n📡 Available Events:\n');
-        events.forEach(e => {
+        eventList.forEach(e => {
           const icon = e.type === 'callable' ? '🔧' : '📢';
           console.log(`${icon} ${e.event.padEnd(30)} ${e.description}`);
         });
@@ -61,7 +61,7 @@ Usage:
     if (trimmed.startsWith('.inspect ')) {
       const eventName = trimmed.slice(9).trim();
       try {
-        const result = await client.call('bus.inspectEvent' as never, { event: eventName } as never);
+        const result = await client.call('bus.inspect' as never, { event: eventName } as never);
         if (!result) {
           console.log(`❌ Event not found: ${eventName}`);
         } else {

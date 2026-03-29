@@ -142,13 +142,16 @@ export class ConfigService {
     this.config = loadConfig(file);
   }
 
-  @on('config.get')
+  @on('config.get', {
+    description: 'Get the current application configuration.',
+    schema: z.object({}),
+  })
   async get(_params: EventMap['config.get']['params']): Promise<AppConfig> {
     return this.config;
   }
 
   @on('config.set', {
-    description: 'Update the application config. Validates, persists to disk, and broadcasts config.changed.',
+    description: 'Update the application config. Validates, persists to disk, and broadcasts config.onChanged.',
     schema: z.object({}).passthrough(),
     format: () => 'Config updated.',
   })
@@ -156,7 +159,7 @@ export class ConfigService {
     const parsed = AppConfigSchema.parse(params);
     this.config = parsed;
     saveConfig(this.file, parsed);
-    this.bus.emit('config.changed', parsed);
+    this.bus.emit('config.onChanged', parsed);
     this.log.info('config updated and persisted');
     return parsed;
   }

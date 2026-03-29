@@ -2,12 +2,12 @@
  * Channel service — manages external messaging adapters.
  *
  * Callable: channel.send, channel.sendMedia, channel.search, channel.get, channel.register
- * Pure events emitted: channel.onConnected, channel.onDisconnected, channel.inbound
+ * Pure events emitted: channel.onConnected, channel.onDisconnected, channel.onInbound
  * Pure events subscribed: agent.onDelta, agent.onTool, agent.onCompleted
  *
  * Inbound flow:
  *   adapter → onInboundMessage → session create/update → expand links
- *   → emit channel.inbound (AgentService handles the run)
+ *   → emit channel.onInbound (AgentService handles the run)
  *   → start typing + init reaction controller
  *   → agent.onTool updates reaction phase
  *   → agent.onCompleted stops typing + seals reaction
@@ -269,7 +269,7 @@ export class ChannelService {
     log.info(`inbound: ${channel}:${userId} "${enrichedContent.slice(0, 80)}"`);
 
     // Emit for AgentService to pick up and run
-    this.bus.emit('channel.inbound', {
+    this.bus.emit('channel.onInbound', {
       channel,
       userId,
       sessionKey,

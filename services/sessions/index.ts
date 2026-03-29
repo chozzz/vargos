@@ -18,7 +18,15 @@ export class SessionsService {
 
   // ── Bus handlers ──────────────────────────────────────────────────────────
 
-  @on('session.create')
+  @on('session.create', {
+    description: 'Create a new session or retrieve existing one.',
+    schema: z.object({
+      sessionKey: z.string().describe('Unique session identifier'),
+      model: z.string().optional().describe('Model override for this session'),
+      metadata: z.record(z.any()).optional().describe('Session metadata'),
+      notify: z.array(z.string()).optional().describe('Notification targets'),
+    }),
+  })
   async create(params: SessionCreateParams): Promise<void> {
     const existing = await this.load(params.sessionKey).catch(() => null);
     if (existing) return; // already exists — idempotent
@@ -37,14 +45,27 @@ export class SessionsService {
     this.log.debug(`created: ${params.sessionKey}`);
   }
 
-  @on('session.get')
+  @on('session.get', {
+    description: 'Retrieve a session by key.',
+    schema: z.object({
+      sessionKey: z.string().describe('Session identifier'),
+    }),
+  })
   async get(params: EventMap['session.get']['params']): Promise<EventMap['session.get']['result']> {
     const data = await this.load(params.sessionKey);
     if (!data) throw new Error(`Session not found: ${params.sessionKey}`);
     return data.session;
   }
 
-  @on('session.addMessage')
+  @on('session.addMessage', {
+    description: 'Add a message to a session.',
+    schema: z.object({
+      sessionKey: z.string().describe('Session identifier'),
+      role: z.enum(['user', 'assistant', 'system']).describe('Message role'),
+      content: z.string().describe('Message content'),
+      metadata: z.record(z.any()).optional().describe('Message metadata'),
+    }),
+  })
   async addMessage(params: SessionAddMessageParams): Promise<void> {
     // Auto-create session if it doesn't exist
     const exists = await this.load(params.sessionKey).catch(() => null);
@@ -63,7 +84,13 @@ export class SessionsService {
     await fs.appendFile(filePath, JSON.stringify(message) + '\n', 'utf-8');
   }
 
-  @on('session.getMessages')
+  @on('session.getMessages', {
+    description: 'Retrieve messages from a session.',
+    schema: z.object({
+      sessionKey: z.string().describe('Session identifier'),
+      limit: z.number().int().optional().describe('Maximum number of messages to return'),
+    }),
+  })
   async getMessages(params: EventMap['session.getMessages']['params']): Promise<EventMap['session.getMessages']['result']> {
     const data = await this.load(params.sessionKey).catch(() => null);
     if (!data) return [];
@@ -91,14 +118,25 @@ export class SessionsService {
     return paginate(filtered, params.page, params.limit);
   }
 
-  @on('session.delete')
+  @on('session.delete', {
+    description: 'Delete a session and all its messages.',
+    schema: z.object({
+      sessionKey: z.string().describe('Session identifier'),
+    }),
+  })
   async delete(params: EventMap['session.delete']['params']): Promise<void> {
     const dir = path.dirname(this.filePath(params.sessionKey));
     await fs.rm(dir, { recursive: true, force: true });
     this.log.info(`deleted: ${params.sessionKey}`);
   }
 
-  @on('session.compact')
+  @on('session.compact', {
+    description: 'Compact a session by removing older messages.',
+    schema: z.object({
+      sessionKey: z.string().describe('Session identifier'),
+      count: z.number().int().describe('Number of most recent messages to keep'),
+    }),
+  })
   async compact(params: EventMap['session.compact']['params']): Promise<void> {
     const filePath = this.filePath(params.sessionKey);
     let content: string;

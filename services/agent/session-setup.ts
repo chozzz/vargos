@@ -118,7 +118,7 @@ export async function buildPiSession(config: PiSessionConfig): Promise<PiSession
     }
   }
 
-  const vargosCustomTools = createVargosCustomTools(config.workspaceDir, config.sessionKey, config.bus);
+  const vargosCustomTools = await createVargosCustomTools(config.sessionKey, config.bus);
   log.debug(`Created ${vargosCustomTools.length} custom tools`);
 
   const extensionFactories: ExtensionFactory[] = [];

@@ -20,7 +20,8 @@ import { toMessage, classifyError, friendlyError, sanitizeError } from '../../li
 import { appendError } from '../../lib/error-store.js';
 import { stripHeartbeatToken } from '../../lib/heartbeat.js';
 import { parseTarget } from '../../lib/channel-target.js';
-import { isSubagentSessionKey } from '../../lib/subagent.js';
+import { isSubagentSessionKey, subagentSessionKey, canSpawnSubagent, DEFAULT_MAX_SPAWN_DEPTH, DEFAULT_RUN_TIMEOUT_SECONDS } from '../../lib/subagent.js';
+import { loadAgent } from '../../lib/agents.js';
 import { parseDirectives } from '../../lib/directives.js';
 import { transformMedia, type MediaAttachment } from '../../lib/media.js';
 import { PiAgentRuntime, type PiAgentConfig, type PiAgentRunResult } from './runtime.js';
@@ -96,13 +97,98 @@ export class AgentService {
     return { response: result.response ?? '' };
   }
 
-  @on('agent.abort')
+  @on('agent.spawn', {
+    description: 'Spawn a child agent session to handle a subtask. Returns immediately with the child session key.',
+    schema: z.object({
+      sessionKey: z.string().describe('Parent session key'),
+      task:    z.string().describe('Task for the child agent to execute'),
+      agent:   z.string().optional().describe('Agent definition name to load skills from'),
+      role:    z.string().optional().describe('Custom role for the child agent'),
+      model:   z.string().optional().describe('Model to use for the child agent'),
+    }),
+  })
+  async spawn(params: EventMap['agent.spawn']['params']): Promise<EventMap['agent.spawn']['result']> {
+    if (!canSpawnSubagent(params.sessionKey, DEFAULT_MAX_SPAWN_DEPTH)) {
+      throw new Error(`Max subagent depth (${DEFAULT_MAX_SPAWN_DEPTH}) exceeded`);
+    }
+
+    const childKey = subagentSessionKey(params.sessionKey);
+    const { workspaceDir } = getDataPaths();
+
+    // Load agent definition if provided
+    let agentOverride: { role?: string; model?: string } = {};
+    if (params.agent) {
+      const agentDef = await loadAgent(workspaceDir, params.agent);
+      if (agentDef) {
+        if (agentDef.model) agentOverride.model = agentDef.model;
+      } else {
+        log.warn(`Agent definition not found: ${params.agent}`);
+      }
+    }
+
+    const childModel = params.model ?? agentOverride.model;
+    const childRole = params.role;
+
+    // Create child session with parent metadata
+    await this.bus.call('session.create', {
+      sessionKey: childKey,
+      model: childModel,
+      metadata: { parentSessionKey: params.sessionKey },
+    }).catch(err => log.error(`Failed to create subagent session: ${err}`));
+
+    // Add task as user message
+    await this.bus.call('session.addMessage', {
+      sessionKey: childKey,
+      role: 'user',
+      content: params.task,
+    }).catch(err => log.error(`Failed to add subagent task message: ${err}`));
+
+    // Fire execute in background — do not await
+    const executePromise = this.bus.call('agent.execute', {
+      sessionKey: childKey,
+      task: params.task,
+      model: childModel,
+    }).catch(err => {
+      log.error(`Subagent execution failed: ${err}`);
+      this.bus.emit('agent.onCompleted', {
+        sessionKey: childKey,
+        success: false,
+        error: toMessage(err),
+      });
+    });
+
+    // Set timeout for abort if run exceeds limit
+    const timer = setTimeout(() => {
+      log.warn(`Subagent timeout: ${childKey}`);
+      this.runtime.abortSessionRuns(childKey);
+    }, DEFAULT_RUN_TIMEOUT_SECONDS * 1000);
+
+    // Clean up timer when done
+    executePromise.finally(() => clearTimeout(timer));
+
+    return {
+      sessionKey: childKey,
+      response: `Spawned subagent session: ${childKey}`,
+    };
+  }
+
+  @on('agent.abort', {
+    description: 'Abort all active runs for a session.',
+    schema: z.object({
+      sessionKey: z.string().describe('Session identifier'),
+    }),
+  })
   async abort(params: EventMap['agent.abort']['params']): Promise<EventMap['agent.abort']['result']> {
     const count = this.runtime.abortSessionRuns(params.sessionKey);
     return { aborted: count > 0 };
   }
 
-  @on('agent.status')
+  @on('agent.status', {
+    description: 'Get list of active agent runs.',
+    schema: z.object({
+      sessionKey: z.string().optional().describe('Filter by session key (optional)'),
+    }),
+  })
   async status(_params: EventMap['agent.status']['params']): Promise<EventMap['agent.status']['result']> {
     return { activeRuns: this.runtime.listActiveRuns().map(r => r.sessionKey) };
   }
@@ -446,8 +532,8 @@ export class AgentService {
 
   // ── Channel inbound subscription ─────────────────────────────────────────────
 
-  @on('channel.inbound')
-  onChannelInbound(payload: EventMap['channel.inbound']): void {
+  @on('channel.onInbound')
+  onChannelInbound(payload: EventMap['channel.onInbound']): void {
     this.handleChannelMessage(payload).catch(err => log.error(`channel inbound: ${err}`));
   }
 }
