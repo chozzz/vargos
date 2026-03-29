@@ -3,7 +3,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { z } from 'zod';
-import { on } from '../../gateway/decorators.js';
+import { on, register } from '../../gateway/decorators.js';
 import type { Bus } from '../../gateway/bus.js';
 import type { EventMap } from '../../gateway/events.js';
 import { getDataPaths } from '../../lib/paths.js';
@@ -11,17 +11,13 @@ import { detectMimeType } from '../../lib/mime.js';
 import { toMessage } from '../../lib/error.js';
 
 export class FsService {
-  @on('fs.read', {
+  @register('fs.read', {
     description: 'Read a file. Returns content and mimeType. Supports text and images.',
     schema: z.object({
       path:   z.string().describe('Absolute or ~-relative path'),
       offset: z.number().optional().describe('Start line (1-indexed)'),
       limit:  z.number().optional().describe('Max lines to read'),
     }),
-    format: (r) => {
-      const res = r as EventMap['fs.read']['result'];
-      return res.mimeType.startsWith('image/') ? '[image]' : `${res.content.split('\n').length} lines`;
-    },
   })
   async read(params: EventMap['fs.read']['params']): Promise<EventMap['fs.read']['result']> {
     const filePath = resolvePath(params.path);
@@ -44,13 +40,12 @@ export class FsService {
     return { content: text, mimeType };
   }
 
-  @on('fs.write', {
+  @register('fs.write', {
     description: 'Write content to a file (creates parent dirs as needed).',
     schema: z.object({
       path:    z.string(),
       content: z.string(),
     }),
-    format: () => 'File written.',
   })
   async write(params: EventMap['fs.write']['params']): Promise<void> {
     const filePath = resolvePath(params.path);
@@ -58,14 +53,13 @@ export class FsService {
     await fs.writeFile(filePath, params.content, 'utf-8');
   }
 
-  @on('fs.edit', {
+  @register('fs.edit', {
     description: 'Replace an exact string in a file. Fails if 0 or >1 matches.',
     schema: z.object({
       path:    z.string(),
       oldText: z.string().describe('Exact text to replace'),
       newText: z.string().describe('Replacement text'),
     }),
-    format: () => 'File edited.',
   })
   async edit(params: EventMap['fs.edit']['params']): Promise<void> {
     const filePath = resolvePath(params.path);
@@ -76,16 +70,12 @@ export class FsService {
     await fs.writeFile(filePath, content.replace(params.oldText, params.newText), 'utf-8');
   }
 
-  @on('fs.exec', {
+  @register('fs.exec', {
     description: 'Run a shell command. Returns stdout, stderr, exitCode.',
     schema: z.object({
       command: z.string(),
       timeout: z.number().optional().describe('Timeout ms (default 60000)'),
     }),
-    format: (r) => {
-      const res = r as EventMap['fs.exec']['result'];
-      return `exit ${res.exitCode}${res.stdout ? '\n' + res.stdout.slice(0, 200) : ''}`;
-    },
   })
   async exec(params: EventMap['fs.exec']['params']): Promise<EventMap['fs.exec']['result']> {
     const dangerous = ['rm -rf /', '> /dev/', 'mkfs.', 'dd if='];
@@ -142,6 +132,6 @@ function execShell(command: string, cwd: string, timeoutMs: number): Promise<Eve
 // ── Boot ─────────────────────────────────────────────────────────────────────
 
 export async function boot(bus: Bus): Promise<{ stop?(): void }> {
-  bus.registerService(new FsService());
+  bus.bootstrap(new FsService());
   return {};
 }

@@ -12,7 +12,7 @@ describe('FsService E2E', () => {
   beforeEach(async () => {
     bus = new EventEmitterBus();
     service = new FsService();
-    bus.registerService(service);
+    bus.bootstrap(service);
     await fs.mkdir(testDir, { recursive: true });
   });
 

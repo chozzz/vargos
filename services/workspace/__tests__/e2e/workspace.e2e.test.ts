@@ -9,7 +9,7 @@ describe('WorkspaceService E2E', () => {
   beforeEach(async () => {
     bus = new EventEmitterBus();
     service = new WorkspaceService();
-    bus.registerService(service);
+    bus.bootstrap(service);
   });
 
   describe('workspace.listSkills', () => {

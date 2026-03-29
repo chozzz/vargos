@@ -12,41 +12,65 @@ export interface ToolSchema {
 
 // ─── Internal metadata storage ────────────────────────────────────────────────
 
-export const HANDLERS    = Symbol('vargos.handlers');
-export const TOOL_SCHEMAS = Symbol('vargos.toolSchemas');
+export const HANDLERS = Symbol('vargos.handlers');     // @on decorated methods
+export const TOOLS    = Symbol('vargos.tools');         // @register decorated methods
 
 export interface HandlerEntry {
   event:  keyof EventMap;
   method: string;
-  tool?:  ToolSchema;
+}
+
+export interface RegisteredEntry extends HandlerEntry {
+  schema: ToolSchema;
 }
 
 type HasHandlers = {
-  [HANDLERS]?:     HandlerEntry[];
-  [TOOL_SCHEMAS]?: Map<string, ToolSchema>;
+  [HANDLERS]?: HandlerEntry[];
+  [TOOLS]?:    RegisteredEntry[];
 };
 
 // ─── Decorator ────────────────────────────────────────────────────────────────
 
 /**
- * Marks a method as a bus handler for the given event.
+ * Marks a method as a listener for a bus event.
  *   Pure event    → (payload: EventMap[E]) => void | Promise<void>
- *   Callable event → (params: EventMap[E]['params']) => Promise<EventMap[E]['result']>
+ *   Callable event (rare) → (params: EventMap[E]['params']) => Promise<EventMap[E]['result']>
  *
- * Pass a ToolSchema as the second arg to also expose the handler as an agent tool.
- * Handlers are wired by bus.registerService() at boot.
+ * Use @register instead for callable events that should be agent-accessible.
+ * Handlers are wired by bus.bootstrap() at boot.
  */
-export function on<E extends keyof EventMap>(event: E, tool?: ToolSchema) {
+export function on<E extends keyof EventMap>(event: E) {
   return function (
     method: HandlerOf<E>,
     context: ClassMethodDecoratorContext,
   ): HandlerOf<E> {
     context.addInitializer(function (this: unknown) {
       const self = this as HasHandlers;
-      (self[HANDLERS] ??= []).push({ event, method: String(context.name), tool });
-      if (tool) {
-        (self[TOOL_SCHEMAS] ??= new Map()).set(event as string, tool);
-      }
+      (self[HANDLERS] ??= []).push({ event, method: String(context.name) });
+    });
+    return method;
+  };
+}
+
+/**
+ * Marks a method as a callable event provider (agent-accessible RPC endpoint).
+ *
+ * Required params:
+ *   - event: the callable event name (e.g., 'agent.execute')
+ *   - tool: ToolSchema with description and zod schema for introspection
+ *
+ * Signature: (params: EventMap[E]['params']) => Promise<EventMap[E]['result']>
+ *
+ * Handlers are wired by bus.bootstrap() at boot.
+ */
+export function register<E extends keyof EventMap>(event: E, tool: ToolSchema) {
+  return function (
+    method: HandlerOf<E>,
+    context: ClassMethodDecoratorContext,
+  ): HandlerOf<E> {
+    context.addInitializer(function (this: unknown) {
+      const self = this as HasHandlers;
+      (self[TOOLS] ??= []).push({ event, method: String(context.name), schema: tool });
     });
     return method;
   };

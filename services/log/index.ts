@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { on } from '../../gateway/decorators.js';
+import { on, register } from '../../gateway/decorators.js';
 import type { Bus } from '../../gateway/bus.js';
 import type { EventMap, LogLevel } from '../../gateway/events.js';
 import { setLoggerBus } from '../../lib/logger.js';
@@ -38,17 +38,13 @@ export class LogService {
     }
   }
 
-  @on('error.search', {
+  @register('error.search', {
     description: 'Search persisted log entries by level and/or service.',
     schema: z.object({
       sinceMs:  z.number().optional().describe('Only return entries newer than this many ms ago'),
       service:  z.string().optional(),
       level:    z.enum(['debug', 'info', 'warn', 'error']).optional(),
     }),
-    format: (r) => {
-      const rows = (r as { entries: LogEntry[] }).entries;
-      return rows.length ? rows.map(e => `[${e.ts}] ${e.level} ${e.service}: ${e.message}`).join('\n') : 'No entries found.';
-    },
   })
   async search(params: EventMap['error.search']['params']): Promise<EventMap['error.search']['result']> {
     const file = this.todayFile();
@@ -100,7 +96,7 @@ export class LogService {
 
 export async function boot(bus: Bus): Promise<{ stop?(): void }> {
   const svc = new LogService();
-  bus.registerService(svc);
+  bus.bootstrap(svc);
   setLoggerBus(bus);
   return {};
 }

@@ -47,7 +47,7 @@ Usage:
         const eventList = (events as Array<{ event: string; description: string; type: string }>);
         console.log('\n📡 Available Events:\n');
         eventList.forEach(e => {
-          const icon = e.type === 'callable' ? '🔧' : '📢';
+          const icon = e.type === 'tool' ? '🔧' : '📢';
           console.log(`${icon} ${e.event.padEnd(30)} ${e.description}`);
         });
         console.log();

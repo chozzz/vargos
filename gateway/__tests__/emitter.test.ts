@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
+import { z } from 'zod';
 import { EventEmitterBus } from '../emitter.js';
-import { on } from '../decorators.js';
+import { on, register } from '../decorators.js';
 import type { EventMap } from '../events.js';
 
 describe('EventEmitterBus', () => {
@@ -26,21 +27,46 @@ describe('EventEmitterBus', () => {
   describe('callable events', () => {
     it('call routes to handler and returns result', async () => {
       const bus = new EventEmitterBus();
-      bus.on('session.get', async (params) => ({
-        sessionKey: params.sessionKey,
-        kind: 'main' as const,
-        metadata: {},
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      }));
 
+      class SessionService {
+        constructor(b: EventEmitterBus) { b.bootstrap(this); }
+
+        @register('session.get', {
+          description: 'Get a session',
+          schema: z.object({ sessionKey: z.string() }),
+        })
+        async get(params: EventMap['session.get']['params']): Promise<EventMap['session.get']['result']> {
+          return {
+            sessionKey: params.sessionKey,
+            kind: 'main' as const,
+            metadata: {},
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          };
+        }
+      }
+
+      new SessionService(bus);
       const session = await bus.call('session.get', { sessionKey: 'telegram:123' });
       expect(session.sessionKey).toBe('telegram:123');
     });
 
     it('call propagates handler errors', async () => {
       const bus = new EventEmitterBus();
-      bus.on('session.get', async () => { throw new Error('not found'); });
+
+      class SessionService {
+        constructor(b: EventEmitterBus) { b.bootstrap(this); }
+
+        @register('session.get', {
+          description: 'Get a session',
+          schema: z.object({ sessionKey: z.string() }),
+        })
+        async get(): Promise<EventMap['session.get']['result']> {
+          throw new Error('not found');
+        }
+      }
+
+      new SessionService(bus);
       await expect(bus.call('session.get', { sessionKey: 'x' })).rejects.toThrow('not found');
     });
 
@@ -51,14 +77,26 @@ describe('EventEmitterBus', () => {
 
     it('concurrent calls are isolated by correlationId', async () => {
       const bus = new EventEmitterBus();
-      bus.on('session.get', async (params) => ({
-        sessionKey: params.sessionKey,
-        kind: 'main' as const,
-        metadata: {},
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      }));
 
+      class SessionService {
+        constructor(b: EventEmitterBus) { b.bootstrap(this); }
+
+        @register('session.get', {
+          description: 'Get a session',
+          schema: z.object({ sessionKey: z.string() }),
+        })
+        async get(params: EventMap['session.get']['params']): Promise<EventMap['session.get']['result']> {
+          return {
+            sessionKey: params.sessionKey,
+            kind: 'main' as const,
+            metadata: {},
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          };
+        }
+      }
+
+      new SessionService(bus);
       const [a, b, c] = await Promise.all([
         bus.call('session.get', { sessionKey: 'a' }),
         bus.call('session.get', { sessionKey: 'b' }),
@@ -76,7 +114,7 @@ describe('EventEmitterBus', () => {
       const received: string[] = [];
 
       class MyService {
-        constructor(b: EventEmitterBus) { b.registerService(this); }
+        constructor(b: EventEmitterBus) { b.bootstrap(this); }
 
         @on('agent.onCompleted')
         onCompleted(payload: EventMap['agent.onCompleted']): void {
@@ -94,9 +132,12 @@ describe('EventEmitterBus', () => {
       const bus = new EventEmitterBus();
 
       class SessionService {
-        constructor(b: EventEmitterBus) { b.registerService(this); }
+        constructor(b: EventEmitterBus) { b.bootstrap(this); }
 
-        @on('session.get')
+        @register('session.get', {
+          description: 'Get a session',
+          schema: z.object({ sessionKey: z.string() }),
+        })
         async get(params: EventMap['session.get']['params']): Promise<EventMap['session.get']['result']> {
           return {
             sessionKey: params.sessionKey,
@@ -118,7 +159,7 @@ describe('EventEmitterBus', () => {
       const log: string[] = [];
 
       class ChannelService {
-        constructor(b: EventEmitterBus) { b.registerService(this); }
+        constructor(b: EventEmitterBus) { b.bootstrap(this); }
 
         @on('agent.onCompleted')
         onCompleted(_p: EventMap['agent.onCompleted']): void { log.push('completed'); }

@@ -6,10 +6,10 @@ describe('MemoryService E2E', () => {
   it('registers with bus', async () => {
     const bus = new EventEmitterBus();
     const service = new MemoryService();
-    bus.registerService(service);
+    bus.bootstrap(service);
 
     // Verify the service registered its events
-    const metadata = bus.search();
+    const metadata = await bus.search();
     const memoryEvents = metadata.filter(m => m.event.startsWith('memory.'));
 
     expect(memoryEvents.length).toBeGreaterThan(0);
@@ -19,7 +19,7 @@ describe('MemoryService E2E', () => {
   it('throws on memory operations without initialized context', async () => {
     const bus = new EventEmitterBus();
     const service = new MemoryService();
-    bus.registerService(service);
+    bus.bootstrap(service);
 
     try {
       await bus.call('memory.search', { query: 'test', maxResults: 10 });

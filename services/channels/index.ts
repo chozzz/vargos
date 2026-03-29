@@ -16,7 +16,7 @@
  */
 
 import { z } from 'zod';
-import { on } from '../../gateway/decorators.js';
+import { on, register } from '../../gateway/decorators.js';
 import type { Bus } from '../../gateway/bus.js';
 import type { EventMap, ChannelInfo, Pagination } from '../../gateway/events.js';
 import type { AppConfig, ChannelEntry, TelegramChannel, WhatsAppChannel } from '../../services/config/index.js';
@@ -72,7 +72,7 @@ export class ChannelService {
 
   // ── Callable handlers ────────────────────────────────────────────────────────
 
-  @on('channel.send', {
+  @register('channel.send', {
     description: 'Send a text message to a channel recipient.',
     schema: z.object({ sessionKey: z.string(), text: z.string() }),
   })
@@ -101,7 +101,7 @@ export class ChannelService {
     return { sent: true };
   }
 
-  @on('channel.sendMedia', {
+  @register('channel.sendMedia', {
     description: 'Send a media file to a channel recipient.',
     schema: z.object({
       sessionKey: z.string(),
@@ -123,13 +123,9 @@ export class ChannelService {
     return { sent: true };
   }
 
-  @on('channel.search', {
+  @register('channel.search', {
     description: 'List connected channel adapters.',
     schema: z.object({ query: z.string().optional(), page: z.number(), limit: z.number().optional() }),
-    format: (r) => {
-      const res = r as EventMap['channel.search']['result'];
-      return res.items.map(c => `${c.instanceId} (${c.type}) — ${c.status}`).join('\n') || 'No channels.';
-    },
   })
   async search(params: EventMap['channel.search']['params']): Promise<EventMap['channel.search']['result']> {
     const all: ChannelInfo[] = Array.from(this.adapters.values()).map(a => ({
@@ -143,7 +139,7 @@ export class ChannelService {
     return paginate(filtered, params.page, params.limit ?? 20);
   }
 
-  @on('channel.get', {
+  @register('channel.get', {
     description: 'Get status of a specific channel adapter.',
     schema: z.object({ instanceId: z.string() }),
   })
@@ -153,7 +149,7 @@ export class ChannelService {
     return { instanceId: adapter.instanceId, type: adapter.type, status: adapter.status };
   }
 
-  @on('channel.register', {
+  @register('channel.register', {
     description: 'Dynamically register a new channel adapter.',
     schema: z.object({ id: z.string(), type: z.string() }),
   })
@@ -344,7 +340,7 @@ export class ChannelService {
 export async function boot(bus: Bus): Promise<{ stop(): Promise<void> }> {
   const config = await bus.call('config.get', {});
   const svc = new ChannelService(bus, config);
-  bus.registerService(svc);
+  bus.bootstrap(svc);
   log.info(`registered with ${config.channels.length} channel(s) configured (not started)`);
   return { stop: () => svc.stop() };
 }

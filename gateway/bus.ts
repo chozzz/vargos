@@ -35,16 +35,27 @@ export interface Bus {
   emit<E extends PureEventKey>(event: E, payload: EventMap[E]): void;
 
   /**
-   * Subscribe to any event.
-   * For pure events: handler receives the payload.
-   * For callable events: handler receives params and must return Promise<result>.
+   * Subscribe to a pure event (listener only).
+   * Handler receives the payload and returns void.
    * Returns an unsubscribe function.
+   *
+   * Note: Callable events are wired exclusively via @register decorators
+   * and registerService(). Direct on() calls for callable events are not supported.
    */
-  on<E extends keyof EventMap>(event: E, handler: HandlerOf<E>): () => void;
+  on<E extends PureEventKey>(event: E, handler: HandlerOf<E>): () => void;
 
   /** Invoke a callable event and await the result. */
   call<E extends CallableEventKey>(event: E, params: EventParams<E>): Promise<EventResult<E>>;
 
-  /** Wire all @on-decorated methods on a service instance to this bus. */
-  registerService(service: object): void;
+  /** Check if an event is callable (only @register decorated events). */
+  isCallable(eventName: string): boolean;
+
+  /** Bootstrap a service (or the bus itself if no service provided) by wiring all @on and @register decorated methods to this bus. */
+  bootstrap(service?: object): void;
+
+  /** Register a new callable tool at runtime (used by services like MCP). Returns an unsubscribe function. */
+  registerToolDirect(event: string, handler: (params: unknown) => Promise<unknown>, schema: import('./decorators.js').ToolSchema): () => void;
+
+  /** Unregister a callable tool that was previously registered at runtime. Returns true if it was removed. */
+  unregisterTool(event: string): boolean;
 }

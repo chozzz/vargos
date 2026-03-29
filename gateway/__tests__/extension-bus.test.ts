@@ -6,7 +6,7 @@ describe('Extension: createVargosCustomTools from bus.inspect', () => {
     const bus = new EventEmitterBus();
 
     // Use real services to get actual metadata
-    const metadata = bus.search();
+    const metadata = await bus.search();
 
     // Should have registered callable events from gateway tests
     expect(Array.isArray(metadata)).toBe(true);
@@ -16,7 +16,7 @@ describe('Extension: createVargosCustomTools from bus.inspect', () => {
   it('filters callable events by description', async () => {
     const bus = new EventEmitterBus();
 
-    const all = bus.search();
+    const all = await bus.search();
     const filtered = all.filter(e => e.description !== '(no description)');
 
     // All filtered events should have descriptions
@@ -26,7 +26,7 @@ describe('Extension: createVargosCustomTools from bus.inspect', () => {
   it('includes schema for tool wrapping', async () => {
     const bus = new EventEmitterBus();
 
-    const all = bus.search();
+    const all = await bus.search();
     const withSchema = all.filter(e => e.schema);
 
     // Events with schema should be defined

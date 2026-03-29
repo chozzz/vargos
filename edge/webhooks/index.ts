@@ -11,7 +11,7 @@
 import http from 'node:http';
 import { timingSafeEqual, createHash } from 'node:crypto';
 import { z } from 'zod';
-import { on } from '../../gateway/decorators.js';
+import { on, register } from '../../gateway/decorators.js';
 import type { Bus } from '../../gateway/bus.js';
 import type { EventMap } from '../../gateway/events.js';
 import type { AppConfig, WebhookEntry } from '../../services/config/index.js';
@@ -51,7 +51,7 @@ export class WebhooksEdge {
     );
 
     await this.startHttp();
-    this.bus.registerService(this);
+    this.bus.bootstrap(this);
     log.info(`started with ${this.hooks.size} webhook(s) on ${HTTP_HOST}:${HTTP_PORT}`);
   }
 
@@ -62,17 +62,13 @@ export class WebhooksEdge {
 
   // ── Callable handler ─────────────────────────────────────────────────────
 
-  @on('webhook.search', {
+  @register('webhook.search', {
     description: 'List registered webhook endpoints.',
     schema: z.object({
       query: z.string().optional(),
       page:  z.number(),
       limit: z.number().optional(),
     }),
-    format: (r) => {
-      const res = r as EventMap['webhook.search']['result'];
-      return res.items.map(h => `${h.id}: ${h.name}`).join('\n') || 'No webhooks.';
-    },
   })
   async search(params: EventMap['webhook.search']['params']): Promise<EventMap['webhook.search']['result']> {
     // Strip tokens — never expose secrets

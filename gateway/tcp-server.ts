@@ -5,7 +5,6 @@
 
 import { createServer, Socket } from 'node:net';
 import type { Bus, CallableEventKey } from './bus.js';
-import { CALLABLE_EVENTS } from './events.js';
 import { createLogger } from '../lib/logger.js';
 
 const log = createLogger('bus-server');
@@ -126,7 +125,7 @@ async function handleRequest(
   }
 
   // Handle RPC call
-  if (!CALLABLE_EVENTS.has(method as CallableEventKey)) {
+  if (!bus.isCallable(method)) {
     socket.write(
       JSON.stringify({
         jsonrpc: '2.0',

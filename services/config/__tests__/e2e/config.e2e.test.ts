@@ -53,7 +53,7 @@ describe('ConfigService E2E', () => {
     writeFileSync(configPath, JSON.stringify(defaultConfig, null, 2));
 
     service = new ConfigService(bus, configPath);
-    bus.registerService(service);
+    bus.bootstrap(service);
   });
 
   describe('config.get', () => {

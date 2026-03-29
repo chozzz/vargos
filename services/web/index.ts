@@ -1,18 +1,17 @@
 import { z } from 'zod';
-import { on } from '../../gateway/decorators.js';
+import { on, register } from '../../gateway/decorators.js';
 import type { Bus } from '../../gateway/bus.js';
 import type { EventMap } from '../../gateway/events.js';
 import { toMessage } from '../../lib/error.js';
 
 export class WebService {
-  @on('web.fetch', {
+  @register('web.fetch', {
     description: 'Fetch a URL and return readable content (HTML → markdown).',
     schema: z.object({
       url:         z.string().describe('HTTP or HTTPS URL'),
       extractMode: z.enum(['markdown', 'text']).optional().describe('Output format (default: markdown)'),
       maxChars:    z.number().optional().describe('Max characters to return (default: 50000)'),
     }),
-    format: (r) => (r as EventMap['web.fetch']['result']).text.slice(0, 120) + '…',
   })
   async fetch(params: EventMap['web.fetch']['params']): Promise<EventMap['web.fetch']['result']> {
     let url: URL;
@@ -82,6 +81,6 @@ function stripMarkdownLinks(md: string): string {
 // ── Boot ─────────────────────────────────────────────────────────────────────
 
 export async function boot(bus: Bus): Promise<{ stop?(): void }> {
-  bus.registerService(new WebService());
+  bus.bootstrap(new WebService());
   return {};
 }

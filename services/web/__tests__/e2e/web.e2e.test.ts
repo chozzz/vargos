@@ -9,7 +9,7 @@ describe('WebService E2E', () => {
   beforeEach(() => {
     bus = new EventEmitterBus();
     service = new WebService();
-    bus.registerService(service);
+    bus.bootstrap(service);
   });
 
   describe('web.fetch', () => {

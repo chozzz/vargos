@@ -15,7 +15,7 @@ describe('SessionsService E2E', () => {
     tempDir = path.join(os.tmpdir(), `sessions-test-${Date.now()}`);
     await fs.mkdir(tempDir, { recursive: true });
     service = new SessionsService();
-    bus.registerService(service);
+    bus.bootstrap(service);
   });
 
   afterEach(async () => {

@@ -16,7 +16,7 @@ import { CronJob } from 'cron';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { on } from '../../gateway/decorators.js';
+import { on, register } from '../../gateway/decorators.js';
 import type { Bus } from '../../gateway/bus.js';
 import type { EventMap } from '../../gateway/events.js';
 import type { AppConfig, CronTask, CronAddParams, CronUpdateParams } from '../../services/config/index.js';
@@ -78,13 +78,9 @@ export class CronService {
 
   // ── Callable handlers ─────────────────────────────────────────────────────
 
-  @on('cron.search', {
+  @register('cron.search', {
     description: 'Search scheduled cron tasks.',
     schema: z.object({ query: z.string().optional(), page: z.number(), limit: z.number().optional() }),
-    format: (r) => {
-      const res = r as EventMap['cron.search']['result'];
-      return res.items.map(t => `${t.id}: ${t.name} (${t.schedule})`).join('\n') || 'No tasks.';
-    },
   })
   async search(params: EventMap['cron.search']['params']): Promise<EventMap['cron.search']['result']> {
     const { query, page, limit = 20 } = params;
@@ -96,7 +92,7 @@ export class CronService {
     return { items: filtered.slice(offset, offset + limit), page, limit };
   }
 
-  @on('cron.add', {
+  @register('cron.add', {
     description: 'Add a new scheduled cron task.',
     schema: z.object({
       name:     z.string(),
@@ -113,7 +109,7 @@ export class CronService {
     log.info(`task added: ${task.name} (${task.id})`);
   }
 
-  @on('cron.remove', {
+  @register('cron.remove', {
     description: 'Remove a scheduled cron task.',
     schema: z.object({ id: z.string() }),
   })
@@ -128,7 +124,7 @@ export class CronService {
     log.info(`task removed: ${params.id}`);
   }
 
-  @on('cron.update', {
+  @register('cron.update', {
     description: 'Update a scheduled cron task.',
     schema: z.object({
       id:       z.string(),
@@ -165,7 +161,7 @@ export class CronService {
     log.info(`task updated: ${params.id}`);
   }
 
-  @on('cron.run', {
+  @register('cron.run', {
     description: 'Manually trigger a cron task immediately.',
     schema: z.object({ id: z.string() }),
   })
@@ -355,7 +351,7 @@ export async function boot(bus: Bus): Promise<{ stop(): void }> {
   const config = await bus.call('config.get', {});
   const svc = new CronService(bus, config);
   svc.start();
-  bus.registerService(svc);
+  bus.bootstrap(svc);
   log.info(`started with ${config.cron.tasks.length} tasks`);
   return { stop: () => svc.stop() };
 }

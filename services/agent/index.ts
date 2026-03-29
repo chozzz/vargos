@@ -9,7 +9,7 @@
  */
 
 import { z } from 'zod';
-import { on } from '../../gateway/decorators.js';
+import { on, register } from '../../gateway/decorators.js';
 import type { Bus } from '../../gateway/bus.js';
 import type { EventMap, AgentExecuteParams } from '../../gateway/events.js';
 import type { AppConfig, ModelProfile } from '../../services/config/index.js';
@@ -67,7 +67,7 @@ export class AgentService {
     this.retriggerTimers.clear();
   }
 
-  @on('agent.execute', {
+  @register('agent.execute', {
     description: 'Run the agent on a task. Creates/updates the session, adds the task as a user message, and returns the response.',
     schema: z.object({
       sessionKey:     z.string(),
@@ -78,7 +78,6 @@ export class AgentService {
       media:          z.array(z.object({ filePath: z.string(), mimeType: z.string() })).optional(),
       notify:         z.array(z.string()).optional(),
     }),
-    format: (r) => (r as { response: string }).response?.slice(0, 80) ?? '',
   })
   async execute(params: EventMap['agent.execute']['params']): Promise<EventMap['agent.execute']['result']> {
     let result = await this.runAgent(params);
@@ -97,7 +96,7 @@ export class AgentService {
     return { response: result.response ?? '' };
   }
 
-  @on('agent.spawn', {
+  @register('agent.spawn', {
     description: 'Spawn a child agent session to handle a subtask. Returns immediately with the child session key.',
     schema: z.object({
       sessionKey: z.string().describe('Parent session key'),
@@ -172,7 +171,7 @@ export class AgentService {
     };
   }
 
-  @on('agent.abort', {
+  @register('agent.abort', {
     description: 'Abort all active runs for a session.',
     schema: z.object({
       sessionKey: z.string().describe('Session identifier'),
@@ -183,7 +182,7 @@ export class AgentService {
     return { aborted: count > 0 };
   }
 
-  @on('agent.status', {
+  @register('agent.status', {
     description: 'Get list of active agent runs.',
     schema: z.object({
       sessionKey: z.string().optional().describe('Filter by session key (optional)'),
@@ -543,6 +542,6 @@ export class AgentService {
 export async function boot(bus: Bus): Promise<{ stop?(): void }> {
   const appConfig = await bus.call('config.get', {});
   const svc = new AgentService(bus, appConfig);
-  bus.registerService(svc);
+  bus.bootstrap(svc);
   return { stop: () => svc.stop() };
 }

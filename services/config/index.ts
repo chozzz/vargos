@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { readFileSync, writeFileSync } from 'node:fs';
-import { on } from '../../gateway/decorators.js';
+import { on, register } from '../../gateway/decorators.js';
 import type { Bus } from '../../gateway/bus.js';
 import type { EventMap } from '../../gateway/events.js';
 import {
@@ -142,7 +142,7 @@ export class ConfigService {
     this.config = loadConfig(file);
   }
 
-  @on('config.get', {
+  @register('config.get', {
     description: 'Get the current application configuration.',
     schema: z.object({}),
   })
@@ -150,10 +150,9 @@ export class ConfigService {
     return this.config;
   }
 
-  @on('config.set', {
+  @register('config.set', {
     description: 'Update the application config. Validates, persists to disk, and broadcasts config.onChanged.',
     schema: z.object({}).passthrough(),
-    format: () => 'Config updated.',
   })
   async set(params: AppConfig): Promise<AppConfig> {
     const parsed = AppConfigSchema.parse(params);
@@ -169,7 +168,7 @@ export class ConfigService {
 
 export async function boot(bus: Bus): Promise<{ stop?(): void }> {
   const svc = new ConfigService(bus, getDataPaths().configFile);
-  bus.registerService(svc);
+  bus.bootstrap(svc);
   return {};
 }
 

@@ -27,8 +27,8 @@ const bus = new EventEmitterBus();
 const log = createLogger('boot');
 const stoppers: Array<() => unknown> = [];
 
-// Bus self-registers for introspection via @on decorators
-bus.registerService(bus);
+// Bootstrap the bus itself (registers bus.search and bus.inspect)
+bus.bootstrap();
 
 for (const [label, load] of SERVICES) {
   try {

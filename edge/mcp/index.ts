@@ -160,9 +160,9 @@ export class McpEdge {
       const { name, arguments: args } = request.params;
       const sessionKey = (args as Record<string, unknown>)?.sessionKey as string || 'mcp:default';
 
-      // Check if event exists in bus
+      // Check if event exists in bus and is a tool
       const metadata = await this.bus.call('bus.inspect', { event: name });
-      if (!metadata || metadata.type !== 'callable') {
+      if (!metadata || metadata.type !== 'tool') {
         return {
           content: [{ type: 'text', text: `Unknown tool: ${name}` }],
           isError: true,

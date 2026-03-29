@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { glob } from 'tinyglobby';
-import { on } from '../../gateway/decorators.js';
+import { on, register } from '../../gateway/decorators.js';
 import type { Bus } from '../../gateway/bus.js';
 import type { EventMap, SessionCreateParams, SessionAddMessageParams, Session, Message } from '../../gateway/events.js';
 import { createLogger, emitError } from '../../lib/logger.js';
@@ -18,7 +18,7 @@ export class SessionsService {
 
   // ── Bus handlers ──────────────────────────────────────────────────────────
 
-  @on('session.create', {
+  @register('session.create', {
     description: 'Create a new session or retrieve existing one.',
     schema: z.object({
       sessionKey: z.string().describe('Unique session identifier'),
@@ -45,7 +45,7 @@ export class SessionsService {
     this.log.debug(`created: ${params.sessionKey}`);
   }
 
-  @on('session.get', {
+  @register('session.get', {
     description: 'Retrieve a session by key.',
     schema: z.object({
       sessionKey: z.string().describe('Session identifier'),
@@ -57,7 +57,7 @@ export class SessionsService {
     return data.session;
   }
 
-  @on('session.addMessage', {
+  @register('session.addMessage', {
     description: 'Add a message to a session.',
     schema: z.object({
       sessionKey: z.string().describe('Session identifier'),
@@ -84,7 +84,7 @@ export class SessionsService {
     await fs.appendFile(filePath, JSON.stringify(message) + '\n', 'utf-8');
   }
 
-  @on('session.getMessages', {
+  @register('session.getMessages', {
     description: 'Retrieve messages from a session.',
     schema: z.object({
       sessionKey: z.string().describe('Session identifier'),
@@ -98,17 +98,13 @@ export class SessionsService {
     return msgs;
   }
 
-  @on('session.search', {
+  @register('session.search', {
     description: 'Search sessions by key prefix or list all.',
     schema: z.object({
       query: z.string().optional(),
       page:  z.number().int().min(1).default(1),
       limit: z.number().int().min(1).max(100).optional(),
     }),
-    format: (r) => {
-      const res = r as EventMap['session.search']['result'];
-      return res.items.map(s => `${s.sessionKey} [${s.kind}]`).join('\n') || 'No sessions found.';
-    },
   })
   async search(params: EventMap['session.search']['params']): Promise<EventMap['session.search']['result']> {
     const all = (await this.listAll()).map(r => r.session);
@@ -118,7 +114,7 @@ export class SessionsService {
     return paginate(filtered, params.page, params.limit);
   }
 
-  @on('session.delete', {
+  @register('session.delete', {
     description: 'Delete a session and all its messages.',
     schema: z.object({
       sessionKey: z.string().describe('Session identifier'),
@@ -130,7 +126,7 @@ export class SessionsService {
     this.log.info(`deleted: ${params.sessionKey}`);
   }
 
-  @on('session.compact', {
+  @register('session.compact', {
     description: 'Compact a session by removing older messages.',
     schema: z.object({
       sessionKey: z.string().describe('Session identifier'),
@@ -255,7 +251,7 @@ export async function boot(bus: Bus): Promise<{ stop(): Promise<void> }> {
   await fs.mkdir(sessionsDir, { recursive: true });
 
   const svc = new SessionsService();
-  bus.registerService(svc);
+  bus.bootstrap(svc);
 
   // Reap on boot + every 6 hours
   svc.reap().catch(err => emitError('sessions', err));
