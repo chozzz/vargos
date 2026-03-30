@@ -18,7 +18,6 @@ import { createLogger } from '../../lib/logger.js';
 import { generateId } from '../../lib/id.js';
 import { toMessage, classifyError, friendlyError, sanitizeError } from '../../lib/error.js';
 import { appendError } from '../../lib/error-store.js';
-import { stripHeartbeatToken } from '../../lib/heartbeat.js';
 import { parseTarget } from '../../lib/channel-target.js';
 import { isSubagentSessionKey, subagentSessionKey, canSpawnSubagent, DEFAULT_MAX_SPAWN_DEPTH, DEFAULT_RUN_TIMEOUT_SECONDS } from '../../lib/subagent.js';
 import { loadAgent } from '../../lib/agents.js';
@@ -372,58 +371,6 @@ export class AgentService {
     }
 
     return content;
-  }
-
-  // ── Cron / Webhook trigger handling ─────────────────────────────────────────
-
-  async handleTriggeredRun(opts: {
-    kind: 'cron' | 'webhook';
-    triggerId: string;
-    task: string;
-    sessionKey: string;
-    notify?: string[];
-  }): Promise<void> {
-    const { kind, triggerId, task, sessionKey, notify } = opts;
-    const idKey = kind === 'cron' ? 'taskId' : 'hookId';
-
-    await this.bus.call('session.create', {
-      sessionKey,
-      metadata: { [idKey]: triggerId, ...(notify?.length && { notify }) },
-    }).catch((err: unknown) => {
-      const msg = toMessage(err);
-      if (!msg.includes('already exists')) log.error(`Failed to create ${kind} session: ${msg}`);
-    });
-
-    await this.bus.call('session.addMessage', {
-      sessionKey, content: task, role: 'user',
-      metadata: { source: kind, [idKey]: triggerId },
-    }).catch(err => log.error(`Failed to store ${kind} task message: ${err}`));
-
-    let result = await this.runAgent({ sessionKey, task });
-
-    if (result.success && result.thinkingOnly) {
-      log.info(`thinking-only response for ${kind}:${triggerId} — re-prompting`);
-      result = await this.runAgent({ sessionKey, task: 'Provide your response. Summarize what you found or did.' });
-    }
-
-    // Prune HEARTBEAT_OK no-op exchanges
-    if (result.success && result.response && stripHeartbeatToken(result.response) === null) {
-      await this.bus.call('session.compact', { sessionKey, count: 2 })
-        .catch(err => log.debug(`heartbeat prune: ${err}`));
-      log.debug(`heartbeat pruned: ${triggerId}`);
-      return;
-    }
-
-    if (!notify?.length) return;
-
-    const prefix = sessionKey + ':subagent:';
-    const hasSubagents = this.runtime.listActiveRuns().some(r => r.sessionKey?.startsWith(prefix));
-    if (hasSubagents) {
-      log.info(`${kind}:${triggerId} spawned sub-agents — deferring delivery`);
-      return;
-    }
-
-    await this.deliverToNotifyTargets(notify, result);
   }
 
   // ── Subagent orchestration ───────────────────────────────────────────────────
