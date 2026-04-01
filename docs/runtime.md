@@ -48,7 +48,7 @@ This makes `_baseSystemPrompt` our prompt, so the SDK reset is a no-op.
 
 ## System Prompt
 
-Built in layers by `src/agent/prompt.ts`. Full mode (~13K chars):
+Built in layers by `services/agent/prompt.ts`. Full mode (~13K chars):
 
 | Order | Section | Content |
 |-------|---------|---------|
@@ -132,7 +132,7 @@ tags: [category, tags]
 Detailed instructions the agent follows when this skill is activated.
 ```
 
-New skills appear in the manifest on the next run automatically. Scanner: `src/lib/skills.ts`.
+New skills appear in the manifest on the next run automatically. Scanner: `lib/skills.ts`.
 
 ## Agent Definitions
 

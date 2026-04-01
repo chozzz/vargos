@@ -1,4 +1,4 @@
-# Use Case: Guest Voice Agent (Hospitality)
+# Planned: Guest Voice Agent (Hospitality)
 
 ## Summary
 
@@ -13,7 +13,7 @@ Inbound Twilio calls from known guests are routed to a personalized voice agent 
 5. `VoiceSession` handles STT → LLM → TTS loop for the conversation
 6. Call ends → session archived
 
-## Guest Profile (`~/.vargos/workspace/guests/<id>.md`)
+## Guest Profile Structure
 
 ```yaml
 ---
@@ -27,10 +27,10 @@ context: "VIP guest, room 412, checking out 2026-03-22"
 
 ## Requirements
 
-- Phase 1 (Voice Foundation) + Phase 4 (Guest Agent) — see `plans/voice-web-plugins.md`
-- Open decision D1: fast local LLM for real-time voice
-- Open decision D3: guest registry — file-based vs. PMS API sync
-- Open decision D5: call recording and consent
+- Phase 1 (Voice Foundation) + Phase 4 (Guest Agent)
+- Fast local LLM for real-time voice (~400ms budget)
+- Guest registry: file-based vs. PMS API sync
+- Call recording and consent handling
 
 ## Notes
 

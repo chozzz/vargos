@@ -1,4 +1,4 @@
-# Use Case: Self-Improving Agent
+# Planned: Self-Improving Agent
 
 ## Summary
 

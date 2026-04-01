@@ -24,6 +24,7 @@ npm-debug.log*
 # AI assistant settings
 .claude/
 .cursor/
+.qwen/
 CLAUDE.md
 
 # Internal tasks and plans

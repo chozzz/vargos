@@ -18,13 +18,13 @@ Sessions persist conversation history and provide isolation between different in
 
 Channel session keys use the channel's `instanceId` (from `config.channels[].id`) — not the platform type. This supports multiple instances of the same platform (e.g., two WhatsApp accounts with different `id` values each get their own session namespace).
 
-Session key construction is centralized in `src/sessions/keys.ts`. Builder functions: `channelSessionKey()`, `cronSessionKey()`, `webhookSessionKey()`, `cliSessionKey()`, `subagentSessionKey()`.
+Session key builder functions (`channelSessionKey()`, `cronSessionKey()`, `webhookSessionKey()`, `cliSessionKey()`, `subagentSessionKey()`) are co-located with the services that own them (`services/sessions/`, `services/agent/`, `lib/subagent.ts`).
 
 ## Behaviors Driven by Session Key
 
 **Prompt mode** — see [runtime.md](./runtime.md#prompt-modes) for full breakdown.
 
-**History limit** (`src/agent/history.ts`):
+**History limit** (`services/agent/history.ts`):
 - Derived from the root session key (before `:subagent:`)
 - Channels (whatsapp/telegram): 30 turns
 - Cron: 10 turns
@@ -91,7 +91,7 @@ Each JSONL file (e.g., `cli-chat.jsonl`) contains:
 
 Subagent sessions are stored in their parent's `subagents/<subagent-dir>/` directory. Tool results are one JSON file per tool call, named by `toolCallId`, under the session's `tool-results/` directory.
 
-Path resolution is centralized in `src/config/paths.ts` via `resolveSessionDir(sessionKey)`, which handles both root sessions and subagent nesting automatically.
+Path resolution is centralized in `lib/paths.ts` via `resolveSessionDir(sessionKey)`, which handles both root sessions and subagent nesting automatically.
 
 The Pi SDK runs in-memory only — no session files from the LLM runtime. All persistence goes through `FileSessionService`. Before each agent run, history is loaded from `FileSessionService`, converted to `AgentMessage[]` via `toAgentMessages()`, sanitized, and injected into the Pi SDK session.
 
