@@ -20,7 +20,7 @@ const EXT_MIME: Record<string, string> = {
   '.pdf': 'application/pdf',
 };
 
-const PATH_RE = /(?:^|[\s\[(`)>])\.?(\/[\w./-]+\.(?:jpe?g|png|gif|webp|mp4|mp3|ogg|m4a|pdf))\b/gi;
+const PATH_RE = /(?:^|[\s[(`)>])\.?(\/[\w./-]+\.(?:jpe?g|png|gif|webp|mp4|mp3|ogg|m4a|pdf))\b/gi;
 
 export interface ExtractedMedia {
   filePath: string;

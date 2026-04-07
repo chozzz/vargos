@@ -7,7 +7,7 @@
  *
  * Inbound flow:
  *   adapter → onInboundMessage → session create/update → expand links
- *   → emit channel.onInbound (AgentService handles the run)
+ *   → emit channel.onInbound (agent runtime handles the run when wired)
  *   → start typing + init reaction controller
  *   → agent.onTool updates reaction phase
  *   → agent.onCompleted stops typing + seals reaction
@@ -16,9 +16,9 @@
  */
 
 import { z } from 'zod';
-import { on, register } from '../../gateway/decorators.js';
+import { register } from '../../gateway/decorators.js';
 import type { Bus } from '../../gateway/bus.js';
-import type { EventMap, ChannelInfo, Pagination } from '../../gateway/events.js';
+import type { EventMap, ChannelInfo } from '../../gateway/events.js';
 import type { AppConfig, ChannelEntry, TelegramChannel, WhatsAppChannel } from '../../services/config/index.js';
 import { createLogger } from '../../lib/logger.js';
 import { toMessage } from '../../lib/error.js';
@@ -215,37 +215,20 @@ export class ChannelService {
     const adapter = this.adapters.get(channel);
     if (!adapter) return;
 
-    // Session + link expansion in parallel
-    const [, enrichedContent] = await Promise.all([
-      this.bus.call('session.create', {
-        sessionKey,
-        metadata: { channel },
-      }).catch((err: unknown) => {
-        const msg = toMessage(err);
-        if (!msg.includes('already exists')) log.error(`session.create: ${msg}`);
-      }),
-      expandLinks(content, this.config.linkExpand).catch(() => content),
-    ]);
+    const enrichedContent = await expandLinks(content, this.config.linkExpand).catch(() => content);
 
     // Track messageId for reaction targeting
     if (metadata?.messageId && typeof metadata.messageId === 'string') {
       this.pendingMessageIds.set(sessionKey, metadata.messageId);
     }
 
-    // Strip base64 from session metadata to avoid bloat
-    const sessionMeta: Record<string, unknown> = { type: 'task', channel, ...metadata };
-    if (sessionMeta.media && typeof sessionMeta.media === 'object') {
-      const { data: _data, ...rest } = sessionMeta.media as Record<string, unknown>;
-      sessionMeta.media = rest;
+    // Strip heavy fields from metadata passed to consumers
+    const inboundMeta: Record<string, unknown> = { type: 'task', channel, ...metadata };
+    if (inboundMeta.media && typeof inboundMeta.media === 'object') {
+      const { data: _data, ...rest } = inboundMeta.media as Record<string, unknown>;
+      inboundMeta.media = rest;
     }
-    delete sessionMeta.images;
-
-    await this.bus.call('session.addMessage', {
-      sessionKey,
-      content: enrichedContent,
-      role: 'user',
-      metadata: sessionMeta as Record<string, import('../../gateway/events.js').Json>,
-    }).catch(err => log.error(`addMessage: ${toMessage(err)}`));
+    delete inboundMeta.images;
 
     // Start typing indicator and init reaction controller
     adapter.startTyping(userId);
@@ -264,14 +247,76 @@ export class ChannelService {
 
     log.info(`inbound: ${channel}:${userId} "${enrichedContent.slice(0, 80)}"`);
 
-    // Emit for AgentService to pick up and run
-    this.bus.emit('channel.onInbound', {
-      channel,
-      userId,
-      sessionKey,
-      content: enrichedContent,
-      metadata,
-    });
+    // Call agent.execute directly and handle response
+    this.handleAgentExecution(channel, userId, sessionKey, enrichedContent, inboundMeta, reactionController)
+      .catch(err => log.error(`agent execution failed: ${toMessage(err)}`));
+  }
+
+  /**
+   * Handle agent execution and response delivery.
+   * Calls agent.execute and sends response back to channel.
+   */
+  private async handleAgentExecution(
+    channel: string,
+    userId: string,
+    sessionKey: string,
+    content: string,
+    metadata: Record<string, unknown>,
+    reactionController?: StatusReactionController,
+  ): Promise<void> {
+    try {
+      // Build execute params
+      const executeParams: EventMap['agent.execute']['params'] = {
+        sessionKey,
+        task: content,
+      };
+
+      // Add optional overrides from metadata
+      if (metadata.model && typeof metadata.model === 'string') {
+        executeParams.model = metadata.model;
+      }
+      if (metadata.thinkingLevel && typeof metadata.thinkingLevel === 'string') {
+        // Cast to valid thinking level type
+        const level = metadata.thinkingLevel as EventMap['agent.execute']['params']['thinkingLevel'];
+        executeParams.thinkingLevel = level;
+      }
+
+      // Call agent.execute
+      const result = await this.bus.call('agent.execute', executeParams);
+
+      // Stop typing indicator
+      this.stopTyping(channel, userId);
+
+      // Send response
+      if (result.response) {
+        await this.bus.call('channel.send', {
+          sessionKey,
+          text: result.response,
+        });
+
+        // Mark message as completed
+        reactionController?.setDone();
+      }
+    } catch (err) {
+      // Stop typing and send error
+      this.stopTyping(channel, userId);
+      reactionController?.setError();
+
+      const errorMsg = toMessage(err);
+      log.error(`agent execution failed: ${errorMsg}`);
+
+      await this.bus.call('channel.send', {
+        sessionKey,
+        text: `Error: ${errorMsg}`,
+      });
+    }
+  }
+
+  private stopTyping(channel: string, userId: string): void {
+    const adapter = this.adapters.get(channel);
+    if (adapter) {
+      adapter.stopTyping(userId);
+    }
   }
 
   // ── Channel startup ──────────────────────────────────────────────────────────
@@ -323,6 +368,10 @@ export class ChannelService {
 
   private async startAllConfigured(): Promise<void> {
     for (const entry of this.config.channels) {
+      if (entry.enabled === false) {
+        log.info(`channel skipped (disabled): ${entry.id}`);
+        continue;
+      }
       try {
         await this.startChannel(entry);
       } catch (err) {

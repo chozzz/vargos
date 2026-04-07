@@ -8,15 +8,15 @@
  *
  * Delivery: after each run, sends result to task's notify targets.
  * Heartbeat OK responses (HEARTBEAT_OK) are pruned silently.
- * Subagent deferral: if subagents are still running, AgentService's
- * routeParentResult delivers via session.metadata.notify.
+ * Subagent deferral: if subagents are still running, the agent runtime may
+ * defer delivery until the parent run completes.
  */
 
 import { CronJob } from 'cron';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { on, register } from '../../gateway/decorators.js';
+import { register } from '../../gateway/decorators.js';
 import type { Bus } from '../../gateway/bus.js';
 import type { EventMap } from '../../gateway/events.js';
 import type { AppConfig, CronTask, CronAddParams, CronUpdateParams } from '../../services/config/index.js';
@@ -229,24 +229,6 @@ export class CronService {
     const sessionKey = cronSessionKey(task.id);
     log.info(`task firing: ${task.name} (${task.id}) → ${sessionKey}`);
 
-    await this.bus.call('session.create', {
-      sessionKey,
-      metadata: {
-        taskId: task.id,
-        ...(task.notify?.length && { notify: task.notify }),
-      },
-    }).catch(err => {
-      const msg = toMessage(err);
-      if (!msg.includes('already exists')) log.error(`session create: ${msg}`);
-    });
-
-    await this.bus.call('session.addMessage', {
-      sessionKey,
-      content: task.task,
-      role: 'user',
-      metadata: { source: 'cron', taskId: task.id },
-    }).catch(err => log.error(`addMessage: ${toMessage(err)}`));
-
     const result = await this.bus.call('agent.execute', {
       sessionKey,
       task: task.task,
@@ -256,17 +238,13 @@ export class CronService {
 
     const cleaned = stripHeartbeatToken(result.response);
     if (cleaned === null) {
-      // HEARTBEAT_OK — no-op, prune the exchange
-      await this.bus.call('session.compact', { sessionKey, count: 2 })
-        .catch(err => log.debug(`heartbeat prune: ${err}`));
       log.debug(`heartbeat no-op: ${task.id}`);
       return;
     }
 
     if (!task.notify?.length) return;
 
-    // If subagents are still running, AgentService's routeParentResult handles delivery.
-    // (It reads session.metadata.notify to route the synthesized parent response.)
+    // If subagents are still running, delivery may be deferred by the agent runtime.
     const { activeRuns } = await this.bus.call('agent.status', {});
     const prefix = sessionKey + ':subagent:';
     if (activeRuns.some(r => r.startsWith(prefix))) {
@@ -279,10 +257,6 @@ export class CronService {
 
   private async deliver(targets: string[], text: string): Promise<void> {
     for (const target of targets) {
-      await this.bus.call('session.addMessage', {
-        sessionKey: target, content: text, role: 'assistant',
-      }).catch(err => log.error(`notify store to ${target}: ${toMessage(err)}`));
-
       await this.bus.call('channel.send', {
         sessionKey: target, text,
       }).catch(err => log.error(`notify send to ${target}: ${toMessage(err)}`));
@@ -310,7 +284,7 @@ export class CronService {
     const { workspaceDir } = getDataPaths();
 
     this.beforeFireHooks.set(task.id, async () => {
-      if (!isWithinActiveHours(hb.activeHours)) return false;
+      if (!isWithinActiveHours(hb.activeHours, hb.activeHoursTimezone)) return false;
 
       const { activeRuns } = await this.bus.call('agent.status', {});
       if (activeRuns.length > 0) return false;

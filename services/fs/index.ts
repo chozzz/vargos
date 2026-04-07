@@ -3,7 +3,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { z } from 'zod';
-import { on, register } from '../../gateway/decorators.js';
+import { register } from '../../gateway/decorators.js';
 import type { Bus } from '../../gateway/bus.js';
 import type { EventMap } from '../../gateway/events.js';
 import { getDataPaths } from '../../lib/paths.js';
@@ -98,9 +98,13 @@ function resolvePath(inputPath: string): string {
 }
 
 function sanitizeOutput(s: string): string {
+  // Remove ANSI escape codes
   return s
+    // eslint-disable-next-line no-control-regex
     .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '')
+    // eslint-disable-next-line no-control-regex
     .replace(/\x1b\][0-9;]*\x07/g, '')
+    // eslint-disable-next-line no-control-regex
     .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x00]/g, '');
 }
 

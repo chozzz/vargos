@@ -1,4 +1,4 @@
-import type { EventMap, EventMetadata } from './events.js';
+import type { EventMap } from './events.js';
 
 // ─── Type helpers ─────────────────────────────────────────────────────────────
 

@@ -1,8 +1,7 @@
 import { z } from 'zod';
-import { on, register } from '../../gateway/decorators.js';
+import { register } from '../../gateway/decorators.js';
 import type { Bus } from '../../gateway/bus.js';
 import type { EventMap } from '../../gateway/events.js';
-import { toMessage } from '../../lib/error.js';
 
 export class WebService {
   @register('web.fetch', {
@@ -48,7 +47,7 @@ function htmlToMarkdown(html: string): string {
   const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
   const title = titleMatch?.[1]?.trim();
 
-  let text = html
+  const text = html
     .replace(/<script[\s\S]*?<\/script>/gi, '')
     .replace(/<style[\s\S]*?<\/style>/gi, '')
     .replace(/<noscript[\s\S]*?<\/noscript>/gi, '')

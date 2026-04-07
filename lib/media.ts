@@ -1,7 +1,12 @@
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { ModelProfile } from '../services/config/index.js';
+export interface MediaModelConfig {
+  provider: string;
+  model: string;
+  apiKey?: string;
+  baseUrl?: string;
+}
 
 export interface MediaAttachment {
   type: 'audio' | 'image' | 'video' | 'document';
@@ -12,7 +17,7 @@ export interface MediaAttachment {
 
 export async function transformMedia(
   media: MediaAttachment,
-  profile: ModelProfile & { apiKey?: string },
+  profile: MediaModelConfig,
 ): Promise<string> {
   const { type } = media;
   const { provider } = profile;
@@ -35,7 +40,7 @@ const MIME_TO_AUDIO_EXT: Record<string, string> = {
   'audio/x-m4a': '.m4a', 'audio/mp3': '.mp3',
 };
 
-async function transcribeWhisper(media: MediaAttachment, profile: ModelProfile & { apiKey?: string }): Promise<string> {
+async function transcribeWhisper(media: MediaAttachment, profile: MediaModelConfig): Promise<string> {
   const baseUrl = profile.baseUrl ?? 'https://api.openai.com';
   const buffer = media.path ? await readFile(media.path) : Buffer.from(media.data, 'base64');
   let fileName = media.path ? path.basename(media.path) : 'audio.ogg';
@@ -55,7 +60,7 @@ async function transcribeWhisper(media: MediaAttachment, profile: ModelProfile &
   return ((await res.json()) as { text: string }).text;
 }
 
-async function describeImageOpenAI(media: MediaAttachment, profile: ModelProfile & { apiKey?: string }): Promise<string> {
+async function describeImageOpenAI(media: MediaAttachment, profile: MediaModelConfig): Promise<string> {
   const baseUrl = profile.baseUrl ?? 'https://api.openai.com';
   const res = await fetch(`${baseUrl}/v1/chat/completions`, {
     method: 'POST',
@@ -73,7 +78,7 @@ async function describeImageOpenAI(media: MediaAttachment, profile: ModelProfile
   return data.choices[0]?.message?.content ?? '';
 }
 
-async function describeImageAnthropic(media: MediaAttachment, profile: ModelProfile & { apiKey?: string }): Promise<string> {
+async function describeImageAnthropic(media: MediaAttachment, profile: MediaModelConfig): Promise<string> {
   const baseUrl = profile.baseUrl ?? 'https://api.anthropic.com';
   const res = await fetch(`${baseUrl}/v1/messages`, {
     method: 'POST',

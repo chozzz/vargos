@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { EventMap, EventMetadata } from './events.js';
 import type { Bus, HandlerOf, CallableEventKey, PureEventKey } from './bus.js';
-import { on, register, HANDLERS, TOOLS, type ToolSchema } from './decorators.js';
+import { register, HANDLERS, TOOLS, type ToolSchema } from './decorators.js';
 import type { EventParams, EventResult } from './bus.js';
 import { createLogger } from '../lib/logger.js';
 import { zodToJsonSchema } from 'zod-to-json-schema';

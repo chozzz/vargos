@@ -7,7 +7,7 @@ const PRIVATE_HOSTNAME_RE = /^(localhost|127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|17
 
 /** Extract unique http/https URLs from text, up to maxUrls (default 3). */
 export function extractUrls(text: string, maxUrls = 3): string[] {
-  const matches = text.match(/https?:\/\/[^\s<>\[\]()]+/g) ?? [];
+  const matches = text.match(/https?:\/\/[^\s<>[\]()]+/g) ?? [];
   const seen = new Set<string>();
   const results: string[] = [];
 

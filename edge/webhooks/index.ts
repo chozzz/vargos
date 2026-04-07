@@ -200,21 +200,6 @@ export class WebhooksEdge {
 
     const sessionKey = webhookSessionKey(hook.id);
 
-    await this.bus.call('session.create', {
-      sessionKey,
-      metadata: {
-        hookId: hook.id,
-        ...(hook.notify?.length && { notify: hook.notify }),
-      },
-    }).catch(err => log.error(`session create: ${toMessage(err)}`));
-
-    await this.bus.call('session.addMessage', {
-      sessionKey,
-      content: task,
-      role: 'user',
-      metadata: { source: 'webhook', hookId: hook.id },
-    }).catch(err => log.error(`addMessage: ${toMessage(err)}`));
-
     log.info(`fired: ${hook.id} → ${sessionKey}`);
     this.activeHooks.add(hook.id);
 
@@ -222,7 +207,7 @@ export class WebhooksEdge {
 
     if (!result.response || !hook.notify?.length) return;
 
-    // If subagents are running, AgentService's routeParentResult handles delivery.
+    // If subagents are running, delivery may be deferred by the agent runtime.
     const { activeRuns } = await this.bus.call('agent.status', {});
     const prefix = sessionKey + ':subagent:';
     if (activeRuns.some(r => r.startsWith(prefix))) {
@@ -235,10 +220,6 @@ export class WebhooksEdge {
 
   private async deliver(targets: string[], text: string): Promise<void> {
     for (const target of targets) {
-      await this.bus.call('session.addMessage', {
-        sessionKey: target, content: text, role: 'assistant',
-      }).catch(err => log.error(`notify store to ${target}: ${toMessage(err)}`));
-
       await this.bus.call('channel.send', {
         sessionKey: target, text,
       }).catch(err => log.error(`notify send to ${target}: ${toMessage(err)}`));

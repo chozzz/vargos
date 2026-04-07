@@ -28,83 +28,80 @@ describe('EventEmitterBus', () => {
     it('call routes to handler and returns result', async () => {
       const bus = new EventEmitterBus();
 
-      class SessionService {
+      class ChannelStub {
         constructor(b: EventEmitterBus) { b.bootstrap(this); }
 
-        @register('session.get', {
-          description: 'Get a session',
-          schema: z.object({ sessionKey: z.string() }),
+        @register('channel.get', {
+          description: 'Get channel',
+          schema: z.object({ instanceId: z.string() }),
         })
-        async get(params: EventMap['session.get']['params']): Promise<EventMap['session.get']['result']> {
+        async get(params: EventMap['channel.get']['params']): Promise<EventMap['channel.get']['result']> {
           return {
-            sessionKey: params.sessionKey,
-            kind: 'main' as const,
-            metadata: {},
-            createdAt: new Date(),
-            updatedAt: new Date(),
+            instanceId: params.instanceId,
+            type:       'telegram',
+            status:     'connected',
           };
         }
       }
 
-      new SessionService(bus);
-      const session = await bus.call('session.get', { sessionKey: 'telegram:123' });
-      expect(session.sessionKey).toBe('telegram:123');
+      new ChannelStub(bus);
+      const info = await bus.call('channel.get', { instanceId: 'telegram-1' });
+      expect(info.instanceId).toBe('telegram-1');
+      expect(info.status).toBe('connected');
     });
 
     it('call propagates handler errors', async () => {
       const bus = new EventEmitterBus();
 
-      class SessionService {
+      class ChannelStub {
         constructor(b: EventEmitterBus) { b.bootstrap(this); }
 
-        @register('session.get', {
-          description: 'Get a session',
-          schema: z.object({ sessionKey: z.string() }),
+        @register('channel.get', {
+          description: 'Get channel',
+          schema: z.object({ instanceId: z.string() }),
         })
-        async get(): Promise<EventMap['session.get']['result']> {
+        async get(): Promise<EventMap['channel.get']['result']> {
           throw new Error('not found');
         }
       }
 
-      new SessionService(bus);
-      await expect(bus.call('session.get', { sessionKey: 'x' })).rejects.toThrow('not found');
+      new ChannelStub(bus);
+      await expect(bus.call('channel.get', { instanceId: 'x' })).rejects.toThrow('not found');
     });
 
     it('call times out when no handler is registered', async () => {
       const bus = new EventEmitterBus(50); // 50ms timeout
-      await expect(bus.call('session.get', { sessionKey: 'x' })).rejects.toThrow("timed out");
+      await expect(bus.call('channel.get', { instanceId: 'x' })).rejects.toThrow('timed out');
     });
 
     it('concurrent calls are isolated by correlationId', async () => {
       const bus = new EventEmitterBus();
 
-      class SessionService {
+      class ChannelStub {
         constructor(b: EventEmitterBus) { b.bootstrap(this); }
 
-        @register('session.get', {
-          description: 'Get a session',
-          schema: z.object({ sessionKey: z.string() }),
+        @register('channel.get', {
+          description: 'Get channel',
+          schema: z.object({ instanceId: z.string() }),
         })
-        async get(params: EventMap['session.get']['params']): Promise<EventMap['session.get']['result']> {
+        async get(params: EventMap['channel.get']['params']): Promise<EventMap['channel.get']['result']> {
           return {
-            sessionKey: params.sessionKey,
-            kind: 'main' as const,
-            metadata: {},
-            createdAt: new Date(),
-            updatedAt: new Date(),
+            instanceId: params.instanceId,
+            type:       'telegram',
+            status:     'connected',
           };
         }
       }
 
-      new SessionService(bus);
+      new ChannelStub(bus);
       const [a, b, c] = await Promise.all([
-        bus.call('session.get', { sessionKey: 'a' }),
-        bus.call('session.get', { sessionKey: 'b' }),
-        bus.call('session.get', { sessionKey: 'c' }),
+        bus.call('channel.get', { instanceId: 'a' }),
+        bus.call('channel.get', { instanceId: 'b' }),
+        bus.call('channel.get', { instanceId: 'c' }),
       ]);
-      expect(a.sessionKey).toBe('a');
-      expect(b.sessionKey).toBe('b');
-      expect(c.sessionKey).toBe('c');
+      expect(a.instanceId).toBe('a');
+      expect(b.instanceId).toBe('b');
+      expect(c.instanceId).toBe('c');
     });
   });
 
@@ -131,27 +128,26 @@ describe('EventEmitterBus', () => {
     it('wires callable event handlers', async () => {
       const bus = new EventEmitterBus();
 
-      class SessionService {
+      class ChannelStub {
         constructor(b: EventEmitterBus) { b.bootstrap(this); }
 
-        @register('session.get', {
-          description: 'Get a session',
-          schema: z.object({ sessionKey: z.string() }),
+        @register('channel.get', {
+          description: 'Get channel',
+          schema: z.object({ instanceId: z.string() }),
         })
-        async get(params: EventMap['session.get']['params']): Promise<EventMap['session.get']['result']> {
+        async get(params: EventMap['channel.get']['params']): Promise<EventMap['channel.get']['result']> {
           return {
-            sessionKey: params.sessionKey,
-            kind:       'cron',
-            metadata:   { taskId: 'heartbeat' },
-            createdAt:  new Date(),
-            updatedAt:  new Date(),
+            instanceId: params.instanceId,
+            type:       'whatsapp',
+            status:     params.instanceId.includes('heartbeat') ? 'connected' : 'disconnected',
           };
         }
       }
 
-      new SessionService(bus);
-      const result = await bus.call('session.get', { sessionKey: 'cron:heartbeat' });
-      expect(result.metadata.taskId).toBe('heartbeat');
+      new ChannelStub(bus);
+      const result = await bus.call('channel.get', { instanceId: 'cron:heartbeat' });
+      expect(result.instanceId).toBe('cron:heartbeat');
+      expect(result.type).toBe('whatsapp');
     });
 
     it('multiple @on handlers on one service all wire up', () => {

@@ -15,7 +15,7 @@ export function sanitizeError(msg: string): string {
     // Bearer tokens (including JWT with +/=)
     .replace(/Bearer\s+[A-Za-z0-9_\-.+/=]+/gi, 'Bearer ***')
     // Common API key formats (sk-..., xoxb-..., etc.)
-    .replace(/\b(sk|xoxb|xoxp|ghp|gho|ghu|ghs|ghr|glpat)-[A-Za-z0-9_\-]{8,}/g, '$1-***')
+    .replace(/\b(sk|xoxb|xoxp|ghp|gho|ghu|ghs|ghr|glpat)-[A-Za-z0-9_-]{8,}/g, '$1-***')
     // Generic key=value patterns for common secret field names
     .replace(/(api[_-]?key|token|secret|password|authorization)[=:]\s*["']?[^\s"',}{]+/gi, '$1=***');
 }

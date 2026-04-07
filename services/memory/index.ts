@@ -1,11 +1,14 @@
 import path from 'node:path';
 import { z } from 'zod';
-import { on, register } from '../../gateway/decorators.js';
+import { register } from '../../gateway/decorators.js';
 import type { Bus } from '../../gateway/bus.js';
-import type { EventMap, MemorySearchResult } from '../../gateway/events.js';
+import type { EventMap } from '../../gateway/events.js';
 import { getDataPaths } from '../../lib/paths.js';
+import { createLogger } from '../../lib/logger.js';
 import { MemoryContext } from './context.js';
 import { MemorySQLiteStorage } from './sqlite-storage.js';
+
+const memLog = createLogger('memory');
 
 export { MemoryContext };
 
@@ -76,6 +79,11 @@ export class MemoryService {
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
 export async function boot(bus: Bus): Promise<{ stop?(): void }> {
+  const appConfig = await bus.call('config.get', {});
+  if (appConfig.storage?.type === 'postgres') {
+    memLog.warn('config.storage.type=postgres is not implemented; using local SQLite memory index');
+  }
+
   const { workspaceDir, cacheDir, sessionsDir } = getDataPaths();
 
   const storage = new MemorySQLiteStorage(path.join(cacheDir, 'memory.db'));

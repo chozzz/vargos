@@ -30,28 +30,15 @@ export default tseslint.config(
       }],
     },
   },
-  // services/agent/ — communicates with other domains via gateway RPC only
+  // services/agent-v2/ — bus + Pi SDK; no direct imports from other domain services
   {
-    files: ["src/services/agent/**/*.ts"],
-    ignores: ["src/services/agent/**/*.test.ts"],
+    files: ["services/agent-v2/**/*.ts"],
+    ignores: ["services/agent-v2/**/*.test.ts"],
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
           group: ["*/services/channels/*", "*/services/cron/*", "*/services/memory/*", "*/edge/*"],
-          message: "agent/ communicates with other domains via gateway RPC only",
-        }],
-      }],
-    },
-  },
-  // services/sessions/ — no cross-domain imports
-  {
-    files: ["src/services/sessions/**/*.ts"],
-    ignores: ["src/services/sessions/**/*.test.ts"],
-    rules: {
-      "no-restricted-imports": ["error", {
-        patterns: [{
-          group: ["*/services/agent/*", "*/services/channels/*", "*/services/cron/*", "*/services/memory/*", "*/services/tools/*", "*/edge/*"],
-          message: "sessions/ communicates with other domains via gateway RPC only",
+          message: "agent-v2 communicates with other domains via gateway RPC only",
         }],
       }],
     },
@@ -63,7 +50,7 @@ export default tseslint.config(
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
-          group: ["*/services/agent/*", "*/services/sessions/*", "*/services/cron/*", "*/services/memory/*", "*/services/tools/*", "*/edge/*"],
+          group: ["*/services/agent-v2/*", "*/services/cron/*", "*/services/memory/*", "*/services/tools/*", "*/edge/*"],
           message: "channels/ communicates with other domains via gateway RPC only",
         }],
       }],
@@ -76,7 +63,7 @@ export default tseslint.config(
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
-          group: ["*/services/agent/*", "*/services/sessions/*", "*/services/channels/*", "*/services/memory/*", "*/services/tools/*", "*/edge/*"],
+          group: ["*/services/agent-v2/*", "*/services/channels/*", "*/services/memory/*", "*/services/tools/*", "*/edge/*"],
           message: "cron/ communicates with other domains via gateway RPC only",
         }],
       }],
@@ -89,7 +76,7 @@ export default tseslint.config(
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
-          group: ["*/services/agent/*", "*/services/sessions/*", "*/services/channels/*", "*/services/cron/*", "*/services/tools/*", "*/edge/*"],
+          group: ["*/services/agent-v2/*", "*/services/channels/*", "*/services/cron/*", "*/services/tools/*", "*/edge/*"],
           message: "memory/ communicates with other domains via gateway RPC only",
         }],
       }],
@@ -102,7 +89,7 @@ export default tseslint.config(
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
-          group: ["*/services/agent/*", "*/services/sessions/*", "*/services/channels/*", "*/services/cron/*", "*/services/memory/*", "*/edge/*"],
+          group: ["*/services/agent-v2/*", "*/services/channels/*", "*/services/cron/*", "*/services/memory/*", "*/edge/*"],
           message: "tools/ cannot import from other domain services (browser/process are allowed)",
         }],
       }],

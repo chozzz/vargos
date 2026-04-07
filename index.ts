@@ -9,12 +9,10 @@ import { createLogger } from './lib/logger.js';
 const SERVICES: Array<[string, () => Promise<{ boot(bus: EventEmitterBus): Promise<{ stop?(): unknown }> }>]> = [
   ['config', () => import('./services/config/index.js')],
   ['log', () => import('./services/log/index.js')],
-  ['sessions', () => import('./services/sessions/index.js')],
   ['fs', () => import('./services/fs/index.js')],
   ['web', () => import('./services/web/index.js')],
-  ['workspace', () => import('./services/workspace/index.js')],
   ['memory', () => import('./services/memory/index.js')],
-  ['agent', () => import('./services/agent/index.js')],
+  ['agent-v2', () => import('./services/agent-v2/index.js')],
   ['cron', () => import('./services/cron/index.js')],
   ['channels', () => import('./services/channels/index.js')],
   // ['webhooks', () => import('./edge/webhooks/index.js')],
@@ -42,11 +40,13 @@ for (const [label, load] of SERVICES) {
 }
 
 
-// Start TCP server for CLI access
-const tcpHost = process.env.BUS_HOST || '127.0.0.1';
-const tcpPort = parseInt(process.env.BUS_PORT || '9000', 10);
+// Start TCP server for CLI access\
+const config = await bus.call('config.get', {});
+const tcpHost = config.gateway.host ?? (process.env.BUS_HOST || '127.0.0.1');
+const tcpPort = parseInt(config.gateway.port ? String(config.gateway.port) : (process.env.BUS_PORT || '9000'), 10);
 try {
-  const tcpStopper = await startTCPServer(bus, tcpHost, tcpPort);
+  const socketTimeoutMs = config.gateway.requestTimeout ?? 30_000;
+  const tcpStopper = await startTCPServer(bus, tcpHost, tcpPort, socketTimeoutMs);
   stoppers.push(tcpStopper);
 } catch (err) {
   log.error(`failed to start TCP server: ${err instanceof Error ? err.message : String(err)}`);

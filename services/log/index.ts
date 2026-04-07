@@ -6,7 +6,6 @@ import type { Bus } from '../../gateway/bus.js';
 import type { EventMap, LogLevel } from '../../gateway/events.js';
 import { setLoggerBus } from '../../lib/logger.js';
 import { getDataPaths } from '../../lib/paths.js';
-import { classifyError } from '../../lib/error.js';
 
 interface LogEntry {
   ts:       string;

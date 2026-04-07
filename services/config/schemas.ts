@@ -18,7 +18,7 @@ export const JsonSchema: z.ZodType<Json> = z.lazy(() =>
 
 // ─── Primitives ───────────────────────────────────────────────────────────────
 
-export const ThinkingLevelSchema = z.enum(['off', 'low', 'medium', 'high']);
+export const ThinkingLevelSchema = z.enum(['off', 'minimal', 'low', 'medium', 'high', 'xhigh']);
 export const PromptModeSchema    = z.enum(['full', 'minimal', 'none']);
 export const ChannelTypeSchema   = z.enum(['telegram', 'whatsapp']);
 
@@ -26,25 +26,34 @@ export type ThinkingLevel = z.infer<typeof ThinkingLevelSchema>;
 export type PromptMode    = z.infer<typeof PromptModeSchema>;
 export type ChannelType   = z.infer<typeof ChannelTypeSchema>;
 
-// ─── Model ────────────────────────────────────────────────────────────────────
+// ─── Providers (PiAgent passthrough) ──────────────────────────────────────────
+// Shape matches PiAgent's registerProvider() input directly.
+// Users define providers once; models are grouped under each provider.
+// Model refs in agent config use "provider:modelId" format.
 
-export const ModelProfileSchema = z.object({
-  name:        z.string(),
-  provider:    z.enum(['anthropic', 'openai', 'ollama', 'openrouter', 'google']),
-  model:       z.string(),
-  apiKey:      z.string().optional(),
-  baseUrl:     z.string().url().optional(),
-  maxRetries:  z.number().int().min(0).default(3),
-  // Per-level token budgets, e.g. { low: 2048, high: 16384 }
-  thinkingBudgets: z.record(ThinkingLevelSchema, z.number().int().positive()).optional(),
-});
+export const ProviderModelSchema = z.object({
+  id:   z.string(),
+  name: z.string(),
+}).passthrough();
 
-export type ModelProfile = z.infer<typeof ModelProfileSchema>;
+export const ProviderConfigSchema = z.object({
+  baseUrl: z.string(),
+  apiKey:  z.string(),
+  api:     z.string().optional(),
+  models:  z.array(ProviderModelSchema).default([]),
+}).passthrough();
+
+export const ProvidersSchema = z.record(z.string(), ProviderConfigSchema);
+
+export type ProviderModel  = z.infer<typeof ProviderModelSchema>;
+export type ProviderConfig = z.infer<typeof ProviderConfigSchema>;
+export type Providers      = z.infer<typeof ProvidersSchema>;
 
 // ─── Channels ─────────────────────────────────────────────────────────────────
 
 const ChannelBaseSchema = z.object({
   id:         z.string(),
+  enabled:    z.boolean().default(true),
   model:      z.string().optional(),   // overrides agent.model for runs from this channel
   debounceMs: z.number().int().min(0).optional(),
   allowFrom:  z.array(z.string()).optional(),
@@ -93,22 +102,24 @@ export const WebhookEntrySchema = z.object({
 export type WebhookEntry = z.infer<typeof WebhookEntrySchema>;
 
 // ─── Agent ────────────────────────────────────────────────────────────────────
+// Vargos-only routing fields. PiAgent-owned settings (thinkingLevel,
+// thinkingBudgets, retry, compaction) live in ~/.vargos/agent/settings.json
+// managed by PiAgent's SettingsManager.
 
 export const AgentConfigSchema = z.object({
-  model:         z.string(),
-  thinkingLevel: ThinkingLevelSchema.default('high'),
-  thinkingBudgets: z.record(ThinkingLevelSchema, z.number().int().positive()).optional(),
-  maxRetryDelayMs: z.number().int().default(30_000),
+  model:    z.string(),
+  fallback: z.string().optional(),
   subagents: z.object({
     maxSpawnDepth:     z.number().int().min(1).default(3),
     runTimeoutSeconds: z.number().int().positive().default(300),
+    maxChildren:       z.number().int().min(0).optional(),
+    model:             z.string().optional(),
   }).default({}),
-  // Model name per media type for STT/OCR preprocessing before the LLM sees the message
   media: z.object({
     audio: z.string().optional(),
     image: z.string().optional(),
   }).optional(),
-});
+}).passthrough();
 
 export type AgentConfig = z.infer<typeof AgentConfigSchema>;
 
@@ -117,8 +128,10 @@ export type AgentConfig = z.infer<typeof AgentConfigSchema>;
 export const HeartbeatConfigSchema = z.object({
   enabled:          z.boolean().default(true),
   intervalMinutes:  z.number().int().positive().default(30),
-  // [startHour, endHour] in UTC — skipped outside this window
+  // [startHour, endHour] — see activeHoursTimezone (default: UTC)
   activeHours:      z.tuple([z.number().int().min(0).max(23), z.number().int().min(0).max(23)]).optional(),
+  /** IANA zone id, e.g. Australia/Sydney — when set, activeHours are interpreted in this zone */
+  activeHoursTimezone: z.string().optional(),
   notify:           z.array(z.string()).optional(),
 });
 
@@ -131,3 +144,37 @@ export const LinkExpandConfigSchema = z.object({
 
 export type HeartbeatConfig  = z.infer<typeof HeartbeatConfigSchema>;
 export type LinkExpandConfig = z.infer<typeof LinkExpandConfigSchema>;
+
+// ─── MCP client (HTTP bridge) ─────────────────────────────────────────────────
+
+export const McpClientConfigSchema = z.object({
+  bearerToken: z.string().optional(),
+  host:        z.string().optional(),
+  port:        z.number().int().min(1).max(65535).optional(),
+  endpoint:    z.string().optional(),
+  transport:   z.enum(['http', 'stdio']).optional(),
+});
+
+export type McpClientConfig = z.infer<typeof McpClientConfigSchema>;
+
+// ─── External MCP servers (agent / tooling; preserved for docs & future wiring) ─
+
+export const McpServerEntrySchema = z.object({
+  command: z.string(),
+  args:    z.array(z.string()).optional(),
+  env:     z.record(z.string(), z.string()).optional(),
+  enabled: z.boolean().optional(),
+}).passthrough();
+
+export const McpServersConfigSchema = z.record(z.string(), McpServerEntrySchema);
+
+export type McpServerEntry = z.infer<typeof McpServerEntrySchema>;
+
+// ─── Storage (memory backend hint) ────────────────────────────────────────────
+
+export const StorageConfigSchema = z.object({
+  type: z.enum(['sqlite', 'postgres']).default('sqlite'),
+  url:  z.string().optional(),
+});
+
+export type StorageConfig = z.infer<typeof StorageConfigSchema>;

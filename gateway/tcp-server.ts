@@ -16,19 +16,17 @@ interface JSONRPCRequest {
   id?: number | string;
 }
 
-interface JSONRPCResponse {
-  jsonrpc: '2.0';
-  result?: unknown;
-  error?: { code: number; message: string };
-  id?: number | string;
-}
-
 interface ClientState {
   subscriptions: Set<string>;
   buffer: string;
 }
 
-export function startTCPServer(bus: Bus, host: string, port: number): Promise<() => Promise<void>> {
+export function startTCPServer(
+  bus: Bus,
+  host: string,
+  port: number,
+  socketTimeoutMs: number = 30_000,
+): Promise<() => Promise<void>> {
   return new Promise((resolve, reject) => {
     const server = createServer((socket: Socket) => {
       log.debug(`Client connected from ${socket.remoteAddress}:${socket.remotePort}`);
@@ -47,7 +45,7 @@ export function startTCPServer(bus: Bus, host: string, port: number): Promise<()
         log.error(`Socket error: ${err.message}`);
       });
 
-      socket.setTimeout(30_000);
+      socket.setTimeout(socketTimeoutMs);
       socket.on('timeout', () => {
         log.warn('Client timeout');
         socket.destroy();

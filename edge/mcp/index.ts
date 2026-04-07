@@ -28,10 +28,7 @@ import { getDataPaths } from '../../lib/paths.js';
 
 const log = createLogger('mcp');
 
-const HTTP_PORT = 9001;
-const HTTP_HOST = '127.0.0.1';
-const ENDPOINT  = '/mcp';
-const VERSION   = '0.0.1';
+const VERSION = '0.0.1';
 
 // ── McpEdge ────────────────────────────────────────────────────────────────────
 
@@ -48,6 +45,20 @@ export class McpEdge {
       { capabilities: { tools: {} } },
     );
     this.setupHandlers();
+  }
+
+  private httpHost(): string {
+    return this.config.mcp.host ?? '127.0.0.1';
+  }
+
+  private httpPort(): number {
+    return this.config.mcp.port ?? 9001;
+  }
+
+  /** Path prefix for Streamable HTTP, always starts with / */
+  private httpEndpointPath(): string {
+    const ep = this.config.mcp.endpoint ?? '/mcp';
+    return ep.startsWith('/') ? ep : `/${ep}`;
   }
 
   async start(): Promise<void> {
@@ -109,7 +120,7 @@ export class McpEdge {
         return;
       }
 
-      if (!req.url?.startsWith(ENDPOINT)) {
+      if (!req.url?.startsWith(this.httpEndpointPath())) {
         res.writeHead(404, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Not found' }));
         return;
@@ -125,9 +136,11 @@ export class McpEdge {
       }
     });
 
+    const host = this.httpHost();
+    const port = this.httpPort();
     return new Promise((resolve) => {
-      this.httpServer!.listen(HTTP_PORT, HTTP_HOST, () => {
-        log.info(`http listening on ${HTTP_HOST}:${HTTP_PORT}`);
+      this.httpServer!.listen(port, host, () => {
+        log.info(`http listening on ${host}:${port}${this.httpEndpointPath()}`);
         resolve();
       });
     });

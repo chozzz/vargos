@@ -5,6 +5,7 @@
 //   Callable — { params, result }, use bus.call / @on (wired as request/reply)
 
 export type { ThinkingLevel, PromptMode, ChannelEntry, CronTask, CronAddParams, CronUpdateParams, WebhookEntry, Json, AppConfig } from '../services/config/index.js';
+import { PromptOptions } from '@mariozechner/pi-coding-agent';
 import type { ThinkingLevel, PromptMode, ChannelEntry, CronTask, CronAddParams, CronUpdateParams, WebhookEntry, Json, AppConfig } from '../services/config/index.js';
 
 // ─── Domain types ─────────────────────────────────────────────────────────────
@@ -16,11 +17,10 @@ export type Pagination<T> = { items: T[]; page: number; limit: number };
 
 export interface MediaItem { filePath: string; mimeType: string }
 export interface ChannelInfo { instanceId: string; type: string; status: ChannelStatus }
-export interface SkillEntry { name: string; description: string; tags: string[] }
 export interface ErrorEntry { service: string; error: string; context?: Json; timestamp: number }
 export interface MemorySearchResult { citation: string; score: number; content: string; startLine: number; endLine: number }
 
-// Session types defined here (bus contract layer) — services import from here
+/** Shared message shape (e.g. memory / future persistence); not a bus RPC surface. */
 export type MessageRole = 'user' | 'assistant' | 'system';
 export interface Message {
   id: string;
@@ -50,28 +50,18 @@ export interface EventMetadata {
 
 // ─── Param types ──────────────────────────────────────────────────────────────
 
-export interface AgentExecuteParams {
+export interface AgentExecuteParams extends PromptOptions {
   sessionKey: string;
   task: string;
+  /** Working directory for the agent — defaults to vargos workspace. When set,
+   *  bootstrap files (CLAUDE.md, AGENTS.md) from both cwd and workspace are merged. */
+  cwd?: string;
   thinkingLevel?: ThinkingLevel;
   model?: string;
   promptMode?: PromptMode;
   media?: MediaItem[];
   notify?: string[];
-}
-
-export interface SessionCreateParams {
-  sessionKey: string;
-  model?: string;
-  notify?: string[];
-  metadata?: Record<string, Json>;
-}
-
-export interface SessionAddMessageParams {
-  sessionKey: string;
-  role: MessageRole;
-  content: string;
-  metadata?: Record<string, Json>;
+  retrigger?: boolean;
 }
 
 // ─── Event map ────────────────────────────────────────────────────────────────
@@ -91,17 +81,11 @@ export interface EventMap {
   /** Run finished (success or failure). */
   'agent.onCompleted': { sessionKey: string; success: boolean; response?: string; error?: string };
 
+  /** Emitted when context compaction occurs */
+  'agent.compaction': { sessionKey: string; result: { tokensBefore: number; summary: string; firstKeptEntryId?: string } };
+
   'channel.onConnected': { instanceId: string; type: string };
   'channel.onDisconnected': { instanceId: string };
-
-  /** Inbound message from a channel adapter — AgentService subscribes to handle the run. */
-  'channel.onInbound': {
-    channel: string;
-    userId: string;
-    sessionKey: string;
-    content: string;
-    metadata?: Record<string, unknown>;
-  };
 
   /** Broadcast whenever config changes via config.set. */
   'config.onChanged': AppConfig;
@@ -117,9 +101,10 @@ export interface EventMap {
 
   // Agent
   'agent.execute': { params: AgentExecuteParams; result: { response: string } };
-  'agent.spawn': { params: { sessionKey: string; task: string; agent?: string; role?: string; model?: string }; result: { sessionKey: string; response: string } };
   'agent.abort': { params: { sessionKey: string }; result: { aborted: boolean } };
   'agent.status': { params: { sessionKey?: string }; result: { activeRuns: string[] } };
+  'agent.process-retriggers': { params: Record<string, never>; result: { processed: number } };
+  'model.register': { params: { provider: string; model: string; baseUrl?: string; contextWindow?: number; maxTokens?: number }; result: { registered: boolean; reason?: string } };
 
   // Media
   'media.transform': { params: { filePath: string; mimeType: string; modelName: string }; result: { text: string } };
@@ -133,25 +118,12 @@ export interface EventMap {
   // Web
   'web.fetch': { params: { url: string; extractMode?: 'markdown' | 'text'; maxChars?: number }; result: { text: string } };
 
-  // Workspace / skills
-  'workspace.loadSkill': { params: { name: string }; result: { content: string } };
-  'workspace.listSkills': { params: Record<string, never>; result: SkillEntry[] };
-
   // Channels
   'channel.send': { params: { sessionKey: string; text: string }; result: { sent: boolean } };
   'channel.sendMedia': { params: { sessionKey: string; filePath: string; mimeType: string; caption?: string }; result: { sent: boolean } };
   'channel.search': { params: { query?: string; page: number; limit?: number }; result: Pagination<ChannelInfo> };
   'channel.get': { params: { instanceId: string }; result: ChannelInfo };
   'channel.register': { params: ChannelEntry & { persist?: boolean }; result: void };
-
-  // Sessions
-  'session.create': { params: SessionCreateParams; result: void };
-  'session.get': { params: { sessionKey: string }; result: Session };
-  'session.addMessage': { params: SessionAddMessageParams; result: void };
-  'session.getMessages': { params: { sessionKey: string; limit?: number }; result: Message[] };
-  'session.search': { params: { query?: string; page: number; limit?: number }; result: Pagination<Session> };
-  'session.delete': { params: { sessionKey: string }; result: void };
-  'session.compact': { params: { sessionKey: string; count: number }; result: void };
 
   // Cron
   'cron.search': { params: { query?: string; page: number; limit?: number }; result: Pagination<CronTask> };
