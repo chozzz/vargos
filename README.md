@@ -4,16 +4,16 @@
 
 ## What It Does
 
-- **Gateway architecture** — isolated services communicate through a typed WebSocket protocol with RPC, pub/sub events, and streaming
+- **Event bus gateway** — isolated services communicate through a typed EventEmitterBus with RPC, pub/sub events, and streaming over TCP/JSON-RPC
 - **Any LLM** — Anthropic, OpenAI, Google, OpenRouter, Ollama, LM Studio, Groq, Together, DeepSeek, Mistral, Fireworks, Perplexity
 - **Multi-channel messaging** — route agent conversations through WhatsApp and Telegram
-- **24 built-in tools** — files, shell, browser automation, memory, sessions, cron, processes, and more
+- **Bus-discovered tools** — every `@register` decorated handler becomes an agent tool automatically
 - **MCP server + client** — expose tools to MCP clients and connect to external MCP servers
-- **Hybrid memory** — pgvector + text search over memory files and session transcripts
+- **Hybrid memory** — vector + text search over workspace files and session transcripts
 - **Scheduled tasks** — cron-based recurring tasks with channel notification delivery
 - **Webhooks** — inbound HTTP triggers that fire agent tasks with custom transforms
-- **Subagent spawning** — isolated child agents with depth-limited nesting
-- **Context pruning** — automatic history management to stay within context windows
+- **Subagent orchestration** — reuse `agent.execute` with hierarchical session keys
+- **Media handling** — image passthrough for vision models, audio transcription via Whisper
 
 ## Quick Start
 
@@ -24,27 +24,42 @@ pnpm install
 pnpm start
 ```
 
-First run prompts for LLM provider, model, and API key.
+First run prompts for LLM provider, model, and API key. Config is saved to `~/.vargos/config.json`.
 
 ## Architecture
 
 ```
                     ┌──────────────────────────────────────┐
-                    │  Gateway  (router + event bus)       │
+                    │  Gateway  (EventEmitterBus + TCP)    │
                     └────────────┬─────────────────────────┘
                                  │
-        ┌────────────────────────┼────────────────────────┐
-        │                        │                        │
-        ↓                        ↓                        ↓
-   ┌─────────┐           ┌──────────┐            ┌────────────┐
-   │ Config  │           │ Agent    │            │   CLI      │
-   │ Log     │           │ Channels │            │  External  │
-   │ Sessions│           │ Cron     │            │  Clients   │
-   │ Memory  │           │ Tools    │            │            │
-   └─────────┘           └──────────┘            └────────────┘
+         ┌───────────────────────┼────────────────────────┐
+         │                       │                        │
+         ↓                       ↓                        ↓
+    ┌─────────┐           ┌──────────┐            ┌────────────┐
+    │ Config  │           │ Agent    │            │   CLI      │
+    │ Log     │           │ Channels │            │  External  │
+    │ Memory  │           │ Cron     │            │  Clients   │
+    └─────────┘           └──────────┘            └────────────┘
 ```
 
-Each service is isolated — no shared state, communication only through the gateway protocol.
+Services are isolated — no shared state, communication only through `bus.call()` and `bus.emit()`. Domain boundaries are enforced by ESLint.
+
+### Inbound Message Flow
+
+```
+User sends message (WhatsApp/Telegram)
+  ↓
+Channel adapter downloads media, converts to base64
+  ↓
+ChannelsService: expand links, start typing, init reactions
+  ↓
+bus.call('agent.execute', { sessionKey, task, images })
+  ↓
+AgentRuntime: get/create PiAgent session, run prompt
+  ↓
+Response delivered via bus.call('channel.send')
+```
 
 ## Documentation
 
@@ -60,6 +75,7 @@ Each service is isolated — no shared state, communication only through the gat
 | [Workspace Files](./docs/workspace-files.md) | AGENTS.md, SOUL.md, TOOLS.md reference |
 | [CLI](./docs/cli.md) | Commands and gateway lifecycle |
 | [Troubleshooting](./docs/troubleshooting.md) | Common issues and fixes |
+| [Roadmap](./docs/ROADMAP.md) | Planned features |
 
 ### Examples
 
@@ -74,6 +90,7 @@ Each service is isolated — no shared state, communication only through the gat
 pnpm install          # Install deps
 pnpm start            # Start runtime
 pnpm test             # Tests (watch mode)
+pnpm run test:run     # Tests (single run)
 pnpm run typecheck    # TypeScript check
 pnpm lint             # ESLint + typecheck
 ```

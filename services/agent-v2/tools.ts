@@ -2,7 +2,6 @@
  * Agent v2 — Bus Tools Integration
  * 
  * Converts bus callable events with @register decorators into PiAgent ToolDefinitions.
- * Each tool executes via bus.call() and returns formatted results.
  */
 
 import type { ToolDefinition } from '@mariozechner/pi-coding-agent';
@@ -16,13 +15,6 @@ import { appendError } from '../../lib/error-store.js';
 const log = createLogger('agent-v2-tools');
 
 const LARGE_RESULT_TOKEN_THRESHOLD = 5_000;
-
-/**
- * Convert chars to approximate token count.
- */
-export function charsToTokens(chars: number): number {
-  return Math.ceil(chars / 4);
-}
 
 /**
  * Wrap a bus event as a PiAgent ToolDefinition.
@@ -40,36 +32,27 @@ function wrapEventAsToolDefinition(
     description,
     parameters: parameters as ToolDefinition['parameters'],
     execute: async (
-      toolCallId: string,
+      _toolCallId: string,
       params: Record<string, unknown>,
       _onUpdate: AgentToolUpdateCallback<unknown> | undefined,
       _ctx: { cwd: string },
       _signal?: AbortSignal,
     ): Promise<AgentToolResult<unknown>> => {
-      // Log tool call
-      const paramsStr = Object.entries(params)
-        .map(([k, v]) => `${k}=${JSON.stringify(v).slice(0, 100)}`)
-        .join(', ');
-      log.debug(`${eventName}: ${paramsStr}`);
+      log.debug(`${eventName}: ${Object.entries(params).map(([k, v]) => `${k}=${JSON.stringify(v).slice(0, 100)}`).join(', ')}`);
 
       try {
-        // Execute via bus.call
         const result = await bus.call(eventName as never, params);
 
-        // Convert result to text
         let resultText = '';
-
         if (result && typeof result === 'object') {
           resultText = JSON.stringify(result).slice(0, 2000);
         } else if (result !== undefined && result !== null) {
           resultText = String(result);
         }
 
-        const resultTokens = charsToTokens(resultText.length);
-        const preview = resultText.slice(0, 500).replace(/\n/g, ' ');
-        log.debug(`${eventName} ok (${resultTokens} tokens): ${preview.slice(0, 200)}${resultText.length > 200 ? '...' : ''}`);
+        const resultTokens = Math.ceil(resultText.length / 4);
+        log.debug(`${eventName} ok (${resultTokens} tokens): ${resultText.slice(0, 200).replace(/\n/g, ' ')}${resultText.length > 200 ? '...' : ''}`);
 
-        // Build content with large result warning if needed
         const content = [{ type: 'text' as const, text: resultText }];
 
         if (resultTokens > LARGE_RESULT_TOKEN_THRESHOLD) {
@@ -82,11 +65,7 @@ function wrapEventAsToolDefinition(
       } catch (err) {
         const message = toMessage(err);
         log.debug(`${eventName} error: ${message}`);
-        
-        // Store error
-        appendError({ tool: eventName, sessionKey, message })
-          .catch(e => log.debug(`error store: ${e}`));
-        
+        appendError({ tool: eventName, sessionKey, message }).catch(() => {});
         return {
           content: [{ type: 'text' as const, text: `Error: ${message}` }],
           details: { error: message },
@@ -98,27 +77,10 @@ function wrapEventAsToolDefinition(
 
 /**
  * Create PiAgent custom tools from bus callable events.
- * Filters events with @register decorator that have descriptions and schemas.
- * 
- * @param sessionKey - Current session identifier for error tracking
- * @param bus - Bus instance to execute tools against
- * @returns Array of ToolDefinition for PiAgent
  */
 export async function createCustomTools(sessionKey: string, bus: Bus): Promise<ToolDefinition[]> {
-  // Get all registered events from bus
   const metadata = await bus.call('bus.search', {});
-  
-  // Filter to only tool events (callable with description and schema)
-  const filtered = metadata.filter(isToolEvent);
-  
-  // Convert each to ToolDefinition
-  return filtered.map(m =>
-    wrapEventAsToolDefinition(
-      m.event,
-      m.description,
-      (m.schema?.params as Record<string, unknown>) || {},
-      sessionKey,
-      bus,
-    ),
+  return metadata.filter(isToolEvent).map(m =>
+    wrapEventAsToolDefinition(m.event, m.description, (m.schema?.params as Record<string, unknown>) || {}, sessionKey, bus),
   );
 }

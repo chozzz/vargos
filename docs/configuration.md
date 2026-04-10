@@ -20,224 +20,201 @@ Priority: `config.paths.dataDir` > `VARGOS_DATA_DIR` env > `~/.vargos`
 
 ```jsonc
 {
-  // Named model profiles — define one or more
-  "models": {
-    "anthropic": {
-      "provider": "anthropic",
-      "model": "claude-sonnet-4-20250514",
-      "apiKey": "sk-...",           // or use ANTHROPIC_API_KEY env var
-      "maxTokens": 16384,           // optional
-      "contextWindow": 200000       // optional
-    },
+  // Provider definitions — each provider groups its models
+  "providers": {
     "openai": {
-      "provider": "openai",
-      "model": "gpt-4o",
-      "apiKey": "sk-..."
+      "baseUrl": "https://api.openai.com",
+      "apiKey": "sk-...",           // or use OPENAI_API_KEY env var
+      "models": [
+        { "id": "gpt-4o", "name": "GPT-4o" },
+        { "id": "whisper-1", "name": "Whisper" }
+      ]
+    },
+    "anthropic": {
+      "baseUrl": "https://api.anthropic.com",
+      "apiKey": "sk-ant-...",
+      "models": [
+        { "id": "claude-sonnet-4-20250514", "name": "Claude Sonnet" }
+      ]
+    },
+    "openrouter": {
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "apiKey": "sk-or-...",
+      "models": [
+        { "id": "minimax/minimax-m2.7", "name": "Minimax" }
+      ]
     },
     "local": {
-      "provider": "ollama",
-      "model": "llama3.1",
+      "baseUrl": "http://localhost:11434",
       "apiKey": "local",            // required dummy value for Pi SDK
-      "baseUrl": "http://localhost:11434"
+      "models": [
+        { "id": "llama3.1", "name": "Llama 3.1" }
+      ]
     }
   },
 
-  // Which profiles the agent uses
+  // Agent configuration — uses "provider:modelId" format
   "agent": {
-    "primary": "anthropic",         // key from models map
-    "fallback": "openai",           // optional
-    "media": {                      // optional — media type → model profile
-      "audio": "whisper",
-      "image": "vision"
+    "model": "openai:gpt-4o",       // required — default model
+    "fallback": "anthropic:claude-sonnet-4-20250514",  // optional
+    "media": {                      // optional — media type → model
+      "audio": "openai:whisper-1",
+      "image": "openai:gpt-4o"
     },
     "subagents": {                  // optional — sub-agent limits
-      "maxChildren": 10,            // max active children per parent (default: 10)
       "maxSpawnDepth": 3,           // max nesting depth (default: 3)
-      "runTimeoutSeconds": 300,     // per-subagent timeout (default: 300 = 5 min)
-      "model": "openai"             // optional — cheaper model for workers
+      "runTimeoutSeconds": 300,     // per-subagent timeout (default: 300)
+      "maxChildren": 10,            // max active children per parent
+      "model": "openai:gpt-4o-mini" // optional — cheaper model for workers
     }
   },
 
-  // Optional — all fields have sensible defaults
-  "gateway": {
-    "port": 9000,                   // default: 9000
-    "host": "127.0.0.1"            // default: 127.0.0.1
-  },
-  "mcp": {
-    "transport": "http",            // http | stdio, default: http
-    "host": "127.0.0.1",           // default: 127.0.0.1
-    "port": 9001,                   // default: 9001
-    "endpoint": "/mcp",             // default: /mcp
-    "bearerToken": "your-secret"    // required for HTTP — server skipped without this
-  },
-  "paths": {
-    "dataDir": "~/.vargos",         // default: ~/.vargos
-    "workspace": "~/.vargos/workspace"
-  },
-  "storage": {
-    "type": "sqlite",               // postgres | sqlite, default: sqlite
-    "url": "postgresql://..."       // required when type=postgres
-  },
-  "heartbeat": {
-    "enabled": false,               // default: false
-    "every": "*/30 * * * *",        // cron expression
-    "activeHours": {
-      "start": "09:00",            // HH:MM
-      "end": "22:00",
-      "timezone": "Australia/Sydney"
+  // Channels — array of channel instances
+  "channels": [
+    {
+      "type": "telegram",
+      "id": "tg-bot",
+      "botToken": "...",
+      "enabled": true,
+      "allowFrom": ["123456"],       // optional whitelist
+      "model": "anthropic:claude-sonnet-4-20250514",  // optional per-channel model
+      "debounceMs": 2000             // optional message debounce
     },
-    "prompt": "..."                 // optional custom prompt
-  },
+    {
+      "type": "whatsapp",
+      "id": "wa-personal",
+      "enabled": true,
+      "allowFrom": ["61423222658"]
+    }
+  ],
+
+  // Cron tasks
   "cron": {
-    "tasks": [                      // user-defined scheduled tasks
+    "tasks": [
       {
-        "name": "daily-report",
-        "schedule": "0 9 * * *",   // cron expression
+        "id": "daily-report",
+        "name": "Daily Report",
+        "schedule": "0 9 * * *",
         "task": "Generate a summary of recent changes",
-        "enabled": true,            // default: true
-        "notify": ["whatsapp:614..."]  // optional — channel targets
+        "enabled": true,
+        "notify": ["telegram:tg-bot:61423222658"]
       }
     ]
   },
-  "mcpServers": {                   // external MCP tool servers
-    "atlassian": {
-      "command": "uvx",
-      "args": ["mcp-atlassian"],
-      "env": { "JIRA_URL": "...", "JIRA_USERNAME": "...", "JIRA_API_TOKEN": "..." }
-    }
+
+  // Heartbeat — periodic maintenance cron
+  "heartbeat": {
+    "enabled": false,
+    "intervalMinutes": 30,
+    "activeHours": [9, 22],
+    "activeHoursTimezone": "Australia/Sydney",
+    "notify": ["telegram:tg-bot:61423222658"]
   },
-  "webhooks": { ... },              // see below
-  "compaction": { ... },            // see below
-  "channels": { ... }              // see channels.md
-}
-```
 
-## Model Profiles
-
-Each entry in `models` is a `ModelProfile`:
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `provider` | string | yes | `anthropic`, `openai`, `google`, `openrouter`, `ollama`, `lmstudio`, `groq`, `together`, `deepseek`, `mistral`, `fireworks`, `perplexity` |
-| `model` | string | yes | Model identifier (e.g. `claude-sonnet-4-20250514`) |
-| `apiKey` | string | no | API key (overridden by env var) |
-| `baseUrl` | string | no | Custom API endpoint |
-| `maxTokens` | number | no | Max output tokens per response |
-| `contextWindow` | number | no | Context window size |
-
-## Agent Reference
-
-The `agent` field points into the `models` map:
-
-```jsonc
-{
-  "agent": {
-    "primary": "anthropic",    // required — default model profile
-    "fallback": "openai",      // optional — used when primary fails
-    "media": {                 // optional — media preprocessing
-      "audio": "whisper",
-      "image": "vision"
-    },
-    "subagents": {             // optional — sub-agent limits
-      "maxChildren": 10,       // max active per parent (1-50, default: 10)
-      "maxSpawnDepth": 3,      // max nesting depth (1-5, default: 3)
-      "runTimeoutSeconds": 300, // timeout per sub-agent (default: 300)
-      "model": "openai"        // optional — model profile for workers
-    }
-  }
-}
-```
-
-### Sub-agent Limits
-
-| Field | Type | Range | Default | Description |
-|-------|------|-------|---------|-------------|
-| `maxChildren` | number | 1-50 | 10 | Max active children per parent session |
-| `maxSpawnDepth` | number | 1-5 | 3 | Max nesting depth (main → sub → sub-sub) |
-| `runTimeoutSeconds` | number | ≥ 0 | 300 | Per-subagent run timeout (0 = no timeout) |
-| `model` | string | — | (inherit) | Model profile name for sub-agents |
-
-Sub-agents use the primary model by default. Set `model` to a cheaper profile to reduce cost for worker tasks. The `sessions_spawn` tool can override model and role per-spawn. The `role` parameter overrides SOUL.md for that sub-agent, allowing the parent to assign specialized personas (architect, reviewer, security engineer, etc.).
-
-## Media Processing
-
-When media arrives on a channel, the primary model may not support it. The `agent.media` map routes each media type to a dedicated model profile for preprocessing:
-
-| Media type | Supported providers | What happens |
-|-----------|-------------------|--------------|
-| `audio` | `openai` (Whisper) | Transcribed to text, replaces message content |
-| `image` | `openai`, `anthropic` | Description prepended to message content |
-
-Omitted types: images fall through to the primary model as-is (may support vision natively), other types get a "not configured" error sent back to the user.
-
-Example config with Whisper + Vision:
-
-```jsonc
-{
-  "models": {
-    "kimi": { "provider": "openrouter", "model": "moonshotai/kimi-k2.5" },
-    "whisper": { "provider": "openai", "model": "whisper-1", "apiKey": "sk-..." },
-    "vision": { "provider": "openai", "model": "gpt-4o-mini", "apiKey": "sk-..." }
+  // Link expansion for inbound messages
+  "linkExpand": {
+    "enabled": true,
+    "maxUrls": 3,
+    "maxCharsPerUrl": 8000,
+    "timeoutMs": 5000
   },
-  "agent": {
-    "primary": "kimi",
-    "media": {
-      "audio": "whisper",
-      "image": "vision"
-    }
-  }
-}
-```
 
-## Cron Tasks
+  // Gateway (TCP/JSON-RPC)
+  "gateway": {
+    "host": "127.0.0.1",
+    "port": 9000,
+    "requestTimeout": 30000
+  },
 
-User-defined scheduled tasks are persisted in `config.json` and loaded at gateway boot. Tasks added via `vargos cron add` or the `cron_add` agent tool are automatically saved.
+  // MCP server
+  "mcp": {
+    "transport": "http",
+    "host": "127.0.0.1",
+    "port": 9001,
+    "endpoint": "/mcp",
+    "bearerToken": "your-secret"
+  },
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | yes | Human-readable task name |
-| `schedule` | string | yes | Cron expression (e.g. `0 */6 * * *`) |
-| `task` | string | yes | Prompt/description for the agent |
-| `enabled` | boolean | no | Whether active (default: `true`) |
-| `notify` | string[] | no | Channel targets to deliver results (e.g. `["whatsapp:614..."]`) |
-
-Built-in tasks (vargos analysis, heartbeat) are not stored in config — they're registered at boot.
-
-## External MCP Servers
-
-Connect to external MCP tool servers (Atlassian, GitHub, etc.). Servers are spawned at gateway boot, their tools are discovered automatically and available to the agent as `<server>:<tool_name>`.
-
-```jsonc
-{
+  // External MCP tool servers
   "mcpServers": {
     "atlassian": {
       "command": "uvx",
       "args": ["mcp-atlassian"],
-      "env": {
-        "JIRA_URL": "https://mycompany.atlassian.net",
-        "JIRA_USERNAME": "you@company.com",
-        "JIRA_API_TOKEN": "...",
-        "CONFLUENCE_URL": "https://mycompany.atlassian.net/wiki",
-        "CONFLUENCE_USERNAME": "you@company.com",
-        "CONFLUENCE_API_TOKEN": "..."
-      }
+      "env": { "JIRA_URL": "..." }
     }
+  },
+
+  // Webhooks
+  "webhooks": [
+    {
+      "id": "github-pr",
+      "name": "GitHub PR",
+      "token": "secret-token",
+      "transform": "./transforms/github.js",
+      "notify": ["telegram:tg-bot:61423222658"]
+    }
+  ],
+
+  // Storage
+  "storage": {
+    "type": "sqlite"   // sqlite | postgres
+  },
+
+  // Media
+  "media": {
+    "audio": "openai:whisper-1",
+    "image": "openai:gpt-4o"
+  },
+
+  // Paths
+  "paths": {
+    "dataDir": "~/.vargos",
+    "workspace": "~/.vargos/workspace"
   }
 }
 ```
 
+## Providers
+
+Each provider groups its models under one config entry. Model refs throughout the config use `provider:modelId` format (e.g., `openai:gpt-4o`).
+
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `command` | string | yes | Executable to spawn (e.g. `uvx`, `npx`) |
-| `args` | string[] | no | Command arguments |
-| `env` | object | no | Environment variables passed to the process |
-| `enabled` | boolean | no | Whether to connect (default: `true`) |
+| `baseUrl` | string | yes | API endpoint |
+| `apiKey` | string | yes | API key (overridden by `${PROVIDER}_API_KEY` env var) |
+| `api` | string | no | API type (e.g., `openai-completions`) |
+| `models` | array | no | Model definitions with `id` and `name` |
 
-If a server fails to start, the gateway logs a warning and continues — it won't block boot.
+## Agent Reference
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `model` | string | yes | Default model (`provider:modelId`) |
+| `fallback` | string | no | Fallback model when primary fails |
+| `media.audio` | string | no | Audio transcription model |
+| `media.image` | string | no | Image description model |
+| `subagents.maxSpawnDepth` | number | no | Max nesting depth (default: 3) |
+| `subagents.runTimeoutSeconds` | number | no | Per-subagent timeout (default: 300) |
+| `subagents.maxChildren` | number | no | Max active children per parent (default: 10) |
+| `subagents.model` | string | no | Model for sub-agents (inherits from parent if unset) |
+
+## Channels
+
+Channels is an **array** of channel instances. Each entry has a unique `id` and a `type`. Multiple entries with the same `type` but different `id` run multiple instances (e.g., two WhatsApp accounts).
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | string | yes | Unique instance name (e.g., `telegram-work`) |
+| `type` | string | yes | Platform: `telegram` or `whatsapp` |
+| `enabled` | boolean | no | Whether active (default: `true`) |
+| `botToken` | string | telegram only | Telegram bot token from @BotFather |
+| `allowFrom` | string[] | no | Whitelist of user IDs |
+| `model` | string | no | Override `agent.model` for this channel |
+| `debounceMs` | number | no | Message debounce delay (default: 2000) |
 
 ## API Key Precedence
 
-`${PROVIDER}_API_KEY` env var takes priority over `models.*.apiKey`. For example, `ANTHROPIC_API_KEY` overrides the config value when `provider` is `anthropic`.
+`${PROVIDER}_API_KEY` env var takes priority over `providers.*.apiKey`. For example, `OPENAI_API_KEY` overrides the config value for the `openai` provider.
 
 ## Local Providers
 
@@ -245,103 +222,23 @@ Ollama and LM Studio require a dummy API key (`"local"`) for the Pi SDK auth lay
 
 ```jsonc
 {
-  "models": {
+  "providers": {
     "ollama": {
-      "provider": "ollama",
-      "model": "llama3.1",
+      "baseUrl": "http://localhost:11434",
       "apiKey": "local",
-      "baseUrl": "http://localhost:11434"
+      "models": [{ "id": "llama3.1", "name": "Llama 3.1" }]
     }
-  }
+  },
+  "agent": { "model": "ollama:llama3.1" }
 }
 ```
-
-## CLI Config Commands
-
-```bash
-vargos config llm show           # Display current LLM config
-vargos config llm edit           # Change provider/model/key
-vargos config channel show       # Display channel config
-vargos config channel edit       # Open config in $EDITOR
-vargos config context show       # List context files
-vargos config context edit       # Edit context in $EDITOR
-vargos config heartbeat show     # Display heartbeat config
-vargos config heartbeat edit     # Configure heartbeat schedule
-```
-
-## Webhooks
-
-Inbound HTTP triggers that fire agent tasks. See [webhooks.md](./webhooks.md) for full details.
-
-```jsonc
-{
-  "webhooks": {
-    "port": 9002,                    // default: 9002
-    "host": "127.0.0.1",            // default: 127.0.0.1
-    "hooks": [
-      {
-        "id": "github-pr",          // URL-safe identifier
-        "token": "secret-token",    // Bearer token for auth
-        "description": "GitHub PR webhooks",
-        "transform": "./transforms/github.js",  // optional custom transform
-        "notify": ["whatsapp:614..."]            // optional channel targets
-      }
-    ]
-  }
-}
-```
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `port` | number | no | HTTP server port (default: `9002`) |
-| `host` | string | no | Bind address (default: `127.0.0.1`) |
-| `hooks` | array | yes | Hook definitions |
-| `hooks[].id` | string | yes | URL-safe identifier (`[a-z0-9_-]+`) |
-| `hooks[].token` | string | yes | Bearer token for authentication |
-| `hooks[].transform` | string | no | Module path for custom payload transform |
-| `hooks[].notify` | string[] | no | Channel targets for result delivery |
-| `hooks[].description` | string | no | Human-readable description |
-
-## Compaction
-
-Controls how the agent manages context window usage. Two independent systems:
-
-```jsonc
-{
-  "compaction": {
-    "contextPruning": {
-      "enabled": true,               // default: true
-      "keepLastAssistants": 3,       // always keep N recent assistant messages
-      "softTrimRatio": 0.3,          // trigger soft trim at 30% of context window
-      "hardClearRatio": 0.5,         // trigger hard clear at 50%
-      "softTrim": {
-        "maxChars": 4000,            // max chars per old message
-        "headChars": 1500,           // chars from start when truncating
-        "tailChars": 1500            // chars from end when truncating
-      },
-      "tools": {
-        "allow": ["read", "edit"],   // only keep these tool calls
-        "deny": ["exec"]             // strip these tool calls
-      }
-    },
-    "safeguard": {
-      "enabled": true,               // default: true
-      "maxHistoryShare": 0.5         // max ratio of context window for history
-    }
-  }
-}
-```
-
-**Context pruning** trims old messages to free context space. Soft trim truncates long messages; hard clear removes old messages entirely. Recent assistant messages are always preserved.
-
-**Safeguard** caps the total history size relative to the context window, ensuring the system prompt always fits.
 
 ## Migration
 
 Legacy config formats are auto-migrated on first load:
-- Inline `agent: { provider, model, apiKey }` -> `models` map + `agent: { primary }`
-- Flat `workspace/config.json` -> nested `config.json`
-- Legacy Pi SDK `settings.json` + `agent/auth.json` -> merged
-- Separate `channels.json` -> merged into `channels` section
+- `models` Record → `providers` Record
+- `agent.primary` → `agent.model`
+- `heartbeat.every` cron → `heartbeat.intervalMinutes`
+- `heartbeat.activeHours` object → `[start, end]` tuple + `activeHoursTimezone`
 
 See [getting-started.md](./getting-started.md) for initial setup.

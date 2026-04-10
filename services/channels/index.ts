@@ -6,9 +6,7 @@
  * Pure events subscribed: agent.onDelta, agent.onTool, agent.onCompleted
  *
  * Inbound flow:
- *   adapter → onInboundMessage → session create/update → expand links
- *   → emit channel.onInbound (agent runtime handles the run when wired)
- *   → start typing + init reaction controller
+ *   adapter → onInboundMessage → expand links → typing + reactions → agent.execute → deliver
  *   → agent.onTool updates reaction phase
  *   → agent.onCompleted stops typing + seals reaction
  *
@@ -46,20 +44,15 @@ interface ActiveSession {
 
 export class ChannelService {
   private adapters = new Map<string, ChannelAdapter>();
-  // sessionKey → active typing/reaction state
   private activeSessions = new Map<string, ActiveSession>();
-  // pending messageId per sessionKey (for reaction init)
   private pendingMessageIds = new Map<string, string>();
 
   constructor(
     private readonly bus: Bus,
     private readonly config: AppConfig,
   ) {
-    // Wire bus subscriptions
     this.bus.on('agent.onTool', (payload) => this.onAgentTool(payload));
     this.bus.on('agent.onCompleted', (payload) => this.onAgentCompleted(payload));
-
-    // Start all configured channels after boot completes
     this.bus.on('bus.onReady', () => this.startAllConfigured());
   }
 
@@ -89,7 +82,6 @@ export class ChannelService {
 
     await deliverReply((chunk) => adapter.send(target.userId, chunk), cleaned);
 
-    // Passive media extraction — fallback for agent-generated file paths in text
     if (adapter.sendMedia) {
       const files = extractMediaPaths(text);
       for (const { filePath, mimeType } of files) {
@@ -217,20 +209,16 @@ export class ChannelService {
 
     const enrichedContent = await expandLinks(content, this.config.linkExpand).catch(() => content);
 
-    // Track messageId for reaction targeting
     if (metadata?.messageId && typeof metadata.messageId === 'string') {
       this.pendingMessageIds.set(sessionKey, metadata.messageId);
     }
 
-    // Strip heavy fields from metadata passed to consumers
     const inboundMeta: Record<string, unknown> = { type: 'task', channel, ...metadata };
     if (inboundMeta.media && typeof inboundMeta.media === 'object') {
       const { data: _data, ...rest } = inboundMeta.media as Record<string, unknown>;
       inboundMeta.media = rest;
     }
-    delete inboundMeta.images;
 
-    // Start typing indicator and init reaction controller
     adapter.startTyping(userId);
 
     const messageId = this.pendingMessageIds.get(sessionKey);
@@ -238,8 +226,9 @@ export class ChannelService {
 
     let reactionController: StatusReactionController | undefined;
     if (adapter.react && messageId) {
-      const reactFn = adapter.react.bind(adapter);
-      reactionController = new StatusReactionController({ react: reactFn }, userId, messageId);
+      reactionController = new StatusReactionController(
+        { react: adapter.react.bind(adapter) }, userId, messageId,
+      );
       reactionController.setThinking();
     }
 
@@ -247,75 +236,48 @@ export class ChannelService {
 
     log.info(`inbound: ${channel}:${userId} "${enrichedContent.slice(0, 80)}"`);
 
-    // Call agent.execute directly and handle response
-    this.handleAgentExecution(channel, userId, sessionKey, enrichedContent, inboundMeta, reactionController)
+    this.runAgent(sessionKey, channel, userId, enrichedContent, inboundMeta, reactionController)
       .catch(err => log.error(`agent execution failed: ${toMessage(err)}`));
   }
 
   /**
-   * Handle agent execution and response delivery.
-   * Calls agent.execute and sends response back to channel.
+   * Call agent.execute, deliver response, manage typing/reactions.
    */
-  private async handleAgentExecution(
+  private async runAgent(
+    sessionKey: string,
     channel: string,
     userId: string,
-    sessionKey: string,
     content: string,
     metadata: Record<string, unknown>,
     reactionController?: StatusReactionController,
   ): Promise<void> {
+    const stopTyping = () => this.adapters.get(channel)?.stopTyping(userId);
+
     try {
-      // Build execute params
-      const executeParams: EventMap['agent.execute']['params'] = {
-        sessionKey,
-        task: content,
-      };
-
-      // Add optional overrides from metadata
-      if (metadata.model && typeof metadata.model === 'string') {
-        executeParams.model = metadata.model;
-      }
+      const executeParams: EventMap['agent.execute']['params'] = { sessionKey, task: content };
+      if (metadata.model && typeof metadata.model === 'string') executeParams.model = metadata.model;
       if (metadata.thinkingLevel && typeof metadata.thinkingLevel === 'string') {
-        // Cast to valid thinking level type
-        const level = metadata.thinkingLevel as EventMap['agent.execute']['params']['thinkingLevel'];
-        executeParams.thinkingLevel = level;
+        executeParams.thinkingLevel = metadata.thinkingLevel as EventMap['agent.execute']['params']['thinkingLevel'];
+      }
+      if (metadata.images && Array.isArray(metadata.images)) {
+        executeParams.images = metadata.images as EventMap['agent.execute']['params']['images'];
       }
 
-      // Call agent.execute
       const result = await this.bus.call('agent.execute', executeParams);
 
-      // Stop typing indicator
-      this.stopTyping(channel, userId);
+      stopTyping();
 
-      // Send response
       if (result.response) {
-        await this.bus.call('channel.send', {
-          sessionKey,
-          text: result.response,
-        });
-
-        // Mark message as completed
+        await this.bus.call('channel.send', { sessionKey, text: result.response });
         reactionController?.setDone();
       }
     } catch (err) {
-      // Stop typing and send error
-      this.stopTyping(channel, userId);
+      stopTyping();
       reactionController?.setError();
 
       const errorMsg = toMessage(err);
       log.error(`agent execution failed: ${errorMsg}`);
-
-      await this.bus.call('channel.send', {
-        sessionKey,
-        text: `Error: ${errorMsg}`,
-      });
-    }
-  }
-
-  private stopTyping(channel: string, userId: string): void {
-    const adapter = this.adapters.get(channel);
-    if (adapter) {
-      adapter.stopTyping(userId);
+      await this.bus.call('channel.send', { sessionKey, text: `Error: ${errorMsg}` });
     }
   }
 
@@ -341,29 +303,39 @@ export class ChannelService {
   }
 
   private createAdapter(entry: ChannelEntry): ChannelAdapter | null {
+    const audioConfig = this.getAudioTranscribeConfig();
+
     switch (entry.type) {
       case 'telegram': {
         const cfg = entry as TelegramChannel;
-        return new TelegramAdapter(
-          entry.id,
-          cfg.botToken,
-          cfg.allowFrom,
-          this.onInboundMessage.bind(this),
-          cfg.debounceMs,
+        const adapter = new TelegramAdapter(
+          entry.id, cfg.botToken, cfg.allowFrom,
+          this.onInboundMessage.bind(this), cfg.debounceMs,
         );
+        if (audioConfig) adapter.setAudioTranscribeConfig(audioConfig);
+        return adapter;
       }
       case 'whatsapp': {
         const cfg = entry as WhatsAppChannel;
-        return new WhatsAppAdapter(
-          entry.id,
-          cfg.allowFrom,
-          this.onInboundMessage.bind(this),
-          cfg.debounceMs,
+        const adapter = new WhatsAppAdapter(
+          entry.id, cfg.allowFrom,
+          this.onInboundMessage.bind(this), cfg.debounceMs,
         );
+        if (audioConfig) adapter.setAudioTranscribeConfig(audioConfig);
+        return adapter;
       }
       default:
         return null;
     }
+  }
+
+  private getAudioTranscribeConfig(): { provider: string; model: string; apiKey?: string; baseUrl?: string } | undefined {
+    if (!this.config.media?.audio) return undefined;
+    const [provider, model] = this.config.media.audio.split(':');
+    if (!provider || !model) return undefined;
+    const pc = this.config.providers[provider];
+    if (!pc) return undefined;
+    return { provider, model, apiKey: pc.apiKey, baseUrl: pc.baseUrl };
   }
 
   private async startAllConfigured(): Promise<void> {

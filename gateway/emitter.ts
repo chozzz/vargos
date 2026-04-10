@@ -107,8 +107,6 @@ export class EventEmitterBus implements Bus {
       this.callableRegistry.set(event as string, schema);
     }
 
-
-
     for (const { event, method } of tools) {
       const fn = (svc as Record<string, unknown>)[method];
       if (typeof fn !== 'function') continue;

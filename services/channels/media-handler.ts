@@ -1,10 +1,11 @@
 /**
  * Shared inbound media pipeline for channel adapters
- * Subclasses implement resolveMedia(); the pipeline handles save → base64 → format → route
+ * Subclasses implement resolveMedia(); the pipeline handles save → base64 → format → transcribe (audio) → route
  */
 
 import path from 'node:path';
 import { saveMedia } from '../../lib/media.js';
+import { transcribeAudio } from '../../lib/media-transcribe.js';
 import { getDataPaths } from '../../lib/paths.js';
 import { BaseChannelAdapter } from './base-adapter.js';
 
@@ -25,7 +26,21 @@ const TYPE_LABELS: Record<string, string> = {
 
 export abstract class InboundMediaHandler extends BaseChannelAdapter {
   protected abstract resolveMedia(msg: unknown): Promise<InboundMediaSource | null>;
+  
+  protected audioTranscribeConfig?: { provider: string; model: string; apiKey?: string; baseUrl?: string };
 
+  /** Set audio transcription config */
+  setAudioTranscribeConfig(config?: { provider: string; model: string; apiKey?: string; baseUrl?: string }): void {
+    this.audioTranscribeConfig = config;
+  }
+
+  /**
+   * Process inbound media message.
+   * @param msg - Raw message from channel
+   * @param userId - User ID
+   * @param sessionKey - Session key (channel:userId)
+   * @param route - Function to route text + metadata to agent
+   */
   protected async processInboundMedia(
     msg: unknown,
     userId: string,
@@ -48,6 +63,21 @@ export abstract class InboundMediaHandler extends BaseChannelAdapter {
       return;
     }
 
+    if (mediaType === 'audio' && this.audioTranscribeConfig) {
+      try {
+        const transcription = await transcribeAudio(savedPath, this.audioTranscribeConfig);
+        await route(
+          `${transcription}\n\n[Audio transcribed from: ${savedPath}]`,
+          { media, transcription },
+        );
+        return;
+      } catch (err) {
+        // Fall through to default handling if transcription fails
+        this.log.warn(`Audio transcription failed: ${err}. Falling back to file path.`);
+      }
+    }
+
+    // Default handling for audio (no transcription) or other media types
     const label = TYPE_LABELS[mediaType] ?? 'Media';
     const durationSuffix = duration != null ? `, ${duration}s` : '';
     const fallbackCaption = caption || `[${label}${durationSuffix}]`;

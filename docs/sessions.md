@@ -4,134 +4,79 @@ Sessions persist conversation history and provide isolation between different in
 
 ## Session Key Formats
 
-| Format | Example | Created By | Prompt Mode | History Limit |
-|--------|---------|-----------|-------------|---------------|
-| `cli:chat` | `cli:chat` | CLI `vargos chat` | full | 50 turns |
-| `cli:run:<timestamp>` | `cli:run:1708865234567` | CLI `vargos run` | full | 50 turns |
-| `<instanceId>:<userId>` | `whatsapp-personal:61423222658` | Channel adapter | full | 30 turns |
-| `<instanceId>:<userId>` | `telegram-bakabit:123456` | Channel adapter | full | 30 turns |
-| `twilio:<callSid>` | `twilio:CA1234567890abcdef` | Twilio adapter (planned) | full | 30 turns |
-| `cron:<taskId>:<timestamp>` | `cron:daily-report:1708865234567` | Cron service | minimal | 10 turns |
-| `webhook:<hookId>:<timestamp>` | `webhook:github-pr:1708865234567` | Webhook service | minimal | 10 turns |
-| `<parent>:subagent:<timestamp>-<rand>` | `cli:chat:subagent:1708865240123-x7k2q` | `sessions_spawn` tool | minimal-subagent | inherits root |
-| `mcp:default` | `mcp:default` | MCP bridge | full | 50 turns |
+| Format | Example | Created By |
+|--------|---------|-----------|
+| `<instanceId>:<userId>` | `whatsapp-personal:61423222658` | Channel adapter |
+| `<instanceId>:<userId>` | `telegram-bot:123456` | Channel adapter |
+| `cron:<taskId>:<date>` | `cron:daily-report:2026-04-10` | Cron service |
+| `webhook:<hookId>:<timestamp>` | `webhook:github-pr:1708865234567` | Webhook service |
+| `<parent>:subagent:<timestamp>-<rand>` | `whatsapp:614:subagent:1708865240123-x7k2q` | `agent.execute` with subagent key |
 
-Channel session keys use the channel's `instanceId` (from `config.channels[].id`) — not the platform type. This supports multiple instances of the same platform (e.g., two WhatsApp accounts with different `id` values each get their own session namespace).
+Channel session keys use the channel's `instanceId` (from `config.channels[].id`) — not the platform type. This supports multiple instances of the same platform.
 
-Session key builder functions (`channelSessionKey()`, `cronSessionKey()`, `webhookSessionKey()`, `cliSessionKey()`, `subagentSessionKey()`) are co-located with the services that own them (`services/sessions/`, `services/agent/`, `lib/subagent.ts`).
+Session key builder functions live in `lib/subagent.ts`: `channelSessionKey()`, `cronSessionKey()`, `webhookSessionKey()`, `subagentSessionKey()`.
 
-## Behaviors Driven by Session Key
+## Subagent Orchestration
 
-**Prompt mode** — see [runtime.md](./runtime.md#prompt-modes) for full breakdown.
+Subagents are created by calling `agent.execute` with a child session key. No separate `agent.spawn` endpoint is needed.
 
-**History limit** (`services/agent/history.ts`):
-- Derived from the root session key (before `:subagent:`)
-- Channels (whatsapp/telegram): 30 turns
-- Cron: 10 turns
-- Everything else: 50 turns
-- Subagents inherit the limit of their root session
+```typescript
+// Parent creates subagent via session key convention
+const childKey = subagentSessionKey(parentKey);
+// → "whatsapp:614:subagent:1708865240123-x7k2q"
 
-**Subagent spawning** limits — see [configuration.md](./configuration.md#agent) for `agent.subagents` defaults.
-
-## Subagent Lifecycle
-
-1. Parent agent calls `sessions_spawn` tool with a task description and optional `role` (persona override)
-2. Spawn tool enforces depth + breadth limits, creates child session
-3. Child agent runs in background (fire-and-forget)
-4. On completion, result is announced to parent as a `system` message with `metadata.type = 'subagent_announce'`
-5. Re-trigger is debounced (3s) — if multiple subagents complete close together, parent is re-triggered once
-6. Parent sees subagent results in history (injected as `user` messages by `toAgentMessages`)
-7. Parent synthesizes results and delivers to user
-
-**Announce format:**
-```
-[Subagent Complete] session=<childKey> status=success|error duration=5.2s
-
-<result summary, max 500 chars>
+await bus.call('agent.execute', { sessionKey: childKey, task: 'Research this topic' });
 ```
 
-**Timeout behavior:** If a subagent exceeds `runTimeoutSeconds`, the spawn tool aborts it via `agent.abort`. The parent receives a timeout announcement.
+Limits are enforced by helpers in `lib/subagent.ts`:
+- `getSubagentDepth(key)` — counts `:subagent:` occurrences
+- `canSpawnSubagent(key, maxDepth)` — depth check (default: 3)
+- `isSubagentSessionKey(key)` — type check
 
 ## Session Isolation
 
 Each session key maps to an independent conversation. Sessions do **not** share history:
 
-- Cron jobs use `cron:<taskId>:<timestamp>` — fresh session per fire
-- Cron results are delivered only to explicit `notify` targets configured per task — no delivery if unset
-- Notifications inject the result into the recipient's channel session for context, then send via `channel.send`
-- Cross-session context is also possible through workspace files (e.g., memory files, MEMORY.md)
+- Cron jobs use `cron:<taskId>:<date>` — fresh session per fire
+- Cron results are delivered only to explicit `notify` targets configured per task
+- Cross-session context is possible through workspace files (memory files, MEMORY.md)
 
 ## Storage
 
-Sessions are stored in `~/.vargos/sessions/` by `FileSessionService`. Directory structure:
+Sessions are persisted by PiAgent's `SessionManager` to `~/.vargos/workspace/sessions/<sessionKey>/`.
 
 ```
-~/.vargos/sessions/
-├── cli-chat/                                    # Root session directory
-│   └── cli-chat.jsonl                           # Main JSONL: metadata + messages
-├── whatsapp-personal-61423222658/               # Channel session (instanceId:userId)
-│   ├── whatsapp-personal-61423222658.jsonl
-│   ├── subagents/                               # Subagent children
-│   │   ├── subagent-1708865240123-x7k2q/
-│   │   │   └── subagent-1708865240123-x7k2q.jsonl
-│   │   └── subagent-1708865240125-y8m3r/
-│   │       └── subagent-1708865240125-y8m3r.jsonl
-│   └── tool-results/                            # Per-call results for parent session
-│       ├── abc123-uuid.json
-│       └── def456-uuid.json
-└── cron-daily-report-1708865234567/
-    ├── cron-daily-report-1708865234567.jsonl
-    └── tool-results/
-        └── xyz789-uuid.json
+~/.vargos/workspace/sessions/
+├── whatsapp-personal-61423222658/
+│   └── ... (PiAgent session files)
+├── cron-daily-report-2026-04-10/
+│   └── ... (PiAgent session files)
+└── whatsapp-personal-61423222658:subagent:1708865240123-x7k2q/
+    └── ... (PiAgent session files)
 ```
 
-Each JSONL file (e.g., `cli-chat.jsonl`) contains:
-- Line 0: session metadata (key, kind, timestamps)
-- Remaining lines: individual messages (role, content, timestamp, metadata)
-
-Subagent sessions are stored in their parent's `subagents/<subagent-dir>/` directory. Tool results are one JSON file per tool call, named by `toolCallId`, under the session's `tool-results/` directory.
-
-Path resolution is centralized in `lib/paths.ts` via `resolveSessionDir(sessionKey)`, which handles both root sessions and subagent nesting automatically.
-
-The Pi SDK runs in-memory only — no session files from the LLM runtime. All persistence goes through `FileSessionService`. Before each agent run, history is loaded from `FileSessionService`, converted to `AgentMessage[]` via `toAgentMessages()`, sanitized, and injected into the Pi SDK session.
-
-## Training Data Enrichment
-
-Assistant messages are enriched at write-time with metadata for fine-tuning and analysis. Every agent response stored via `storeResponse` includes:
-
-```jsonc
-{
-  "role": "assistant",
-  "content": "...",
-  "timestamp": 1708865234567,
-  "metadata": {
-    "runId": "abc123",
-    "model": "claude-sonnet-4-20250514",
-    "provider": "anthropic",
-    "tokens": { "input": 1234, "output": 567 },
-    "channel": "whatsapp",          // only for channel sessions
-    "toolCalls": [                   // only when tools were invoked
-      { "name": "read", "args": { "path": "/tmp/foo.txt" } },
-      { "name": "exec", "args": { "command": "ls" } }
-    ],
-    "thinking": "reasoning text..."  // only when thinking blocks present (truncated at 4K chars)
-  }
-}
-```
-
-**Media transforms** are persisted as system messages with `metadata.type = 'media_transform'` so audio transcriptions (Whisper) and image descriptions (Vision) survive in session history and are available for training data extraction.
+The Pi SDK's `SessionManager` handles persistence automatically — entries are written to disk and reloaded on session creation. No manual history injection is needed.
 
 ## Lifecycle
 
-- **Chat sessions** (`cli:chat`) persist across restarts — resume where you left off
-- **Run sessions** (`cli:run:<ts>`) use a unique timestamp key per invocation — each run is a fresh session
 - **Channel sessions** (`<instanceId>:<userId>`) are keyed by sender ID per instance — one session per contact per channel instance
-- **Cron sessions** (`cron:<taskId>:<ts>`) get a fresh session per fire via timestamp suffix
+- **Cron sessions** (`cron:<taskId>:<date>`) get a fresh session per fire via date suffix
 - **Webhook sessions** (`webhook:<hookId>:<ts>`) get a fresh session per fire via timestamp suffix
 - **Subagent sessions** (`*:subagent:*`) include timestamp + random suffix, always fresh
 
-## Message Queue
+## Streaming Events
 
-Messages are serialized per session — only one agent run executes per session at a time. Concurrent messages to the same session are queued and processed in order.
+Agent v2 emits streaming events to the bus during execution:
+
+| Event | Emitted When |
+|-------|-------------|
+| `agent.onDelta` | Text streaming delta from PiAgent |
+| `agent.onTool` | Tool execution start/end |
+| `agent.onCompleted` | Session finished (success or error) |
+
+These are mapped from PiAgent's internal events in `subscribeToSessionEvents()`:
+- `message_update` → `agent.onDelta`
+- `tool_execution_start` / `tool_execution_end` → `agent.onTool`
+- `agent_end` / `turn_end` → `agent.onCompleted`
 
 See [runtime.md](./runtime.md) for agent execution details.

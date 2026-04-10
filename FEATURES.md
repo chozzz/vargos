@@ -1,58 +1,65 @@
 # Feature Inventory
 
-## Core Agent Runtime
+## Core Agent Runtime (v2)
+
+Agent v2 is a **PiAgent-powered runtime** that replaces the old agent service. It provides direct channel integration via `bus.call('agent.execute')`, PiAgent session persistence, vision model support, audio transcription, and streaming events passthrough.
 
 | Feature | Status | Location |
 |---------|--------|----------|
-| Pi SDK integration | ✅ | `runtime.ts` |
-| Per-session message queue | ✅ | `queue.ts` |
-| Retryable error detection + retry | ✅ | `runtime.ts` |
-| Thinking-only response handling | ✅ | `runtime.ts` |
-| Run abort API | ✅ | `service.ts` |
-| Token usage tracking | ✅ | `runtime.ts` |
+| PiAgent session persistence | ✅ | `services/agent-v2/index.ts` |
+| `agent.execute` RPC with schema validation | ✅ | `services/agent-v2/index.ts` |
+| Session management (create/get/cache) | ✅ | `services/agent-v2/index.ts` |
+| Model registration via `ModelRegistry` | ✅ | `services/agent-v2/index.ts` |
+| API key management via `AuthStorage` | ✅ | `services/agent-v2/index.ts` |
+| Settings sync via `SettingsManager` | ✅ | `services/agent-v2/index.ts` |
+| Skills loading via `loadSkillsFromDir` | ✅ | `services/agent-v2/index.ts` |
+| Custom tools from bus events | ✅ | `services/agent-v2/tools.ts` |
+| System prompt from workspace files | ✅ | `services/agent-v2/index.ts` |
+| Image passthrough to PiAgent (vision) | ✅ | `services/agent-v2/index.ts` |
+| Audio transcription (Whisper API) | ✅ | `lib/media-transcribe.ts` |
+| Streaming events passthrough to bus | ✅ | `services/agent-v2/index.ts` |
+| Debug mode (`AGENT_DEBUG=true`) | ✅ | `services/agent-v2/index.ts` |
+| Subagent orchestration via `agent.execute` | ✅ | `lib/subagent.ts` |
 
 ## System Prompt
 
 | Feature | Status |
 |---------|--------|
-| Bootstrap file injection (AGENTS, SOUL, TOOLS) | ✅ |
-| Prompt modes: full, minimal, minimal-subagent, none | ✅ |
-| Channel context (concise, no-code, plain-text) | ✅ |
-| Orchestration guidance (delegate vs act) | ✅ |
-| Tool narration guidance (reduce verbosity) | ✅ |
+| Bootstrap file injection (CLAUDE.md, AGENTS.md, SOUL.md, TOOLS.md) | ✅ |
+| Skills manifest injection | ✅ |
+| 6K char limit per file with head/tail truncation | ✅ |
+| Workspace + cwd merging | ✅ |
 
 ## Context Management
 
 | Feature | Status |
 |---------|--------|
-| History turn limiting (cron:10, channel:30, default:50) | ✅ |
-| History sanitization (tool pairing, merge consecutive) | ✅ |
+| PiAgent `SessionManager` handles persistence | ✅ |
+| PiAgent compaction (hierarchical summarization) | ✅ |
+| History turn limiting (by session type) | ✅ |
 | Token-budget pruning (50% context window) | ✅ |
 | Tool result truncation (head+tail, 30% cap) | ✅ |
-| Context pruning extension (soft trim + hard clear) | ✅ |
-| Compaction safeguard (hierarchical summarization) | ✅ |
-| Subagent announcement injection | ✅ |
 
 ## Model Management
 
 | Feature | Status |
 |---------|--------|
-| Model profiles with provider/credentials/limits | ✅ |
-| Fallback models (primary + fallback) | 🔧 |
-| Media type routing (audio/image/video) | ✅ |
-| Local provider support (Ollama, LM Studio, OpenRouter) | ✅ |
+| Provider:modelId format (`openrouter:minimax/m2.7`) | ✅ |
+| Provider API keys and base URLs | ✅ |
+| Per-channel model override | ✅ |
+| Chat directives (`/think:<level>`, `/verbose`) | ✅ |
+| Local providers (Ollama, LM Studio) | ✅ |
 | Custom base URLs | ✅ |
 
 ## Tool System
 
 | Feature | Status |
 |---------|--------|
-| Tool registry with extension groups | ✅ |
-| VargosExtension class pattern (CronExtension, SessionsExtension) | ✅ |
-| defineGatewayTool factory (Zod parse + RPC + format) | ✅ |
-| Pi SDK tool wrapping | ✅ |
-| Tool formatting (formatCall/formatResult) | ✅ |
-| Skills directory (SKILL.md discovery, skill_load tool) | ✅ |
+| Bus tools — auto-discovered from `@register` decorators | ✅ |
+| PiAgent tool wrapping via `createCustomTools` | ✅ |
+| Tool result formatting + large-result warnings | ✅ |
+| Error classification + error store | ✅ |
+| Skills directory (SKILL.md discovery) | ✅ |
 
 ## File System Tools
 
@@ -64,8 +71,7 @@
 
 | Feature | Status |
 |---------|--------|
-| web_fetch (HTTP with HTML to markdown) | ✅ |
-| Browser automation (Playwright, auth, idle cleanup) | ✅ |
+| web.fetch (HTTP with HTML to markdown) | ✅ |
 
 ## Memory & Knowledge
 
@@ -81,29 +87,11 @@
 
 | Feature | Status |
 |---------|--------|
-| JSONL file storage | ✅ |
-| Hierarchical session keys | ✅ |
+| PiAgent `SessionManager` persistence | ✅ |
+| Hierarchical session keys (`channel:userId`, `cron:task:date`, `parent:subagent:ts`) | ✅ |
 | Session types (main, cron, subagent, webhook) | ✅ |
-| Session reaper (TTL: cron 7d, subagent 3d) | ✅ |
-| Training data enrichment (tool calls, thinking, tokens, model) | ✅ |
-| Media transcription persistence | ✅ |
-
-## Sub-agent Orchestration
-
-| Feature | Status |
-|---------|--------|
-| sessions_spawn with depth/breadth limits | ✅ |
-| Run timeouts (default 300s) | ✅ |
-| Result announcement (debounced 3s re-trigger) | ✅ |
-| Minimal prompt mode for sub-agents | ✅ |
-
-## Agent Definitions
-
-| Feature | Status |
-|---------|--------|
-| Agent manifests (YAML frontmatter, skills routing) | ✅ |
-| Agent-scoped sessions_spawn | ✅ |
-| Agent discovery in system prompt | ✅ |
+| Subagent depth/breadth limits | ✅ |
+| Subagent run timeouts (default 300s) | ✅ |
 
 ## Channels
 
@@ -117,24 +105,22 @@
 | Message debouncing (configurable, media flush) | ✅ |
 | Chat directives (/think, /verbose per-message) | ✅ |
 | Typing indicators (circuit breaker, TTL auto-stop) | ✅ |
-| Status reactions | ✅ |
+| Status reactions (queued → thinking → tool → done/error) | ✅ |
 | User allowlisting (WhatsApp + Telegram) | ✅ |
-| Auth guard — fail fast if creds missing | ✅ |
-| Orphaned message recovery on restart | ✅ |
 | Boot resilience — channel failure doesn't abort others | ✅ |
 | Media extraction + channel_send_media tool | ✅ |
 | Shared inbound media pipeline (InboundMediaHandler) | ✅ |
-| Channel onboarding (interactive QR/token setup) | ✅ |
+| Link expansion (auto-fetch URLs in messages) | ✅ |
+| Markdown stripping on outbound text | ✅ |
 
 ## Media
 
 | Feature | Status |
 |---------|--------|
 | Audio transcription (OpenAI Whisper) | ✅ |
-| Image description (OpenAI/Anthropic Vision) | ✅ |
-| Media type routing | ✅ |
+| Image passthrough (vision models) | ✅ |
 | Media file saving | ✅ |
-| Link understanding (auto-expand URLs in messages) | ✅ |
+| Link understanding (auto-expand URLs) | ✅ |
 
 ## Cron & Scheduling
 
@@ -144,27 +130,29 @@
 | CRUD operations (add/update/remove/run) | ✅ |
 | Notify targets (deliver results to channels) | ✅ |
 | Heartbeat with active hours filtering | ✅ |
-| HEARTBEAT_OK token for "nothing to report" | ✅ |
+| HEARTBEAT_OK token pruning | ✅ |
+| Error review (daily cron, pattern grouping) | ✅ |
 
 ## Gateway
 
 | Feature | Status |
 |---------|--------|
-| WebSocket gateway (port 9000) | ✅ |
-| Service registry + RPC routing | ✅ |
-| Event broadcasting (pub/sub) | ✅ |
-| Auto-reconnect with exponential backoff | ✅ |
-| Structured retry with backoff + jitter | ✅ |
-| Ping keep-alive (30s) | ✅ |
+| Typed EventEmitterBus (RPC + pub/sub) | ✅ |
+| `@on` (listener) + `@register` (RPC tool) decorators | ✅ |
+| Service bootstrap — auto-wiring at boot | ✅ |
+| Bus introspection (`bus.search`, `bus.inspect`) | ✅ |
+| TCP/JSON-RPC server (port 9000) | ✅ |
+| Domain boundary enforcement via ESLint | ✅ |
 
 ## MCP Bridge
 
 | Feature | Status |
 |---------|--------|
-| MCP server (stdio + HTTP on port 9001) | ✅ |
+| MCP server (HTTP on port 9001) | ✅ |
 | Tool listing + execution via MCP protocol | ✅ |
 | MCP client manager (external MCP servers) | ✅ |
 | OpenAPI spec generation | ✅ |
+| Bearer token authentication | ✅ |
 
 ## Webhooks
 
@@ -175,45 +163,25 @@
 | Custom JS/TS transforms | ✅ |
 | Fire-and-forget agent runs | ✅ |
 
+## Security
+
+| Feature | Status |
+|---------|--------|
+| Config file permissions (0o600, owner-only) | ✅ |
+| Error sanitization (API keys/tokens scrubbed) | ✅ |
+| Centralized error store (append-only JSONL) | ✅ |
+| User-facing error classification | ✅ |
+| Structured retry with backoff + jitter | ✅ |
+
 ## CLI
 
 | Feature | Status |
 |---------|--------|
 | Interactive menu (data-driven tree) | ✅ |
 | Chat mode | ✅ |
-| Session debug | ✅ |
 | Config management | ✅ |
 | Health check | ✅ |
-| Tool call visibility (start/end with args/results) | ✅ |
-| Sub-agent completion waiting | ✅ |
-| Onboarding: media/voice setup wizard | ✅ |
 | Onboarding: LLM credential verification | ✅ |
-
-## Security
-
-| Feature | Status |
-|---------|--------|
-| MCP HTTP bearer token authentication | ✅ |
-| Config file permissions (0o600, owner-only) | ✅ |
-| Error sanitization (API keys/tokens scrubbed from logs) | ✅ |
-| Centralized error store (append-only JSONL, auto-classified) | ✅ |
-| Error review scheduler (daily cron, pattern grouping) | ✅ |
-| User-facing error classification (auth/timeout/transient) | ✅ |
-| Browser random session IDs | ✅ |
-| LLM credential verification during onboarding | ✅ |
-| Embedding config validation (warn on missing key) | ✅ |
-| PostgreSQL → SQLite graceful fallback | ✅ |
-
-## Training Data
-
-| Feature | Status |
-|---------|--------|
-| Run metadata on assistant messages (model, provider, tokens, duration) | ✅ |
-| Tool call capture (name + args for every tool invocation) | ✅ |
-| Thinking block extraction (truncated at 4K chars) | ✅ |
-| Channel context tagging | ✅ |
-| Media transform persistence (audio transcription, image description) | ✅ |
-| Training data export pipeline | 📋 |
 
 ## Planned
 
@@ -225,3 +193,6 @@
 | Guest voice agent plugins (hospitality) | 📋 |
 | Web UI / Observability service (HTTP+SSE) | 📋 |
 | Session cost tracking | 📋 |
+| Image description fallback (for non-vision models) | 📋 |
+| Model switching mid-session | 📋 |
+| Session export/import | 📋 |

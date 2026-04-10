@@ -49,6 +49,10 @@ export const AppConfigSchema = z
     mcp: McpClientConfigSchema.default({}),
     mcpServers: McpServersConfigSchema.optional(),
     storage: StorageConfigSchema.optional(),
+    media: z.object({
+      audio: z.string().optional(),
+      image: z.string().optional(),
+    }).optional(),
     paths: z.object({
       dataDir: z.string().optional(),
       workspace: z.string().optional(),

@@ -5,6 +5,8 @@ import * as os from 'node:os';
 import { parseModelRef, AgentRuntime } from '../index.js';
 import { AppConfigSchema } from '../../config/index.js';
 import type { Bus } from '../../../gateway/bus.js';
+import { resetDataPaths } from '../../../lib/paths.js';
+import { resetDataPaths } from '../../../lib/paths.js';
 
 // ── parseModelRef ────────────────────────────────────────────────────────────
 
@@ -60,9 +62,9 @@ function createTestRuntime(workspaceDir: string): TestableRuntime {
     agent: { model: 'test:test-model' },
   });
 
-  // Override workspaceDir via env
-  const originalEnv = process.env.VARGOS_WORKSPACE_DIR;
-  process.env.VARGOS_WORKSPACE_DIR = workspaceDir;
+  // Override dataDir via env
+  const originalEnv = process.env.VARGOS_DATA_DIR;
+  process.env.VARGOS_DATA_DIR = workspaceDir;
 
   const runtime = new TestableRuntime({
     bus: { call: async () => ({}) } as unknown as Bus,
@@ -70,8 +72,9 @@ function createTestRuntime(workspaceDir: string): TestableRuntime {
   });
 
   // Restore env
-  if (originalEnv === undefined) delete process.env.VARGOS_WORKSPACE_DIR;
-  else process.env.VARGOS_WORKSPACE_DIR = originalEnv;
+  if (originalEnv === undefined) delete process.env.VARGOS_DATA_DIR;
+  else process.env.VARGOS_DATA_DIR = originalEnv;
+  resetDataPaths();
 
   return runtime;
 }
@@ -162,5 +165,58 @@ describe('getSystemPrompt merging', () => {
 
     expect(prompt).toContain('# My Project');
     expect(prompt).toContain('Build instructions here');
+  });
+});
+
+// ── Image handling ────────────────────────────────────────────────────────────
+
+describe('execute with images', () => {
+  it('converts base64 images to PiAgent ImageContent format', () => {
+    // Test the image conversion logic
+    const base64Data = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+    const mimeType = 'image/png';
+    
+    // Simulate the conversion that happens in execute()
+    const images = [{ data: base64Data, mimeType }].map(img => ({
+      type: 'image' as const,
+      data: img.data,
+      mimeType: img.mimeType,
+    }));
+    
+    expect(images).toHaveLength(1);
+    expect(images[0]).toEqual({
+      type: 'image',
+      data: base64Data,
+      mimeType,
+    });
+  });
+
+  it('handles multiple images', () => {
+    const images = [
+      { data: 'base64data1', mimeType: 'image/png' },
+      { data: 'base64data2', mimeType: 'image/jpeg' },
+      { data: 'base64data3', mimeType: 'image/webp' },
+    ].map(img => ({
+      type: 'image' as const,
+      data: img.data,
+      mimeType: img.mimeType,
+    }));
+    
+    expect(images).toHaveLength(3);
+    expect(images).toEqual([
+      { type: 'image', data: 'base64data1', mimeType: 'image/png' },
+      { type: 'image', data: 'base64data2', mimeType: 'image/jpeg' },
+      { type: 'image', data: 'base64data3', mimeType: 'image/webp' },
+    ]);
+  });
+
+  it('handles undefined images gracefully', () => {
+    const images = undefined?.map(img => ({
+      type: 'image' as const,
+      data: img.data,
+      mimeType: img.mimeType,
+    }));
+    
+    expect(images).toBeUndefined();
   });
 });

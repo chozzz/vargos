@@ -19,14 +19,13 @@ Before opening a PR, start with an issue:
 3. **Keep it focused** — small, single-purpose PRs are easier to review
 4. **Test your changes** — run `pnpm run test:run` and `pnpm run typecheck`
 
-Not every PR will be merged. We review carefully to keep the project focused.
-
 ## Code Style
 
 - TypeScript with ESM (`.js` extensions on imports)
 - Fewer lines is better — delete before extending
 - Test at service boundaries, not implementation details
 - Follow existing patterns before introducing new ones
+- No `console.log` — use `createLogger('service-name')` which emits to `log.onLog`
 
 ## License
 
@@ -42,14 +41,11 @@ Vargos is a **service-oriented event bus system** where independent services com
 
 1. **Fewer lines, more signal** — every line must earn its place. Delete before extending.
 2. **Decorative architecture** — `@on` for listeners, `@register` for RPC tools. No manual wiring.
-3. **Compaction** — dense, layered abstractions. One concept per module.
-4. **Stateless services** — all state lives in sessions or the file system. Services are interchangeable.
-5. **Durable** — graceful degradation everywhere. Backpressure over crashes. Reconnect over failure. Persist over memory.
-6. **Isolated** — strict domain boundaries. Communication only through bus RPC and events.
-7. **Observable** — every call has a correlation ID. Every event has a sequence. Trace any message end-to-end.
-8. **Protocol-first** — define the contract (EventMap) before writing code. Types are the documentation.
-9. **Testable** — services are pure functions. Test them offline; integration tests use the real bus.
-10. **Scalable** — services can scale independently. TCP/JSON-RPC is network-agnostic.
+3. **Stateless services** — all state lives in sessions or the file system. Services are interchangeable.
+4. **Durable** — graceful degradation everywhere. Backpressure over crashes. Reconnect over failure.
+5. **Isolated** — strict domain boundaries. Communication only through bus RPC and events.
+6. **Protocol-first** — define the contract (EventMap) before writing code. Types are the documentation.
+7. **Observable** — every service logs to the centralized `log.onLog` event bus.
 
 ## Directory Structure
 
@@ -61,26 +57,28 @@ gateway/
   events.ts               EventMap — single source of truth for all events
   decorators.ts           @on (listener), @register (RPC tool)
   tcp-server.ts           JSON-RPC server on port 9000
-  context.ts              AsyncLocalStorage for RunContext
 
 services/
   config/                 Config loading, validation, change events
-  log/                    Structured logging, error store (JSONL)
-  sessions/               Session storage, message history (JSONL)
+  agent-v2/               PiAgent runtime, session management, streaming events
+  channels/               External adapters (WhatsApp, Telegram)
+  cron/                   Scheduled tasks, heartbeat, error review
+  memory/                 Hybrid search (semantic + BM25) over workspace files
   fs/                     File I/O (read, write, edit, exec)
   web/                    HTTP fetch with markdown/text extraction
-  workspace/              Skills and agent definitions scanner
-  memory/                 Hybrid search (semantic + BM25) over workspace files
-  agent/                  Pi agent runtime, execution queue, history injection
-  cron/                   Scheduled tasks, heartbeat, error review
-  channels/               External adapters (WhatsApp, Telegram)
+  log/                    Structured logging, error store (JSONL)
 
-lib/
-  Pure utilities: logger, debouncer, errors, retry, media, mask, skills, agents
+lib/                      Pure utilities (no service imports)
+  paths.ts                Centralized data paths (getDataPaths)
+  subagent.ts             Session key helpers for subagent orchestration
+  error.ts                Error classification, sanitization
+  error-store.ts          Append-only JSONL error persistence
+  retry.ts                Exponential backoff wrapper
+  directives.ts           Chat directive parser (/think, /verbose)
 
 edge/
-  mcp/                    MCP bridge (HTTP + stdio, bearer auth)
   webhooks/               Inbound HTTP triggers
+  mcp/                    MCP bridge (HTTP + stdio, bearer auth)
 ```
 
 ## Domain Boundaries
@@ -94,20 +92,18 @@ gateway/            → lib/
 
 services/config/    → gateway/, lib/
 services/log/       → gateway/, lib/
-services/sessions/  → gateway/, lib/
-services/fs/        → gateway/, lib/
-services/web/       → gateway/, lib/
-services/workspace/ → gateway/, lib/
+services/fs/        → gateway/, lib/ (exception: no restrictions)
+services/web/       → gateway/, lib/ (exception: no restrictions)
 services/memory/    → gateway/, lib/
-services/agent/     → gateway/, lib/ (no other services)
+services/agent-v2/  → gateway/, lib/ (no other services)
 services/cron/      → gateway/, lib/ (no other services)
 services/channels/  → gateway/, lib/ (no other services)
 
-edge/mcp/           → gateway/, lib/
 edge/webhooks/      → gateway/, lib/
+edge/mcp/           → gateway/, lib/
 ```
 
-Services **NEVER** import each other. They communicate exclusively through `bus.call()` and `bus.on()`.
+Services **NEVER** import each other. They communicate exclusively through `bus.call()` and `bus.emit()`.
 
 ## Bus Architecture
 
@@ -115,19 +111,19 @@ Services **NEVER** import each other. They communicate exclusively through `bus.
 
 **Pure events** — flat payload, broadcast to all listeners:
 ```typescript
-@on('agent.onDelta')
-handleDelta(payload: { sessionKey: string; chunk: string }): void
+@on('agent.onTool')
+handleTool(payload: { sessionKey: string; toolName: string; phase: 'start' | 'end' }): void
 
-bus.emit('agent.onDelta', { sessionKey: 'main', chunk: 'hello' });
+bus.emit('agent.onTool', { sessionKey: 'main', toolName: 'read', phase: 'start' });
 ```
 
 **Callable events** — RPC-style request/response, agent-accessible:
 ```typescript
 @register('agent.execute', {
-  description: 'Execute an agent on a session',
+  description: 'Run the agent on a task',
   schema: z.object({ sessionKey: z.string(), task: z.string() })
 })
-async execute(params: AgentExecuteParams): Promise<{ response: string }>
+async execute(params: { sessionKey: string; task: string }): Promise<{ response: string }>
 
 const result = await bus.call('agent.execute', { sessionKey: 'main', task: '...' });
 ```
@@ -140,11 +136,12 @@ bus.bootstrap();  // Wire bus itself (bus.search, bus.inspect)
 
 for (const [label, load] of SERVICES) {
   const { boot } = await load();
-  await boot(bus);
+  const { stop } = await boot(bus);
+  if (stop) stoppers.push(stop);
 }
 
 await startTCPServer(bus, '127.0.0.1', 9000);
-bus.emit('bus.onReady', {});
+bus.emit('bus.onReady', {});  // Signals boot completion
 ```
 
 ### RPC Protocol (TCP/JSON-RPC)
@@ -174,18 +171,22 @@ Port 9000 handles three message types:
 export interface EventMap {
   // Pure events
   'agent.onDelta':     { sessionKey: string; chunk: string };
-  'agent.onCompleted': { sessionKey: string; success: boolean; response?: string };
-  'channel.onInbound': { channel: string; userId: string; sessionKey: string; content: string };
+  'agent.onTool':      { sessionKey: string; toolName: string; phase: 'start' | 'end'; args?: Json; result?: Json };
+  'agent.onCompleted': { sessionKey: string; success: boolean; response?: string; error?: string };
+  'channel.onConnected': { instanceId: string; type: string };
 
   // Callable events
   'agent.execute':  { params: AgentExecuteParams; result: { response: string } };
+  'agent.abort':    { params: { sessionKey: string }; result: { aborted: boolean } };
   'config.get':     { params: Record<string, never>; result: AppConfig };
-  'session.create': { params: SessionCreateParams; result: void };
-  // ... 20+ more
+  'channel.send':   { params: { sessionKey: string; text: string }; result: { sent: boolean } };
+  'cron.add':       { params: CronAddParams; result: void };
+  'memory.search':  { params: { query: string; maxResults?: number }; result: MemorySearchResult[] };
+  // ... and more
 }
 ```
 
-Services never define their own event types — they depend on EventMap. This enforces single source of truth.
+Services never define their own event types — they depend on EventMap.
 
 ## Services Overview
 
@@ -193,14 +194,12 @@ Boot order (see `index.ts`):
 
 1. **config** — Loads `~/.vargos/config.json`, validates, holds mutable state
 2. **log** — Structured logging, error classification, persistence
-3. **sessions** — Session storage (JSONL files), message history
-4. **fs** — File I/O: read, write, edit, exec
-5. **web** — HTTP fetch + text extraction
-6. **workspace** — Skills and agent definitions scanner
-7. **memory** — Hybrid search over workspace files
-8. **agent** — Pi runtime, queuing, history injection
-9. **cron** — Scheduled tasks, heartbeat, error review
-10. **channels** — WhatsApp/Telegram adapters, inbound routing
+3. **fs** — File I/O: read, write, edit, exec
+4. **web** — HTTP fetch + text extraction
+5. **memory** — Hybrid search over workspace files
+6. **agent-v2** — PiAgent runtime, session management, streaming events
+7. **cron** — Scheduled tasks, heartbeat, error review
+8. **channels** — WhatsApp/Telegram adapters, inbound routing
 
 ## Message Flow Examples
 
@@ -208,22 +207,20 @@ Boot order (see `index.ts`):
 
 ```
 1. WhatsApp adapter receives message
-2. Adapter calls: bus.call('session.addMessage', { ... })
-3. Adapter emits: bus.emit('channel.onInbound', { ... })
-4. AgentService listens, calls: bus.call('agent.execute', { ... })
-5. Agent loads history, executes tools, streams deltas
-6. Agent completes, emits: bus.emit('agent.onCompleted', { ... })
-7. AgentService sends reply via: bus.call('channel.send', { ... })
+2. ChannelsService.onInboundMessage(): expand links, start typing, init reactions
+3. ChannelsService.runAgent(): bus.call('agent.execute', { sessionKey, task, images })
+4. AgentRuntime: get/create PiAgent session, run prompt, stream events to bus
+5. Agent completes, emits agent.onCompleted
+6. ChannelsService: stop typing, set reaction, bus.call('channel.send', { text })
 ```
 
-### Sub-agent Orchestration
+### Subagent Orchestration
 
 ```
-1. Parent agent calls: bus.call('agent.spawn', { sessionKey: 'child-123', task: 'subtask' })
-2. AgentService creates child session, spawns child execution
-3. Child runs independently, completes
-4. Result announced to parent as system message
-5. Parent re-triggered (debounced 3s) to synthesize results
+1. Parent agent calls: bus.call('agent.execute', { sessionKey: 'parent:subagent:ts', task: 'subtask' })
+2. AgentRuntime creates child session, runs independently
+3. Child completes, emits agent.onCompleted with child sessionKey
+4. Parent synthesizes results and delivers to user
 ```
 
 ## Testing
@@ -232,7 +229,7 @@ Services are pure functions over EventMap. Test them offline:
 
 ```typescript
 // No bus required
-const agent = new AgentService(config);
+const agent = new AgentRuntime({ bus: mockBus, config: testConfig });
 const result = await agent.execute({ sessionKey: 'test', task: 'hello' });
 expect(result.response).toContain('hello');
 ```
@@ -249,135 +246,43 @@ expect(result.response).toContain('hello');
 
 ---
 
-# Events Reference
-
-All events flow through the gateway's pub/sub bus. A service emits an event; the gateway fans it out to every service that declared that topic in its `subscriptions` list.
-
-## Agent Events
-
-| Event | Type | Payload | Subscribers |
-|-------|------|---------|-------------|
-| `run.started` | Pure | `{ sessionKey, runId }` | channel (typing indicator) |
-| `run.delta` | Pure | `{ sessionKey, runId, type, data }` | channel, cli-client |
-| `run.completed` | Pure | `{ sessionKey, runId, success, response }` | channel, cron, cli-client |
-| `run.tool` | Pure | `{ sessionKey, runId, toolName, phase, args?, result? }` | cli-client |
-| `execute` | Callable | `{ sessionKey, task, model?, ... }` → `{ response }` | — |
-
-## Channel Events
-
-| Event | Type | Payload | Subscribers |
-|-------|------|---------|-------------|
-| `message.received` | Pure | `{ channel, userId, sessionKey, content, metadata? }` | agent |
-| `connected` | Pure | `{ instanceId }` | — |
-| `disconnected` | Pure | `{ instanceId, reason }` | — |
-| `send` | Callable | `{ sessionKey, text }` → `{ sent }` | — |
-
-## Cron Events
-
-| Event | Type | Payload | Subscribers |
-|-------|------|---------|-------------|
-| `trigger` | Pure | `{ taskId, name, task, sessionKey, notify? }` | agent |
-| `add/update/remove/run` | Callable | Various | — |
-
-## Webhook Events
-
-| Event | Type | Payload | Subscribers |
-|-------|------|---------|-------------|
-| `trigger` | Pure | `{ hookId, task, sessionKey, notify? }` | agent |
-
-## Sessions Events
-
-| Event | Type | Payload | Subscribers |
-|-------|------|---------|-------------|
-| `created` | Pure | `{ sessionKey, kind }` | — |
-| `message` | Pure | `{ sessionKey, role }` | — |
-| `create/addMessage/getMessages/get/delete` | Callable | Various | — |
-
-## Subscription Summary
-
-| Service | Subscribes to | Why |
-|---------|---------------|-----|
-| **agent** | `message.received`, `cron.trigger`, `webhook.trigger` | Trigger runs |
-| **channel** | `run.started`, `run.delta`, `run.completed` | Status reactions |
-| **cron** | `run.completed` | Release concurrency lock |
-| **cli-client** | `run.delta`, `run.completed`, `run.tool` | Terminal output |
-
----
-
 # Philosophy
 
-Design principles that guide Vargos development. Every PR and feature should be evaluated against these.
+Design principles that guide Vargos development.
 
 ## 1. Token Budget is Sacred
 
-The system prompt is injected into every single API call. Every character costs real money and displaces context the model needs for the actual task. Treat the system prompt like a production binary — measure it, profile it, optimize it.
+The system prompt is injected into every API call. Every character costs real money and displaces context.
 
 **Rules:**
 - System prompt should stay under 4,000 characters for channel sessions
-- Tools are already declared in the API schema — don't re-describe them
-- External tools (MCP servers) should be summarized by server name and count, not listed individually
-- If a section only applies to one mode (e.g. heartbeat guidance for cron), don't inject it in other modes
+- Tools are declared in the API schema — don't re-describe them in the prompt
+- If a section only applies to one mode, don't inject it in other modes
 
 ## 2. The Model Already Knows
 
-LLMs know how to use tools, write code, and follow instructions. The system prompt should tell the model what makes *this* agent different — not re-teach general capabilities.
+LLMs know how to use tools, write code, and follow instructions. The system prompt should tell the model what makes *this* agent different.
 
-**Don't:**
-- List shell command examples (`git clone`, `npm install`) — the model knows these
-- Explain what tools do when the tool schema already has a description
-- Add instructions like "wait for results before proceeding" — that's how tool calling works
-
-**Do:**
-- Define identity and personality (via SOUL.md)
-- Set behavioral boundaries (what to do vs. ask first)
-- Provide environment-specific context (workspace path, infrastructure)
+**Don't:** List shell command examples, explain what tools do when the schema already describes them.
+**Do:** Define identity and personality, set behavioral boundaries, provide environment-specific context.
 
 ## 3. Every Byte Earns Its Place
 
-Before adding anything to the system prompt, codebase, or workspace files, ask: "Does this change the model's behavior in a measurable way?" If not, delete it.
+Before adding anything, ask: "Does this change the model's behavior in a measurable way?" If not, delete it.
 
-## 4. Separate Concerns Across Layers
-
-| Layer | Owns | Source |
-|-------|------|--------|
-| Identity | Who the agent is | SOUL.md |
-| Rules | How the agent behaves | AGENTS.md |
-| Environment | What's available | TOOLS.md, tool schemas |
-| Context | What's happening now | Channel, session, system info |
-
-If behavioral guidance creeps into TOOLS.md, or environment details into SOUL.md, refactor them back to their layer.
-
-## 5. Fail Loud, Recover Quiet
+## 4. Fail Loud, Recover Quiet
 
 Transient failures (network drops, API timeouts) should retry silently. Permanent failures (bad config, missing credentials) should fail immediately with clear errors.
 
-**Applied to the agent runtime:**
-- Network errors → retry (up to 2 attempts), log each attempt
-- Invalid API key → fail immediately, tell the user
-- Model returns empty → log it, skip delivery, don't crash
-- Never swallow errors silently — if nothing is logged, it didn't happen
+## 5. Workspace Files Are User Territory
 
-## 6. Workspace Files Are User Territory
+Template files are copied once on first boot. After that, the agent and user own the workspace copies. The codebase should never silently overwrite them.
 
-Template files (`docs/templates/`) are copied once on first boot. After that, the agent and user own the workspace copies. The codebase should never silently overwrite them.
+## 6. Observe Everything, Log What Matters
 
-**Rules:**
-- Templates are reference only — never assume they match what's live
-- The heartbeat maintains workspace files, not code deploys
-- If a template changes, the heartbeat will naturally evolve the live file over time
+Every service logs to the centralized `log.onLog` event via `createLogger()`. Stream deltas to the event bus for live UIs. Don't log every token — log transitions.
 
-## 7. Observe Everything, Log What Matters
-
-The system should never appear "stuck" or "silent" when it's actually working. Every state transition should be visible in logs.
-
-**Applied to the runtime:**
-- Log when prompting the model
-- Log when tool execution starts and ends
-- Log when waiting for model response after tool results
-- Stream deltas to the event bus for live UIs
-- Don't log every token — log transitions
-
-## 8. The Gateway Is Dumb
+## 7. The Gateway Is Dumb
 
 The gateway routes frames. It knows nothing about agents, tools, channels, or sessions. This is the foundation of the architecture — protect it.
 
@@ -389,27 +294,7 @@ See [FEATURES.md](./FEATURES.md) for the complete feature inventory with impleme
 
 ## Roadmap
 
-### Phase 1: Voice Foundation
-- Inbound Twilio adapter with STT/TTS
-- VoiceSession for real-time conversation
-- LocalAI integration for low-latency voice
-
-### Phase 2: Web Observability
-- HTTP + SSE service on port 9003
-- React dashboard for sessions, runs, cron, channels
-- Real-time streaming of agent deltas and tool calls
-
-### Phase 3: Outbound Voice Calls
-- `phone_call` tool for agent-initiated calls
-- Cron-triggered outbound conversations
-- Call transcript + summary delivery
-
-### Phase 4: Guest Voice Agents
-- Caller ID → guest profile lookup
-- Per-call persona injection
-- Hospitality/concierge skill packs
-
-See [docs/internal/roadmap/](./docs/internal/roadmap/) for detailed design docs.
+See [docs/ROADMAP.md](./docs/ROADMAP.md) for planned features and design docs.
 
 ---
 

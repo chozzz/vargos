@@ -1,14 +1,15 @@
 /**
- * Agent v2 — PiAgent-powered runtime with debugging
+ * Agent v2 — PiAgent-powered runtime
  *
  * Features:
  * - PiAgent session persistence
  * - PiAgent ResourceLoader for skills/prompts
  * - Debug mode for inspecting tools, prompts, history
- * - Override points for customization
+ * - Streaming events passthrough to bus (agent.onDelta, agent.onTool, agent.onCompleted)
  */
 
 import { z } from 'zod';
+import path from 'node:path';
 import { register } from '../../gateway/decorators.js';
 import type { Bus } from '../../gateway/bus.js';
 import type { EventMap } from '../../gateway/events.js';
@@ -17,7 +18,7 @@ import { createLogger } from '../../lib/logger.js';
 import { parseDirectives } from '../../lib/directives.js';
 import type { AgentDeps } from './schema.js';
 import { promises as fs } from 'node:fs';
-import * as path from 'node:path';
+import { getDataPaths } from '../../lib/paths.js';
 
 // Pi SDK imports
 import {
@@ -34,7 +35,13 @@ import {
   type Skill,
 } from '@mariozechner/pi-coding-agent';
 
-// Local imports
+// ImageContent type for vision models (matches @mariozechner/pi-ai)
+type ImageContent = {
+  type: 'image';
+  data: string;
+  mimeType: string;
+};
+
 import { createCustomTools } from './tools.js';
 
 const log = createLogger('agent-v2');
@@ -61,7 +68,7 @@ export class AgentRuntime {
   protected config: AppConfig;
   protected sessions = new Map<string, AgentSession>();
 
-  protected workspaceDir: string;
+  protected dataDir: string;
   protected agentDir: string;
   protected sessionsDir: string;
   protected authStorage: AuthStorage;
@@ -74,18 +81,16 @@ export class AgentRuntime {
     this.config = deps.config;
     this.debugMode = process.env.AGENT_DEBUG === 'true';
 
-    this.workspaceDir = this.getWorkspaceDir();
-    this.agentDir = path.join(this.workspaceDir, 'agent');
-    this.sessionsDir = path.join(this.workspaceDir, 'sessions');
+    const paths = getDataPaths();
+    this.dataDir = paths.dataDir;
+    this.agentDir = path.join(this.dataDir, 'agent');
+    this.sessionsDir = paths.sessionsDir;
 
     this.authStorage = new AuthStorage();
     this.modelRegistry = new ModelRegistry(this.authStorage);
 
-    // PiAgent owns settings (thinkingLevel, thinkingBudgets, retry, compaction)
-    // persisted at ~/.vargos/agent/settings.json
-    this.settings = SettingsManager.create(this.workspaceDir, this.agentDir);
+    this.settings = SettingsManager.create(this.dataDir, this.agentDir);
 
-    // Register providers from config — passthrough with sensible model defaults
     for (const [name, provider] of Object.entries(this.config.providers)) {
       this.authStorage.setRuntimeApiKey(name, provider.apiKey);
       this.modelRegistry.registerProvider(name, {
@@ -94,7 +99,6 @@ export class AgentRuntime {
       });
     }
 
-    // Sync the active model from our config → PiAgent settings
     const { provider, modelId } = parseModelRef(this.config.agent.model);
     this.settings.setDefaultModelAndProvider(provider, modelId);
   }
@@ -110,6 +114,10 @@ export class AgentRuntime {
       cwd: z.string().optional(),
       thinkingLevel: z.string().optional(),
       model: z.string().optional(),
+      images: z.array(z.object({
+        data: z.string(),
+        mimeType: z.string(),
+      })).optional(),
     }),
   })
   async execute(params: EventMap['agent.execute']['params']): Promise<EventMap['agent.execute']['result']> {
@@ -122,12 +130,13 @@ export class AgentRuntime {
       session.agent.setThinkingLevel(directives.thinkingLevel);
     }
 
-    // Debug: log session state before prompt
-    if (this.debugMode) {
-      this.logSessionState(session, params.sessionKey);
-    }
+    const images: ImageContent[] | undefined = params.images?.map(img => ({
+      type: 'image' as const,
+      data: img.data,
+      mimeType: img.mimeType,
+    }));
 
-    await session.prompt(task);
+    await session.prompt(task, { images });
 
     const response = this.extractResponse(session);
 
@@ -141,31 +150,24 @@ export class AgentRuntime {
     const cached = this.sessions.get(sessionKey);
     if (cached) return cached;
 
-    const effectiveCwd = cwd ?? this.workspaceDir;
+    const effectiveCwd = cwd ?? this.dataDir;
 
     const sessionDir = path.join(this.sessionsDir, sessionKey);
     await fs.mkdir(sessionDir, { recursive: true });
     await fs.mkdir(this.agentDir, { recursive: true });
 
-    // Create SessionManager for this sessionKey
-    const sessionManager = SessionManager.create(this.workspaceDir, sessionDir);
+    const sessionManager = SessionManager.create(this.dataDir, sessionDir);
 
-    // Get custom tools from subclass
     const customTools = await this.getCustomTools(sessionKey);
-
-    // Build system prompt — merges bootstrap files from workspace + cwd
     const systemPrompt = await this.getSystemPrompt(sessionKey, cwd);
 
-    // Debug: log system prompt and tools before creating session
     if (this.debugMode) {
       this.logSystemPrompt(systemPrompt);
       this.logTools(customTools);
     }
 
-    // Load skills + resource loader — merges workspace + cwd
     const resourceLoader = await this.createResourceLoader(systemPrompt, cwd);
 
-    // Resolve active model from "provider:modelId" ref
     const { provider: p, modelId: mId } = parseModelRef(this.config.agent.model);
     const model = this.modelRegistry.find(p, mId);
 
@@ -182,33 +184,62 @@ export class AgentRuntime {
       resourceLoader,
     });
 
-    // Call post-create hook for history injection
-    await this.onSessionCreated(session, sessionKey);
-
-    // Debug: subscribe to all events
-    session.subscribe((event) => {
-      const eventType = event.type || 'unknown';
-
-      if (eventType === 'message_update') {
-        return;
-      }
-
-      log.info(`[DEBUG] Event "${sessionKey}" ${eventType}:`, JSON.stringify(event, null, 2).slice(0, 500));
-    });
+    this.subscribeToSessionEvents(session, sessionKey);
 
     this.sessions.set(sessionKey, session);
     return session;
   }
 
   /**
+   * Subscribe to PiAgent events — emit to bus for streaming + debug logging.
+   */
+  protected subscribeToSessionEvents(session: AgentSession, sessionKey: string): void {
+    session.subscribe((event) => {
+      const eventType = event.type || 'unknown';
+
+      if (this.debugMode && eventType !== 'message_update') {
+        log.info(`[DEBUG] Event "${sessionKey}" ${eventType}:`, JSON.stringify(event, null, 2).slice(0, 500));
+      }
+
+      // Map PiAgent events to our bus events
+      if (eventType === 'tool_execution_start') {
+        this.bus.emit('agent.onTool', {
+          sessionKey,
+          toolName: (event as any).toolName || 'unknown',
+          phase: 'start',
+          args: (event as any).args,
+        });
+      } else if (eventType === 'tool_execution_end') {
+        this.bus.emit('agent.onTool', {
+          sessionKey,
+          toolName: (event as any).toolName || 'unknown',
+          phase: 'end',
+          result: (event as any).result,
+        });
+      } else if (eventType === 'message_update') {
+        const delta = (event as any).delta || (event as any).text || '';
+        if (delta) {
+          this.bus.emit('agent.onDelta', { sessionKey, chunk: delta });
+        }
+      } else if (eventType === 'agent_end' || eventType === 'turn_end') {
+        const response = this.extractResponse(session);
+        this.bus.emit('agent.onCompleted', {
+          sessionKey,
+          success: eventType !== 'agent_end' || !(event as any).error,
+          response: response || undefined,
+          error: (event as any).error,
+        });
+      }
+    });
+  }
+
+  /**
    * Create ResourceLoader with merged skills from workspace + cwd.
-   * Skills from cwd override workspace skills with the same name.
    */
   protected async createResourceLoader(systemPromptOverride?: string, cwd?: string): Promise<DefaultResourceLoader> {
-    const effectiveCwd = cwd ?? this.workspaceDir;
+    const effectiveCwd = cwd ?? this.dataDir;
     const skills = this.loadSkillsFromDirs(cwd);
 
-    // Append skills section to system prompt if we have any
     let finalSystemPrompt = systemPromptOverride;
     if (skills.length > 0) {
       const skillsSection = formatSkillsForPrompt(skills);
@@ -235,11 +266,10 @@ export class AgentRuntime {
 
   /**
    * Load skills from workspace/skills/ and optionally cwd/skills/.
-   * cwd skills with the same name take precedence over workspace skills.
    */
   private loadSkillsFromDirs(cwd?: string): Skill[] {
-    const dirs = [path.join(this.workspaceDir, 'skills')];
-    if (cwd && path.resolve(cwd) !== path.resolve(this.workspaceDir)) {
+    const dirs = [path.join(this.dataDir, 'skills')];
+    if (cwd && path.resolve(cwd) !== path.resolve(this.dataDir)) {
       dirs.push(path.join(cwd, 'skills'));
     }
 
@@ -265,21 +295,16 @@ export class AgentRuntime {
     return Array.from(byName.values());
   }
 
-  // ── Override Points ────────────────────────────────────────────────────────
-
   /**
    * Build system prompt by merging bootstrap files from workspace and optional cwd.
-   * Scans CLAUDE.md, AGENTS.md, SOUL.md, TOOLS.md from each directory.
-   * Workspace files load first; cwd files append (if cwd differs from workspace).
    */
-  protected async getSystemPrompt(_sessionKey: string, cwd?: string): Promise<string | undefined> {
+  private async getSystemPrompt(_sessionKey: string, cwd?: string): Promise<string | undefined> {
     const sections: string[] = [];
     const bootstrapFiles = ['CLAUDE.md', 'AGENTS.md', 'SOUL.md', 'TOOLS.md'];
     const maxCharsPerFile = 6000;
 
-    // Deduplicated scan dirs: workspace first, then cwd if different
-    const dirs = [this.workspaceDir];
-    if (cwd && path.resolve(cwd) !== path.resolve(this.workspaceDir)) {
+    const dirs = [this.dataDir];
+    if (cwd && path.resolve(cwd) !== path.resolve(this.dataDir)) {
       dirs.push(cwd);
     }
 
@@ -319,54 +344,14 @@ export class AgentRuntime {
   }
 
   /**
-   * Override to provide custom tools.
-   * By default, loads all bus callable events with @register decorators.
+   * Load custom tools from bus callable events.
    */
   protected async getCustomTools(sessionKey: string): Promise<ToolDefinition[]> {
     return await createCustomTools(sessionKey, this.bus);
   }
 
-  /**
-   * Override to inject custom history into session.
-   * Called after session creation, before first prompt.
-   * 
-   * Debug mode logs: history entries count, last entry type.
-   */
-  protected async onSessionCreated(session: AgentSession, sessionKey: string): Promise<void> {
-    // Debug: log history state before any injection
-    if (this.debugMode) {
-      const entries = session.sessionManager.getEntries();
-      log.info(`[DEBUG] History on session create "${sessionKey}": ${entries.length} entries`);
-
-      if (entries.length > 0) {
-        const last3 = entries.slice(-3);
-        last3.forEach(e => {
-          log.info(`  - ${e.type}: ${e.id.slice(0, 8)}... at ${e.timestamp}`);
-        });
-      }
-    }
-
-    // Override in subclass to inject history
-    // Example:
-    // const messages = await this.bus.call('session.getMessages', { sessionKey });
-    // if (messages.length > 0) {
-    //   session.agent.replaceMessages(this.convertToAgentMessages(messages));
-    // }
-  }
-
-  /**
-   * Override to customize history message conversion.
-   */
-  protected convertToAgentMessages(messages: unknown[]): unknown[] {
-    // Override in subclass to customize conversion logic
-    return messages;
-  }
-
   // ── Debug Mode ─────────────────────────────────────────────────────────────
 
-  /**
-   * Log system prompt for debugging.
-   */
   protected logSystemPrompt(systemPrompt?: string): void {
     if (!systemPrompt) {
       log.info('[DEBUG] System Prompt: (none - using PiAgent default)');
@@ -375,8 +360,6 @@ export class AgentRuntime {
 
     const lines = systemPrompt.split('\n');
     log.info(`[DEBUG] System Prompt: ${lines.length} lines, ${systemPrompt.length} chars`);
-
-    // Log first 30 lines as preview
     const preview = lines.slice(0, 30).join('\n');
     log.info(`[DEBUG] Preview:\n${preview}`);
 
@@ -385,9 +368,6 @@ export class AgentRuntime {
     }
   }
 
-  /**
-   * Log tools for debugging.
-   */
   protected logTools(tools: ToolDefinition[]): void {
     log.info(`[DEBUG] Tools: ${tools.length} registered`);
     tools.forEach(t => {
@@ -396,32 +376,6 @@ export class AgentRuntime {
         : 'none';
       log.info(`  - ${t.name}: ${t.description.slice(0, 80)}... (params: ${params})`);
     });
-  }
-
-  /**
-   * Log session state for debugging.
-   */
-  protected logSessionState(session: AgentSession, sessionKey: string): void {
-    try {
-      const entries = session.sessionManager.getEntries();
-
-      log.info(`[DEBUG] Session "${sessionKey}":`);
-      log.info(`  Entries: ${entries.length}`);
-
-      if (entries.length > 0) {
-        const lastEntry = entries[entries.length - 1];
-        log.info(`  Last Entry: ${lastEntry.type} at ${lastEntry.timestamp}`);
-      }
-
-      // Log tools via session state
-      const state = session.agent.state;
-      if (state && (state as any).tools) {
-        const tools = (state as any).tools as any[];
-        log.info(`  Tools: ${tools.map(t => t.name).join(', ') || 'none'}`);
-      }
-    } catch (err) {
-      log.warn(`[DEBUG] Failed to log session state: ${err}`);
-    }
   }
 
   // ── Private Helpers ────────────────────────────────────────────────────────
@@ -434,14 +388,7 @@ export class AgentRuntime {
       if (entry.type === 'message') {
         const msg = (entry as any).message;
         if (msg?.role === 'assistant' && msg.content) {
-          if (typeof msg.content === 'string') return msg.content;
-          if (Array.isArray(msg.content)) {
-            return msg.content
-              .filter((block: any) => block.type === 'text')
-              .map((block: any) => block.text || '')
-              .filter(Boolean)
-              .join('\n');
-          }
+          return this.extractMessageContent(msg) || '';
         }
       }
     }
@@ -449,8 +396,16 @@ export class AgentRuntime {
     return '';
   }
 
-  protected getWorkspaceDir(): string {
-    return process.env.VARGOS_WORKSPACE_DIR ?? path.join(process.env.HOME || '', '.vargos');
+  private extractMessageContent(msg: { content: string | Array<{ type: string; text?: string }> }): string | undefined {
+    if (typeof msg.content === 'string') return msg.content;
+    if (Array.isArray(msg.content)) {
+      return msg.content
+        .filter((block: any) => block.type === 'text')
+        .map((block: any) => block.text || '')
+        .filter(Boolean)
+        .join('\n');
+    }
+    return undefined;
   }
 
   stop(): void {

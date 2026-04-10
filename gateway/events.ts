@@ -5,7 +5,6 @@
 //   Callable — { params, result }, use bus.call / @on (wired as request/reply)
 
 export type { ThinkingLevel, PromptMode, ChannelEntry, CronTask, CronAddParams, CronUpdateParams, WebhookEntry, Json, AppConfig } from '../services/config/index.js';
-import { PromptOptions } from '@mariozechner/pi-coding-agent';
 import type { ThinkingLevel, PromptMode, ChannelEntry, CronTask, CronAddParams, CronUpdateParams, WebhookEntry, Json, AppConfig } from '../services/config/index.js';
 
 // ─── Domain types ─────────────────────────────────────────────────────────────
@@ -50,7 +49,7 @@ export interface EventMetadata {
 
 // ─── Param types ──────────────────────────────────────────────────────────────
 
-export interface AgentExecuteParams extends PromptOptions {
+export interface AgentExecuteParams {
   sessionKey: string;
   task: string;
   /** Working directory for the agent — defaults to vargos workspace. When set,
@@ -62,6 +61,8 @@ export interface AgentExecuteParams extends PromptOptions {
   media?: MediaItem[];
   notify?: string[];
   retrigger?: boolean;
+  /** Image attachments for vision models (base64 encoded) */
+  images?: Array<{ data: string; mimeType: string }>;
 }
 
 // ─── Event map ────────────────────────────────────────────────────────────────
