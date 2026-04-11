@@ -2,7 +2,8 @@
  * Base channel adapter — shared logic for typing indicators, debounce, and dedupe.
  */
 
-import type { ChannelAdapter, ChannelType, ChannelStatus, OnInboundMessageFn } from './types.js';
+import type { ChannelAdapter, ChannelType, OnInboundMessageFn } from './types.js';
+import type { ChannelStatus } from '../../gateway/events.js';
 import { createDedupeCache } from '../../lib/dedupe.js';
 import { createMessageDebouncer } from '../../lib/debounce.js';
 import { createLogger } from '../../lib/logger.js';

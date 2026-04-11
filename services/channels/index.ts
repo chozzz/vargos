@@ -45,7 +45,6 @@ interface ActiveSession {
 export class ChannelService {
   private adapters = new Map<string, ChannelAdapter>();
   private activeSessions = new Map<string, ActiveSession>();
-  private pendingMessageIds = new Map<string, string>();
 
   constructor(
     private readonly bus: Bus,
@@ -209,10 +208,6 @@ export class ChannelService {
 
     const enrichedContent = await expandLinks(content, this.config.linkExpand).catch(() => content);
 
-    if (metadata?.messageId && typeof metadata.messageId === 'string') {
-      this.pendingMessageIds.set(sessionKey, metadata.messageId);
-    }
-
     const inboundMeta: Record<string, unknown> = { type: 'task', channel, ...metadata };
     if (inboundMeta.media && typeof inboundMeta.media === 'object') {
       const { data: _data, ...rest } = inboundMeta.media as Record<string, unknown>;
@@ -221,8 +216,7 @@ export class ChannelService {
 
     adapter.startTyping(userId);
 
-    const messageId = this.pendingMessageIds.get(sessionKey);
-    if (messageId) this.pendingMessageIds.delete(sessionKey);
+    const messageId = metadata?.messageId && typeof metadata.messageId === 'string' ? metadata.messageId : undefined;
 
     let reactionController: StatusReactionController | undefined;
     if (adapter.react && messageId) {

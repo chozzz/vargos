@@ -1,7 +1,8 @@
+import type { ChannelStatus } from '../../gateway/events.js';
+
 /** Channel adapter interface and types */
 
 export type ChannelType = 'whatsapp' | 'telegram' | (string & {});
-export type ChannelStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 
 export type OnInboundMessageFn = (
   channel: string,

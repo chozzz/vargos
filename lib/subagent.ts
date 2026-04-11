@@ -2,9 +2,7 @@
  * Pure session key helpers — no domain dependencies.
  */
 
-export const DEFAULT_MAX_CHILDREN         = 10;
 export const DEFAULT_MAX_SPAWN_DEPTH      = 3;
-export const DEFAULT_RUN_TIMEOUT_SECONDS  = 300;
 
 export function subagentSessionKey(parentKey: string): string {
   return `${parentKey}:subagent:${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;

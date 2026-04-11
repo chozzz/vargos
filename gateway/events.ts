@@ -4,8 +4,8 @@
 //   Pure     — flat payload, use bus.emit / @on
 //   Callable — { params, result }, use bus.call / @on (wired as request/reply)
 
-export type { ThinkingLevel, PromptMode, ChannelEntry, CronTask, CronAddParams, CronUpdateParams, WebhookEntry, Json, AppConfig } from '../services/config/index.js';
-import type { ThinkingLevel, PromptMode, ChannelEntry, CronTask, CronAddParams, CronUpdateParams, WebhookEntry, Json, AppConfig } from '../services/config/index.js';
+export type { ThinkingLevel, ChannelEntry, CronTask, CronAddParams, CronUpdateParams, WebhookEntry, Json, AppConfig } from '../services/config/index.js';
+import type { ThinkingLevel, ChannelEntry, CronTask, CronAddParams, CronUpdateParams, WebhookEntry, Json, AppConfig } from '../services/config/index.js';
 
 // ─── Domain types ─────────────────────────────────────────────────────────────
 
@@ -14,31 +14,9 @@ export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 export type Pagination<T> = { items: T[]; page: number; limit: number };
 
-export interface MediaItem { filePath: string; mimeType: string }
 export interface ChannelInfo { instanceId: string; type: string; status: ChannelStatus }
 export interface ErrorEntry { service: string; error: string; context?: Json; timestamp: number }
 export interface MemorySearchResult { citation: string; score: number; content: string; startLine: number; endLine: number }
-
-/** Shared message shape (e.g. memory / future persistence); not a bus RPC surface. */
-export type MessageRole = 'user' | 'assistant' | 'system';
-export interface Message {
-  id: string;
-  sessionKey: string;
-  role: MessageRole;
-  content: string;
-  timestamp: Date;
-  metadata?: Record<string, unknown>;
-}
-
-export interface Session {
-  sessionKey: string;
-  label?: string;
-  kind: 'main' | 'subagent' | 'cron';
-  createdAt: Date;
-  updatedAt: Date;
-  metadata: Record<string, unknown>;
-  notify?: string[];
-}
 
 export interface EventMetadata {
   event: string;
@@ -57,10 +35,6 @@ export interface AgentExecuteParams {
   cwd?: string;
   thinkingLevel?: ThinkingLevel;
   model?: string;
-  promptMode?: PromptMode;
-  media?: MediaItem[];
-  notify?: string[];
-  retrigger?: boolean;
   /** Image attachments for vision models (base64 encoded) */
   images?: Array<{ data: string; mimeType: string }>;
 }

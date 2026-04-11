@@ -38,9 +38,28 @@ import {
 // ImageContent type for vision models (matches @mariozechner/pi-ai)
 type ImageContent = {
   type: 'image';
-  data: string;
+  data: string;      // base64 encoded
   mimeType: string;
 };
+
+// PiAgent event types for type-safe event mapping
+import type { AgentSessionEvent } from '@mariozechner/pi-coding-agent';
+
+function isToolStartEvent(event: AgentSessionEvent): event is AgentSessionEvent & { type: 'tool_execution_start'; toolName: string; args: any } {
+  return event.type === 'tool_execution_start';
+}
+
+function isToolEndEvent(event: AgentSessionEvent): event is AgentSessionEvent & { type: 'tool_execution_end'; toolName: string; result: any } {
+  return event.type === 'tool_execution_end';
+}
+
+function isMessageUpdateEvent(event: AgentSessionEvent): event is AgentSessionEvent & { type: 'message_update'; delta?: unknown; text?: unknown } {
+  return event.type === 'message_update';
+}
+
+function isCompletionEvent(event: AgentSessionEvent): event is AgentSessionEvent & { type: 'agent_end' | 'turn_end' } {
+  return event.type === 'agent_end' || event.type === 'turn_end';
+}
 
 import { createCustomTools } from './tools.js';
 
@@ -95,7 +114,7 @@ export class AgentRuntime {
       this.authStorage.setRuntimeApiKey(name, provider.apiKey);
       this.modelRegistry.registerProvider(name, {
         ...provider,
-        models: provider.models?.map(m => ({ ...MODEL_DEFAULTS, ...m })) as any,
+        models: provider.models?.map(m => ({ ...MODEL_DEFAULTS, ...m })),
       });
     }
 
@@ -191,41 +210,47 @@ export class AgentRuntime {
   }
 
   /**
-   * Subscribe to PiAgent events — emit to bus for streaming + debug logging.
+   * Subscribe to PiAgent sessionsubscription - emit to bus for streaming + debug logging.
    */
   protected subscribeToSessionEvents(session: AgentSession, sessionKey: string): void {
-    session.subscribe((event) => {
-      const eventType = event.type || 'unknown';
+    session.subscribe(event => {
+      const eventType = event.type;
 
       if (this.debugMode && eventType !== 'message_update') {
         log.info(`[DEBUG] Event "${sessionKey}" ${eventType}:`, JSON.stringify(event, null, 2).slice(0, 500));
       }
 
+      // Skip session-specific events (auto_compaction_start, auto_retry_start) - not emitted as bus events
+      if (eventType === 'auto_compaction_start' || eventType === 'auto_compaction_end' ||
+          eventType === 'auto_retry_start' || eventType === 'auto_retry_end') {
+        return;
+      }
+
       // Map PiAgent events to our bus events
-      if (eventType === 'tool_execution_start') {
+      if (isToolStartEvent(event)) {
         this.bus.emit('agent.onTool', {
           sessionKey,
-          toolName: (event as any).toolName || 'unknown',
+          toolName: event.toolName,
           phase: 'start',
-          args: (event as any).args,
+          args: event.args,
         });
-      } else if (eventType === 'tool_execution_end') {
+      } else if (isToolEndEvent(event)) {
         this.bus.emit('agent.onTool', {
           sessionKey,
-          toolName: (event as any).toolName || 'unknown',
+          toolName: event.toolName,
           phase: 'end',
-          result: (event as any).result,
+          result: event.result,
         });
-      } else if (eventType === 'message_update') {
+      } else if (isMessageUpdateEvent(event)) {
         const delta = (event as any).delta || (event as any).text || '';
         if (delta) {
           this.bus.emit('agent.onDelta', { sessionKey, chunk: delta });
         }
-      } else if (eventType === 'agent_end' || eventType === 'turn_end') {
+      } else if (isCompletionEvent(event)) {
         const response = this.extractResponse(session);
         this.bus.emit('agent.onCompleted', {
           sessionKey,
-          success: eventType !== 'agent_end' || !(event as any).error,
+          success: event.type !== 'agent_end' || !(event as any).error,
           response: response || undefined,
           error: (event as any).error,
         });
