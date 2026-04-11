@@ -138,8 +138,11 @@ export async function processInboundMessage(
     try {
       const downloaded = await downloadMediaMessage(msg, 'buffer', {});
       mediaBuffer = Buffer.isBuffer(downloaded) ? downloaded : Buffer.from(downloaded as Uint8Array);
+      if (!mediaBuffer || mediaBuffer.length === 0) {
+        log.warn(`Media download returned empty buffer for ${base.messageId} (${mediaMsg.type})`);
+      }
     } catch (err) {
-      log.error(`Media download failed for ${base.messageId}: ${err}`);
+      log.error(`Media download failed for ${base.messageId} (${mediaMsg.type}): ${err}`);
     }
 
     const caption = (mediaMsg.msg as { caption?: string }).caption || '';

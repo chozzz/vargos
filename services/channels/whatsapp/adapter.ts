@@ -244,7 +244,7 @@ export class WhatsAppAdapter extends InboundMediaHandler {
         audio: 'Voice message', video: 'Video message', document: 'Document', sticker: 'Sticker',
       };
       const label = typeLabels[msg.mediaType!] || 'Media';
-      await this.routeToService(userId, msg.caption ? `[${label}] ${msg.caption}` : `[${label} received]`);
+      await this.routeToService(sessionKey, msg.caption ? `[${label}] ${msg.caption}` : `[${label} received]`);
       return;
     }
 
@@ -252,7 +252,7 @@ export class WhatsAppAdapter extends InboundMediaHandler {
       msg,
       userId,
       sessionKey,
-      (text, metadata) => this.routeToService(userId, text, { ...metadata, messageId: msg.messageId }),
+      (text, metadata) => this.routeToService(sessionKey, text, { ...metadata, messageId: msg.messageId }),
     );
   }
 

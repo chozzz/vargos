@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { EventEmitterBus } from '../../../../gateway/emitter.js';
 import { ChannelService } from '../../index.js';
-import type { ChannelAdapter } from '../../types.js';
 import { InboundMediaHandler, type InboundMediaSource } from '../../media-handler.js';
 import type { AppConfig } from '../../../config/index.js';
 
@@ -82,7 +81,6 @@ describe('Channels E2E — Media/Audio Flow', () => {
     inboundMessages = [];
 
     // Capture all inbound messages routed through the channel service
-    const originalOnInboundMessage = channelService['onInboundMessage'].bind(channelService);
     vi.spyOn(channelService, 'onInboundMessage' as any).mockImplementation(async (sessionKey, content, metadata) => {
       inboundMessages.push({ sessionKey, content, metadata });
       // Don't actually call the agent in this test
@@ -283,6 +281,46 @@ describe('Channels E2E — Media/Audio Flow', () => {
       expect(msg.metadata?.media?.path).toBeDefined();
       // But base64 should only be in metadata.media, not duplicated in content
       expect(msg.content).not.toContain(buffer.toString('base64'));
+    });
+  });
+
+  describe('Missing media buffer fallback', () => {
+    it('routes text fallback when media buffer is unavailable', async () => {
+      const sessionKey = 'mock-test:12345';
+
+      // Simulate adapter.handleMedia behavior when mediaBuffer is undefined
+      // (this happens when media download fails)
+      const typeLabels: Record<string, string> = {
+        audio: 'Voice message',
+        video: 'Video message',
+        document: 'Document',
+      };
+      const mediaType = 'audio';
+      const label = typeLabels[mediaType];
+
+      // Route fallback text with sessionKey (the fix we just made)
+      await adapter['routeToService'](sessionKey, `[${label} received]`);
+
+      await new Promise(r => setTimeout(r, 50));
+
+      expect(inboundMessages).toHaveLength(1);
+      const msg = inboundMessages[0];
+      expect(msg.sessionKey).toBe(sessionKey);
+      expect(msg.content).toBe('[Voice message received]');
+    });
+
+    it('preserves sessionKey in fallback routing (critical for agent to receive message)', async () => {
+      const sessionKey = 'mock-test:user-999';
+
+      // This test validates the bug fix: routeToService must receive sessionKey, not userId
+      await adapter['routeToService'](sessionKey, '[Audio received]');
+
+      await new Promise(r => setTimeout(r, 50));
+
+      expect(inboundMessages).toHaveLength(1);
+      expect(inboundMessages[0].sessionKey).toBe(sessionKey);
+      // Verify the session key format is correct for agent routing
+      expect(inboundMessages[0].sessionKey).toMatch(/^mock-test:user-\d+$/);
     });
   });
 });

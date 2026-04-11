@@ -168,7 +168,10 @@ export class CronService {
   async run(params: EventMap['cron.run']['params']): Promise<void> {
     const entry = this.jobs.get(params.id);
     if (!entry) throw new Error(`No task with id: ${params.id}`);
-    await this.executeTask(entry.task);
+    // Fire without awaiting — long-running tasks must not block the RPC socket
+    this.executeTask(entry.task).catch(err =>
+      log.error(`manual run failed: ${params.id}: ${toMessage(err)}`),
+    );
   }
 
   // ── Internal scheduling ───────────────────────────────────────────────────
@@ -243,14 +246,6 @@ export class CronService {
     }
 
     if (!task.notify?.length) return;
-
-    // If subagents are still running, delivery may be deferred by the agent runtime.
-    const { activeRuns } = await this.bus.call('agent.status', {});
-    const prefix = sessionKey + ':subagent:';
-    if (activeRuns.some(r => r.startsWith(prefix))) {
-      log.info(`${task.id} spawned subagents — delivery deferred`);
-      return;
-    }
 
     await this.deliver(task.notify, cleaned);
   }

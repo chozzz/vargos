@@ -86,6 +86,7 @@ export class AgentRuntime {
   protected bus: Bus;
   protected config: AppConfig;
   protected sessions = new Map<string, AgentSession>();
+  private activeRuns = new Set<string>();
 
   protected dataDir: string;
   protected agentDir: string;
@@ -158,11 +159,28 @@ export class AgentRuntime {
 
     // Apply timeout (use provided timeout or fall back to config default)
     const timeoutMs = params.timeoutMs ?? this.config.agent.executionTimeoutMs;
-    await this.promptWithTimeout(session, task, { images }, timeoutMs);
+
+    this.activeRuns.add(params.sessionKey);
+    try {
+      await this.promptWithTimeout(session, task, { images }, timeoutMs);
+    } finally {
+      this.activeRuns.delete(params.sessionKey);
+    }
 
     const response = this.extractResponse(session);
 
     return { response };
+  }
+
+  /**
+   * agent.status — Return currently active agent session keys.
+   */
+  @register('agent.status', {
+    description: 'Return currently active agent session keys.',
+    schema: z.object({ sessionKey: z.string().optional() }),
+  })
+  async status(_params: EventMap['agent.status']['params']): Promise<EventMap['agent.status']['result']> {
+    return { activeRuns: Array.from(this.activeRuns) };
   }
 
   /**
