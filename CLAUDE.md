@@ -190,6 +190,22 @@ Specific restrictions:
 
 Cross-domain communication must go through bus RPC (`bus.call` or `@register` decorated methods).
 
+### Type Imports from Config
+
+Services (agent-v2, channels, cron) import **type-only** definitions from `services/config/index.js` — specifically `AppConfig`, `CronTask`, `ChannelEntry`, etc. This is intentional and follows a lightweight zero-cost pattern:
+
+**Why this is correct:**
+- Type imports are erased at compile time — zero runtime cost or dependency coupling
+- Services receive config via constructor at boot, not fetched at runtime via RPC
+- Avoids three problematic alternatives:
+  1. **Bloating `gateway/events.ts`** — EventMap tracks *event contracts*, not *config schemas*; mixing them creates confusion and artifact bloat
+  2. **Creating a separate `@vargos/types` package** — adds another dependency, slower iteration on type changes, breaks monorepo simplicity
+  3. **Duplicating types across services** — creates maintenance burden and version skew
+
+This pattern keeps the codebase lean while maintaining type safety: services type-check config at construction time, then communicate exclusively via `bus.call()` at runtime.
+
+If a future refactor requires zero type imports (e.g., for polyglot service architecture), move schema definitions to `gateway/types.ts` as a lightweight alternative — but the current design is optimal for a monorepo.
+
 ## Config Normalization
 
 `config.json` supports a v1 format with automatic normalization at load time (`normalizeConfigInput` in `services/config/index.ts`):
