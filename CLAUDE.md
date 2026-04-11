@@ -190,21 +190,28 @@ Specific restrictions:
 
 Cross-domain communication must go through bus RPC (`bus.call` or `@register` decorated methods).
 
-### Type Imports from Config
+### Cross-Service Dependency Pattern: Type Imports Only
 
-Services (agent-v2, channels, cron) import **type-only** definitions from `services/config/index.js` — specifically `AppConfig`, `CronTask`, `ChannelEntry`, etc. This is intentional and follows a lightweight zero-cost pattern:
+**Universal rule:** All services follow the same zero-runtime-dependency pattern. Services may import **type-only** definitions from `services/config/` to type-check the `AppConfig` object passed at boot time. All other inter-service communication goes through `bus.call()` or event subscriptions (`@on`).
 
-**Why this is correct:**
-- Type imports are erased at compile time — zero runtime cost or dependency coupling
-- Services receive config via constructor at boot, not fetched at runtime via RPC
-- Avoids three problematic alternatives:
-  1. **Bloating `gateway/events.ts`** — EventMap tracks *event contracts*, not *config schemas*; mixing them creates confusion and artifact bloat
-  2. **Creating a separate `@vargos/types` package** — adds another dependency, slower iteration on type changes, breaks monorepo simplicity
-  3. **Duplicating types across services** — creates maintenance burden and version skew
+**What this means:**
+- `import type { AppConfig, CronTask, ChannelEntry }` — ✅ **allowed** (compile-time only)
+- `import { getConfig }` or any function from another service — ❌ **forbidden** (creates runtime coupling)
+- `bus.call('channel.send', ...)` — ✅ **required** for inter-service calls
 
-This pattern keeps the codebase lean while maintaining type safety: services type-check config at construction time, then communicate exclusively via `bus.call()` at runtime.
+**Current state:** All services (agent-v2, channels, cron, memory, log, fs, web) comply. Type imports from config are strictly `import type` syntax.
 
-If a future refactor requires zero type imports (e.g., for polyglot service architecture), move schema definitions to `gateway/types.ts` as a lightweight alternative — but the current design is optimal for a monorepo.
+**Why this pattern:**
+1. **Zero runtime overhead** — Type imports are erased during transpilation; they don't load or execute code
+2. **Config is a singleton** — Passed via constructor at boot, not fetched dynamically at runtime
+3. **Avoids three problematic alternatives:**
+   - **Bloating `gateway/events.ts`** — EventMap tracks *event contracts*, not *config schemas*; mixing creates confusion and artifact bloat
+   - **Creating a separate `@vargos/types` package** — adds a dependency, slows iteration on schema changes, breaks monorepo simplicity
+   - **Duplicating types across services** — creates maintenance burden, version skew, and single-source-of-truth violations
+
+**Enforcement:** ESLint rules in `eslint.config.mjs` block runtime imports between services. If adding a service, ensure it follows this pattern: receive config via constructor, communicate via bus RPC.
+
+**Future considerations:** If migrating to polyglot service architecture (different languages), move shared types to `gateway/types.ts` — but for a monorepo, the current design is optimal.
 
 ## Config Normalization
 
