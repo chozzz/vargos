@@ -93,16 +93,18 @@ export class WhatsAppAdapter extends InboundMediaHandler {
     this.status = 'disconnected';
   }
 
-  async send(jid: string, text: string): Promise<void> {
+  async send(sessionKey: string, text: string): Promise<void> {
     if (!this.sock) throw new Error('WhatsApp not connected');
-    this.log.info(`send: ${jid} (${text.length} chars)`);
-    await this.sock.sendMessage(this.toJid(jid), { text });
+    const userId = this.extractUserId(sessionKey);
+    this.log.info(`send: ${sessionKey} (${text.length} chars)`);
+    await this.sock.sendMessage(this.toJid(userId), { text });
   }
 
-  async sendMedia(recipientId: string, filePath: string, mimeType: string, caption?: string): Promise<void> {
+  async sendMedia(sessionKey: string, filePath: string, mimeType: string, caption?: string): Promise<void> {
     if (!this.sock) throw new Error('WhatsApp not connected');
+    const userId = this.extractUserId(sessionKey);
     const buffer = readFileSync(filePath);
-    const jid = this.toJid(recipientId);
+    const jid = this.toJid(userId);
     const fileName = path.basename(filePath);
     const [mediaType] = mimeType.split('/');
 
@@ -115,15 +117,17 @@ export class WhatsAppAdapter extends InboundMediaHandler {
     } else {
       await this.sock.sendMessage(jid, { document: buffer, mimetype: mimeType, fileName });
     }
-    this.log.info(`sendMedia: ${recipientId} ${mimeType} ${fileName}`);
+    this.log.info(`sendMedia: ${sessionKey} ${mimeType} ${fileName}`);
   }
 
-  protected async sendTypingIndicator(recipientId: string): Promise<void> {
-    await this.sock?.sendPresenceUpdate('composing', this.toJid(recipientId));
+  protected async sendTypingIndicator(sessionKey: string): Promise<void> {
+    const userId = this.extractUserId(sessionKey);
+    await this.sock?.sendPresenceUpdate('composing', this.toJid(userId));
   }
 
-  async react(recipientId: string, messageId: string, emoji: string): Promise<void> {
-    const jid = this.toJid(recipientId);
+  async react(sessionKey: string, messageId: string, emoji: string): Promise<void> {
+    const userId = this.extractUserId(sessionKey);
+    const jid = this.toJid(userId);
     await this.sock?.sendMessage(jid, {
       react: { text: emoji, key: { remoteJid: jid, id: messageId } },
     });

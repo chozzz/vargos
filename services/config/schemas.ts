@@ -109,6 +109,8 @@ export type WebhookEntry = z.infer<typeof WebhookEntrySchema>;
 export const AgentConfigSchema = z.object({
   model:    z.string(),
   fallback: z.string().optional(),
+  /** Global timeout for agent.execute (main or subagent). Milliseconds. Default: 30 minutes. */
+  executionTimeoutMs: z.number().int().positive().default(30 * 60 * 1000),
   subagents: z.object({
     maxSpawnDepth:     z.number().int().min(1).default(3),
     runTimeoutSeconds: z.number().int().positive().default(300),

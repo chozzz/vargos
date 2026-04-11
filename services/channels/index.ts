@@ -21,7 +21,7 @@ import type { AppConfig, ChannelEntry, TelegramChannel, WhatsAppChannel } from '
 import { createLogger } from '../../lib/logger.js';
 import { toMessage } from '../../lib/error.js';
 import { stripMarkdown } from '../../lib/strip-markdown.js';
-import { channelSessionKey } from '../../lib/subagent.js';
+import { parseSessionKey } from '../../lib/subagent.js';
 import { parseTarget } from '../../lib/channel-target.js';
 import { paginate } from '../../lib/paginate.js';
 import type { ChannelAdapter } from './types.js';
@@ -36,7 +36,6 @@ const log = createLogger('channels');
 
 interface ActiveSession {
   adapter: ChannelAdapter;
-  userId: string;
   reactionController?: StatusReactionController;
 }
 
@@ -79,12 +78,12 @@ export class ChannelService {
     const cleaned = stripMarkdown(text);
     log.info(`send: ${sessionKey} (${cleaned.length} chars)`);
 
-    await deliverReply((chunk) => adapter.send(target.userId, chunk), cleaned);
+    await deliverReply((chunk) => adapter.send(sessionKey, chunk), cleaned);
 
     if (adapter.sendMedia) {
       const files = extractMediaPaths(text);
       for (const { filePath, mimeType } of files) {
-        await adapter.sendMedia(target.userId, filePath, mimeType)
+        await adapter.sendMedia(sessionKey, filePath, mimeType)
           .catch(err => log.error(`media send failed: ${filePath}: ${err}`));
       }
     }
@@ -110,7 +109,7 @@ export class ChannelService {
     if (!adapter) throw new Error(`No adapter for channel: ${target.channel}`);
     if (!adapter.sendMedia) throw new Error(`Channel ${target.channel} does not support media`);
 
-    await adapter.sendMedia(target.userId, filePath, mimeType, caption);
+    await adapter.sendMedia(sessionKey, filePath, mimeType, caption);
     return { sent: true };
   }
 
@@ -168,12 +167,18 @@ export class ChannelService {
 
   private onAgentTool(payload: EventMap['agent.onTool']): void {
     const session = this.activeSessions.get(payload.sessionKey);
-    if (!session?.reactionController) return;
+    if (!session) return;
 
     if (payload.phase === 'start') {
-      session.reactionController.setTool();
+      if (session.reactionController) {
+        session.reactionController.setTool();
+      }
+      // Resume typing if it was paused (long-running tool)
+      session.adapter.resumeTyping(payload.sessionKey);
     } else {
-      session.reactionController.setThinking();
+      if (session.reactionController) {
+        session.reactionController.setThinking();
+      }
     }
   }
 
@@ -182,7 +187,7 @@ export class ChannelService {
     if (!session) return;
 
     this.activeSessions.delete(payload.sessionKey);
-    session.adapter.stopTyping(session.userId);
+    session.adapter.stopTyping(payload.sessionKey, true);  // final=true to fully stop
 
     if (session.reactionController) {
       if (payload.success === false) {
@@ -197,12 +202,11 @@ export class ChannelService {
   // ── Inbound message handling ─────────────────────────────────────────────────
 
   async onInboundMessage(
-    channel: string,
-    userId: string,
+    sessionKey: string,
     content: string,
     metadata?: Record<string, unknown>,
   ): Promise<void> {
-    const sessionKey = channelSessionKey(channel, userId);
+    const { type: channel } = parseSessionKey(sessionKey);
     const adapter = this.adapters.get(channel);
     if (!adapter) return;
 
@@ -214,23 +218,25 @@ export class ChannelService {
       inboundMeta.media = rest;
     }
 
-    adapter.startTyping(userId);
+    // Start typing with tool execution flag (will pause after 2 mins, resume on tool completion)
+    adapter.startTyping(sessionKey, true);
 
     const messageId = metadata?.messageId && typeof metadata.messageId === 'string' ? metadata.messageId : undefined;
 
     let reactionController: StatusReactionController | undefined;
     if (adapter.react && messageId) {
+      const userId = adapter.extractUserId(sessionKey);
       reactionController = new StatusReactionController(
         { react: adapter.react.bind(adapter) }, userId, messageId,
       );
       reactionController.setThinking();
     }
 
-    this.activeSessions.set(sessionKey, { adapter, userId, reactionController });
+    this.activeSessions.set(sessionKey, { adapter, reactionController });
 
-    log.info(`inbound: ${channel}:${userId} "${enrichedContent.slice(0, 80)}"`);
+    log.info(`inbound: ${sessionKey} "${enrichedContent.slice(0, 80)}"`);
 
-    this.runAgent(sessionKey, channel, userId, enrichedContent, inboundMeta, reactionController)
+    this.runAgent(sessionKey, enrichedContent, inboundMeta, reactionController)
       .catch(err => log.error(`agent execution failed: ${toMessage(err)}`));
   }
 
@@ -239,13 +245,14 @@ export class ChannelService {
    */
   private async runAgent(
     sessionKey: string,
-    channel: string,
-    userId: string,
     content: string,
     metadata: Record<string, unknown>,
     reactionController?: StatusReactionController,
   ): Promise<void> {
-    const stopTyping = () => this.adapters.get(channel)?.stopTyping(userId);
+    const session = this.activeSessions.get(sessionKey);
+    if (!session) return;
+
+    const stopTyping = () => session.adapter.stopTyping(sessionKey);
 
     try {
       const executeParams: EventMap['agent.execute']['params'] = { sessionKey, task: content };

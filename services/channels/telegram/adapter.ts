@@ -75,11 +75,13 @@ export class TelegramAdapter extends InboundMediaHandler {
     this.log.debug('stopped');
   }
 
-  async send(chatId: string, text: string): Promise<void> {
+  async send(sessionKey: string, text: string): Promise<void> {
+    const chatId = this.extractUserId(sessionKey);
     await this.apiCall('sendMessage', { chat_id: chatId, text });
   }
 
-  async sendMedia(recipientId: string, filePath: string, mimeType: string, caption?: string): Promise<void> {
+  async sendMedia(sessionKey: string, filePath: string, mimeType: string, caption?: string): Promise<void> {
+    const chatId = this.extractUserId(sessionKey);
     const [mediaType] = mimeType.split('/');
     const methodMap: Record<string, { method: string; field: string }> = {
       image: { method: 'sendPhoto', field: 'photo' },
@@ -98,7 +100,7 @@ export class TelegramAdapter extends InboundMediaHandler {
         `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`,
       ));
     };
-    addField('chat_id', recipientId);
+    addField('chat_id', chatId);
     if (caption) addField('caption', caption);
     parts.push(Buffer.from(
       `--${boundary}\r\nContent-Disposition: form-data; name="${field}"; filename="${fileName}"\r\nContent-Type: ${mimeType}\r\n\r\n`,
@@ -117,16 +119,18 @@ export class TelegramAdapter extends InboundMediaHandler {
     }, body);
 
     if (!res.ok) throw new Error(`Telegram ${method} failed: ${res.status} ${res.statusText}`);
-    this.log.debug(`sendMedia: ${recipientId} ${mimeType} ${fileName}`);
+    this.log.debug(`sendMedia: ${sessionKey} ${mimeType} ${fileName}`);
   }
 
-  protected async sendTypingIndicator(recipientId: string): Promise<void> {
-    await this.apiCall('sendChatAction', { chat_id: recipientId, action: 'typing' });
+  protected async sendTypingIndicator(sessionKey: string): Promise<void> {
+    const chatId = this.extractUserId(sessionKey);
+    await this.apiCall('sendChatAction', { chat_id: chatId, action: 'typing' });
   }
 
-  async react(recipientId: string, messageId: string, emoji: string): Promise<void> {
+  async react(sessionKey: string, messageId: string, emoji: string): Promise<void> {
+    const chatId = this.extractUserId(sessionKey);
     await this.apiCall('setMessageReaction', {
-      chat_id: recipientId,
+      chat_id: chatId,
       message_id: Number(messageId),
       reaction: [{ type: 'emoji', emoji }],
     });

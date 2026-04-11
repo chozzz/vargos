@@ -137,6 +137,7 @@ export class AgentRuntime {
         data: z.string(),
         mimeType: z.string(),
       })).optional(),
+      timeoutMs: z.number().optional(),
     }),
   })
   async execute(params: EventMap['agent.execute']['params']): Promise<EventMap['agent.execute']['result']> {
@@ -155,11 +156,46 @@ export class AgentRuntime {
       mimeType: img.mimeType,
     }));
 
-    await session.prompt(task, { images });
+    // Apply timeout (use provided timeout or fall back to config default)
+    const timeoutMs = params.timeoutMs ?? this.config.agent.executionTimeoutMs;
+    await this.promptWithTimeout(session, task, { images }, timeoutMs);
 
     const response = this.extractResponse(session);
 
     return { response };
+  }
+
+  /**
+   * Execute session.prompt with timeout protection.
+   */
+  private promptWithTimeout(
+    session: AgentSession,
+    task: string,
+    options: { images?: ImageContent[] },
+    timeoutMs: number,
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+
+      const cleanup = () => {
+        if (timeoutHandle) clearTimeout(timeoutHandle);
+      };
+
+      timeoutHandle = setTimeout(() => {
+        cleanup();
+        reject(new Error(`Agent execution timeout after ${timeoutMs}ms`));
+      }, timeoutMs);
+
+      session.prompt(task, options)
+        .then(() => {
+          cleanup();
+          resolve();
+        })
+        .catch((err) => {
+          cleanup();
+          reject(err);
+        });
+    });
   }
 
   /**

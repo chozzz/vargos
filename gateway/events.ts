@@ -37,6 +37,8 @@ export interface AgentExecuteParams {
   model?: string;
   /** Image attachments for vision models (base64 encoded) */
   images?: Array<{ data: string; mimeType: string }>;
+  /** Execution timeout in milliseconds. Falls back to config.agent.executionTimeoutMs if not provided. */
+  timeoutMs?: number;
 }
 
 // ─── Event map ────────────────────────────────────────────────────────────────

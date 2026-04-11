@@ -5,8 +5,7 @@ import type { ChannelStatus } from '../../gateway/events.js';
 export type ChannelType = 'whatsapp' | 'telegram' | (string & {});
 
 export type OnInboundMessageFn = (
-  channel: string,
-  userId: string,
+  sessionKey: string,
   content: string,
   metadata?: Record<string, unknown>,
 ) => Promise<void>;
@@ -23,15 +22,19 @@ export interface ChannelAdapter {
   /** Gracefully disconnect */
   stop(): Promise<void>;
 
-  /** Send a text message to a specific recipient */
-  send(recipientId: string, text: string): Promise<void>;
+  /** Send a text message (sessionKey encodes recipient) */
+  send(sessionKey: string, text: string): Promise<void>;
 
-  /** Send a media file to a specific recipient (optional) */
-  sendMedia?(recipientId: string, filePath: string, mimeType: string, caption?: string): Promise<void>;
+  /** Send a media file (optional) */
+  sendMedia?(sessionKey: string, filePath: string, mimeType: string, caption?: string): Promise<void>;
 
   /** React to a message with an emoji (optional) */
-  react?(recipientId: string, messageId: string, emoji: string): Promise<void>;
+  react?(sessionKey: string, messageId: string, emoji: string): Promise<void>;
 
-  startTyping(recipientId: string): void;
-  stopTyping(recipientId: string): void;
+  startTyping(sessionKey: string, inToolExecution?: boolean): void;
+  resumeTyping(sessionKey: string): void;
+  stopTyping(sessionKey: string, final?: boolean): void;
+
+  /** Extract userId from sessionKey for adapter-specific use. */
+  extractUserId(sessionKey: string): string;
 }

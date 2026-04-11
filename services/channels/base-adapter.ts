@@ -7,6 +7,7 @@ import type { ChannelStatus } from '../../gateway/events.js';
 import { createDedupeCache } from '../../lib/dedupe.js';
 import { createMessageDebouncer } from '../../lib/debounce.js';
 import { createLogger } from '../../lib/logger.js';
+import { parseSessionKey } from '../../lib/subagent.js';
 
 export abstract class BaseChannelAdapter implements ChannelAdapter {
   abstract readonly type: ChannelType;
@@ -20,6 +21,8 @@ export abstract class BaseChannelAdapter implements ChannelAdapter {
   protected typingIntervals = new Map<string, ReturnType<typeof setInterval>>();
   protected typingTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
   protected typingFailures = new Map<string, number>();
+  /** Track which users have active typing due to tool execution (for resume on completion) */
+  protected typingInToolExecution = new Set<string>();
   protected readonly log;
 
   private static readonly TYPING_TTL_MS = 120_000;
@@ -48,48 +51,91 @@ export abstract class BaseChannelAdapter implements ChannelAdapter {
 
   abstract start(): Promise<void>;
   abstract stop(): Promise<void>;
-  abstract send(recipientId: string, text: string): Promise<void>;
+  abstract send(sessionKey: string, text: string): Promise<void>;
 
-  protected abstract sendTypingIndicator(recipientId: string): Promise<void>;
+  protected abstract sendTypingIndicator(sessionKey: string): Promise<void>;
 
-  startTyping(recipientId: string): void {
-    if (this.typingIntervals.has(recipientId)) return;
+  /** Extract userId from sessionKey for adapter-specific use. */
+  extractUserId(sessionKey: string): string {
+    const { id } = parseSessionKey(sessionKey);
+    return id;
+  }
+
+  /**
+   * Start typing indicator. If currently in tool execution, resume after 2-min TTL.
+   */
+  startTyping(sessionKey: string, inToolExecution = false): void {
+    if (this.typingIntervals.has(sessionKey)) return;
+
+    if (inToolExecution) {
+      this.typingInToolExecution.add(sessionKey);
+    }
 
     const typing = async () => {
       try {
-        await this.sendTypingIndicator(recipientId);
-        this.typingFailures.delete(recipientId);
+        await this.sendTypingIndicator(sessionKey);
+        this.typingFailures.delete(sessionKey);
       } catch {
-        const failures = (this.typingFailures.get(recipientId) ?? 0) + 1;
-        this.typingFailures.set(recipientId, failures);
+        const failures = (this.typingFailures.get(sessionKey) ?? 0) + 1;
+        this.typingFailures.set(sessionKey, failures);
         if (failures >= BaseChannelAdapter.TYPING_FAILURE_LIMIT) {
-          this.stopTyping(recipientId);
+          this.stopTyping(sessionKey, true);
         }
       }
     };
 
     void typing();
-    this.typingIntervals.set(recipientId, setInterval(() => void typing(), 4000));
+    this.typingIntervals.set(sessionKey, setInterval(() => void typing(), 4000));
     this.typingTimeouts.set(
-      recipientId,
-      setTimeout(() => this.stopTyping(recipientId), BaseChannelAdapter.TYPING_TTL_MS),
+      sessionKey,
+      setTimeout(() => {
+        this.pauseTyping(sessionKey);
+      }, BaseChannelAdapter.TYPING_TTL_MS),
     );
   }
 
-  stopTyping(recipientId: string): void {
-    const interval = this.typingIntervals.get(recipientId);
-    if (interval) { clearInterval(interval); this.typingIntervals.delete(recipientId); }
-    const timeout = this.typingTimeouts.get(recipientId);
-    if (timeout) { clearTimeout(timeout); this.typingTimeouts.delete(recipientId); }
-    this.typingFailures.delete(recipientId);
+  /**
+   * Pause typing for 2 minutes. If in tool execution, will resume when agent completes.
+   * This is called automatically after 2 minutes of continuous typing.
+   */
+  private pauseTyping(sessionKey: string): void {
+    const interval = this.typingIntervals.get(sessionKey);
+    if (interval) { clearInterval(interval); this.typingIntervals.delete(sessionKey); }
+    const timeout = this.typingTimeouts.get(sessionKey);
+    if (timeout) { clearTimeout(timeout); this.typingTimeouts.delete(sessionKey); }
+    // Note: typingFailures and typingInToolExecution are preserved for potential resume
   }
 
-  protected async routeToService(userId: string, content: string, metadata?: Record<string, unknown>): Promise<void> {
+  /**
+   * Resume typing after tool execution completes (called when agent.onCompleted fires).
+   */
+  resumeTyping(sessionKey: string): void {
+    if (!this.typingInToolExecution.has(sessionKey)) return;
+    // Typing was paused due to 2-min TTL, resume it
+    this.startTyping(sessionKey, true);
+  }
+
+  /**
+   * Stop typing completely (final stop, not just pause).
+   */
+  stopTyping(sessionKey: string, final = true): void {
+    const interval = this.typingIntervals.get(sessionKey);
+    if (interval) { clearInterval(interval); this.typingIntervals.delete(sessionKey); }
+    const timeout = this.typingTimeouts.get(sessionKey);
+    if (timeout) { clearTimeout(timeout); this.typingTimeouts.delete(sessionKey); }
+
+    if (final) {
+      this.typingFailures.delete(sessionKey);
+      this.typingInToolExecution.delete(sessionKey);
+    }
+  }
+
+  protected async routeToService(sessionKey: string, content: string, metadata?: Record<string, unknown>): Promise<void> {
     if (!this.onInboundMessage) {
       this.log.error('No inbound message handler');
       return;
     }
-    await this.onInboundMessage(this.instanceId, userId, content, metadata);
+    await this.onInboundMessage(sessionKey, content, metadata);
   }
 
   protected async handleBatch(id: string, messages: string[]): Promise<void> {
