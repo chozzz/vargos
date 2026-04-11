@@ -2,7 +2,7 @@
  * WhatsApp channel adapter via Baileys
  */
 
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { WASocket } from '@whiskeysockets/baileys';
 import type { OnInboundMessageFn } from '../types.js';
@@ -64,10 +64,28 @@ export class WhatsAppAdapter extends InboundMediaHandler {
         onDisconnected: (reason) => {
           this.log.info(`disconnected: ${reason}`);
           this.sock = null;
-          if (reason === 'logged_out' || reason === 'forbidden') {
-            this.status = 'error';
+
+          if (reason === 'logged_out') {
+            // Device was logged out - clear registered flag to force re-pairing
+            this.log.info('WhatsApp device logged out — attempting to reset for re-pairing');
+            try {
+              this.resetCredentialsForRepairing();
+            } catch (err) {
+              this.log.error(`failed to reset credentials: ${err}`);
+              this.status = 'error';
+              return;
+            }
+            this.status = 'disconnected';
+            this.scheduleReconnect();
             return;
           }
+
+          if (reason === 'forbidden') {
+            this.status = 'error';
+            this.log.info('WhatsApp access forbidden — device may be blocked or credentials invalid');
+            return;
+          }
+
           this.status = 'disconnected';
           this.scheduleReconnect();
         },
@@ -236,6 +254,23 @@ export class WhatsAppAdapter extends InboundMediaHandler {
       sessionKey,
       (text, metadata) => this.routeToService(userId, text, { ...metadata, messageId: msg.messageId }),
     );
+  }
+
+  /**
+   * Reset credentials to allow re-pairing after logout.
+   * Sets registered=false and clears user identity so Baileys shows QR code.
+   */
+  private resetCredentialsForRepairing(): void {
+    const credsPath = path.join(this.authDir, 'creds.json');
+    const creds = JSON.parse(readFileSync(credsPath, 'utf-8')) as Record<string, unknown>;
+
+    // Force Baileys to show QR code by marking as not registered
+    creds.registered = false;
+    // Clear user identity so it's treated as a new pairing
+    creds.me = undefined;
+
+    writeFileSync(credsPath, JSON.stringify(creds, null, 2));
+    this.log.debug('cleared registered flag and user identity for re-pairing');
   }
 
   private scheduleReconnect(): void {
