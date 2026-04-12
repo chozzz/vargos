@@ -46,7 +46,10 @@ export async function transcribeAudio(
   form.append('file', blob, finalFileName);
   form.append('model', model || 'whisper-1');
 
-  const apiBaseUrl = baseUrl ?? 'https://api.openai.com';
+  let apiBaseUrl = baseUrl ?? 'https://api.openai.com';
+  // Remove trailing /v1 from baseUrl if present (normalizes both formats)
+  apiBaseUrl = apiBaseUrl.replace(/\/v1\/?$/, '');
+
   if (!apiKey) {
     throw new Error(`No API key configured for OpenAI audio transcription`);
   }
