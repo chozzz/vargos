@@ -101,19 +101,22 @@ export class AgentRuntime {
     // Load auth credentials from auth.json and set as env vars for Pi SDK
     const authJsonPath = path.join(this.agentDir, 'auth.json');
     try {
-      const authData = JSON.parse(readFileSync(authJsonPath, 'utf8'));
-      for (const [provider, creds] of Object.entries(authData)) {
-        if (creds && typeof creds === 'object') {
-          const credsObj = creds as Record<string, string>;
-          const envKeyName = `${provider.toUpperCase()}_API_KEY`;
-          if (credsObj.apiKey && !process.env[envKeyName]) {
-            process.env[envKeyName] = credsObj.apiKey;
-            log.debug(`Set ${envKeyName} from auth.json`);
-          }
+      const authContent = readFileSync(authJsonPath, 'utf8');
+      const authData = JSON.parse(authContent);
+      const providers = Object.keys(authData);
+      for (const provider of providers) {
+        const creds = (authData as Record<string, any>)[provider];
+        if (creds && typeof creds === 'object' && creds.apiKey) {
+          const envKey = `${provider.toUpperCase()}_API_KEY`;
+          process.env[envKey] = creds.apiKey;
         }
       }
-    } catch {
-      log.debug('auth.json not found or empty');
+      if (providers.length > 0) {
+        log.debug(`Loaded auth for: ${providers.join(', ')}`);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log.debug(`Failed to load auth.json: ${msg}`);
     }
 
     this.settings = SettingsManager.create(this.dataDir, this.agentDir);
