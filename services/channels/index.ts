@@ -331,8 +331,8 @@ export class ChannelService {
   }
 
   private getAudioTranscribeConfig(): { provider: string; model: string; apiKey?: string; baseUrl?: string } | undefined {
-    if (!this.config.media?.audio) return undefined;
-    const [provider, model] = this.config.media.audio.split(':');
+    if (!this.config.agent?.media?.audio) return undefined;
+    const [provider, model] = this.config.agent.media.audio.split(':');
     if (!provider || !model) return undefined;
     const pc = this.config.providers[provider];
     if (!pc) return undefined;
