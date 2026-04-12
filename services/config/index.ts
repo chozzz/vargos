@@ -63,6 +63,7 @@ export const AppConfigSchema = z
       /** Client socket idle timeout (ms) for JSON-RPC connections */
       requestTimeout: z.number().int().positive().optional(),
     }).default({}),
+    auth: z.record(z.string(), z.any()).optional(),
   })
   .passthrough();
 
@@ -226,6 +227,22 @@ export class ConfigService {
       // File may not exist yet, that's okay
     }
 
+    // Load auth.json and redact for config.get()
+    try {
+      const authPath = path.join(this.agentDir, 'auth.json');
+      const authContent = readFileSync(authPath, 'utf8');
+      const auth = JSON.parse(authContent);
+      if (auth && typeof auth === 'object') {
+        // Return redacted version showing which providers have credentials
+        appConfig.auth = {};
+        for (const provider of Object.keys(auth)) {
+          (appConfig.auth as Record<string, unknown>)[provider] = { redacted: true };
+        }
+      }
+    } catch {
+      // File may not exist yet, that's okay
+    }
+
     return appConfig;
   }
 
@@ -248,6 +265,7 @@ export class ConfigService {
     const configForFile: AppConfig = { ...parsed };
     const agentModels: Record<string, unknown> = {};
     let agentSettings: Record<string, unknown> = {};
+    let authData: Record<string, unknown> = {};
 
     // Load existing agent/settings.json to preserve other fields
     try {
@@ -260,6 +278,20 @@ export class ConfigService {
     if (configForFile.agent) {
       agentSettings = { ...agentSettings, ...configForFile.agent };
       delete (configForFile as any).agent;
+    }
+
+    // Load existing auth.json to preserve other credentials
+    try {
+      const authPath = path.join(this.agentDir, 'auth.json');
+      authData = JSON.parse(readFileSync(authPath, 'utf8'));
+    } catch {
+      // File doesn't exist yet
+    }
+
+    // Extract auth credentials to agent/auth.json
+    if (configForFile.auth) {
+      authData = { ...authData, ...configForFile.auth };
+      delete (configForFile as any).auth;
     }
 
     // Extract providers to agent/models.json
@@ -291,6 +323,14 @@ export class ConfigService {
         mkdirSync(this.agentDir, { recursive: true });
       }
       writeFileSync(this.agentSettingsFile, JSON.stringify(agentSettings, null, 2), { mode: 0o600 });
+    }
+
+    if (Object.keys(authData).length > 0) {
+      if (!existsSync(this.agentDir)) {
+        mkdirSync(this.agentDir, { recursive: true });
+      }
+      const authPath = path.join(this.agentDir, 'auth.json');
+      writeFileSync(authPath, JSON.stringify(authData, null, 2), { mode: 0o600 });
     }
 
     // Update in-memory config and broadcast
