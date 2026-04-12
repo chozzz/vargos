@@ -247,7 +247,20 @@ export class ConfigService {
     // Split config into components by ownership
     const configForFile: AppConfig = { ...parsed };
     const agentModels: Record<string, unknown> = {};
-    const agentSettings: Record<string, unknown> = {};
+    let agentSettings: Record<string, unknown> = {};
+
+    // Load existing agent/settings.json to preserve other fields
+    try {
+      agentSettings = JSON.parse(readFileSync(this.agentSettingsFile, 'utf8'));
+    } catch {
+      // File doesn't exist yet
+    }
+
+    // Extract agent config to agent/settings.json
+    if (configForFile.agent) {
+      agentSettings = { ...agentSettings, ...configForFile.agent };
+      delete (configForFile as any).agent;
+    }
 
     // Extract providers to agent/models.json
     if (configForFile.providers) {
@@ -255,17 +268,10 @@ export class ConfigService {
       delete configForFile.providers;
     }
 
-    // Load existing agent files to preserve other fields
+    // Load existing agent/models.json to preserve other fields
     try {
       const existing = JSON.parse(readFileSync(this.agentModelsFile, 'utf8'));
       Object.assign(agentModels, existing, agentModels); // Preserve existing, override with new
-    } catch {
-      // File doesn't exist yet
-    }
-
-    try {
-      const existing = JSON.parse(readFileSync(this.agentSettingsFile, 'utf8'));
-      Object.assign(agentSettings, existing);
     } catch {
       // File doesn't exist yet
     }
