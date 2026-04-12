@@ -26,17 +26,15 @@ export type ThinkingLevel = z.infer<typeof ThinkingLevelSchema>;
 export type PromptMode    = z.infer<typeof PromptModeSchema>;
 export type ChannelType   = z.infer<typeof ChannelTypeSchema>;
 
-// ─── Providers (PiAgent passthrough) ──────────────────────────────────────────
-// Connection details only. Model knowledge lives in PiAgent's internal registry.
-// Model refs in agent config use "provider:modelId" format.
-// PiAgent auto-discovers available models for each provider.
+// ─── Providers (DEPRECATED — now managed by Pi Agent) ───────────────────────
+// Provider definitions have moved to ~/.vargos/agent/models.json (Pi Agent's registry).
+// This field is deprecated and ignored. For backward compatibility, it is still
+// accepted but not used. Update your ~/.vargos/agent/models.json with provider details.
 
 export const ProviderConfigSchema = z.object({
   baseUrl: z.string(),
   apiKey:  z.string(),
   api:     z.string().optional(),
-  // NOTE: 'models' field deprecated — Pi Agent is source of truth
-  // For backward compat, still accepted but ignored by agent-v2
 }).passthrough();
 
 export const ProvidersSchema = z.record(z.string(), ProviderConfigSchema);

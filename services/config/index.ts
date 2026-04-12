@@ -36,7 +36,7 @@ import { createLogger } from '../../lib/logger.js';
 
 export const AppConfigSchema = z
   .object({
-    providers: ProvidersSchema,
+    providers: ProvidersSchema.optional(),
     agent: AgentConfigSchema,
     channels: z.array(ChannelEntrySchema).default([]),
     cron: z.object({

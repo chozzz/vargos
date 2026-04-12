@@ -285,7 +285,7 @@ export class ChannelService {
   // ── Channel startup ──────────────────────────────────────────────────────────
 
   private async startChannel(entry: ChannelEntry): Promise<void> {
-    const adapter = this.createAdapter(entry);
+    const adapter = await this.createAdapter(entry);
     if (!adapter) {
       log.warn(`unknown channel type: ${entry.type} (id=${entry.id})`);
       return;
@@ -303,8 +303,8 @@ export class ChannelService {
     }
   }
 
-  private createAdapter(entry: ChannelEntry): ChannelAdapter | null {
-    const audioConfig = this.getAudioTranscribeConfig();
+  private async createAdapter(entry: ChannelEntry): Promise<ChannelAdapter | null> {
+    const audioConfig = await this.getAudioTranscribeConfig();
 
     switch (entry.type) {
       case 'telegram': {
@@ -330,13 +330,18 @@ export class ChannelService {
     }
   }
 
-  private getAudioTranscribeConfig(): { provider: string; model: string; apiKey?: string; baseUrl?: string } | undefined {
+  private async getAudioTranscribeConfig(): Promise<{ provider: string; model: string; apiKey?: string; baseUrl?: string } | undefined> {
     if (!this.config.agent?.media?.audio) return undefined;
     const [provider, model] = this.config.agent.media.audio.split(':');
     if (!provider || !model) return undefined;
-    const pc = this.config.providers[provider];
-    if (!pc) return undefined;
-    return { provider, model, apiKey: pc.apiKey, baseUrl: pc.baseUrl };
+
+    try {
+      const providerConfig = await this.bus.call('agent.getProviderConfig', { provider });
+      if (!providerConfig) return undefined;
+      return { provider, model, apiKey: providerConfig.apiKey, baseUrl: providerConfig.baseUrl };
+    } catch {
+      return undefined;
+    }
   }
 
   private async startAllConfigured(): Promise<void> {

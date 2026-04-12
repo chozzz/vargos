@@ -102,16 +102,9 @@ export class AgentRuntime {
     this.modelRegistry = new ModelRegistry(this.authStorage);
 
     this.settings = SettingsManager.create(this.dataDir, this.agentDir);
-
-    for (const [name, provider] of Object.entries(this.config.providers)) {
-      this.authStorage.setRuntimeApiKey(name, provider.apiKey);
-      // Register provider connection details; Pi Agent knows its own models
-      this.modelRegistry.registerProvider(name, {
-        baseUrl: provider.baseUrl,
-        apiKey: provider.apiKey,
-        api: provider.api,
-      });
-    }
+    // NOTE: SettingsManager loads ~/.vargos/agent/models.json which has the
+    // authoritative provider + model definitions. Pi Agent is the source of truth.
+    // config.providers is now optional/deprecated in favor of agent/models.json
 
     const { provider, modelId } = parseModelRef(this.config.agent.model);
     this.settings.setDefaultModelAndProvider(provider, modelId);
@@ -175,6 +168,33 @@ export class AgentRuntime {
   })
   async status(_params: EventMap['agent.status']['params']): Promise<EventMap['agent.status']['result']> {
     return { activeRuns: Array.from(this.activeRuns) };
+  }
+
+  /**
+   * agent.getProviderConfig — Get provider connection details from Pi Agent's models.json
+   */
+  @register('agent.getProviderConfig', {
+    description: 'Get provider connection details (baseUrl, apiKey, api) from Pi Agent registry.',
+    schema: z.object({ provider: z.string() }),
+  })
+  async getProviderConfig(params: EventMap['agent.getProviderConfig']['params']): Promise<EventMap['agent.getProviderConfig']['result']> {
+    try {
+      const modelsPath = path.join(this.agentDir, 'models.json');
+      const content = await fs.readFile(modelsPath, 'utf-8');
+      const models = JSON.parse(content);
+
+      const providers = models.providers || {};
+      const provider = providers[params.provider];
+      if (!provider) return null;
+
+      return {
+        baseUrl: provider.baseUrl,
+        apiKey: provider.apiKey,
+        api: provider.api,
+      };
+    } catch {
+      return null;
+    }
   }
 
   /**
