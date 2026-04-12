@@ -78,14 +78,8 @@ export interface EventMap {
 
   // Agent
   'agent.execute': { params: AgentExecuteParams; result: { response: string } };
-  'agent.abort': { params: { sessionKey: string }; result: { aborted: boolean } };
   'agent.status': { params: { sessionKey?: string }; result: { activeRuns: string[] } };
   'agent.getProviderConfig': { params: { provider: string }; result: { baseUrl?: string; apiKey?: string; api?: string } | null };
-  'agent.process-retriggers': { params: Record<string, never>; result: { processed: number } };
-  'model.register': { params: { provider: string; model: string; baseUrl?: string; contextWindow?: number; maxTokens?: number }; result: { registered: boolean; reason?: string } };
-
-  // Media
-  'media.transform': { params: { filePath: string; mimeType: string; modelName: string }; result: { text: string } };
 
   // File system
   'fs.read': { params: { path: string; offset?: number; limit?: number }; result: { content: string; mimeType: string } };
