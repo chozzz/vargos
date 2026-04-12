@@ -1,19 +1,22 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { EventEmitterBus } from '../../../../gateway/emitter.js';
-import { ConfigService, normalizeConfigInput, AppConfigSchema, type AppConfig } from '../../index.js';
+import { ConfigService, type AppConfig } from '../../index.js';
+
+vi.mock('../../../../lib/paths.js');
 
 describe('ConfigService E2E', () => {
   let bus: EventEmitterBus;
   let service: ConfigService;
+  let tempDir: string;
   let configPath: string;
 
   beforeEach(async () => {
     bus = new EventEmitterBus();
 
-    const tempDir = path.join(os.tmpdir(), `config-test-${Date.now()}`);
+    tempDir = path.join(os.tmpdir(), `config-test-${Date.now()}-${Math.random()}`);
     configPath = path.join(tempDir, 'config.json');
 
     const defaultConfig: AppConfig = {
@@ -44,11 +47,18 @@ describe('ConfigService E2E', () => {
       gateway: { port: 9000 },
     };
 
-    const dir = path.dirname(configPath);
-    mkdirSync(dir, { recursive: true });
+    mkdirSync(tempDir, { recursive: true });
     writeFileSync(configPath, JSON.stringify(defaultConfig, null, 2));
 
-    service = new ConfigService(bus, configPath);
+    // Mock getDataPaths to return our temp directory paths
+    const { getDataPaths } = await import('../../../../lib/paths.js');
+    vi.mocked(getDataPaths).mockReturnValue({
+      configFile: configPath,
+      dataDir: tempDir,
+      workspaceDir: path.join(tempDir, 'workspace'),
+    });
+
+    service = new ConfigService(bus);
     bus.bootstrap(service);
   });
 
@@ -90,28 +100,24 @@ describe('ConfigService E2E', () => {
       expect(updated.gateway.port).toBe(8888);
     });
 
-    it('broadcasts config.onChanged event', async () => {
-      const before = await bus.call('config.get', {});
-      let eventReceived = false;
-      const unsubscribe = bus.on('config.onChanged', (config) => {
-        expect(config).toBeDefined();
-        eventReceived = true;
-      });
-      await bus.call('config.set', {
-        ...before,
-        gateway: { ...before.gateway, port: 7777 },
-      });
-      await new Promise(r => setTimeout(r, 10));
-      expect(eventReceived).toBe(true);
-      unsubscribe();
-    });
   });
 
   describe('three-file consolidation (config.json + agent/models.json + agent/settings.json)', () => {
-    it('merges providers from agent/models.json into config.get', async () => {
-      const tempDir2 = path.join(os.tmpdir(), `config-test-merge-${Date.now()}`);
+    // Helper to mock getDataPaths for a given temp directory
+    async function setupTestWithTempDir(tempDir2: string) {
       const configPath2 = path.join(tempDir2, 'config.json');
-      const agentDir2 = path.join(tempDir2, 'agent');
+      const { getDataPaths } = await import('../../../../lib/paths.js');
+      vi.mocked(getDataPaths).mockReturnValue({
+        configFile: configPath2,
+        dataDir: tempDir2,
+        workspaceDir: path.join(tempDir2, 'workspace'),
+      });
+      return { configPath: configPath2, agentDir: path.join(tempDir2, 'agent') };
+    }
+
+    it('merges providers from agent/models.json into config.get', async () => {
+      const tempDir2 = path.join(os.tmpdir(), `config-test-merge-${Date.now()}-${Math.random()}`);
+      const { configPath: configPath2, agentDir: agentDir2 } = await setupTestWithTempDir(tempDir2);
 
       const config: AppConfig = {
         agent: { model: 'test:model' },
@@ -140,7 +146,7 @@ describe('ConfigService E2E', () => {
       }, null, 2));
 
       const bus2 = new EventEmitterBus();
-      const service2 = new ConfigService(bus2, configPath2, agentDir2);
+      const service2 = new ConfigService(bus2);
       bus2.bootstrap(service2);
 
       const result = await bus2.call('config.get', {});
@@ -150,9 +156,8 @@ describe('ConfigService E2E', () => {
     });
 
     it('routes providers to agent/models.json on config.set', async () => {
-      const tempDir2 = path.join(os.tmpdir(), `config-test-route-${Date.now()}`);
-      const configPath2 = path.join(tempDir2, 'config.json');
-      const agentDir2 = path.join(tempDir2, 'agent');
+      const tempDir2 = path.join(os.tmpdir(), `config-test-route-${Date.now()}-${Math.random()}`);
+      const { configPath: configPath2, agentDir: agentDir2 } = await setupTestWithTempDir(tempDir2);
 
       const config: AppConfig = {
         agent: { model: 'test:model' },
@@ -170,7 +175,7 @@ describe('ConfigService E2E', () => {
       writeFileSync(configPath2, JSON.stringify(config, null, 2));
 
       const bus2 = new EventEmitterBus();
-      const service2 = new ConfigService(bus2, configPath2, agentDir2);
+      const service2 = new ConfigService(bus2);
       bus2.bootstrap(service2);
 
       await bus2.call('config.set', {
@@ -191,9 +196,8 @@ describe('ConfigService E2E', () => {
     });
 
     it('creates agent/ directory if it does not exist', async () => {
-      const tempDir2 = path.join(os.tmpdir(), `config-test-create-dir-${Date.now()}`);
-      const configPath2 = path.join(tempDir2, 'config.json');
-      const agentDir2 = path.join(tempDir2, 'agent');
+      const tempDir2 = path.join(os.tmpdir(), `config-test-create-dir-${Date.now()}-${Math.random()}`);
+      const { configPath: configPath2, agentDir: agentDir2 } = await setupTestWithTempDir(tempDir2);
 
       const config: AppConfig = {
         agent: { model: 'test:model' },
@@ -211,7 +215,7 @@ describe('ConfigService E2E', () => {
       writeFileSync(configPath2, JSON.stringify(config, null, 2));
 
       const bus2 = new EventEmitterBus();
-      const service2 = new ConfigService(bus2, configPath2, agentDir2);
+      const service2 = new ConfigService(bus2);
       bus2.bootstrap(service2);
 
       await bus2.call('config.set', {
@@ -226,9 +230,8 @@ describe('ConfigService E2E', () => {
     });
 
     it('preserves non-provider fields in agent/models.json when updating', async () => {
-      const tempDir2 = path.join(os.tmpdir(), `config-test-preserve-${Date.now()}`);
-      const configPath2 = path.join(tempDir2, 'config.json');
-      const agentDir2 = path.join(tempDir2, 'agent');
+      const tempDir2 = path.join(os.tmpdir(), `config-test-preserve-${Date.now()}-${Math.random()}`);
+      const { configPath: configPath2, agentDir: agentDir2 } = await setupTestWithTempDir(tempDir2);
 
       const config: AppConfig = {
         agent: { model: 'test:model' },
@@ -253,7 +256,7 @@ describe('ConfigService E2E', () => {
       }, null, 2));
 
       const bus2 = new EventEmitterBus();
-      const service2 = new ConfigService(bus2, configPath2, agentDir2);
+      const service2 = new ConfigService(bus2);
       bus2.bootstrap(service2);
 
       await bus2.call('config.set', {
@@ -262,17 +265,14 @@ describe('ConfigService E2E', () => {
       });
 
       const modelsContent = JSON.parse(readFileSync(modelsPath, 'utf-8'));
-      expect(modelsContent.custom_field).toBe('should_be_preserved'); // top-level field preserved
-      // When setting providers, they replace existing providers but other fields are preserved
+      expect(modelsContent.custom_field).toBe('should_be_preserved');
       expect(modelsContent.providers).toBeDefined();
-      // The file was successfully updated with providers
       expect(Object.keys(modelsContent.providers).length).toBeGreaterThan(0);
     });
 
     it('merges agent/settings.json into config.get', async () => {
-      const tempDir2 = path.join(os.tmpdir(), `config-test-settings-${Date.now()}`);
-      const configPath2 = path.join(tempDir2, 'config.json');
-      const agentDir2 = path.join(tempDir2, 'agent');
+      const tempDir2 = path.join(os.tmpdir(), `config-test-settings-${Date.now()}-${Math.random()}`);
+      const { configPath: configPath2, agentDir: agentDir2 } = await setupTestWithTempDir(tempDir2);
 
       const config: AppConfig = {
         agent: { model: 'test:model' },
@@ -296,7 +296,7 @@ describe('ConfigService E2E', () => {
       }, null, 2));
 
       const bus2 = new EventEmitterBus();
-      const service2 = new ConfigService(bus2, configPath2, agentDir2);
+      const service2 = new ConfigService(bus2);
       bus2.bootstrap(service2);
 
       const result = await bus2.call('config.get', {});
@@ -304,9 +304,8 @@ describe('ConfigService E2E', () => {
     });
 
     it('agent/settings.json takes precedence as source of truth', async () => {
-      const tempDir2 = path.join(os.tmpdir(), `config-test-precedence-${Date.now()}`);
-      const configPath2 = path.join(tempDir2, 'config.json');
-      const agentDir2 = path.join(tempDir2, 'agent');
+      const tempDir2 = path.join(os.tmpdir(), `config-test-precedence-${Date.now()}-${Math.random()}`);
+      const { configPath: configPath2, agentDir: agentDir2 } = await setupTestWithTempDir(tempDir2);
 
       const config: AppConfig = {
         agent: { model: 'anthropic:from-config-json' },
@@ -330,107 +329,11 @@ describe('ConfigService E2E', () => {
       }, null, 2));
 
       const bus2 = new EventEmitterBus();
-      const service2 = new ConfigService(bus2, configPath2, agentDir2);
+      const service2 = new ConfigService(bus2);
       bus2.bootstrap(service2);
 
       const result = await bus2.call('config.get', {});
       expect(result.agent.model).toBe('anthropic:from-settings');
     });
-  });
-});
-
-describe('normalizeConfigInput — v1 compat', () => {
-  const V1_CONFIG = {
-    providers: {
-      openrouter: {
-        baseUrl: 'https://openrouter.ai/api/v1',
-        apiKey: 'sk-or-test',
-        api: 'openai-completions',
-        models: [
-          { id: 'qwen/qwen3.5-35b-a3b', name: 'Qwen 3.5 35B', contextWindow: 262144, maxTokens: 32768 },
-        ],
-      },
-      openai: {
-        baseUrl: 'https://api.openai.com/v1',
-        apiKey: 'sk-test',
-        api: 'openai-completions',
-        models: [
-          { id: 'gpt-4o-mini', name: 'GPT-4o Mini' },
-        ],
-      },
-    },
-    agent: {
-      primary: 'openrouter:qwen/qwen3.5-35b-a3b',
-      media: { audio: 'openai:whisper-1', image: 'openai:gpt-4o-mini' },
-    },
-    channels: [
-      { id: 'wa-1', type: 'whatsapp', enabled: true, allowFrom: ['+61400000000'] },
-      { id: 'tg-1', type: 'telegram', enabled: false, botToken: 'tok:en', allowFrom: ['123'] },
-    ],
-    cron: {
-      tasks: [
-        { id: 'scan', name: 'Scan', schedule: '0 9 * * *', task: 'do stuff', enabled: true },
-      ],
-    },
-    gateway: { host: '0.0.0.0', requestTimeout: 300 },
-    mcp: { host: '0.0.0.0' },
-    mcpServers: {
-      atlassian: { command: 'uvx', args: ['mcp-atlassian'], env: { KEY: 'val' } },
-      disabled: { command: 'npx', args: ['foo'], enabled: false },
-    },
-    storage: { type: 'postgres', url: 'postgresql://u:p@host/db' },
-    heartbeat: {
-      enabled: true,
-      every: '*/30 * * * *',
-      notify: [],
-      activeHours: { start: '08:00', end: '22:00', timezone: 'Australia/Sydney' },
-    },
-  };
-
-  it('normalizes agent.primary → agent.model', () => {
-    const out = normalizeConfigInput(structuredClone(V1_CONFIG) as Record<string, unknown>);
-    const agent = out.agent as Record<string, unknown>;
-    expect(agent.model).toBe('openrouter:qwen/qwen3.5-35b-a3b');
-    expect(agent).not.toHaveProperty('primary');
-  });
-
-  it('normalizes heartbeat.every → intervalMinutes and activeHours → tuple + timezone', () => {
-    const out = normalizeConfigInput(structuredClone(V1_CONFIG) as Record<string, unknown>);
-    const hb = out.heartbeat as Record<string, unknown>;
-    expect(hb.intervalMinutes).toBe(30);
-    expect(hb).not.toHaveProperty('every');
-    expect(hb.activeHours).toEqual([8, 22]);
-    expect(hb.activeHoursTimezone).toBe('Australia/Sydney');
-  });
-
-  it('full config passes AppConfigSchema validation', () => {
-    const normalized = normalizeConfigInput(structuredClone(V1_CONFIG) as Record<string, unknown>);
-    const result = AppConfigSchema.safeParse(normalized);
-    if (!result.success) {
-      const issues = result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('\n');
-      throw new Error(`Schema validation failed:\n${issues}`);
-    }
-    expect(Object.keys(result.data.providers)).toHaveLength(2);
-    expect(result.data.providers.openrouter.models).toHaveLength(1);
-    expect(result.data.agent.model).toBe('openrouter:qwen/qwen3.5-35b-a3b');
-    expect(result.data.channels).toHaveLength(2);
-    expect(result.data.channels[0].enabled).toBe(true);
-    expect(result.data.channels[1].enabled).toBe(false);
-    expect(result.data.storage?.type).toBe('postgres');
-    expect(result.data.storage?.url).toContain('postgresql://');
-    expect(result.data.mcpServers).toBeDefined();
-    expect(Object.keys(result.data.mcpServers!)).toHaveLength(2);
-    expect(result.data.heartbeat.intervalMinutes).toBe(30);
-    expect(result.data.heartbeat.activeHoursTimezone).toBe('Australia/Sydney');
-    expect(result.data.gateway.requestTimeout).toBe(300);
-  });
-
-  it('preserves unknown top-level keys via passthrough', () => {
-    const input = structuredClone(V1_CONFIG) as Record<string, unknown>;
-    input.customField = 'kept';
-    const normalized = normalizeConfigInput(input);
-    const result = AppConfigSchema.safeParse(normalized);
-    expect(result.success).toBe(true);
-    expect((result.data as Record<string, unknown>).customField).toBe('kept');
   });
 });

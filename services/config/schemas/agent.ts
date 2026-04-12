@@ -110,6 +110,6 @@ export const AgentConfigSchema = PiAgentSettingsSchema.extend({
     audio: z.string().optional(),
     image: z.string().optional(),
   }).optional(),
-});
+}).passthrough(); // Allow custom fields from Pi Agent
 
 export type AgentConfig = z.infer<typeof AgentConfigSchema>;

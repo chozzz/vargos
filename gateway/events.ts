@@ -61,9 +61,6 @@ export interface EventMap {
   'channel.onConnected': { instanceId: string; type: string };
   'channel.onDisconnected': { instanceId: string };
 
-  /** Broadcast whenever config changes via config.set. */
-  'config.onChanged': AppConfig;
-
   /** Emitted after all services are registered — signals boot completion. Deferred startup can proceed. */
   'bus.onReady': Record<string, never>;
 
