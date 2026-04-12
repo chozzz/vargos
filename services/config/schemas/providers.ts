@@ -9,8 +9,8 @@
 import { z } from 'zod';
 
 export const ProviderConfigSchema = z.object({
-  baseUrl: z.string(),
-  apiKey:  z.string(),
+  baseUrl: z.string().optional(),
+  apiKey:  z.string().optional(),
   api:     z.string().optional(),
 }).passthrough();
 

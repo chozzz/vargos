@@ -102,7 +102,7 @@ export class AgentRuntime {
     // authoritative provider + model definitions. Pi Agent is the source of truth.
     // config.providers is now optional/deprecated in favor of agent/models.json
 
-    const { provider, modelId } = parseModelRef(this.config.agent.model);
+    const { provider, modelId } = parseModelRef(this.config.agent!.model);
     this.settings.setDefaultModelAndProvider(provider, modelId);
   }
 
@@ -141,7 +141,7 @@ export class AgentRuntime {
     }));
 
     // Apply timeout (use provided timeout or fall back to config default)
-    const timeoutMs = params.timeoutMs ?? this.config.agent.executionTimeoutMs;
+    const timeoutMs = params.timeoutMs ?? this.config.agent!.executionTimeoutMs;
 
     this.activeRuns.add(params.sessionKey);
     try {
@@ -206,7 +206,7 @@ export class AgentRuntime {
 
     const resourceLoader = await this.createResourceLoader(systemPrompt, cwd);
 
-    const { provider: p, modelId: mId } = parseModelRef(this.config.agent.model);
+    const { provider: p, modelId: mId } = parseModelRef(this.config.agent!.model);
     const model = this.modelRegistry.find(p, mId);
 
     const { session } = await createAgentSession({
