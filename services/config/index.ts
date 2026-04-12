@@ -21,7 +21,6 @@ import {
   type CronAddParams,
   type CronUpdateParams,
   type ProviderConfig,
-  type ProviderModel,
   type Providers,
   type HeartbeatConfig,
   type WebhookEntry,
@@ -75,7 +74,6 @@ export type {
   CronAddParams,
   CronUpdateParams,
   ProviderConfig,
-  ProviderModel,
   Providers,
   HeartbeatConfig,
   WebhookEntry,
@@ -117,11 +115,13 @@ function parseHourToken(s: string | undefined, fallback: number): number {
 }
 
 /**
- * Normalize v1 config format to v2.
- * - models: Record<name, profile> → Array<profile & { name }>
+ * Normalize config format (legacy compatibility).
  * - agent.primary → agent.model (fallback kept as agent.fallback)
  * - heartbeat.activeHours: { start, end, timezone } → tuple + activeHoursTimezone
  * - heartbeat.every: star-slash-N minute cron → intervalMinutes
+ *
+ * Note: models array in providers is now optional (passthrough only) since Pi Agent is the
+ * definitive source of truth for available models.
  */
 export function normalizeConfigInput(raw: Record<string, unknown>): Record<string, unknown> {
   const out = { ...raw };

@@ -27,25 +27,20 @@ export type PromptMode    = z.infer<typeof PromptModeSchema>;
 export type ChannelType   = z.infer<typeof ChannelTypeSchema>;
 
 // ─── Providers (PiAgent passthrough) ──────────────────────────────────────────
-// Shape matches PiAgent's registerProvider() input directly.
-// Users define providers once; models are grouped under each provider.
+// Connection details only. Model knowledge lives in PiAgent's internal registry.
 // Model refs in agent config use "provider:modelId" format.
-
-export const ProviderModelSchema = z.object({
-  id:   z.string(),
-  name: z.string(),
-}).passthrough();
+// PiAgent auto-discovers available models for each provider.
 
 export const ProviderConfigSchema = z.object({
   baseUrl: z.string(),
   apiKey:  z.string(),
   api:     z.string().optional(),
-  models:  z.array(ProviderModelSchema).default([]),
+  // NOTE: 'models' field deprecated — Pi Agent is source of truth
+  // For backward compat, still accepted but ignored by agent-v2
 }).passthrough();
 
 export const ProvidersSchema = z.record(z.string(), ProviderConfigSchema);
 
-export type ProviderModel  = z.infer<typeof ProviderModelSchema>;
 export type ProviderConfig = z.infer<typeof ProviderConfigSchema>;
 export type Providers      = z.infer<typeof ProvidersSchema>;
 

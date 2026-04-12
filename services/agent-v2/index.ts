@@ -65,14 +65,6 @@ import { createCustomTools } from './tools.js';
 
 const log = createLogger('agent-v2');
 
-const MODEL_DEFAULTS = {
-  reasoning: false,
-  input: ['text', 'image'] as ('text' | 'image')[],
-  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  contextWindow: 128_000,
-  maxTokens: 16_384,
-};
-
 /** Parse "provider:modelId" ref into its parts. */
 export function parseModelRef(ref: string): { provider: string; modelId: string } {
   const idx = ref.indexOf(':');
@@ -113,9 +105,11 @@ export class AgentRuntime {
 
     for (const [name, provider] of Object.entries(this.config.providers)) {
       this.authStorage.setRuntimeApiKey(name, provider.apiKey);
+      // Register provider connection details; Pi Agent knows its own models
       this.modelRegistry.registerProvider(name, {
-        ...provider,
-        models: provider.models?.map(m => ({ ...MODEL_DEFAULTS, ...m })),
+        baseUrl: provider.baseUrl,
+        apiKey: provider.apiKey,
+        api: provider.api,
       });
     }
 
