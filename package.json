@@ -1,6 +1,6 @@
 {
   "name": "vargos",
-  "version": "0.9.0",
+  "version": "2.0.1",
   "description": "Self-hosted agent OS with persistent memory, multi-channel presence, tools, scheduling, and sub-agent orchestration",
   "license": "Apache-2.0",
   "author": "Vadi Taslim",
