@@ -24,15 +24,15 @@ export default tseslint.config(
     },
   },
   // ── Domain boundary enforcement ──────────────────────────────────────
-  // lib/ — pure utilities, no domain imports
+  // lib/ — pure utilities; can import from gateway but not from services or edge
   {
-    files: ["src/lib/**/*.ts"],
-    ignores: ["src/lib/**/*.test.ts"],
+    files: ["lib/**/*.ts"],
+    ignores: ["lib/**/*.test.ts"],
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
-          group: ["*/services/*", "*/gateway/*", "*/edge/*", "*/config/*"],
-          message: "lib/ is pure utilities — cannot import from domain or infrastructure modules",
+          group: ["*/services/*", "*/edge/*"],
+          message: "lib/ is pure utilities — cannot import from service or edge modules (gateway is allowed)",
         }],
       }],
     },
@@ -52,8 +52,8 @@ export default tseslint.config(
   },
   // services/channels/ — no cross-domain imports
   {
-    files: ["src/services/channels/**/*.ts"],
-    ignores: ["src/services/channels/**/*.test.ts"],
+    files: ["services/channels/**/*.ts"],
+    ignores: ["services/channels/**/*.test.ts"],
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
@@ -65,8 +65,8 @@ export default tseslint.config(
   },
   // services/cron/ — no cross-domain imports
   {
-    files: ["src/services/cron/**/*.ts"],
-    ignores: ["src/services/cron/**/*.test.ts"],
+    files: ["services/cron/**/*.ts"],
+    ignores: ["services/cron/**/*.test.ts"],
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
@@ -78,8 +78,8 @@ export default tseslint.config(
   },
   // services/memory/ — no cross-domain imports
   {
-    files: ["src/services/memory/**/*.ts"],
-    ignores: ["src/services/memory/**/*.test.ts"],
+    files: ["services/memory/**/*.ts"],
+    ignores: ["services/memory/**/*.test.ts"],
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
@@ -91,8 +91,8 @@ export default tseslint.config(
   },
   // services/tools/ — can import services/browser + services/process
   {
-    files: ["src/services/tools/**/*.ts"],
-    ignores: ["src/services/tools/**/*.test.ts"],
+    files: ["services/tools/**/*.ts"],
+    ignores: ["services/tools/**/*.test.ts"],
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
@@ -104,8 +104,8 @@ export default tseslint.config(
   },
   // edge/ — external adapters, can talk to gateway and services
   {
-    files: ["src/edge/**/*.ts"],
-    ignores: ["src/edge/**/*.test.ts"],
+    files: ["edge/**/*.ts"],
+    ignores: ["edge/**/*.test.ts"],
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{

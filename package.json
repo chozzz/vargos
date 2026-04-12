@@ -33,7 +33,6 @@
   },
   "scripts": {
     "start": "tsx index.ts",
-    "cli": "tsx src/cli/index.ts",
     "build": "tsc",
     "prepare": "tsc",
     "test": "vitest",
@@ -79,5 +78,12 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "esbuild",
+      "sharp"
+    ]
   }
 }
