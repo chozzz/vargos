@@ -214,8 +214,9 @@ export class WhatsAppAdapter extends InboundMediaHandler {
   protected override async handleBatch(id: string, messages: string[]): Promise<void> {
     const messageId = this.latestMessageId.get(id);
     const text = messages.join('\n');
-    this.log.info(`batch for ${this.instanceId}:${id}: "${text.slice(0, 80)}"`);
-    await this.routeToService(id, text, messageId ? { messageId } : undefined);
+    const sessionKey = `${this.instanceId}:${id}`;
+    this.log.info(`batch for ${sessionKey}: "${text.slice(0, 80)}"`);
+    await this.routeToService(sessionKey, text, messageId ? { messageId } : undefined);
   }
 
   protected async resolveMedia(msg: unknown): Promise<InboundMediaSource | null> {
