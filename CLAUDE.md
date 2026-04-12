@@ -2,12 +2,6 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Quick Reference
-
-- **Architecture**: See [CONTRIBUTING.md](./CONTRIBUTING.md)
-- **Features**: See [FEATURES.md](./FEATURES.md)
-- **Known Issues**: See [KNOWN_ISSUES.md](./KNOWN_ISSUES.md)
-
 ## Commands
 
 ```bash
