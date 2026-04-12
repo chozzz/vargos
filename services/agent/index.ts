@@ -17,6 +17,7 @@ import type { AppConfig } from '../../services/config/index.js';
 import { createLogger } from '../../lib/logger.js';
 import { parseDirectives } from '../../lib/directives.js';
 import type { AgentDeps } from './schema.js';
+import { readFileSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
 import { getDataPaths } from '../../lib/paths.js';
 
@@ -96,6 +97,24 @@ export class AgentRuntime {
     this.authStorage = new AuthStorage();
     const modelsJsonPath = path.join(this.agentDir, 'models.json');
     this.modelRegistry = new ModelRegistry(this.authStorage, modelsJsonPath);
+
+    // Load auth credentials from auth.json and set as env vars for Pi SDK
+    const authJsonPath = path.join(this.agentDir, 'auth.json');
+    try {
+      const authData = JSON.parse(readFileSync(authJsonPath, 'utf8'));
+      for (const [provider, creds] of Object.entries(authData)) {
+        if (creds && typeof creds === 'object') {
+          const credsObj = creds as Record<string, string>;
+          const envKeyName = `${provider.toUpperCase()}_API_KEY`;
+          if (credsObj.apiKey && !process.env[envKeyName]) {
+            process.env[envKeyName] = credsObj.apiKey;
+            log.debug(`Set ${envKeyName} from auth.json`);
+          }
+        }
+      }
+    } catch {
+      log.debug('auth.json not found or empty');
+    }
 
     this.settings = SettingsManager.create(this.dataDir, this.agentDir);
     // NOTE: SettingsManager loads ~/.vargos/agent/models.json which has the
