@@ -1,5 +1,12 @@
 import eslint from "@eslint/js";
 import tseslint from "typescript-eslint";
+import { noUnusedEventsRule } from "./eslint-rules/unused-events.mjs";
+
+const customPlugin = {
+  rules: {
+    "no-unused-events": noUnusedEventsRule,
+  },
+};
 
 export default tseslint.config(
   eslint.configs.recommended,
@@ -109,4 +116,14 @@ export default tseslint.config(
     },
   },
   // gateway/ — orchestration layer, no restrictions (intentionally imports everything)
+  // Custom: validate EventMap usage
+  {
+    files: ["gateway/events.ts"],
+    plugins: {
+      custom: customPlugin,
+    },
+    rules: {
+      "custom/no-unused-events": "error",
+    },
+  },
 );

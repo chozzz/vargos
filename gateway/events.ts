@@ -58,9 +58,6 @@ export interface EventMap {
   /** Run finished (success or failure). */
   'agent.onCompleted': { sessionKey: string; success: boolean; response?: string; error?: string };
 
-  /** Emitted when context compaction occurs */
-  'agent.compaction': { sessionKey: string; result: { tokensBefore: number; summary: string; firstKeptEntryId?: string } };
-
   'channel.onConnected': { instanceId: string; type: string };
   'channel.onDisconnected': { instanceId: string };
 
