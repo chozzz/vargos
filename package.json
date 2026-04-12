@@ -45,7 +45,7 @@
   "dependencies": {
     "@clack/prompts": "^1.0.0",
     "@mariozechner/pi-agent-core": "^0.50.7",
-    "@mariozechner/pi-coding-agent": "^0.50.7",
+    "@mariozechner/pi-coding-agent": "^0.66.1",
     "@modelcontextprotocol/sdk": "^1.26.0",
     "@whiskeysockets/baileys": "7.0.0-rc.9",
     "better-sqlite3": "^12.6.2",

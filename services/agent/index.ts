@@ -17,7 +17,6 @@ import type { AppConfig } from '../../services/config/index.js';
 import { createLogger } from '../../lib/logger.js';
 import { parseDirectives } from '../../lib/directives.js';
 import type { AgentDeps } from './schema.js';
-import { readFileSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
 import { getDataPaths } from '../../lib/paths.js';
 
@@ -94,30 +93,12 @@ export class AgentRuntime {
     this.agentDir = path.join(this.dataDir, 'agent');
     this.sessionsDir = paths.sessionsDir;
 
-    this.authStorage = new AuthStorage();
-    const modelsJsonPath = path.join(this.agentDir, 'models.json');
-    this.modelRegistry = new ModelRegistry(this.authStorage, modelsJsonPath);
-
-    // Load auth credentials from auth.json and set as env vars for Pi SDK
+    // Use ~/.vargos/agent for auth and models (override PiAgent defaults)
     const authJsonPath = path.join(this.agentDir, 'auth.json');
-    try {
-      const authContent = readFileSync(authJsonPath, 'utf8');
-      const authData = JSON.parse(authContent);
-      const providers = Object.keys(authData);
-      for (const provider of providers) {
-        const creds = (authData as Record<string, any>)[provider];
-        if (creds && typeof creds === 'object' && creds.apiKey) {
-          const envKey = `${provider.toUpperCase()}_API_KEY`;
-          process.env[envKey] = creds.apiKey;
-        }
-      }
-      if (providers.length > 0) {
-        log.debug(`Loaded auth for: ${providers.join(', ')}`);
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      log.debug(`Failed to load auth.json: ${msg}`);
-    }
+    const modelsJsonPath = path.join(this.agentDir, 'models.json');
+
+    this.authStorage = AuthStorage.create(authJsonPath);
+    this.modelRegistry = ModelRegistry.create(this.authStorage, modelsJsonPath);
 
     this.settings = SettingsManager.create(this.dataDir, this.agentDir);
     // NOTE: SettingsManager loads ~/.vargos/agent/models.json which has the
@@ -152,22 +133,23 @@ export class AgentRuntime {
 
     const session = await this.getOrCreateSession(params.sessionKey, params.cwd);
 
-    if (directives.thinkingLevel) {
-      session.agent.setThinkingLevel(directives.thinkingLevel);
-    }
-
     const images: ImageContent[] | undefined = params.images?.map(img => ({
       type: 'image' as const,
       data: img.data,
       mimeType: img.mimeType,
     }));
 
+    const options: Record<string, unknown> = { images };
+    if (directives.thinkingLevel) {
+      options.thinkingLevel = directives.thinkingLevel;
+    }
+
     // Apply timeout (use provided timeout or fall back to config default)
     const timeoutMs = params.timeoutMs ?? this.config.agent!.executionTimeoutMs;
 
     this.activeRuns.add(params.sessionKey);
     try {
-      await this.promptWithTimeout(session, task, { images }, timeoutMs);
+      await this.promptWithTimeout(session, task, options, timeoutMs);
     } finally {
       this.activeRuns.delete(params.sessionKey);
     }
@@ -261,9 +243,8 @@ export class AgentRuntime {
         log.debug(`Event "${sessionKey}" ${eventType}:`, JSON.stringify(event, null, 2).slice(0, 500));
       }
 
-      // Skip session-specific events (auto_compaction_start, auto_retry_start) - not emitted as bus events
-      if (eventType === 'auto_compaction_start' || eventType === 'auto_compaction_end' ||
-          eventType === 'auto_retry_start' || eventType === 'auto_retry_end') {
+      // Skip session-specific events (auto_retry_start, auto_retry_end) - not emitted as bus events
+      if (eventType === 'auto_retry_start' || eventType === 'auto_retry_end') {
         return;
       }
 

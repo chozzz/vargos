@@ -33,15 +33,17 @@ function wrapEventAsToolDefinition(
     parameters: parameters as ToolDefinition['parameters'],
     execute: async (
       _toolCallId: string,
-      params: Record<string, unknown>,
+      params: unknown,
+      _signal: AbortSignal | undefined,
       _onUpdate: AgentToolUpdateCallback<unknown> | undefined,
-      _ctx: { cwd: string },
-      _signal?: AbortSignal,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      _ctx: any,
     ): Promise<AgentToolResult<unknown>> => {
-      log.debug(`${eventName}: ${Object.entries(params).map(([k, v]) => `${k}=${JSON.stringify(v).slice(0, 100)}`).join(', ')}`);
+      const paramsObj = params as Record<string, unknown>;
+      log.debug(`${eventName}: ${Object.entries(paramsObj).map(([k, v]) => `${k}=${JSON.stringify(v).slice(0, 100)}`).join(', ')}`);
 
       try {
-        const result = await bus.call(eventName as never, params);
+        const result = await bus.call(eventName as never, paramsObj);
 
         let resultText = '';
         if (result && typeof result === 'object') {
