@@ -1,5 +1,5 @@
 /**
- * Agent v2 — PiAgent-powered runtime
+ * Agent — PiAgent-powered runtime
  *
  * Features:
  * - PiAgent session persistence
@@ -28,11 +28,8 @@ import {
   AuthStorage,
   ModelRegistry,
   DefaultResourceLoader,
-  loadSkillsFromDir,
-  formatSkillsForPrompt,
   type AgentSession,
   type ToolDefinition,
-  type Skill,
 } from '@mariozechner/pi-coding-agent';
 
 // ImageContent type for vision models (matches @mariozechner/pi-ai)
@@ -63,7 +60,7 @@ function isCompletionEvent(event: AgentSessionEvent): event is AgentSessionEvent
 
 import { createCustomTools } from './tools.js';
 
-const log = createLogger('agent-v2');
+const log = createLogger('agent');
 
 /** Parse "provider:modelId" ref into its parts. */
 export function parseModelRef(ref: string): { provider: string; modelId: string } {
@@ -86,12 +83,10 @@ export class AgentRuntime {
   protected authStorage: AuthStorage;
   protected modelRegistry: ModelRegistry;
   protected settings: SettingsManager;
-  protected debugMode: boolean;
 
   constructor(deps: AgentDeps) {
     this.bus = deps.bus;
     this.config = deps.config;
-    this.debugMode = process.env.AGENT_DEBUG === 'true';
 
     const paths = getDataPaths();
     this.dataDir = paths.dataDir;
@@ -171,34 +166,8 @@ export class AgentRuntime {
   }
 
   /**
-   * agent.getProviderConfig — Get provider connection details from Pi Agent's models.json
-   */
-  @register('agent.getProviderConfig', {
-    description: 'Get provider connection details (baseUrl, apiKey, api) from Pi Agent registry.',
-    schema: z.object({ provider: z.string() }),
-  })
-  async getProviderConfig(params: EventMap['agent.getProviderConfig']['params']): Promise<EventMap['agent.getProviderConfig']['result']> {
-    try {
-      const modelsPath = path.join(this.agentDir, 'models.json');
-      const content = await fs.readFile(modelsPath, 'utf-8');
-      const models = JSON.parse(content);
-
-      const providers = models.providers || {};
-      const provider = providers[params.provider];
-      if (!provider) return null;
-
-      return {
-        baseUrl: provider.baseUrl,
-        apiKey: provider.apiKey,
-        api: provider.api,
-      };
-    } catch {
-      return null;
-    }
-  }
-
-  /**
    * Execute session.prompt with timeout protection.
+   * Uses Promise.race to enforce timeouts since session.prompt doesn't natively support timeout.
    */
   private promptWithTimeout(
     session: AgentSession,
@@ -206,28 +175,11 @@ export class AgentRuntime {
     options: { images?: ImageContent[] },
     timeoutMs: number,
   ): Promise<void> {
-    return new Promise((resolve, reject) => {
-      let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
-
-      const cleanup = () => {
-        if (timeoutHandle) clearTimeout(timeoutHandle);
-      };
-
-      timeoutHandle = setTimeout(() => {
-        cleanup();
-        reject(new Error(`Agent execution timeout after ${timeoutMs}ms`));
-      }, timeoutMs);
-
-      session.prompt(task, options)
-        .then(() => {
-          cleanup();
-          resolve();
-        })
-        .catch((err) => {
-          cleanup();
-          reject(err);
-        });
+    const timeoutPromise = new Promise<never>((_resolve, reject) => {
+      setTimeout(() => reject(new Error(`Agent execution timeout after ${timeoutMs}ms`)), timeoutMs);
     });
+
+    return Promise.race([session.prompt(task, options), timeoutPromise]);
   }
 
   /**
@@ -248,10 +200,8 @@ export class AgentRuntime {
     const customTools = await this.getCustomTools(sessionKey);
     const systemPrompt = await this.getSystemPrompt(sessionKey, cwd);
 
-    if (this.debugMode) {
-      this.logSystemPrompt(systemPrompt);
-      this.logTools(customTools);
-    }
+    this.logSystemPrompt(systemPrompt);
+    this.logTools(customTools);
 
     const resourceLoader = await this.createResourceLoader(systemPrompt, cwd);
 
@@ -284,8 +234,8 @@ export class AgentRuntime {
     session.subscribe(event => {
       const eventType = event.type;
 
-      if (this.debugMode && eventType !== 'message_update') {
-        log.info(`[DEBUG] Event "${sessionKey}" ${eventType}:`, JSON.stringify(event, null, 2).slice(0, 500));
+      if (eventType !== 'message_update') {
+        log.debug(`Event "${sessionKey}" ${eventType}:`, JSON.stringify(event, null, 2).slice(0, 500));
       }
 
       // Skip session-specific events (auto_compaction_start, auto_retry_start) - not emitted as bus events
@@ -327,66 +277,24 @@ export class AgentRuntime {
   }
 
   /**
-   * Create ResourceLoader with merged skills from workspace + cwd.
+   * Create ResourceLoader. PiAgent's DefaultResourceLoader handles skills, themes, and
+   * prompt templates. We override systemPrompt with our Vargos bootstrap files.
    */
   protected async createResourceLoader(systemPromptOverride?: string, cwd?: string): Promise<DefaultResourceLoader> {
     const effectiveCwd = cwd ?? this.dataDir;
-    const skills = this.loadSkillsFromDirs(cwd);
-
-    let finalSystemPrompt = systemPromptOverride;
-    if (skills.length > 0) {
-      const skillsSection = formatSkillsForPrompt(skills);
-      finalSystemPrompt = finalSystemPrompt
-        ? `${finalSystemPrompt}\n\n${skillsSection}`
-        : skillsSection;
-    }
 
     const resourceLoader = new DefaultResourceLoader({
       cwd: effectiveCwd,
       agentDir: this.agentDir,
       settingsManager: this.settings,
       extensionFactories: [],
-      noSkills: true,
-      noPromptTemplates: true,
-      noThemes: true,
-      ...(finalSystemPrompt && { systemPrompt: finalSystemPrompt }),
-      agentsFilesOverride: () => ({ agentsFiles: [] }),
+      ...(systemPromptOverride && { systemPrompt: systemPromptOverride }),
     });
 
     await resourceLoader.reload();
     return resourceLoader;
   }
 
-  /**
-   * Load skills from workspace/skills/ and optionally cwd/skills/.
-   */
-  private loadSkillsFromDirs(cwd?: string): Skill[] {
-    const dirs = [path.join(this.dataDir, 'skills')];
-    if (cwd && path.resolve(cwd) !== path.resolve(this.dataDir)) {
-      dirs.push(path.join(cwd, 'skills'));
-    }
-
-    const byName = new Map<string, Skill>();
-
-    for (const dir of dirs) {
-      try {
-        const { skills } = loadSkillsFromDir({ dir, source: 'workspace' });
-        for (const skill of skills) {
-          byName.set(skill.name, skill);
-        }
-        if (this.debugMode && skills.length > 0) {
-          log.info(`[DEBUG] Loaded ${skills.length} skills from ${dir}`);
-          skills.forEach(s => log.info(`  - ${s.name}: ${s.description}`));
-        }
-      } catch {
-        if (this.debugMode) {
-          log.info(`[DEBUG] No skills directory at ${dir}`);
-        }
-      }
-    }
-
-    return Array.from(byName.values());
-  }
 
   /**
    * Build system prompt by merging bootstrap files from workspace and optional cwd.
@@ -414,22 +322,15 @@ export class AgentRuntime {
           }
 
           sections.push(`<!-- ${dir}/${filename} -->`, content.trim(), '');
-
-          if (this.debugMode) {
-            log.info(`[DEBUG] Loaded ${dir}/${filename}: ${content.length} chars`);
-          }
+          log.debug(`Loaded ${dir}/${filename}: ${content.length} chars`);
         } catch {
-          if (this.debugMode) {
-            log.info(`[DEBUG] ${dir}/${filename}: not found`);
-          }
+          log.debug(`${dir}/${filename}: not found`);
         }
       }
     }
 
     if (sections.length === 0) {
-      if (this.debugMode) {
-        log.info('[DEBUG] No bootstrap files found, using PiAgent default');
-      }
+      log.debug('No bootstrap files found, using PiAgent default');
       return undefined;
     }
 
@@ -447,58 +348,54 @@ export class AgentRuntime {
 
   protected logSystemPrompt(systemPrompt?: string): void {
     if (!systemPrompt) {
-      log.info('[DEBUG] System Prompt: (none - using PiAgent default)');
+      log.debug('System Prompt: (none - using PiAgent default)');
       return;
     }
 
     const lines = systemPrompt.split('\n');
-    log.info(`[DEBUG] System Prompt: ${lines.length} lines, ${systemPrompt.length} chars`);
-    const preview = lines.slice(0, 30).join('\n');
-    log.info(`[DEBUG] Preview:\n${preview}`);
-
-    if (lines.length > 30) {
-      log.info(`[DEBUG] ... (${lines.length - 30} more lines)`);
-    }
+    log.debug(`System Prompt: ${lines.length} lines, ${systemPrompt.length} chars`);
+    log.debug(`Preview:\n${lines.slice(0, 30).join('\n')}`);
+    if (lines.length > 30) log.debug(`... (${lines.length - 30} more lines)`);
   }
 
   protected logTools(tools: ToolDefinition[]): void {
-    log.info(`[DEBUG] Tools: ${tools.length} registered`);
+    log.debug(`Tools: ${tools.length} registered`);
     tools.forEach(t => {
       const params = t.parameters?.properties
         ? Object.keys(t.parameters.properties as Record<string, unknown>).join(', ')
         : 'none';
-      log.info(`  - ${t.name}: ${t.description.slice(0, 80)}... (params: ${params})`);
+      log.debug(`  - ${t.name}: ${t.description.slice(0, 80)}... (params: ${params})`);
     });
   }
 
   // ── Private Helpers ────────────────────────────────────────────────────────
 
+  /**
+   * Extract the last assistant message from the session.
+   * Handles both string and multipart content (text blocks).
+   */
   private extractResponse(session: AgentSession): string {
-    const entries = session.sessionManager.getEntries();
+    const messages = (session as any).state?.messages || [];
 
-    for (let i = entries.length - 1; i >= 0; i--) {
-      const entry = entries[i];
-      if (entry.type === 'message') {
-        const msg = (entry as any).message;
-        if (msg?.role === 'assistant' && msg.content) {
-          return this.extractMessageContent(msg) || '';
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i];
+      if (msg?.role === 'assistant' && msg.content) {
+        // Handle string content
+        if (typeof msg.content === 'string') {
+          return msg.content;
+        }
+        // Handle multipart content (text blocks in arrays)
+        if (Array.isArray(msg.content)) {
+          return msg.content
+            .filter((block: any) => block.type === 'text')
+            .map((block: any) => block.text || '')
+            .filter(Boolean)
+            .join('\n');
         }
       }
     }
 
     return '';
-  }
-
-  private extractMessageContent(msg: { content: string | Array<{ type: string; text?: string }> }): string | undefined {
-    if (typeof msg.content === 'string') return msg.content;
-    if (Array.isArray(msg.content)) {
-      return msg.content
-        .filter((block: any) => block.type === 'text')
-        .map((block: any) => block.text || '')
-        .filter(Boolean)
-        .join('\n');
-    }
-    return undefined;
   }
 
   stop(): void {

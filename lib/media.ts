@@ -1,73 +1,13 @@
 import { createHash } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import {
-  transcribeAudio,
-  describeImageOpenAI,
-  describeImageAnthropic,
-  extFromMime,
-  MIME_TO_AUDIO_EXT,
-} from './media-transcribe.js';
+import { extFromMime } from './media-transcribe.js';
 
 export interface MediaModelConfig {
   provider: string;
   model: string;
   apiKey?: string;
   baseUrl?: string;
-}
-
-export interface MediaAttachment {
-  type: 'audio' | 'image' | 'video' | 'document';
-  data: string;      // base64
-  mimeType: string;
-  path: string;      // saved file path
-}
-
-/**
- * Transform media (transcribe audio or describe image) based on provider
- */
-export async function transformMedia(
-  media: MediaAttachment,
-  profile: MediaModelConfig,
-): Promise<string> {
-  const { type, data, mimeType, path: filePath } = media;
-  const { provider } = profile;
-
-  if (type === 'audio' && provider === 'openai') {
-    // For audio, use file path if available, otherwise save temp buffer
-    const audioPath = filePath || await saveTempFile(Buffer.from(data, 'base64'), mimeType);
-    return transcribeAudio(audioPath, profile);
-  }
-
-  if (type === 'image' && provider === 'openai') {
-    return describeImageOpenAI(data, mimeType, profile);
-  }
-
-  if (type === 'image' && provider === 'anthropic') {
-    return describeImageAnthropic(data, mimeType, profile);
-  }
-
-  throw new Error(
-    `Unsupported media transform: ${type} + ${provider}. ` +
-    `Configure a compatible model profile for agent.media.${type}.`,
-  );
-}
-
-/**
- * Save buffer to temp file with proper extension
- */
-async function saveTempFile(buffer: Buffer, mimeType: string): Promise<string> {
-  const ext = getMimeExt(mimeType);
-  const tempPath = path.join('/tmp', `vargos-media-${Date.now()}${ext}`);
-  await writeFile(tempPath, buffer);
-  return tempPath;
-}
-
-/**
- * Get file extension for MIME type
- */
-function getMimeExt(mimeType: string): string {
-  return MIME_TO_AUDIO_EXT[mimeType] || '.ogg';
 }
 
 export async function saveMedia(params: {

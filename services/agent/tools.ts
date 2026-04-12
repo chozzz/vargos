@@ -1,5 +1,5 @@
 /**
- * Agent v2 — Bus Tools Integration
+ * Agent — Bus Tools Integration
  * 
  * Converts bus callable events with @register decorators into PiAgent ToolDefinitions.
  */
@@ -12,7 +12,7 @@ import { isToolEvent } from '../../gateway/emitter.js';
 import { toMessage } from '../../lib/error.js';
 import { appendError } from '../../lib/error-store.js';
 
-const log = createLogger('agent-v2-tools');
+const log = createLogger('agent-tools');
 
 const LARGE_RESULT_TOKEN_THRESHOLD = 5_000;
 

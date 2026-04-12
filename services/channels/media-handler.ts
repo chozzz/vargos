@@ -5,7 +5,6 @@
 
 import path from 'node:path';
 import { saveMedia } from '../../lib/media.js';
-import { transcribeAudio } from '../../lib/media-transcribe.js';
 import { getDataPaths } from '../../lib/paths.js';
 import { BaseChannelAdapter } from './base-adapter.js';
 
@@ -17,7 +16,7 @@ export interface InboundMediaSource {
   duration?: number;
 }
 
-const TYPE_LABELS: Record<string, string> = {
+export const TYPE_LABELS: Record<string, string> = {
   audio: 'Voice message',
   video: 'Video message',
   document: 'Document',
@@ -26,12 +25,12 @@ const TYPE_LABELS: Record<string, string> = {
 
 export abstract class InboundMediaHandler extends BaseChannelAdapter {
   protected abstract resolveMedia(msg: unknown): Promise<InboundMediaSource | null>;
-  
-  protected audioTranscribeConfig?: { provider: string; model: string; apiKey?: string; baseUrl?: string };
 
-  /** Set audio transcription config */
-  setAudioTranscribeConfig(config?: { provider: string; model: string; apiKey?: string; baseUrl?: string }): void {
-    this.audioTranscribeConfig = config;
+  protected transcribeFn?: (filePath: string) => Promise<string>;
+
+  /** Set audio transcription function */
+  setTranscribeFn(fn: (filePath: string) => Promise<string>): void {
+    this.transcribeFn = fn;
   }
 
   /**
@@ -63,9 +62,9 @@ export abstract class InboundMediaHandler extends BaseChannelAdapter {
       return;
     }
 
-    if (mediaType === 'audio' && this.audioTranscribeConfig) {
+    if (mediaType === 'audio' && this.transcribeFn) {
       try {
-        const transcription = await transcribeAudio(savedPath, this.audioTranscribeConfig);
+        const transcription = await this.transcribeFn(savedPath);
         await route(
           `${transcription}\n\n[Audio transcribed from: ${savedPath}]`,
           { media, transcription },

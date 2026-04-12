@@ -7,7 +7,7 @@ import { createServer, Socket } from 'node:net';
 import type { Bus, CallableEventKey } from './bus.js';
 import { createLogger } from '../lib/logger.js';
 
-const log = createLogger('bus-server');
+const log = createLogger('tcp-server');
 
 interface JSONRPCRequest {
   jsonrpc: '2.0';
@@ -47,7 +47,7 @@ export function startTCPServer(
 
       socket.setTimeout(socketTimeoutMs);
       socket.on('timeout', () => {
-        log.warn('Client timeout');
+        log.warn(`Client timeout: ${socket.remoteAddress}:${socket.remotePort}`);
         socket.destroy();
       });
     });

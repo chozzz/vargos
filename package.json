@@ -25,7 +25,7 @@
   "files": [
     "dist",
     "README.md",
-    "LICENSE.md",
+    "LICENSE",
     "CONTRIBUTING.md"
   ],
   "bin": {
@@ -34,11 +34,12 @@
   "scripts": {
     "start": "tsx index.ts",
     "build": "tsc",
-    "prepare": "tsc",
+    "prepare": "husky && tsc",
     "test": "vitest",
     "test:run": "vitest run",
     "lint": "eslint 'gateway/**/*.ts' 'services/**/*.ts' 'lib/**/*.ts' 'index.ts' 'vitest.config.ts' '**/__tests__/**/*.ts' && tsc --noEmit",
     "typecheck": "tsc --noEmit",
+    "precommit": "pnpm exec lint-staged && pnpm run typecheck && pnpm run test:run",
     "postinstall": "pnpm rebuild better-sqlite3"
   },
   "dependencies": {
@@ -56,6 +57,7 @@
     "playwright": "^1.58.1",
     "qrcode-terminal": "^0.12.0",
     "tinyglobby": "^0.2.15",
+    "turndown": "^7.2.4",
     "ws": "^8.18.0",
     "zod": "^3.23.8",
     "zod-to-json-schema": "^3.25.1"
@@ -67,14 +69,22 @@
     "@types/node": "^25.2.1",
     "@types/pg": "^8.16.0",
     "@types/qrcode-terminal": "^0.12.2",
+    "@types/turndown": "^5.0.6",
     "@types/ws": "^8.5.13",
     "@typescript-eslint/eslint-plugin": "^8.54.0",
     "@typescript-eslint/parser": "^8.54.0",
     "eslint": "^9.39.2",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.54.0",
     "vitest": "^4.0.18"
+  },
+  "lint-staged": {
+    "*.ts": [
+      "eslint --fix"
+    ]
   },
   "engines": {
     "node": ">=20"

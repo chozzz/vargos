@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import path from 'node:path';
 import { register } from '../../gateway/decorators.js';
 import type { Bus } from '../../gateway/bus.js';
 import type { EventMap } from '../../gateway/events.js';
@@ -28,7 +29,7 @@ import {
   type McpClientConfig,
   type StorageConfig,
   type Json,
-} from './schemas.js';
+} from './schemas/index.js';
 import { getDataPaths } from '../../lib/paths.js';
 import { createLogger } from '../../lib/logger.js';
 
@@ -85,14 +86,29 @@ export type {
 
 // ─── Load / save ──────────────────────────────────────────────────────────────
 
-export function loadConfig(path: string): AppConfig {
-  const raw = normalizeConfigInput(JSON.parse(readFileSync(path, 'utf8')));
+export function loadConfig(configPath: string, agentDir: string): AppConfig {
+  const raw = normalizeConfigInput(JSON.parse(readFileSync(configPath, 'utf8')));
+
+  // If agent config is missing from config.json, load from agent/settings.json
+  if (!raw.agent) {
+    try {
+      const settingsPath = path.join(agentDir, 'settings.json');
+      const settingsContent = readFileSync(settingsPath, 'utf8');
+      const settings = JSON.parse(settingsContent);
+      if (settings && typeof settings === 'object') {
+        raw.agent = settings;
+      }
+    } catch {
+      // settings.json missing or unparseable — validation will fail with clear error
+    }
+  }
+
   const result = AppConfigSchema.safeParse(raw);
   if (!result.success) {
     const issues = result.error.issues
       .map(i => `  ${i.path.join('.')}: ${i.message}`)
       .join('\n');
-    throw new Error(`Invalid config at ${path}:\n${issues}`);
+    throw new Error(`Invalid config at ${configPath}:\n${issues}`);
   }
   return result.data;
 }
@@ -116,12 +132,13 @@ function parseHourToken(s: string | undefined, fallback: number): number {
 
 /**
  * Normalize config format (legacy compatibility).
- * - agent.primary → agent.model (fallback kept as agent.fallback)
+ * - agent.primary → agent.model
  * - heartbeat.activeHours: { start, end, timezone } → tuple + activeHoursTimezone
  * - heartbeat.every: star-slash-N minute cron → intervalMinutes
  *
  * Note: models array in providers is now optional (passthrough only) since Pi Agent is the
- * definitive source of truth for available models.
+ * definitive source of truth for available models. Agent config is now sourced from
+ * agent/settings.json as the single source of truth.
  */
 export function normalizeConfigInput(raw: Record<string, unknown>): Record<string, unknown> {
   const out = { ...raw };
@@ -166,16 +183,54 @@ export function saveConfig(path: string, config: AppConfig): void {
 export class ConfigService {
   private config: AppConfig;
   private readonly log = createLogger('config');
+  private readonly configFile: string;
+  private readonly agentDir: string;
+  private readonly agentModelsFile: string;
+  private readonly agentSettingsFile: string;
 
   constructor(
     private readonly bus: Bus,
-    private readonly file: string,
+    configFile: string,
+    agentDir?: string,
   ) {
-    this.config = loadConfig(file);
+    this.configFile = configFile;
+    this.agentDir = agentDir || path.join(path.dirname(configFile), '..', 'agent');
+    this.agentModelsFile = path.join(this.agentDir, 'models.json');
+    this.agentSettingsFile = path.join(this.agentDir, 'settings.json');
+    this.config = this.mergeConfigs();
+  }
+
+  private mergeConfigs(): AppConfig {
+    // Load main config (with agent/settings.json fallback if agent missing)
+    const appConfig = loadConfig(this.configFile, this.agentDir);
+
+    // Try to load and merge agent/models.json providers
+    try {
+      const modelsContent = readFileSync(this.agentModelsFile, 'utf8');
+      const models = JSON.parse(modelsContent);
+      if (models.providers) {
+        appConfig.providers = models.providers;
+      }
+    } catch {
+      // File may not exist yet, that's okay
+    }
+
+    // Load agent/settings.json as source of truth for agent config
+    try {
+      const settingsContent = readFileSync(this.agentSettingsFile, 'utf8');
+      const settings = JSON.parse(settingsContent);
+      if (settings && typeof settings === 'object') {
+        appConfig.agent = settings;
+      }
+    } catch {
+      // File may not exist yet, that's okay
+    }
+
+    return appConfig;
   }
 
   @register('config.get', {
-    description: 'Get the current application configuration.',
+    description: 'Get the current application configuration (merged from config.json, agent/models.json, agent/settings.json).',
     schema: z.object({}),
   })
   async get(_params: EventMap['config.get']['params']): Promise<AppConfig> {
@@ -183,27 +238,73 @@ export class ConfigService {
   }
 
   @register('config.set', {
-    description: 'Update the application config. Validates, persists to disk, and broadcasts config.onChanged.',
+    description: 'Update the application config. Intelligently routes to correct file (config.json, agent/models.json, or agent/settings.json).',
     schema: z.object({}).passthrough(),
   })
   async set(params: AppConfig): Promise<AppConfig> {
     const parsed = AppConfigSchema.parse(normalizeConfigInput(params as Record<string, unknown>));
-    this.config = parsed;
-    saveConfig(this.file, parsed);
-    this.bus.emit('config.onChanged', parsed);
+
+    // Split config into components by ownership
+    const configForFile: AppConfig = { ...parsed };
+    const agentModels: Record<string, unknown> = {};
+    const agentSettings: Record<string, unknown> = {};
+
+    // Extract providers to agent/models.json
+    if (configForFile.providers) {
+      agentModels.providers = configForFile.providers;
+      delete configForFile.providers;
+    }
+
+    // Load existing agent files to preserve other fields
+    try {
+      const existing = JSON.parse(readFileSync(this.agentModelsFile, 'utf8'));
+      Object.assign(agentModels, existing, agentModels); // Preserve existing, override with new
+    } catch {
+      // File doesn't exist yet
+    }
+
+    try {
+      const existing = JSON.parse(readFileSync(this.agentSettingsFile, 'utf8'));
+      Object.assign(agentSettings, existing);
+    } catch {
+      // File doesn't exist yet
+    }
+
+    // Persist to appropriate files
+    saveConfig(this.configFile, configForFile);
+
+    if (Object.keys(agentModels).length > 0) {
+      if (!existsSync(this.agentDir)) {
+        mkdirSync(this.agentDir, { recursive: true });
+      }
+      writeFileSync(this.agentModelsFile, JSON.stringify(agentModels, null, 2), { mode: 0o600 });
+    }
+
+    if (Object.keys(agentSettings).length > 0) {
+      if (!existsSync(this.agentDir)) {
+        mkdirSync(this.agentDir, { recursive: true });
+      }
+      writeFileSync(this.agentSettingsFile, JSON.stringify(agentSettings, null, 2), { mode: 0o600 });
+    }
+
+    // Update in-memory config and broadcast
+    this.config = this.mergeConfigs();
+    this.bus.emit('config.onChanged', this.config);
     this.log.info('config updated and persisted');
-    return parsed;
+    return this.config;
   }
 }
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
 
 export async function boot(bus: Bus): Promise<{ stop?(): void }> {
-  const svc = new ConfigService(bus, getDataPaths().configFile);
+  const { configFile, dataDir } = getDataPaths();
+  const agentDir = path.join(dataDir, 'agent');
+  const svc = new ConfigService(bus, configFile, agentDir);
   bus.bootstrap(svc);
   return {};
 }
 
 // ── Re-exports ────────────────────────────────────────────────────────────────
 
-export * from './schemas.js';
+export * from './schemas/index.js';

@@ -236,8 +236,7 @@ export class ChannelService {
 
     log.info(`inbound: ${sessionKey} "${enrichedContent.slice(0, 80)}"`);
 
-    this.runAgent(sessionKey, enrichedContent, inboundMeta, reactionController)
-      .catch(err => log.error(`agent execution failed: ${toMessage(err)}`));
+    this.runAgent(sessionKey, enrichedContent, inboundMeta, reactionController);
   }
 
   /**
@@ -304,7 +303,8 @@ export class ChannelService {
   }
 
   private async createAdapter(entry: ChannelEntry): Promise<ChannelAdapter | null> {
-    const audioConfig = await this.getAudioTranscribeConfig();
+    const transcribeFn = (filePath: string) =>
+      this.bus.call('media.transcribeAudio', { filePath }).then(r => r.text);
 
     switch (entry.type) {
       case 'telegram': {
@@ -313,7 +313,7 @@ export class ChannelService {
           entry.id, cfg.botToken, cfg.allowFrom,
           this.onInboundMessage.bind(this), cfg.debounceMs,
         );
-        if (audioConfig) adapter.setAudioTranscribeConfig(audioConfig);
+        adapter.setTranscribeFn(transcribeFn);
         return adapter;
       }
       case 'whatsapp': {
@@ -322,25 +322,11 @@ export class ChannelService {
           entry.id, cfg.allowFrom,
           this.onInboundMessage.bind(this), cfg.debounceMs,
         );
-        if (audioConfig) adapter.setAudioTranscribeConfig(audioConfig);
+        adapter.setTranscribeFn(transcribeFn);
         return adapter;
       }
       default:
         return null;
-    }
-  }
-
-  private async getAudioTranscribeConfig(): Promise<{ provider: string; model: string; apiKey?: string; baseUrl?: string } | undefined> {
-    if (!this.config.agent?.media?.audio) return undefined;
-    const [provider, model] = this.config.agent.media.audio.split(':');
-    if (!provider || !model) return undefined;
-
-    try {
-      const providerConfig = await this.bus.call('agent.getProviderConfig', { provider });
-      if (!providerConfig) return undefined;
-      return { provider, model, apiKey: providerConfig.apiKey, baseUrl: providerConfig.baseUrl };
-    } catch {
-      return undefined;
     }
   }
 

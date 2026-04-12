@@ -21,7 +21,7 @@ export async function indexSessions(
       allChunks.push(...chunks);
     }
   } catch (err) {
-    log.error(`failed to index sessions: ${err}`);
+    log.error('failed to index sessions', { error: err instanceof Error ? err.message : String(err) });
   }
   return allChunks;
 }
@@ -67,7 +67,7 @@ async function indexSessionFile(
 
     return chunks;
   } catch (err) {
-    log.error(`failed to index session ${filePath}: ${err}`);
+    log.error('failed to index session', { filePath, error: err instanceof Error ? err.message : String(err) });
     return [];
   }
 }

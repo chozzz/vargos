@@ -6,7 +6,6 @@ import { parseModelRef, AgentRuntime } from '../index.js';
 import { AppConfigSchema } from '../../config/index.js';
 import type { Bus } from '../../../gateway/bus.js';
 import { resetDataPaths } from '../../../lib/paths.js';
-import { resetDataPaths } from '../../../lib/paths.js';
 
 // ── parseModelRef ────────────────────────────────────────────────────────────
 
@@ -85,7 +84,7 @@ describe('getSystemPrompt merging', () => {
   let cwdDir: string;
 
   beforeEach(() => {
-    tmpDir = path.join(os.tmpdir(), `agent-v2-test-${Date.now()}`);
+    tmpDir = path.join(os.tmpdir(), `agent-test-${Date.now()}`);
     workspaceDir = path.join(tmpDir, 'workspace');
     cwdDir = path.join(tmpDir, 'project');
 

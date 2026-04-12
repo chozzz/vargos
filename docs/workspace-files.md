@@ -2,7 +2,7 @@
 
 Vargos initializes a workspace directory (`~/.vargos/workspace/` by default) with context files on first run. These files shape how the agent behaves, what it remembers, and how it interacts with the user. For how these files are injected into the system prompt, see [runtime.md](./runtime.md).
 
-Templates live in `docs/templates/`. They're copied once on first boot — after that, the agent reads exclusively from the workspace directory. Users edit the workspace copies; templates serve as reference only.
+Templates live in `.templates/vargos/workspace/`. They're copied once on first boot — after that, the agent reads exclusively from the workspace directory. Users edit the workspace copies; templates serve as reference only.
 
 ## File Reference
 
@@ -56,13 +56,10 @@ The heartbeat is a periodic cron task that polls the agent to perform maintenanc
 {
   "heartbeat": {
     "enabled": true,
-    "every": "*/30 * * * *",       // cron expression (default: every 30 min)
+    "intervalMinutes": 30,
     "notify": ["whatsapp:61423222658"],  // optional: deliver results to channel
-    "activeHours": {
-      "start": "08:00",
-      "end": "22:00",
-      "timezone": "Australia/Sydney"
-    }
+    "activeHours": [8, 22],
+    "activeHoursTimezone": "Australia/Sydney"
   }
 }
 ```

@@ -20,7 +20,7 @@ import { register } from '../../gateway/decorators.js';
 import type { Bus } from '../../gateway/bus.js';
 import type { EventMap } from '../../gateway/events.js';
 import type { AppConfig, CronTask, CronAddParams, CronUpdateParams } from '../../services/config/index.js';
-import type { HeartbeatConfig } from '../../services/config/schemas.js';
+import type { HeartbeatConfig } from '../../services/config/schemas/index.js';
 import { createLogger } from '../../lib/logger.js';
 import { toMessage } from '../../lib/error.js';
 import { getDataPaths } from '../../lib/paths.js';
@@ -211,7 +211,7 @@ export class CronService {
       try {
         await this.executeTask(entry.task);
       } catch (err) {
-        log.error(`task execution error: ${id}: ${err instanceof Error ? err.message : err}`);
+        log.error('task execution error', { id, error: err instanceof Error ? err.message : String(err) });
       }
     }).catch(err => log.error(`hook check error: ${id}: ${err}`));
   }

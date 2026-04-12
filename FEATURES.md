@@ -6,19 +6,19 @@ Agent v2 is a **PiAgent-powered runtime** that replaces the old agent service. I
 
 | Feature | Status | Location |
 |---------|--------|----------|
-| PiAgent session persistence | ✅ | `services/agent-v2/index.ts` |
-| `agent.execute` RPC with schema validation | ✅ | `services/agent-v2/index.ts` |
-| Session management (create/get/cache) | ✅ | `services/agent-v2/index.ts` |
-| Model registration via `ModelRegistry` | ✅ | `services/agent-v2/index.ts` |
-| API key management via `AuthStorage` | ✅ | `services/agent-v2/index.ts` |
-| Settings sync via `SettingsManager` | ✅ | `services/agent-v2/index.ts` |
-| Skills loading via `loadSkillsFromDir` | ✅ | `services/agent-v2/index.ts` |
-| Custom tools from bus events | ✅ | `services/agent-v2/tools.ts` |
-| System prompt from workspace files | ✅ | `services/agent-v2/index.ts` |
-| Image passthrough to PiAgent (vision) | ✅ | `services/agent-v2/index.ts` |
+| PiAgent session persistence | ✅ | `services/agent/index.ts` |
+| `agent.execute` RPC with schema validation | ✅ | `services/agent/index.ts` |
+| Session management (create/get/cache) | ✅ | `services/agent/index.ts` |
+| Model registration via `ModelRegistry` | ✅ | `services/agent/index.ts` |
+| API key management via `AuthStorage` | ✅ | `services/agent/index.ts` |
+| Settings sync via `SettingsManager` | ✅ | `services/agent/index.ts` |
+| Skills loading via `loadSkillsFromDir` | ✅ | `services/agent/index.ts` |
+| Custom tools from bus events | ✅ | `services/agent/tools.ts` |
+| System prompt from workspace files | ✅ | `services/agent/index.ts` |
+| Image passthrough to PiAgent (vision) | ✅ | `services/agent/index.ts` |
 | Audio transcription (Whisper API) | ✅ | `lib/media-transcribe.ts` |
-| Streaming events passthrough to bus | ✅ | `services/agent-v2/index.ts` |
-| Debug mode (`AGENT_DEBUG=true`) | ✅ | `services/agent-v2/index.ts` |
+| Streaming events passthrough to bus | ✅ | `services/agent/index.ts` |
+| Debug mode (`AGENT_DEBUG=true`) | ✅ | `services/agent/index.ts` |
 | Subagent orchestration via `agent.execute` | ✅ | `lib/subagent.ts` |
 
 ## System Prompt

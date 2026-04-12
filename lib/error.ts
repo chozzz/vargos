@@ -45,20 +45,3 @@ export function classifyError(msg: string): ErrorClass {
   return 'unknown';
 }
 
-/** Map an error class to a concise, user-friendly message for channel delivery. */
-export function friendlyError(errorClass: ErrorClass): string {
-  switch (errorClass) {
-    case 'transient':
-      return 'I had trouble connecting. Please try again in a moment.';
-    case 'auth':
-      return 'There\'s an authentication issue. The admin may need to check the API key.';
-    case 'rate_limit':
-      return 'Too many requests — please wait a moment before trying again.';
-    case 'timeout':
-      return 'That request timed out. Please try again.';
-    case 'capability':
-      return 'The current model doesn\'t support that request. The admin may need to check the model config.';
-    case 'unknown':
-      return 'Something went wrong on my end. Please try again.';
-  }
-}

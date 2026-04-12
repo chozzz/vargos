@@ -42,7 +42,7 @@ export abstract class BaseChannelAdapter implements ChannelAdapter {
     this.debouncer = createMessageDebouncer(
       (id, messages) => {
         this.handleBatch(id, messages).catch((err) => {
-          this.log.error(`handleBatch error for ${id}: ${err}`);
+          this.log.error('handleBatch error', { id, error: err instanceof Error ? err.message : String(err) });
         });
       },
       { delayMs: debounceMs ?? 2000 },

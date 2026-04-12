@@ -61,7 +61,7 @@ export class TelegramAdapter extends InboundMediaHandler {
     this.log.debug('long-polling started');
 
     this.pollLoop().catch((err) => {
-      this.log.debug(`poll loop exited: ${err}`);
+      this.log.error(`poll loop exited: ${err}`);
       this.status = 'error';
     });
   }
@@ -151,7 +151,7 @@ export class TelegramAdapter extends InboundMediaHandler {
         }
       } catch (err) {
         if (!this.polling) break;
-        this.log.debug(`poll error: ${err}`);
+        this.log.warn(`poll error: ${err}`);
         await sleep(RECONNECT_DELAY_MS);
       }
     }
@@ -174,7 +174,7 @@ export class TelegramAdapter extends InboundMediaHandler {
     if (msg.photo || msg.voice || msg.audio) {
       this.debouncer.flush(chatId);
       this.handleMedia(chatId, msg).catch((err) => {
-        this.log.debug(`handleMedia error for ${chatId}: ${err}`);
+        this.log.warn(`handleMedia error for ${chatId}: ${err}`);
       });
       return;
     }
@@ -237,7 +237,7 @@ export class TelegramAdapter extends InboundMediaHandler {
         (text, metadata) => this.routeToService(sessionKey, text, { ...metadata, messageId: String(msg.message_id) }),
       );
     } catch (err) {
-      this.log.debug(`${label} download failed for ${chatId}: ${err}`);
+      this.log.warn(`${label} download failed for ${chatId}: ${err}`);
     }
   }
 

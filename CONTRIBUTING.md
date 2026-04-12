@@ -60,7 +60,7 @@ gateway/
 
 services/
   config/                 Config loading, validation, change events
-  agent-v2/               PiAgent runtime, session management, streaming events
+  agent/               PiAgent runtime, session management, streaming events
   channels/               External adapters (WhatsApp, Telegram)
   cron/                   Scheduled tasks, heartbeat, error review
   memory/                 Hybrid search (semantic + BM25) over workspace files
@@ -95,7 +95,7 @@ services/log/       → gateway/, lib/
 services/fs/        → gateway/, lib/ (exception: no restrictions)
 services/web/       → gateway/, lib/ (exception: no restrictions)
 services/memory/    → gateway/, lib/
-services/agent-v2/  → gateway/, lib/ (no other services)
+services/agent/  → gateway/, lib/ (no other services)
 services/cron/      → gateway/, lib/ (no other services)
 services/channels/  → gateway/, lib/ (no other services)
 
@@ -197,7 +197,7 @@ Boot order (see `index.ts`):
 3. **fs** — File I/O: read, write, edit, exec
 4. **web** — HTTP fetch + text extraction
 5. **memory** — Hybrid search over workspace files
-6. **agent-v2** — PiAgent runtime, session management, streaming events
+6. **agent** — PiAgent runtime, session management, streaming events
 7. **cron** — Scheduled tasks, heartbeat, error review
 8. **channels** — WhatsApp/Telegram adapters, inbound routing
 

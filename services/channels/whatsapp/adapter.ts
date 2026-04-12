@@ -6,7 +6,7 @@ import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { WASocket } from '@whiskeysockets/baileys';
 import type { OnInboundMessageFn } from '../types.js';
-import { InboundMediaHandler, type InboundMediaSource } from '../media-handler.js';
+import { InboundMediaHandler, type InboundMediaSource, TYPE_LABELS } from '../media-handler.js';
 import { createWhatsAppSocket, type WhatsAppInboundMessage } from './session.js';
 import { getDataPaths } from '../../../lib/paths.js';
 import { Reconnector } from '../../../lib/reconnect.js';
@@ -71,7 +71,7 @@ export class WhatsAppAdapter extends InboundMediaHandler {
             try {
               this.resetCredentialsForRepairing();
             } catch (err) {
-              this.log.error(`failed to reset credentials: ${err}`);
+              this.log.error('failed to reset credentials', { error: err instanceof Error ? err.message : String(err) });
               this.status = 'error';
               return;
             }
@@ -93,7 +93,7 @@ export class WhatsAppAdapter extends InboundMediaHandler {
       });
     } catch (err) {
       this.status = 'error';
-      this.log.error(`failed to start: ${err}`);
+      this.log.error('failed to start', { error: err instanceof Error ? err.message : String(err) });
       this.scheduleReconnect();
     }
   }
@@ -114,7 +114,6 @@ export class WhatsAppAdapter extends InboundMediaHandler {
   async send(sessionKey: string, text: string): Promise<void> {
     if (!this.sock) throw new Error('WhatsApp not connected');
     const userId = this.extractUserId(sessionKey);
-    this.log.info(`send: ${sessionKey} (${text.length} chars)`);
     await this.sock.sendMessage(this.toJid(userId), { text });
   }
 
@@ -196,7 +195,7 @@ export class WhatsAppAdapter extends InboundMediaHandler {
       this.log.info(`received ${msg.mediaType} from ${msg.jid}`);
       this.debouncer.flush(this.buildUserId(msg.jid));
       this.handleMedia(msg).catch((err) => {
-        this.log.error(`handleMedia error for ${msg.jid}: ${err}`);
+        this.log.error('handleMedia error', { jid: msg.jid, error: err instanceof Error ? err.message : String(err) });
       });
       return;
     }
@@ -241,10 +240,7 @@ export class WhatsAppAdapter extends InboundMediaHandler {
     const sessionKey = `${this.instanceId}:${userId}`;
 
     if (!msg.mediaBuffer) {
-      const typeLabels: Record<string, string> = {
-        audio: 'Voice message', video: 'Video message', document: 'Document', sticker: 'Sticker',
-      };
-      const label = typeLabels[msg.mediaType!] || 'Media';
+      const label = TYPE_LABELS[msg.mediaType!] || 'Media';
       await this.routeToService(sessionKey, msg.caption ? `[${label}] ${msg.caption}` : `[${label} received]`);
       return;
     }

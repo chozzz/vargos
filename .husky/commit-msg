@@ -1,0 +1,8 @@
+#!/bin/sh
+
+# Reject commits containing AI co-author signatures
+if grep -qi "Co-Authored-By" "$1"; then
+  echo "ERROR: Commit rejected — 'Co-Authored-By' signatures are not allowed."
+  echo "Remove the AI co-author line from your commit message."
+  exit 1
+fi

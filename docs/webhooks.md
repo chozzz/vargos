@@ -87,4 +87,4 @@ The `webhook.trigger` event payload:
 }
 ```
 
-See [architecture.md](./architecture.md) for the gateway protocol.
+See [CONTRIBUTING.md](../CONTRIBUTING.md) for the gateway protocol.

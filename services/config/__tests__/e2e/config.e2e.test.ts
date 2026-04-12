@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { EventEmitterBus } from '../../../../gateway/emitter.js';
@@ -106,6 +106,237 @@ describe('ConfigService E2E', () => {
       unsubscribe();
     });
   });
+
+  describe('three-file consolidation (config.json + agent/models.json + agent/settings.json)', () => {
+    it('merges providers from agent/models.json into config.get', async () => {
+      const tempDir2 = path.join(os.tmpdir(), `config-test-merge-${Date.now()}`);
+      const configPath2 = path.join(tempDir2, 'config.json');
+      const agentDir2 = path.join(tempDir2, 'agent');
+
+      const config: AppConfig = {
+        agent: { model: 'test:model' },
+        channels: [],
+        cron: { tasks: [] },
+        webhooks: [],
+        heartbeat: {},
+        linkExpand: {},
+        mcp: {},
+        paths: {},
+        gateway: { port: 9000 },
+      };
+
+      mkdirSync(tempDir2, { recursive: true });
+      writeFileSync(configPath2, JSON.stringify(config, null, 2));
+
+      mkdirSync(agentDir2, { recursive: true });
+      const modelsPath = path.join(agentDir2, 'models.json');
+      writeFileSync(modelsPath, JSON.stringify({
+        providers: {
+          openai: {
+            baseUrl: 'https://api.openai.com/v1',
+            apiKey: 'sk-test-openai',
+          },
+        },
+      }, null, 2));
+
+      const bus2 = new EventEmitterBus();
+      const service2 = new ConfigService(bus2, configPath2, agentDir2);
+      bus2.bootstrap(service2);
+
+      const result = await bus2.call('config.get', {});
+      expect(result.providers).toBeDefined();
+      expect(result.providers.openai).toBeDefined();
+      expect(result.providers.openai.apiKey).toBe('sk-test-openai');
+    });
+
+    it('routes providers to agent/models.json on config.set', async () => {
+      const tempDir2 = path.join(os.tmpdir(), `config-test-route-${Date.now()}`);
+      const configPath2 = path.join(tempDir2, 'config.json');
+      const agentDir2 = path.join(tempDir2, 'agent');
+
+      const config: AppConfig = {
+        agent: { model: 'test:model' },
+        channels: [],
+        cron: { tasks: [] },
+        webhooks: [],
+        heartbeat: {},
+        linkExpand: {},
+        mcp: {},
+        paths: {},
+        gateway: { port: 9000 },
+      };
+
+      mkdirSync(tempDir2, { recursive: true });
+      writeFileSync(configPath2, JSON.stringify(config, null, 2));
+
+      const bus2 = new EventEmitterBus();
+      const service2 = new ConfigService(bus2, configPath2, agentDir2);
+      bus2.bootstrap(service2);
+
+      await bus2.call('config.set', {
+        ...config,
+        providers: {
+          custom: {
+            baseUrl: 'https://custom.api/v1',
+            apiKey: 'sk-custom',
+          },
+        },
+      });
+
+      const modelsPath = path.join(agentDir2, 'models.json');
+      expect(existsSync(modelsPath)).toBe(true);
+      const modelsContent = JSON.parse(readFileSync(modelsPath, 'utf-8'));
+      expect(modelsContent.providers).toBeDefined();
+      expect(modelsContent.providers.custom).toBeDefined();
+    });
+
+    it('creates agent/ directory if it does not exist', async () => {
+      const tempDir2 = path.join(os.tmpdir(), `config-test-create-dir-${Date.now()}`);
+      const configPath2 = path.join(tempDir2, 'config.json');
+      const agentDir2 = path.join(tempDir2, 'agent');
+
+      const config: AppConfig = {
+        agent: { model: 'test:model' },
+        channels: [],
+        cron: { tasks: [] },
+        webhooks: [],
+        heartbeat: {},
+        linkExpand: {},
+        mcp: {},
+        paths: {},
+        gateway: { port: 9000 },
+      };
+
+      mkdirSync(tempDir2, { recursive: true });
+      writeFileSync(configPath2, JSON.stringify(config, null, 2));
+
+      const bus2 = new EventEmitterBus();
+      const service2 = new ConfigService(bus2, configPath2, agentDir2);
+      bus2.bootstrap(service2);
+
+      await bus2.call('config.set', {
+        ...config,
+        providers: {
+          test: { baseUrl: 'https://test.api', apiKey: 'sk-test' },
+        },
+      });
+
+      expect(existsSync(agentDir2)).toBe(true);
+      expect(existsSync(path.join(agentDir2, 'models.json'))).toBe(true);
+    });
+
+    it('preserves non-provider fields in agent/models.json when updating', async () => {
+      const tempDir2 = path.join(os.tmpdir(), `config-test-preserve-${Date.now()}`);
+      const configPath2 = path.join(tempDir2, 'config.json');
+      const agentDir2 = path.join(tempDir2, 'agent');
+
+      const config: AppConfig = {
+        agent: { model: 'test:model' },
+        channels: [],
+        cron: { tasks: [] },
+        webhooks: [],
+        heartbeat: {},
+        linkExpand: {},
+        mcp: {},
+        paths: {},
+        gateway: { port: 9000 },
+      };
+
+      mkdirSync(tempDir2, { recursive: true });
+      writeFileSync(configPath2, JSON.stringify(config, null, 2));
+
+      mkdirSync(agentDir2, { recursive: true });
+      const modelsPath = path.join(agentDir2, 'models.json');
+      writeFileSync(modelsPath, JSON.stringify({
+        custom_field: 'should_be_preserved',
+        providers: { existing: { baseUrl: 'https://test.api', apiKey: 'sk-existing' } },
+      }, null, 2));
+
+      const bus2 = new EventEmitterBus();
+      const service2 = new ConfigService(bus2, configPath2, agentDir2);
+      bus2.bootstrap(service2);
+
+      await bus2.call('config.set', {
+        ...config,
+        providers: { new_provider: { baseUrl: 'https://new.api', apiKey: 'sk-new' } },
+      });
+
+      const modelsContent = JSON.parse(readFileSync(modelsPath, 'utf-8'));
+      expect(modelsContent.custom_field).toBe('should_be_preserved'); // top-level field preserved
+      // When setting providers, they replace existing providers but other fields are preserved
+      expect(modelsContent.providers).toBeDefined();
+      // The file was successfully updated with providers
+      expect(Object.keys(modelsContent.providers).length).toBeGreaterThan(0);
+    });
+
+    it('merges agent/settings.json into config.get', async () => {
+      const tempDir2 = path.join(os.tmpdir(), `config-test-settings-${Date.now()}`);
+      const configPath2 = path.join(tempDir2, 'config.json');
+      const agentDir2 = path.join(tempDir2, 'agent');
+
+      const config: AppConfig = {
+        agent: { model: 'test:model' },
+        channels: [],
+        cron: { tasks: [] },
+        webhooks: [],
+        heartbeat: {},
+        linkExpand: {},
+        mcp: {},
+        paths: {},
+        gateway: { port: 9000 },
+      };
+
+      mkdirSync(tempDir2, { recursive: true });
+      writeFileSync(configPath2, JSON.stringify(config, null, 2));
+
+      mkdirSync(agentDir2, { recursive: true });
+      const settingsPath = path.join(agentDir2, 'settings.json');
+      writeFileSync(settingsPath, JSON.stringify({
+        customAgentSetting: 'from_pi_agent',
+      }, null, 2));
+
+      const bus2 = new EventEmitterBus();
+      const service2 = new ConfigService(bus2, configPath2, agentDir2);
+      bus2.bootstrap(service2);
+
+      const result = await bus2.call('config.get', {});
+      expect((result.agent as Record<string, unknown>).customAgentSetting).toBe('from_pi_agent');
+    });
+
+    it('agent/settings.json takes precedence as source of truth', async () => {
+      const tempDir2 = path.join(os.tmpdir(), `config-test-precedence-${Date.now()}`);
+      const configPath2 = path.join(tempDir2, 'config.json');
+      const agentDir2 = path.join(tempDir2, 'agent');
+
+      const config: AppConfig = {
+        agent: { model: 'anthropic:from-config-json' },
+        channels: [],
+        cron: { tasks: [] },
+        webhooks: [],
+        heartbeat: {},
+        linkExpand: {},
+        mcp: {},
+        paths: {},
+        gateway: { port: 9000 },
+      };
+
+      mkdirSync(tempDir2, { recursive: true });
+      writeFileSync(configPath2, JSON.stringify(config, null, 2));
+
+      mkdirSync(agentDir2, { recursive: true });
+      const settingsPath = path.join(agentDir2, 'settings.json');
+      writeFileSync(settingsPath, JSON.stringify({
+        model: 'anthropic:from-settings',
+      }, null, 2));
+
+      const bus2 = new EventEmitterBus();
+      const service2 = new ConfigService(bus2, configPath2, agentDir2);
+      bus2.bootstrap(service2);
+
+      const result = await bus2.call('config.get', {});
+      expect(result.agent.model).toBe('anthropic:from-settings');
+    });
+  });
 });
 
 describe('normalizeConfigInput — v1 compat', () => {
@@ -130,7 +361,6 @@ describe('normalizeConfigInput — v1 compat', () => {
     },
     agent: {
       primary: 'openrouter:qwen/qwen3.5-35b-a3b',
-      fallback: 'openai:gpt-4o-mini',
       media: { audio: 'openai:whisper-1', image: 'openai:gpt-4o-mini' },
     },
     channels: [
@@ -183,7 +413,6 @@ describe('normalizeConfigInput — v1 compat', () => {
     expect(Object.keys(result.data.providers)).toHaveLength(2);
     expect(result.data.providers.openrouter.models).toHaveLength(1);
     expect(result.data.agent.model).toBe('openrouter:qwen/qwen3.5-35b-a3b');
-    expect(result.data.agent.fallback).toBe('openai:gpt-4o-mini');
     expect(result.data.channels).toHaveLength(2);
     expect(result.data.channels[0].enabled).toBe(true);
     expect(result.data.channels[1].enabled).toBe(false);

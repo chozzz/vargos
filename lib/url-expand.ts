@@ -3,6 +3,8 @@
  * No domain imports — safe to use from any layer.
  */
 
+import { stripHtml } from './html.js';
+
 const PRIVATE_HOSTNAME_RE = /^(localhost|127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|192\.168\.\d+\.\d+|169\.254\.\d+\.\d+|\[::1\])$/i;
 
 /** Extract unique http/https URLs from text, up to maxUrls (default 3). */
@@ -77,7 +79,8 @@ export async function fetchUrlContent(
     const raw = await response.text();
 
     if (isHtml) {
-      const title = extractTitle(raw);
+      const titleMatch = raw.match(/<title[^>]*>([^<]*)<\/title>/i);
+      const title = titleMatch ? titleMatch[1].trim() : undefined;
       const text = stripHtml(raw).slice(0, maxChars);
       return { url, title, text };
     }
@@ -86,27 +89,4 @@ export async function fetchUrlContent(
   } catch {
     return null;
   }
-}
-
-function extractTitle(html: string): string | undefined {
-  const match = html.match(/<title[^>]*>([^<]*)<\/title>/i);
-  return match ? match[1].trim() : undefined;
-}
-
-function stripHtml(html: string): string {
-  return html
-    // Remove script and style blocks entirely
-    .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, ' ')
-    // Remove all remaining tags
-    .replace(/<[^>]+>/g, ' ')
-    // Decode common entities
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, ' ')
-    // Collapse whitespace
-    .replace(/\s+/g, ' ')
-    .trim();
 }

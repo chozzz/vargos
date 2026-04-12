@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { on, register } from '../../gateway/decorators.js';
 import type { Bus } from '../../gateway/bus.js';
 import type { EventMap, LogLevel } from '../../gateway/events.js';
-import { setLoggerBus } from '../../lib/logger.js';
+import { setLoggerBus, ts } from '../../lib/logger.js';
 import { getDataPaths } from '../../lib/paths.js';
 
 interface LogEntry {
@@ -13,13 +13,6 @@ interface LogEntry {
   service:  string;
   message:  string;
   data?:    unknown;
-}
-
-function ts(): string {
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
-         `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${Math.floor(d.getMilliseconds() / 100)}`;
 }
 
 export class LogService {

@@ -1,5 +1,5 @@
 /**
- * Agent v2 — Type schemas
+ * Agent — Type schemas
  */
 
 import type { Bus } from '../../gateway/bus.js';

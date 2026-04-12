@@ -50,4 +50,4 @@ Bare `vargos` (or `pnpm cli`) opens an interactive menu with breadcrumb navigati
 - [CLI](./cli.md) — all commands and options
 - [Channels](./channels.md) — WhatsApp and Telegram setup
 - [MCP](./mcp.md) — MCP server for tool integration
-- [Architecture](./architecture.md) — protocol spec, service contracts
+- [Runtime](./runtime.md) — execution model, cron, heartbeat

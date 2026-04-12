@@ -76,7 +76,9 @@ export interface EventMap {
   // Agent
   'agent.execute': { params: AgentExecuteParams; result: { response: string } };
   'agent.status': { params: { sessionKey?: string }; result: { activeRuns: string[] } };
-  'agent.getProviderConfig': { params: { provider: string }; result: { baseUrl?: string; apiKey?: string; api?: string } | null };
+
+  // Media
+  'media.transcribeAudio': { params: { filePath: string }; result: { text: string } };
 
   // File system
   'fs.read': { params: { path: string; offset?: number; limit?: number }; result: { content: string; mimeType: string } };

@@ -142,7 +142,7 @@ export class MemoryContext {
 
       await this.storage?.updateFileStatus(relPath, stat.mtime.getTime(), stat.size);
     } catch (err) {
-      log.error(`failed to index ${relPath}: ${err}`);
+      log.error('failed to index', { relPath, error: err instanceof Error ? err.message : String(err) });
     }
   }
 
@@ -256,7 +256,7 @@ export class MemoryContext {
         this.watcherDebounce.set(fullPath, timeout);
       });
     } catch (err) {
-      log.error(`failed to start file watcher: ${err}`);
+      log.error('failed to start file watcher', { error: err instanceof Error ? err.message : String(err) });
     }
   }
 

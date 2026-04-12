@@ -8,7 +8,7 @@ export function setLoggerBus(bus: Bus): void {
   _bus = bus;
 }
 
-function ts(): string {
+export function ts(): string {
   const d = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
@@ -32,23 +32,3 @@ export function createLogger(service: string) {
   };
 }
 
-export function emitError(service: string, err: unknown, context?: Record<string, Json>): void {
-  const message = err instanceof Error ? err.message : String(err);
-  createLogger(service).error(message, context as Json);
-}
-
-/**
- * Minimal pino-compatible silent logger for Baileys.
- * Avoids the pino import just for a no-op.
- */
-export const pinoSilent = {
-  level:  'silent',
-  trace:  () => {},
-  debug:  () => {},
-  info:   () => {},
-  warn:   () => {},
-  error:  () => {},
-  fatal:  () => {},
-  silent: () => {},
-  child:  () => pinoSilent,
-};
