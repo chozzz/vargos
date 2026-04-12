@@ -94,7 +94,8 @@ export class AgentRuntime {
     this.sessionsDir = paths.sessionsDir;
 
     this.authStorage = new AuthStorage();
-    this.modelRegistry = new ModelRegistry(this.authStorage);
+    const modelsJsonPath = path.join(this.agentDir, 'models.json');
+    this.modelRegistry = new ModelRegistry(this.authStorage, modelsJsonPath);
 
     this.settings = SettingsManager.create(this.dataDir, this.agentDir);
     // NOTE: SettingsManager loads ~/.vargos/agent/models.json which has the
