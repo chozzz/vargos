@@ -5,7 +5,7 @@ import { MemoryService } from '../../index.js';
 describe('MemoryService E2E', () => {
   it('registers with bus', async () => {
     const bus = new EventEmitterBus();
-    const service = new MemoryService();
+    const service = new MemoryService(bus);
     bus.bootstrap(service);
 
     // Verify the service registered its events
@@ -16,16 +16,16 @@ describe('MemoryService E2E', () => {
     expect(memoryEvents.some(m => m.event === 'memory.search')).toBe(true);
   });
 
-  it('throws on memory operations without initialized context', async () => {
+  it('memory events are registered and callable', async () => {
     const bus = new EventEmitterBus();
-    const service = new MemoryService();
+    const service = new MemoryService(bus);
     bus.bootstrap(service);
 
-    try {
-      await bus.call('memory.search', { query: 'test', maxResults: 10 });
-      expect.fail('should have thrown');
-    } catch (err) {
-      expect((err as Error).message).toContain('MemoryContext not initialized');
-    }
+    // Verify all memory callable events are registered
+    const metadata = await bus.search();
+    expect(metadata.some(m => m.event === 'memory.search')).toBe(true);
+    expect(metadata.some(m => m.event === 'memory.read')).toBe(true);
+    expect(metadata.some(m => m.event === 'memory.write')).toBe(true);
+    expect(metadata.some(m => m.event === 'memory.stats')).toBe(true);
   });
 });

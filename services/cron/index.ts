@@ -36,9 +36,10 @@ import { interpolatePrompt } from '../../lib/prompt-interpolate.js';
 const log = createLogger('cron');
 
 const DEFAULT_HEARTBEAT_PROMPT = [
-  'Heartbeat poll. Read ${WORKSPACE_DIR}/HEARTBEAT.md for your checklist.',
-  'Follow it strictly — do not infer tasks from previous sessions.',
-  'If nothing needs attention, reply with exactly: HEARTBEAT_OK',
+  'Heartbeat poll. Read ${WORKSPACE_DIR}/HEARTBEAT.md for detailed instructions.',
+  'Follow each task strictly. Use memory.search, memory.read, memory.write bus calls as needed.',
+  'Use interpolation vars in your prompts: ${WORKSPACE_DIR}, ${DATA_DIR}, etc.',
+  'If all tasks complete successfully with no issues found, reply with exactly: HEARTBEAT_OK',
 ].join(' ');
 
 // ── CronService ───────────────────────────────────────────────────────────────
