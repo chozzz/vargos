@@ -20,14 +20,22 @@ describe('MediaService', () => {
     tempDir = path.join(os.tmpdir(), `media-test-${Date.now()}`);
     agentDir = path.join(tempDir, 'agent');
     modelsPath = path.join(agentDir, 'models.json');
+    const authPath = path.join(agentDir, 'auth.json');
 
     mkdirSync(agentDir, { recursive: true });
     writeFileSync(modelsPath, JSON.stringify({
       providers: {
         openai: {
           baseUrl: 'https://api.openai.com/v1',
-          apiKey: 'sk-test-openai',
+          api: 'openai-completions',
+          models: [],
         },
+      },
+    }, null, 2));
+    writeFileSync(authPath, JSON.stringify({
+      openai: {
+        type: 'api_key',
+        key: 'sk-test-openai',
       },
     }, null, 2));
 
@@ -44,6 +52,19 @@ describe('MediaService', () => {
       mcp: {},
       paths: { dataDir: tempDir },
       gateway: { port: 9000 },
+      providers: {
+        openai: {
+          baseUrl: 'https://api.openai.com/v1',
+          api: 'openai-completions',
+          models: [],
+        },
+      },
+      auth: {
+        openai: {
+          type: 'api_key',
+          key: 'sk-test-openai',
+        },
+      },
     };
 
     service = new MediaService(bus, config);
@@ -76,7 +97,7 @@ describe('MediaService', () => {
       ).rejects.toThrow(/No audio model configured/);
     });
 
-    it('throws when provider is not found in models.json', async () => {
+    it('throws when provider is not found in auth', async () => {
       const configBadProvider: AppConfig = {
         agent: {
           model: 'test:model',
@@ -90,6 +111,13 @@ describe('MediaService', () => {
         mcp: {},
         paths: { dataDir: tempDir },
         gateway: { port: 9000 },
+        providers: {
+          nonexistent: {
+            baseUrl: 'https://api.nonexistent.com',
+            api: 'openai-completions',
+            models: [],
+          },
+        },
       };
 
       const bus2 = new EventEmitterBus();
@@ -98,7 +126,7 @@ describe('MediaService', () => {
 
       await expect(
         bus2.call('media.transcribeAudio', { filePath: '/tmp/audio.mp3' }),
-      ).rejects.toThrow(/Provider config not found: nonexistent/);
+      ).rejects.toThrow(/No API key configured for nonexistent/);
     });
 
     it('throws when config format is invalid (missing colon)', async () => {
@@ -115,6 +143,12 @@ describe('MediaService', () => {
         mcp: {},
         paths: { dataDir: tempDir },
         gateway: { port: 9000 },
+        auth: {
+          test: {
+            type: 'api_key',
+            key: 'sk-test',
+          },
+        },
       };
 
       const bus2 = new EventEmitterBus();
@@ -146,16 +180,25 @@ describe('MediaService', () => {
     });
 
     it('uses baseUrl from provider config if present', async () => {
-      // Write a models.json with baseUrl
+      // Write a models.json with custom baseUrl
       const modelsWithUrl = {
         providers: {
           custom: {
             baseUrl: 'https://custom.api.com/v1',
-            apiKey: 'sk-custom-key',
+            api: 'openai-completions',
+            models: [],
           },
         },
       };
       writeFileSync(modelsPath, JSON.stringify(modelsWithUrl, null, 2));
+
+      const authPath = path.join(agentDir, 'auth.json');
+      writeFileSync(authPath, JSON.stringify({
+        custom: {
+          type: 'api_key',
+          key: 'sk-custom-key',
+        },
+      }, null, 2));
 
       const configCustom: AppConfig = {
         agent: {
@@ -170,6 +213,19 @@ describe('MediaService', () => {
         mcp: {},
         paths: { dataDir: tempDir },
         gateway: { port: 9000 },
+        providers: {
+          custom: {
+            baseUrl: 'https://custom.api.com/v1',
+            api: 'openai-completions',
+            models: [],
+          },
+        },
+        auth: {
+          custom: {
+            type: 'api_key',
+            key: 'sk-custom-key',
+          },
+        },
       };
 
       const bus2 = new EventEmitterBus();
@@ -195,6 +251,19 @@ describe('MediaService', () => {
         mcp: {},
         paths: { dataDir: tempDir },
         gateway: { port: 9000 },
+        providers: {
+          openai: {
+            baseUrl: 'https://api.openai.com/v1',
+            api: 'openai-completions',
+            models: [],
+          },
+        },
+        auth: {
+          openai: {
+            type: 'api_key',
+            key: 'sk-test',
+          },
+        },
       };
 
       const bus2 = new EventEmitterBus();
@@ -223,6 +292,19 @@ describe('MediaService', () => {
         mcp: {},
         paths: { dataDir: tempDir },
         gateway: { port: 9000 },
+        providers: {
+          openai: {
+            baseUrl: 'https://api.openai.com/v1',
+            api: 'openai-completions',
+            models: [],
+          },
+        },
+        auth: {
+          openai: {
+            type: 'api_key',
+            key: 'sk-test',
+          },
+        },
       };
 
       const bus2 = new EventEmitterBus();
@@ -260,6 +342,76 @@ describe('MediaService', () => {
 
       const service2 = new MediaService(bus, configNoAudio);
       expect(service2).toBeDefined();
+    });
+  });
+
+  describe('media.transcribeAudio — transcription flow', () => {
+    it('successfully transcribes audio file', async () => {
+      const audioFile = path.join(tempDir, 'test.mp3');
+      writeFileSync(audioFile, Buffer.from('fake audio data'));
+
+      // Mock fetch for Whisper API
+      global.fetch = vi.fn().mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ text: 'Hello world from audio' }),
+      });
+
+      const result = await bus.call('media.transcribeAudio', { filePath: audioFile });
+
+      expect(result.text).toBe('Hello world from audio');
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://api.openai.com/v1/audio/transcriptions',
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({
+            Authorization: 'Bearer sk-test-openai',
+          }),
+        }),
+      );
+    });
+
+    it('returns fallback message when no speech detected', async () => {
+      const audioFile = path.join(tempDir, 'silent.mp3');
+      writeFileSync(audioFile, Buffer.from('silence'));
+
+      global.fetch = vi.fn().mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ text: '' }),
+      });
+
+      const result = await bus.call('media.transcribeAudio', { filePath: audioFile });
+
+      expect(result.text).toBe('[No speech detected]');
+    });
+
+    it('throws on Whisper API error', async () => {
+      const audioFile = path.join(tempDir, 'error.mp3');
+      writeFileSync(audioFile, Buffer.from('audio data'));
+
+      global.fetch = vi.fn().mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        text: async () => 'Unauthorized',
+      });
+
+      await expect(
+        bus.call('media.transcribeAudio', { filePath: audioFile }),
+      ).rejects.toThrow(/Whisper API 401/);
+    });
+
+    it('handles file extension normalization', async () => {
+      const audioFile = path.join(tempDir, 'test.unknown');
+      writeFileSync(audioFile, Buffer.from('audio data'));
+
+      global.fetch = vi.fn().mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ text: 'transcribed' }),
+      });
+
+      await bus.call('media.transcribeAudio', { filePath: audioFile });
+
+      const call = global.fetch.mock.calls[0];
+      expect(call[0]).toContain('/audio/transcriptions');
     });
   });
 });

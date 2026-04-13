@@ -27,10 +27,16 @@ export abstract class InboundMediaHandler extends BaseChannelAdapter {
   protected abstract resolveMedia(msg: unknown): Promise<InboundMediaSource | null>;
 
   protected transcribeFn?: (filePath: string) => Promise<string>;
+  protected describeFn?: (filePath: string) => Promise<string>;
 
   /** Set audio transcription function */
   setTranscribeFn(fn: (filePath: string) => Promise<string>): void {
     this.transcribeFn = fn;
+  }
+
+  /** Set image description function */
+  setDescribeFn(fn: (filePath: string) => Promise<string>): void {
+    this.describeFn = fn;
   }
 
   /**
@@ -56,6 +62,18 @@ export abstract class InboundMediaHandler extends BaseChannelAdapter {
     const media = { type: mediaType, data: base64, mimeType, path: savedPath };
 
     if (mediaType === 'image') {
+      if (this.describeFn) {
+        try {
+          const description = await this.describeFn(savedPath);
+          await route(
+            `${description}\n\n[Image described from: ${savedPath}]`,
+            { media, description },
+          );
+          return;
+        } catch (err) {
+          this.log.warn(`Image description failed: ${err}. Falling back to caption.`);
+        }
+      }
       const text = caption || 'User sent an image.';
       const images = [{ data: base64, mimeType }];
       await route(`${text}\n\n[Image saved: ${savedPath}]`, { images, media });

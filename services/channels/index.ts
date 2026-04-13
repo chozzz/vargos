@@ -305,6 +305,8 @@ export class ChannelService {
   private async createAdapter(entry: ChannelEntry): Promise<ChannelAdapter | null> {
     const transcribeFn = (filePath: string) =>
       this.bus.call('media.transcribeAudio', { filePath }).then(r => r.text);
+    const describeFn = (filePath: string) =>
+      this.bus.call('media.describeImage', { filePath }).then(r => r.description);
 
     switch (entry.type) {
       case 'telegram': {
@@ -314,6 +316,7 @@ export class ChannelService {
           this.onInboundMessage.bind(this), cfg.debounceMs,
         );
         adapter.setTranscribeFn(transcribeFn);
+        adapter.setDescribeFn(describeFn);
         return adapter;
       }
       case 'whatsapp': {
@@ -323,6 +326,7 @@ export class ChannelService {
           this.onInboundMessage.bind(this), cfg.debounceMs,
         );
         adapter.setTranscribeFn(transcribeFn);
+        adapter.setDescribeFn(describeFn);
         return adapter;
       }
       default:

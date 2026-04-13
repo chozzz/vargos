@@ -1,0 +1,49 @@
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { WHISPER_EXTS, MIME_TO_AUDIO_EXT, normalizeApiBaseUrl } from '../../../lib/media-transcribe.js';
+import type { MediaProvider } from './provider.js';
+
+export class OpenAIProvider implements MediaProvider {
+  async transcribeAudio(filePath: string, model: string, apiKey: string, baseUrl?: string): Promise<string> {
+    const buffer = await readFile(filePath);
+    const ext = path.extname(filePath).toLowerCase();
+    const fixedExt = WHISPER_EXTS.has(ext) ? ext : (MIME_TO_AUDIO_EXT[ext] || '.ogg');
+    const fileName = path.basename(filePath).replace(/\.[^.]+$/, fixedExt) || `audio${fixedExt}`;
+
+    const form = new FormData();
+    form.append('file', new Blob([new Uint8Array(buffer)], { type: 'audio/mpeg' }), fileName);
+    form.append('model', model || 'whisper-1');
+
+    const res = await fetch(`${normalizeApiBaseUrl(baseUrl)}/v1/audio/transcriptions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: form,
+    });
+
+    if (!res.ok) throw new Error(`Whisper API ${res.status}: ${(await res.text()).slice(0, 100)}`);
+    const data = (await res.json()) as { text: string };
+    return data.text || '[No speech detected]';
+  }
+
+  async describeImage(imageData: string, mimeType: string, model: string, apiKey: string, baseUrl?: string): Promise<string> {
+    const res = await fetch(`${normalizeApiBaseUrl(baseUrl)}/v1/chat/completions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        max_tokens: 1024,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Describe this image concisely.' },
+            { type: 'image_url', image_url: { url: `data:${mimeType};base64,${imageData}` } },
+          ],
+        }],
+      }),
+    });
+
+    if (!res.ok) throw new Error(`OpenAI Vision ${res.status}: ${(await res.text()).slice(0, 100)}`);
+    const data = (await res.json()) as { choices: Array<{ message: { content: string } }> };
+    return data.choices[0]?.message?.content ?? '';
+  }
+}

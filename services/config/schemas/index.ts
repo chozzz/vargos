@@ -6,6 +6,10 @@
 export { JsonSchema, ThinkingLevelSchema, PromptModeSchema, ChannelTypeSchema } from './primitives.js';
 export type { Json, ThinkingLevel, PromptMode, ChannelType } from './primitives.js';
 
+// Auth
+export { AuthEntrySchema, AuthSchema } from './auth.js';
+export type { AuthEntry, Auth } from './auth.js';
+
 // Providers
 export { ProviderConfigSchema, ProvidersSchema } from './providers.js';
 export type { ProviderConfig, Providers } from './providers.js';

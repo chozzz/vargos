@@ -1,30 +1,42 @@
 /**
- * Media service — audio transcription and media processing
+ * Media service — audio transcription and image description via provider abstraction
  *
- * Callable: media.transcribeAudio
+ * Callable: media.transcribeAudio, media.transcribeImage
  */
 
-import path from 'node:path';
-import { promises as fs } from 'node:fs';
 import { z } from 'zod';
 import { register } from '../../gateway/decorators.js';
 import type { Bus } from '../../gateway/bus.js';
 import type { EventMap } from '../../gateway/events.js';
 import type { AppConfig } from '../../services/config/index.js';
 import { createLogger } from '../../lib/logger.js';
-import { getDataPaths } from '../../lib/paths.js';
-import { transcribeAudio } from '../../lib/media-transcribe.js';
+import { createProvider } from './providers/index.js';
+import type { MediaProvider } from './providers/index.js';
 
 const log = createLogger('media');
 
 export class MediaService {
-  private agentDir: string;
+  private provider?: MediaProvider;
 
   constructor(
     private readonly bus: Bus,
     private readonly config: AppConfig,
   ) {
-    this.agentDir = path.join(getDataPaths().dataDir, 'agent');
+    this.initProvider();
+  }
+
+  private initProvider(): void {
+    const audioRef = this.config.agent?.media?.audio;
+    if (!audioRef) return;
+
+    const [provider] = audioRef.split(':');
+    if (provider) {
+      try {
+        this.provider = createProvider(provider);
+      } catch (err) {
+        log.error('Failed to initialize provider', { provider, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
   }
 
   @register('media.transcribeAudio', {
@@ -38,44 +50,33 @@ export class MediaService {
     const [provider, model] = audioRef.split(':');
     if (!provider || !model) throw new Error('Invalid audio config format (expected "provider:model")');
 
-    const providerConfig = await this.resolveProviderConfig(provider);
-    if (!providerConfig) throw new Error(`Provider config not found: ${provider}`);
+    const apiKey = this.config.auth?.[provider]?.key;
+    if (!apiKey) throw new Error(`No API key configured for ${provider}`);
 
-    const text = await transcribeAudio(params.filePath, {
-      provider,
-      model,
-      apiKey: providerConfig.apiKey,
-      baseUrl: providerConfig.baseUrl,
-    });
-
+    const baseUrl = this.config.providers?.[provider]?.baseUrl;
+    const text = await this.provider!.transcribeAudio(params.filePath, model, apiKey, baseUrl);
     return { text };
   }
 
-  /**
-   * Resolve provider config from Pi Agent's models.json
-   */
-  private async resolveProviderConfig(provider: string): Promise<{ baseUrl?: string; apiKey?: string; api?: string } | null> {
-    try {
-      const modelsPath = path.join(this.agentDir, 'models.json');
-      const content = await fs.readFile(modelsPath, 'utf-8');
-      const models = JSON.parse(content);
+  @register('media.transcribeImage', {
+    description: 'Describe an image using configured vision model.',
+    schema: z.object({ imageData: z.string(), mimeType: z.string() }),
+  })
+  async transcribeImage(params: EventMap['media.transcribeImage']['params']): Promise<EventMap['media.transcribeImage']['result']> {
+    const imgRef = this.config.agent?.media?.image;
+    if (!imgRef) throw new Error('No image model configured (agent.media.image)');
 
-      const providers = models.providers || {};
-      const providerConfig = providers[provider];
-      if (!providerConfig) return null;
+    const [provider, model] = imgRef.split(':');
+    if (!provider || !model) throw new Error('Invalid image config format (expected "provider:model")');
 
-      return {
-        baseUrl: providerConfig.baseUrl,
-        apiKey: providerConfig.apiKey,
-        api: providerConfig.api,
-      };
-    } catch {
-      return null;
-    }
+    const apiKey = this.config.auth?.[provider]?.key;
+    if (!apiKey) throw new Error(`No API key configured for ${provider}`);
+
+    const baseUrl = this.config.providers?.[provider]?.baseUrl;
+    const description = await createProvider(provider).describeImage(params.imageData, params.mimeType, model, apiKey, baseUrl);
+    return { description };
   }
 }
-
-// ── Boot ──────────────────────────────────────────────────────────────────────
 
 export async function boot(bus: Bus): Promise<{ stop?(): void }> {
   const config = await bus.call('config.get', {});

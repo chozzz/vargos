@@ -6,6 +6,7 @@ import type { Bus } from '../../gateway/bus.js';
 import type { EventMap } from '../../gateway/events.js';
 import {
   AgentConfigSchema,
+  AuthSchema,
   ChannelEntrySchema,
   CronTaskSchema,
   WebhookEntrySchema,
@@ -28,6 +29,7 @@ import {
   type LinkExpandConfig,
   type McpClientConfig,
   type StorageConfig,
+  type Auth,
   type Json,
 } from './schemas/index.js';
 import { getDataPaths } from '../../lib/paths.js';
@@ -39,6 +41,7 @@ export const AppConfigSchema = z
   .object({
     providers: ProvidersSchema.optional(),
     agent: AgentConfigSchema.optional(),
+    auth: AuthSchema,
     channels: z.array(ChannelEntrySchema).default([]),
     cron: z.object({
       tasks: z.array(CronTaskSchema).default([]),
@@ -62,8 +65,7 @@ export const AppConfigSchema = z
       port: z.number().int().min(1).max(65535).default(9000),
       /** Client socket idle timeout (ms) for JSON-RPC connections */
       requestTimeout: z.number().int().positive().optional(),
-    }).default({}),
-    auth: z.record(z.string(), z.any()).optional(),
+    }).default({})
   })
   .passthrough();
 
@@ -77,6 +79,7 @@ export type {
   CronUpdateParams,
   ProviderConfig,
   Providers,
+  Auth,
   HeartbeatConfig,
   WebhookEntry,
   LinkExpandConfig,
@@ -137,17 +140,12 @@ export class ConfigService {
       // File may not exist yet, that's okay
     }
 
-    // Load auth.json and include redacted version
+    // Load auth.json
     try {
       const authPath = path.join(this.agentDir, 'auth.json');
       const authContent = readFileSync(authPath, 'utf8');
-      const auth = JSON.parse(authContent);
-      if (auth && typeof auth === 'object') {
-        raw.auth = {};
-        for (const provider of Object.keys(auth)) {
-          (raw.auth as Record<string, unknown>)[provider] = { redacted: true };
-        }
-      }
+      const auth = JSON.parse(authContent ?? '{}');
+      raw.auth = auth;
     } catch {
       // File may not exist yet, that's okay
     }
