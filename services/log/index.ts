@@ -23,9 +23,9 @@ export class LogService {
   onLog(payload: EventMap['log.onLog']): void {
     const { level, service, message, data } = payload;
     const line = `${ts()} [${service}] ${message}${data ? ' ' + JSON.stringify(data) : ''}`;
-    console.error(line);
 
     if (level === 'warn' || level === 'error') {
+      console.error(line);
       this.persist({ ts: new Date().toISOString(), level, service, message, data }).catch(() => {});
     }
   }

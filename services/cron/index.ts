@@ -185,7 +185,13 @@ export class CronService {
   private startAll(): void {
     let count = 0;
     for (const { task, job } of this.jobs.values()) {
-      if (task.enabled) { job.start(); count++; }
+      if (task.enabled) {
+        log.debug(`starting job: ${task.id} (${task.schedule})`);
+        job.start();
+        count++;
+      } else {
+        log.debug(`skipping disabled job: ${task.id}`);
+      }
     }
     log.info(`${count} jobs started`);
   }
@@ -200,13 +206,23 @@ export class CronService {
       return;
     }
     const entry = this.jobs.get(id);
-    if (!entry || !entry.task.enabled) return;
+    if (!entry) {
+      log.warn(`fire() called for unknown task: ${id}`);
+      return;
+    }
+    if (!entry.task.enabled) {
+      log.debug(`task disabled, not firing: ${id}`);
+      return;
+    }
 
     const hook = this.beforeFireHooks.get(id);
     const check = hook ? hook() : Promise.resolve(true);
 
     check.then(async (shouldFire) => {
-      if (!shouldFire) return;
+      if (!shouldFire) {
+        log.debug(`hook check returned false for ${id}, not firing`);
+        return;
+      }
       this.activeTasks.add(id);
       try {
         await this.executeTask(entry.task);
