@@ -31,11 +31,12 @@ import {
   isHeartbeatContentEffectivelyEmpty,
   stripHeartbeatToken,
 } from '../../lib/heartbeat.js';
+import { interpolatePrompt } from '../../lib/prompt-interpolate.js';
 
 const log = createLogger('cron');
 
 const DEFAULT_HEARTBEAT_PROMPT = [
-  'Heartbeat poll. Read HEARTBEAT.md for your checklist.',
+  'Heartbeat poll. Read ${WORKSPACE_DIR}/HEARTBEAT.md for your checklist.',
   'Follow it strictly — do not infer tasks from previous sessions.',
   'If nothing needs attention, reply with exactly: HEARTBEAT_OK',
 ].join(' ');
@@ -248,9 +249,10 @@ export class CronService {
     const sessionKey = cronSessionKey(task.id);
     log.info(`task firing: ${task.name} (${task.id}) → ${sessionKey}`);
 
+    const interpolatedTask = interpolatePrompt(task.task);
     const result = await this.bus.call('agent.execute', {
       sessionKey,
-      task: task.task,
+      task: interpolatedTask,
     });
 
     if (!result.response) return;
