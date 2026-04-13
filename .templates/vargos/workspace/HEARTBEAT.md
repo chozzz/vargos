@@ -1,19 +1,26 @@
 # HEARTBEAT.md — Task Checklist
 
-# This file is your heartbeat task queue — WHAT to check each cycle.
-# HOW to do things (memory curation, bootstrap hygiene) lives in AGENTS.md.
-#
-# The heartbeat cron reads this file every 30 minutes (configurable).
-# If it's empty (only comments/headers), the heartbeat is skipped — zero API cost.
-#
-# Example tasks:
-#   - Write today's daily summary (see Memory Maintenance in AGENTS.md)
-#   - Curate memory: promote old dailies, prune stale pointers
-#   - Review bootstrap files for staleness
-#   - Check errors.jsonl for new patterns
-#
-# Add tasks below:
+## Primary Tasks
 
-- Write today's daily summary (see Memory Maintenance in AGENTS.md)
-- Curate memory: promote old dailies, prune stale pointers
-- Review bootstrap files for staleness
+1. **Write today's daily summary** (${WORKSPACE_DIR}/memory/daily/YYYY-MM-DD.md)
+   - Search recent sessions from last 24h using memory.search with broad queries
+   - Include: decisions made, bugs fixed, learnings, artifacts, external context
+   - Note: WhatsApp conversations (whatsapp-*), CLI sessions (cli-*), cron outputs
+   - Format: 20-50 lines, grouped by topic
+   - Exclude: tool noise, repetitive logs, failed commands
+
+2. **Curate memory**
+   - List files in ${WORKSPACE_DIR}/memory/daily/
+   - For any dated >14 days old: extract key facts, promote to topic files at ${WORKSPACE_DIR}/memory/
+   - Update ${WORKSPACE_DIR}/MEMORY.md index to point to new topic files
+   - Delete promoted daily files
+
+3. **Prune stale pointers**
+   - Review ${WORKSPACE_DIR}/MEMORY.md (should be <50 lines)
+   - Remove any broken links or outdated topics
+   - Consolidate overlapping topic files
+
+4. **Bootstrap hygiene** (keep each <6000 chars)
+   - Review staleness: PROCEDURES.md, SOUL.md, ENV.md, AGENTS.md, TOOLS.md
+   - Move reference data to ${WORKSPACE_DIR}/memory/ topic files as needed
+   - Note any findings in daily summary
