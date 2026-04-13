@@ -24,8 +24,11 @@ export class LogService {
     const { level, service, message, data } = payload;
     const line = `${ts()} [${service}] ${message}${data ? ' ' + JSON.stringify(data) : ''}`;
 
-    if (level === 'warn' || level === 'error') {
+    if (level === 'info' || level === 'warn' || level === 'error') {
       console.error(line);
+    }
+
+    if (level === 'warn' || level === 'error') {
       this.persist({ ts: new Date().toISOString(), level, service, message, data }).catch(() => {});
     }
   }
