@@ -59,8 +59,6 @@ export const PackageSourceSchema = z.union([
 
 export const PiAgentSettingsSchema = z.object({
   lastChangelogVersion: z.string().optional(),
-  defaultProvider: z.string().optional(),
-  defaultModel: z.string().optional(),
   defaultThinkingLevel: z.enum(['off', 'minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
   steeringMode: z.enum(['all', 'one-at-a-time']).optional(),
   followUpMode: z.enum(['all', 'one-at-a-time']).optional(),
