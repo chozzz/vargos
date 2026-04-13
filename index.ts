@@ -1,6 +1,10 @@
 import { EventEmitterBus } from './gateway/emitter.js';
 import { startTCPServer } from './gateway/tcp-server.js';
 import { createLogger } from './lib/logger.js';
+import { ensureSqliteReady } from './lib/ensure-sqlite.js';
+
+// ── Pre-boot checks ───────────────────────────────────────────────────────────
+await ensureSqliteReady();
 
 // ── Boot order ────────────────────────────────────────────────────────────────
 // Each entry: [label, () => import(module)]
