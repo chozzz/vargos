@@ -76,6 +76,7 @@ export interface EventMap {
 
   // Media
   'media.transcribeAudio': { params: { filePath: string }; result: { text: string } };
+  'media.describeImage': { params: { filePath: string }; result: { description: string } };
 
   // File system
   'fs.read': { params: { path: string; offset?: number; limit?: number }; result: { content: string; mimeType: string } };

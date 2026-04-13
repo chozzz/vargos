@@ -25,7 +25,12 @@ export class OpenAIProvider implements MediaProvider {
     return data.text || '[No speech detected]';
   }
 
-  async describeImage(imageData: string, mimeType: string, model: string, apiKey: string, baseUrl?: string): Promise<string> {
+  async describeImage(filePath: string, model: string, apiKey: string, baseUrl?: string): Promise<string> {
+    const buffer = await readFile(filePath);
+    const ext = path.extname(filePath).toLowerCase();
+    const mimeType = this.getMimeType(ext);
+    const imageData = buffer.toString('base64');
+
     const res = await fetch(`${normalizeApiBaseUrl(baseUrl)}/v1/chat/completions`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
@@ -45,5 +50,13 @@ export class OpenAIProvider implements MediaProvider {
     if (!res.ok) throw new Error(`OpenAI Vision ${res.status}: ${(await res.text()).slice(0, 100)}`);
     const data = (await res.json()) as { choices: Array<{ message: { content: string } }> };
     return data.choices[0]?.message?.content ?? '';
+  }
+
+  private getMimeType(ext: string): string {
+    const typeMap: Record<string, string> = {
+      '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif',
+      '.webp': 'image/webp', '.bmp': 'image/bmp', '.svg': 'image/svg+xml',
+    };
+    return typeMap[ext.toLowerCase()] || 'image/jpeg';
   }
 }

@@ -1,7 +1,7 @@
 /**
  * Media service — audio transcription and image description via provider abstraction
  *
- * Callable: media.transcribeAudio, media.transcribeImage
+ * Callable: media.transcribeAudio, media.describeImage
  */
 
 import { z } from 'zod';
@@ -22,10 +22,6 @@ export class MediaService {
     private readonly bus: Bus,
     private readonly config: AppConfig,
   ) {
-    this.initProvider();
-  }
-
-  private initProvider(): void {
     const audioRef = this.config.agent?.media?.audio;
     if (!audioRef) return;
 
@@ -58,11 +54,11 @@ export class MediaService {
     return { text };
   }
 
-  @register('media.transcribeImage', {
+  @register('media.describeImage', {
     description: 'Describe an image using configured vision model.',
-    schema: z.object({ imageData: z.string(), mimeType: z.string() }),
+    schema: z.object({ filePath: z.string() }),
   })
-  async transcribeImage(params: EventMap['media.transcribeImage']['params']): Promise<EventMap['media.transcribeImage']['result']> {
+  async describeImage(params: EventMap['media.describeImage']['params']): Promise<EventMap['media.describeImage']['result']> {
     const imgRef = this.config.agent?.media?.image;
     if (!imgRef) throw new Error('No image model configured (agent.media.image)');
 
@@ -73,7 +69,7 @@ export class MediaService {
     if (!apiKey) throw new Error(`No API key configured for ${provider}`);
 
     const baseUrl = this.config.providers?.[provider]?.baseUrl;
-    const description = await createProvider(provider).describeImage(params.imageData, params.mimeType, model, apiKey, baseUrl);
+    const description = await this.provider!.describeImage(params.filePath, model, apiKey, baseUrl);
     return { description };
   }
 }
