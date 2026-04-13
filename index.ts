@@ -31,8 +31,11 @@ bus.bootstrap();
 
 for (const [label, load] of SERVICES) {
   try {
+    log.debug(`loading ${label}...`);
     const { boot } = await load();
+    log.debug(`booting ${label}...`);
     const { stop } = await boot(bus);
+    log.debug(`${label} booted`);
     if (stop) stoppers.push(stop);
   } catch (err) {
     log.error(`failed to boot ${label}: ${err instanceof Error ? err.message : String(err)}`);
