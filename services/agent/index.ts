@@ -239,10 +239,6 @@ export class AgentRuntime {
     session.subscribe(event => {
       const eventType = event.type;
 
-      if (eventType !== 'message_update') {
-        log.debug(`Event "${sessionKey}" ${eventType}:`, JSON.stringify(event, null, 2).slice(0, 500));
-      }
-
       // Skip session-specific events (auto_retry_start, auto_retry_end) - not emitted as bus events
       if (eventType === 'auto_retry_start' || eventType === 'auto_retry_end') {
         return;
