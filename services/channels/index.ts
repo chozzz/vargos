@@ -14,7 +14,7 @@
  */
 
 import { z } from 'zod';
-import { register } from '../../gateway/decorators.js';
+import { on, register } from '../../gateway/decorators.js';
 import type { Bus } from '../../gateway/bus.js';
 import type { EventMap, ChannelInfo } from '../../gateway/events.js';
 import type { AppConfig, ChannelEntry, TelegramChannel, WhatsAppChannel } from '../../services/config/index.js';
@@ -49,8 +49,6 @@ export class ChannelService {
     private readonly bus: Bus,
     private readonly config: AppConfig,
   ) {
-    this.bus.on('agent.onTool', (payload) => this.onAgentTool(payload));
-    this.bus.on('agent.onCompleted', (payload) => this.onAgentCompleted(payload));
     this.bus.on('bus.onReady', () => this.startAllConfigured());
   }
 
@@ -165,6 +163,7 @@ export class ChannelService {
 
   // ── Agent event handlers ──────────────────────────────────────────────────────
 
+  @on('agent.onTool')
   private onAgentTool(payload: EventMap['agent.onTool']): void {
     const session = this.activeSessions.get(payload.sessionKey);
     if (!session) return;
@@ -182,6 +181,7 @@ export class ChannelService {
     }
   }
 
+  @on('agent.onCompleted')
   private onAgentCompleted(payload: EventMap['agent.onCompleted']): void {
     const session = this.activeSessions.get(payload.sessionKey);
     if (!session) return;

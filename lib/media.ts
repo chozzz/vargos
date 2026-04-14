@@ -3,13 +3,6 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { extFromMime } from './media-transcribe.js';
 
-export interface MediaModelConfig {
-  provider: string;
-  model: string;
-  apiKey?: string;
-  baseUrl?: string;
-}
-
 export async function saveMedia(params: {
   buffer: Buffer;
   sessionKey: string;

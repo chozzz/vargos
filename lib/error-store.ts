@@ -8,21 +8,19 @@ import path from 'node:path';
 import { getDataPaths } from './paths.js';
 import { sanitizeError, classifyError, type ErrorClass } from './error.js';
 
-export type ErrorStoreClass = ErrorClass | 'validation' | 'fatal';
-
 export interface ErrorEntry {
   ts: string;
   runId?: string;
   sessionKey?: string;
   tool?: string;
-  errorClass: ErrorStoreClass;
+  errorClass: ErrorClass | 'validation' | 'fatal';
   message: string;
   model?: string;
   resolved?: boolean;
 }
 
 export async function appendError(
-  entry: Omit<ErrorEntry, 'ts' | 'errorClass'> & { errorClass?: ErrorStoreClass },
+  entry: Omit<ErrorEntry, 'ts' | 'errorClass'> & { errorClass?: ErrorClass | 'validation' | 'fatal' },
 ): Promise<void> {
   const full: ErrorEntry = {
     ts: new Date().toISOString(),
@@ -32,30 +30,4 @@ export async function appendError(
   };
   const filePath = path.join(getDataPaths().dataDir, 'errors.jsonl');
   await fs.appendFile(filePath, JSON.stringify(full) + '\n', 'utf-8');
-}
-
-/** Read errors from the store, optionally filtered to the last N hours. */
-export async function readErrors(opts?: { sinceHours?: number }): Promise<ErrorEntry[]> {
-  const filePath = path.join(getDataPaths().dataDir, 'errors.jsonl');
-  let raw: string;
-  try {
-    raw = await fs.readFile(filePath, 'utf-8');
-  } catch {
-    return [];
-  }
-
-  const cutoff = opts?.sinceHours
-    ? new Date(Date.now() - opts.sinceHours * 3600_000).toISOString()
-    : undefined;
-
-  const entries: ErrorEntry[] = [];
-  for (const line of raw.split('\n')) {
-    if (!line.trim()) continue;
-    try {
-      const entry = JSON.parse(line) as ErrorEntry;
-      if (cutoff && entry.ts < cutoff) continue;
-      entries.push(entry);
-    } catch { /* skip malformed lines */ }
-  }
-  return entries;
 }

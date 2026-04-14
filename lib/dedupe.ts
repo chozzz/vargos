@@ -15,7 +15,6 @@ export interface DedupeCache {
   has(key: string): boolean;
   /** Mark key as seen; returns true if it was new */
   add(key: string): boolean;
-  clear(): void;
   size: number;
 }
 
@@ -58,10 +57,6 @@ export function createDedupeCache(opts: DedupeOptions = {}): DedupeCache {
       entries.set(key, Date.now());
       evictOldest();
       return true;
-    },
-
-    clear(): void {
-      entries.clear();
     },
 
     get size(): number {

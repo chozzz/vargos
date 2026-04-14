@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { WHISPER_EXTS, MIME_TO_AUDIO_EXT, normalizeApiBaseUrl } from '../../../lib/media-transcribe.js';
+import { getMimeTypeFromExt } from '../../../lib/mime.js';
 import type { MediaProvider } from './provider.js';
 
 export class OpenAIProvider implements MediaProvider {
@@ -28,7 +29,7 @@ export class OpenAIProvider implements MediaProvider {
   async describeImage(filePath: string, model: string, apiKey: string, baseUrl?: string): Promise<string> {
     const buffer = await readFile(filePath);
     const ext = path.extname(filePath).toLowerCase();
-    const mimeType = this.getMimeType(ext);
+    const mimeType = getMimeTypeFromExt(ext);
     const imageData = buffer.toString('base64');
 
     const res = await fetch(`${normalizeApiBaseUrl(baseUrl)}/v1/chat/completions`, {
@@ -50,13 +51,5 @@ export class OpenAIProvider implements MediaProvider {
     if (!res.ok) throw new Error(`OpenAI Vision ${res.status}: ${(await res.text()).slice(0, 100)}`);
     const data = (await res.json()) as { choices: Array<{ message: { content: string } }> };
     return data.choices[0]?.message?.content ?? '';
-  }
-
-  private getMimeType(ext: string): string {
-    const typeMap: Record<string, string> = {
-      '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif',
-      '.webp': 'image/webp', '.bmp': 'image/bmp', '.svg': 'image/svg+xml',
-    };
-    return typeMap[ext.toLowerCase()] || 'image/jpeg';
   }
 }

@@ -157,7 +157,7 @@ describe('MediaService', () => {
 
       await expect(
         bus2.call('media.transcribeAudio', { filePath: '/tmp/audio.mp3' }),
-      ).rejects.toThrow(/Invalid audio config format/);
+      ).rejects.toThrow(/Invalid config format/);
     });
   });
 

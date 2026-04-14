@@ -45,11 +45,6 @@ export class MemorySQLiteStorage implements MemoryStorage {
     );
   }
 
-  async getChunksByPath(filePath: string): Promise<MemoryChunk[]> {
-    const rows = this.db!.prepare('SELECT * FROM chunks WHERE path = ? ORDER BY start_line').all(filePath);
-    return rows.map(r => this.rowToChunk(r as Record<string, unknown>));
-  }
-
   async getAllChunks(): Promise<MemoryChunk[]> {
     const rows = this.db!.prepare('SELECT * FROM chunks ORDER BY path, start_line').all();
     return rows.map(r => this.rowToChunk(r as Record<string, unknown>));

@@ -23,9 +23,7 @@ export const JsonSchema: z.ZodType<Json> = z.lazy(() =>
 // ─── Common enums ─────────────────────────────────────────────────────────────
 
 export const ThinkingLevelSchema = z.enum(['off', 'minimal', 'low', 'medium', 'high', 'xhigh']);
-export const PromptModeSchema    = z.enum(['full', 'minimal', 'none']);
 export const ChannelTypeSchema   = z.enum(['telegram', 'whatsapp']);
 
 export type ThinkingLevel = z.infer<typeof ThinkingLevelSchema>;
-export type PromptMode    = z.infer<typeof PromptModeSchema>;
 export type ChannelType   = z.infer<typeof ChannelTypeSchema>;

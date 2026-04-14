@@ -42,19 +42,4 @@ export function getDataPaths(): DataPaths {
 
 export function resetDataPaths(): void { _cache = null; }
 
-/** Sanitize a session key to a safe directory name. */
-export function sessionKeyToDir(key: string): string {
-  return key.replace(/:/g, '-');
-}
 
-/** Resolve the directory for a session, honoring subagent nesting. */
-export function resolveSessionDir(sessionKey: string): string {
-  const { sessionsDir } = getDataPaths();
-  const subIdx = sessionKey.indexOf(':subagent:');
-  if (subIdx >= 0) {
-    const root = sessionKey.slice(0, subIdx);
-    const sub  = sessionKey.slice(subIdx + 1);
-    return path.join(sessionsDir, sessionKeyToDir(root), 'subagents', sessionKeyToDir(sub));
-  }
-  return path.join(sessionsDir, sessionKeyToDir(sessionKey));
-}

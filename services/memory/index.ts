@@ -8,16 +8,6 @@ import { MemoryContext } from './context.js';
 import { MemorySQLiteStorage } from './sqlite-storage.js';
 import { createLogger } from '../../lib/logger.js';
 
-export { MemoryContext };
-
-// Singleton — shared by MemoryService @on handlers and the tool registry
-const _context: MemoryContext | null = null;
-
-export function getMemoryContext(): MemoryContext {
-  if (!_context) throw new Error('MemoryContext not initialized');
-  return _context;
-}
-
 export class MemoryService {
   protected readonly log = createLogger('memory');
   protected readonly context: MemoryContext;

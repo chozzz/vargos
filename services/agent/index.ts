@@ -12,7 +12,7 @@ import { z } from 'zod';
 import path from 'node:path';
 import { register } from '../../gateway/decorators.js';
 import type { Bus } from '../../gateway/bus.js';
-import type { EventMap } from '../../gateway/events.js';
+import type { EventMap, Json } from '../../gateway/events.js';
 import type { AppConfig } from '../../services/config/index.js';
 import { createLogger } from '../../lib/logger.js';
 import { parseDirectives } from '../../lib/directives.js';
@@ -42,22 +42,6 @@ type ImageContent = {
 // PiAgent event types for type-safe event mapping
 import type { AgentSessionEvent } from '@mariozechner/pi-coding-agent';
 
-function isToolStartEvent(event: AgentSessionEvent): event is AgentSessionEvent & { type: 'tool_execution_start'; toolName: string; args: any } {
-  return event.type === 'tool_execution_start';
-}
-
-function isToolEndEvent(event: AgentSessionEvent): event is AgentSessionEvent & { type: 'tool_execution_end'; toolName: string; result: any } {
-  return event.type === 'tool_execution_end';
-}
-
-function isMessageUpdateEvent(event: AgentSessionEvent): event is AgentSessionEvent & { type: 'message_update'; delta?: unknown; text?: unknown } {
-  return event.type === 'message_update';
-}
-
-function isCompletionEvent(event: AgentSessionEvent): event is AgentSessionEvent & { type: 'agent_end' | 'turn_end' } {
-  return event.type === 'agent_end' || event.type === 'turn_end';
-}
-
 import { createCustomTools } from './tools.js';
 
 const log = createLogger('agent');
@@ -69,9 +53,9 @@ export function parseModelRef(ref: string): { provider: string; modelId: string 
   return { provider: ref.slice(0, idx), modelId: ref.slice(idx + 1) };
 }
 
-// ── AgentRuntime ─────────────────────────────────────────────────────────────
+// ── AgentService ─────────────────────────────────────────────────────────────
 
-export class AgentRuntime {
+export class AgentService {
   protected bus: Bus;
   protected config: AppConfig;
   protected sessions = new Map<string, AgentSession>();
@@ -236,7 +220,7 @@ export class AgentRuntime {
    * Subscribe to PiAgent sessionsubscription - emit to bus for streaming + debug logging.
    */
   protected subscribeToSessionEvents(session: AgentSession, sessionKey: string): void {
-    session.subscribe(event => {
+    session.subscribe((event: AgentSessionEvent) => {
       const eventType = event.type;
 
       // Skip session-specific events (auto_retry_start, auto_retry_end) - not emitted as bus events
@@ -245,33 +229,53 @@ export class AgentRuntime {
       }
 
       // Map PiAgent events to our bus events
-      if (isToolStartEvent(event)) {
-        this.bus.emit('agent.onTool', {
-          sessionKey,
-          toolName: event.toolName,
-          phase: 'start',
-          args: event.args,
-        });
-      } else if (isToolEndEvent(event)) {
-        this.bus.emit('agent.onTool', {
-          sessionKey,
-          toolName: event.toolName,
-          phase: 'end',
-          result: event.result,
-        });
-      } else if (isMessageUpdateEvent(event)) {
-        const delta = (event as any).delta || (event as any).text || '';
-        if (delta) {
-          this.bus.emit('agent.onDelta', { sessionKey, chunk: delta });
+      // Bridge PiAgent's untyped event structure to our typed EventMap
+       
+      switch (eventType) {
+        case 'tool_execution_start': {
+          const e = event as { toolName?: string; args?: unknown };
+          if (e.toolName) {
+            this.bus.emit('agent.onTool', {
+              sessionKey,
+              toolName: e.toolName,
+              phase: 'start',
+              args: e.args as Json | undefined,
+            });
+          }
+          break;
         }
-      } else if (isCompletionEvent(event)) {
-        const response = this.extractResponse(session);
-        this.bus.emit('agent.onCompleted', {
-          sessionKey,
-          success: event.type !== 'agent_end' || !(event as any).error,
-          response: response || undefined,
-          error: (event as any).error,
-        });
+        case 'tool_execution_end': {
+          const e = event as { toolName?: string; result?: unknown };
+          if (e.toolName) {
+            this.bus.emit('agent.onTool', {
+              sessionKey,
+              toolName: e.toolName,
+              phase: 'end',
+              result: e.result as Json | undefined,
+            });
+          }
+          break;
+        }
+        case 'message_update': {
+          const e = event as { delta?: string; text?: string };
+          const delta = e.delta || e.text || '';
+          if (delta) {
+            this.bus.emit('agent.onDelta', { sessionKey, chunk: delta });
+          }
+          break;
+        }
+        case 'agent_end':
+        case 'turn_end': {
+          const e = event as { error?: unknown };
+          const response = this.extractResponse(session);
+          this.bus.emit('agent.onCompleted', {
+            sessionKey,
+            success: eventType !== 'agent_end' || !e.error,
+            response: response || undefined,
+            error: undefined,
+          });
+          break;
+        }
       }
     });
   }
@@ -410,7 +414,7 @@ export class AgentRuntime {
 
 export async function boot(bus: Bus): Promise<{ stop(): void }> {
   const config = await bus.call('config.get', {});
-  const runtime = new AgentRuntime({ bus, config });
+  const runtime = new AgentService({ bus, config });
   bus.bootstrap(runtime);
   return { stop: () => runtime.stop() };
 }

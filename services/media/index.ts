@@ -11,28 +11,22 @@ import type { EventMap } from '../../gateway/events.js';
 import type { AppConfig } from '../../services/config/index.js';
 import { createLogger } from '../../lib/logger.js';
 import { createProvider } from './providers/index.js';
-import type { MediaProvider } from './providers/index.js';
 
 const log = createLogger('media');
 
 export class MediaService {
-  private provider?: MediaProvider;
-
   constructor(
     private readonly bus: Bus,
     private readonly config: AppConfig,
-  ) {
-    const audioRef = this.config.agent?.media?.audio;
-    if (!audioRef) return;
+  ) {}
 
-    const [provider] = audioRef.split(':');
-    if (provider) {
-      try {
-        this.provider = createProvider(provider);
-      } catch (err) {
-        log.error('Failed to initialize provider', { provider, error: err instanceof Error ? err.message : String(err) });
-      }
-    }
+
+  private resolveProviderConfig(ref: string): { provider: string; model: string; apiKey: string; baseUrl?: string } {
+    const [provider, model] = ref.split(':');
+    if (!provider || !model) throw new Error('Invalid config format (expected "provider:model")');
+    const apiKey = this.config.auth?.[provider]?.key;
+    if (!apiKey) throw new Error(`No API key configured for ${provider}`);
+    return { provider, model, apiKey, baseUrl: this.config.providers?.[provider]?.baseUrl };
   }
 
   @register('media.transcribeAudio', {
@@ -43,14 +37,8 @@ export class MediaService {
     const audioRef = this.config.agent?.media?.audio;
     if (!audioRef) throw new Error('No audio model configured (agent.media.audio)');
 
-    const [provider, model] = audioRef.split(':');
-    if (!provider || !model) throw new Error('Invalid audio config format (expected "provider:model")');
-
-    const apiKey = this.config.auth?.[provider]?.key;
-    if (!apiKey) throw new Error(`No API key configured for ${provider}`);
-
-    const baseUrl = this.config.providers?.[provider]?.baseUrl;
-    const text = await this.provider!.transcribeAudio(params.filePath, model, apiKey, baseUrl);
+    const { provider, model, apiKey, baseUrl } = this.resolveProviderConfig(audioRef);
+    const text = await createProvider(provider).transcribeAudio(params.filePath, model, apiKey, baseUrl);
     return { text };
   }
 
@@ -62,14 +50,8 @@ export class MediaService {
     const imgRef = this.config.agent?.media?.image;
     if (!imgRef) throw new Error('No image model configured (agent.media.image)');
 
-    const [provider, model] = imgRef.split(':');
-    if (!provider || !model) throw new Error('Invalid image config format (expected "provider:model")');
-
-    const apiKey = this.config.auth?.[provider]?.key;
-    if (!apiKey) throw new Error(`No API key configured for ${provider}`);
-
-    const baseUrl = this.config.providers?.[provider]?.baseUrl;
-    const description = await this.provider!.describeImage(params.filePath, model, apiKey, baseUrl);
+    const { provider, model, apiKey, baseUrl } = this.resolveProviderConfig(imgRef);
+    const description = await createProvider(provider).describeImage(params.filePath, model, apiKey, baseUrl);
     return { description };
   }
 }

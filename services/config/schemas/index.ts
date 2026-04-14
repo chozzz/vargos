@@ -3,8 +3,8 @@
  */
 
 // Primitives
-export { JsonSchema, ThinkingLevelSchema, PromptModeSchema, ChannelTypeSchema } from './primitives.js';
-export type { Json, ThinkingLevel, PromptMode, ChannelType } from './primitives.js';
+export { JsonSchema, ThinkingLevelSchema, ChannelTypeSchema } from './primitives.js';
+export type { Json, ThinkingLevel, ChannelType } from './primitives.js';
 
 // Auth
 export { AuthEntrySchema, AuthSchema } from './auth.js';
@@ -46,8 +46,8 @@ export { HeartbeatConfigSchema, LinkExpandConfigSchema } from './features.js';
 export type { HeartbeatConfig, LinkExpandConfig } from './features.js';
 
 // MCP
-export { McpClientConfigSchema, McpServerEntrySchema, McpServersConfigSchema } from './mcp.js';
-export type { McpClientConfig, McpServerEntry } from './mcp.js';
+export { McpClientConfigSchema } from './mcp.js';
+export type { McpClientConfig } from './mcp.js';
 
 // Storage
 export { StorageConfigSchema } from './storage.js';

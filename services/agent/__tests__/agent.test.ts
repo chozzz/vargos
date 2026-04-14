@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import { parseModelRef, AgentRuntime } from '../index.js';
+import { parseModelRef, AgentService } from '../index.js';
 import { AppConfigSchema } from '../../config/index.js';
 import type { Bus } from '../../../gateway/bus.js';
 import { resetDataPaths } from '../../../lib/paths.js';
@@ -42,7 +42,7 @@ describe('parseModelRef', () => {
 
 // ── System prompt merging ────────────────────────────────────────────────────
 
-class TestableRuntime extends AgentRuntime {
+class TestableRuntime extends AgentService {
   async testGetSystemPrompt(sessionKey: string, cwd?: string) {
     return this.getSystemPrompt(sessionKey, cwd);
   }

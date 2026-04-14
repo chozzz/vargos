@@ -33,30 +33,7 @@ export async function generateEmbedding(
     }
   }
 
-  return simpleEmbedding(text);
-}
-
-export function simpleEmbedding(text: string): number[] {
-  const dim = 384;
-  const vec = new Float32Array(dim);
-
-  const normalized = text.toLowerCase();
-  for (let i = 0; i < normalized.length - 2; i++) {
-    const trigram = normalized.slice(i, i + 3);
-    let hash = 0;
-    for (let j = 0; j < trigram.length; j++) {
-      hash = ((hash << 5) - hash) + trigram.charCodeAt(j);
-      hash = hash & hash;
-    }
-    vec[Math.abs(hash) % dim] += 1;
-  }
-
-  const magnitude = Math.sqrt(vec.reduce((sum, v) => sum + v * v, 0));
-  if (magnitude > 0) {
-    for (let i = 0; i < dim; i++) vec[i] /= magnitude;
-  }
-
-  return Array.from(vec);
+  return undefined;
 }
 
 export function cosineSimilarity(a: number[], b: number[]): number {

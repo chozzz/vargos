@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { getMimeTypeFromExt } from '../../../lib/mime.js';
 import type { MediaProvider } from './provider.js';
 
 export class AnthropicProvider implements MediaProvider {
@@ -10,7 +11,7 @@ export class AnthropicProvider implements MediaProvider {
   async describeImage(filePath: string, model: string, apiKey: string, baseUrl?: string): Promise<string> {
     const buffer = await readFile(filePath);
     const ext = path.extname(filePath).toLowerCase();
-    const mimeType = this.getMimeType(ext);
+    const mimeType = getMimeTypeFromExt(ext);
     const imageData = buffer.toString('base64');
 
     const res = await fetch(`${baseUrl ?? 'https://api.anthropic.com'}/v1/messages`, {
@@ -36,13 +37,5 @@ export class AnthropicProvider implements MediaProvider {
     if (!res.ok) throw new Error(`Anthropic Vision ${res.status}: ${(await res.text()).slice(0, 100)}`);
     const data = (await res.json()) as { content: Array<{ type: string; text?: string }> };
     return data.content.find(b => b.type === 'text')?.text ?? '';
-  }
-
-  private getMimeType(ext: string): string {
-    const typeMap: Record<string, string> = {
-      '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif',
-      '.webp': 'image/webp', '.bmp': 'image/bmp', '.svg': 'image/svg+xml',
-    };
-    return typeMap[ext.toLowerCase()] || 'image/jpeg';
   }
 }

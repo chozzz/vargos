@@ -20,12 +20,6 @@ export interface MessageDebouncer {
   flush(key: string): void;
   /** Immediately flush all pending keys */
   flushAll(): void;
-  /** Cancel pending flush for a key (messages dropped) */
-  cancel(key: string): void;
-  /** Cancel all pending flushes (messages dropped) */
-  cancelAll(): void;
-  /** Number of keys with pending messages */
-  readonly pendingCount: number;
 }
 
 export function createMessageDebouncer(
@@ -77,23 +71,7 @@ export function createMessageDebouncer(
         flush(key);
       }
     },
-
-    cancel(key: string): void {
-      const entry = pending.get(key);
-      if (!entry) return;
-      clearTimeout(entry.timer);
-      pending.delete(key);
-    },
-
-    cancelAll(): void {
-      for (const [, entry] of pending) {
-        clearTimeout(entry.timer);
-      }
-      pending.clear();
-    },
-
-    get pendingCount(): number {
-      return pending.size;
-    },
   };
 }
+
+

@@ -14,7 +14,6 @@ import {
   LinkExpandConfigSchema,
   ProvidersSchema,
   McpClientConfigSchema,
-  McpServersConfigSchema,
   StorageConfigSchema,
   type ChannelEntry,
   type TelegramChannel,
@@ -50,7 +49,7 @@ export const AppConfigSchema = z
     heartbeat: HeartbeatConfigSchema.default({}),
     linkExpand: LinkExpandConfigSchema.default({}),
     mcp: McpClientConfigSchema.default({}),
-    mcpServers: McpServersConfigSchema.optional(),
+    mcpServers: z.record(z.string(), z.any()).optional(),
     storage: StorageConfigSchema.optional(),
     media: z.object({
       audio: z.string().optional(),
@@ -142,8 +141,7 @@ export class ConfigService {
 
     // Load auth.json
     try {
-      const authPath = path.join(this.agentDir, 'auth.json');
-      const authContent = readFileSync(authPath, 'utf8');
+      const authContent = readFileSync(this.agentAuthFile, 'utf8');
       const auth = JSON.parse(authContent ?? '{}');
       raw.auth = auth;
     } catch {
@@ -192,13 +190,13 @@ export class ConfigService {
     // Extract agent config to agent/settings.json
     if (configForFile.agent) {
       agentSettings = { ...agentSettings, ...configForFile.agent };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       delete (configForFile as any).agent;
     }
 
     // Load existing auth.json to preserve other credentials
     try {
-      const authPath = path.join(this.agentDir, 'auth.json');
-      authData = JSON.parse(readFileSync(authPath, 'utf8'));
+      authData = JSON.parse(readFileSync(this.agentAuthFile, 'utf8'));
     } catch {
       // File doesn't exist yet
     }
@@ -206,6 +204,7 @@ export class ConfigService {
     // Extract auth credentials to agent/auth.json
     if (configForFile.auth) {
       authData = { ...authData, ...configForFile.auth };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       delete (configForFile as any).auth;
     }
 
@@ -226,27 +225,15 @@ export class ConfigService {
     // Persist to appropriate files
     saveConfig(this.configFile, configForFile);
 
-    if (Object.keys(agentModels).length > 0) {
-      if (!existsSync(this.agentDir)) {
-        mkdirSync(this.agentDir, { recursive: true });
-      }
-      writeFileSync(this.agentModelsFile, JSON.stringify(agentModels, null, 2), { mode: 0o600 });
-    }
+    const writeAgentFile = (file: string, data: Record<string, unknown>) => {
+      if (Object.keys(data).length === 0) return;
+      if (!existsSync(this.agentDir)) mkdirSync(this.agentDir, { recursive: true });
+      writeFileSync(file, JSON.stringify(data, null, 2), { mode: 0o600 });
+    };
 
-    if (Object.keys(agentSettings).length > 0) {
-      if (!existsSync(this.agentDir)) {
-        mkdirSync(this.agentDir, { recursive: true });
-      }
-      writeFileSync(this.agentSettingsFile, JSON.stringify(agentSettings, null, 2), { mode: 0o600 });
-    }
-
-    if (Object.keys(authData).length > 0) {
-      if (!existsSync(this.agentDir)) {
-        mkdirSync(this.agentDir, { recursive: true });
-      }
-      const authPath = path.join(this.agentDir, 'auth.json');
-      writeFileSync(authPath, JSON.stringify(authData, null, 2), { mode: 0o600 });
-    }
+    writeAgentFile(this.agentModelsFile, agentModels);
+    writeAgentFile(this.agentSettingsFile, agentSettings);
+    writeAgentFile(this.agentAuthFile, authData);
 
     this.log.info('config updated and persisted');
     return this.loadConfig();
