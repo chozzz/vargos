@@ -189,6 +189,15 @@ export class ChannelService {
     this.activeSessions.delete(payload.sessionKey);
     session.adapter.stopTyping(payload.sessionKey, true);  // final=true to fully stop
 
+    // Send reply based on success/error
+    if (payload.success && payload.response) {
+      this.bus.call('channel.send', { sessionKey: payload.sessionKey, text: payload.response });
+    } else if (!payload.success) {
+      const errorMsg = payload.error ? toMessage(payload.error) : 'Unknown error';
+      this.bus.call('channel.send', { sessionKey: payload.sessionKey, text: `Error: ${errorMsg}` });
+    }
+
+    // Update and cleanup reaction controller
     if (session.reactionController) {
       if (payload.success === false) {
         session.reactionController.setError();
@@ -236,48 +245,37 @@ export class ChannelService {
 
     log.info(`inbound: ${sessionKey} "${enrichedContent.slice(0, 80)}"`);
 
-    this.runAgent(sessionKey, enrichedContent, inboundMeta, reactionController);
-  }
+    // Build agent.execute params from inbound metadata
+    const executeParams: EventMap['agent.execute']['params'] = { sessionKey, task: enrichedContent };
+    if (inboundMeta.model && typeof inboundMeta.model === 'string') {
+      executeParams.model = inboundMeta.model;
+    }
+    if (inboundMeta.thinkingLevel && typeof inboundMeta.thinkingLevel === 'string') {
+      executeParams.thinkingLevel = inboundMeta.thinkingLevel as EventMap['agent.execute']['params']['thinkingLevel'];
+    }
+    if (inboundMeta.images && Array.isArray(inboundMeta.images)) {
+      executeParams.images = inboundMeta.images as EventMap['agent.execute']['params']['images'];
+    }
 
-  /**
-   * Call agent.execute, deliver response, manage typing/reactions.
-   */
-  private async runAgent(
-    sessionKey: string,
-    content: string,
-    metadata: Record<string, unknown>,
-    reactionController?: StatusReactionController,
-  ): Promise<void> {
-    const session = this.activeSessions.get(sessionKey);
-    if (!session) return;
-
-    const stopTyping = () => session.adapter.stopTyping(sessionKey);
-
+    // Fire agent.execute and handle immediately (response comes via agent.onCompleted event)
     try {
-      const executeParams: EventMap['agent.execute']['params'] = { sessionKey, task: content };
-      if (metadata.model && typeof metadata.model === 'string') executeParams.model = metadata.model;
-      if (metadata.thinkingLevel && typeof metadata.thinkingLevel === 'string') {
-        executeParams.thinkingLevel = metadata.thinkingLevel as EventMap['agent.execute']['params']['thinkingLevel'];
-      }
-      if (metadata.images && Array.isArray(metadata.images)) {
-        executeParams.images = metadata.images as EventMap['agent.execute']['params']['images'];
-      }
-
-      const result = await this.bus.call('agent.execute', executeParams);
-
-      stopTyping();
-
-      if (result.response) {
-        await this.bus.call('channel.send', { sessionKey, text: result.response });
-        reactionController?.setDone();
-      }
+      this.bus.call('agent.execute', executeParams);
     } catch (err) {
-      stopTyping();
-      reactionController?.setError();
+      // Handle unexpected system errors (not agent errors)
+      const session = this.activeSessions.get(sessionKey);
+      if (!session) return;
 
       const errorMsg = toMessage(err);
-      log.error(`agent execution failed: ${errorMsg}`);
-      await this.bus.call('channel.send', { sessionKey, text: `Error: ${errorMsg}` });
+      log.error(`agent.execute call failed: ${errorMsg}`);
+
+      session.adapter.stopTyping(sessionKey);
+      this.bus.call('channel.send', { sessionKey, text: `System error: ${errorMsg}` });
+
+      if (session.reactionController) {
+        session.reactionController.setError();
+        session.reactionController.dispose();
+      }
+      this.activeSessions.delete(sessionKey);
     }
   }
 
