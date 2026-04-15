@@ -14,6 +14,7 @@ import {
   LinkExpandConfigSchema,
   ProvidersSchema,
   McpClientConfigSchema,
+  McpServerConfigSchema,
   StorageConfigSchema,
   type ChannelEntry,
   type TelegramChannel,
@@ -27,6 +28,7 @@ import {
   type WebhookEntry,
   type LinkExpandConfig,
   type McpClientConfig,
+  type McpServerConfig,
   type StorageConfig,
   type Auth,
   type Json,
@@ -49,7 +51,7 @@ export const AppConfigSchema = z
     heartbeat: HeartbeatConfigSchema.default({}),
     linkExpand: LinkExpandConfigSchema.default({}),
     mcp: McpClientConfigSchema.default({}),
-    mcpServers: z.record(z.string(), z.any()).optional(),
+    mcpServers: z.record(z.string(), McpServerConfigSchema).optional().describe('External MCP servers to load as bus callable events'),
     storage: StorageConfigSchema.optional(),
     media: z.object({
       audio: z.string().optional(),
@@ -83,6 +85,7 @@ export type {
   WebhookEntry,
   LinkExpandConfig,
   McpClientConfig,
+  McpServerConfig,
   StorageConfig,
   Json,
 };

@@ -16,6 +16,7 @@ const SERVICES: Array<[string, () => Promise<{ boot(bus: EventEmitterBus): Promi
   ['agent', () => import('./services/agent/index.js')],
   ['cron', () => import('./services/cron/index.js')],
   ['channels', () => import('./services/channels/index.js')],
+  ['mcp-client', () => import('./services/mcp-client/index.js')],
   // ['webhooks', () => import('./edge/webhooks/index.js')],
   // ['mcp',      () => import('./edge/mcp/index.js')],
 ];

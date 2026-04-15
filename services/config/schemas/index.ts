@@ -46,8 +46,8 @@ export { HeartbeatConfigSchema, LinkExpandConfigSchema } from './features.js';
 export type { HeartbeatConfig, LinkExpandConfig } from './features.js';
 
 // MCP
-export { McpClientConfigSchema } from './mcp.js';
-export type { McpClientConfig } from './mcp.js';
+export { McpClientConfigSchema, McpServerConfigSchema } from './mcp.js';
+export type { McpClientConfig, McpServerConfig } from './mcp.js';
 
 // Storage
 export { StorageConfigSchema } from './storage.js';
