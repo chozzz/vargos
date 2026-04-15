@@ -13,6 +13,7 @@
  * Tools become callable events: mcp.server-name.toolName on the bus
  */
 
+import { z } from 'zod';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
@@ -134,6 +135,67 @@ export class McpClientService {
     }
   }
 
+  /**
+   * Convert JSON Schema to Zod schema.
+   * Handles common JSON Schema properties like type, properties, required, etc.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private jsonSchemaToZod(jsonSchema: any): any {
+    if (!jsonSchema || typeof jsonSchema !== 'object') {
+      return z.any();
+    }
+
+     
+    const { type, properties, required, items, enum: enumValues } = jsonSchema;
+
+    // Handle enum
+    if (enumValues && Array.isArray(enumValues) && enumValues.length > 0) {
+       
+      return z.enum(enumValues as [string, ...string[]]);
+    }
+
+    // Handle array
+    if (type === 'array' || Array.isArray(type) && type.includes('array')) {
+      const itemSchema = items ? this.jsonSchemaToZod(items) : z.any();
+      return z.array(itemSchema);
+    }
+
+    // Handle object
+    if (type === 'object' || type === undefined || (Array.isArray(type) && type.includes('object'))) {
+      if (properties && typeof properties === 'object') {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const zodProperties: Record<string, any> = {};
+        for (const [key, prop] of Object.entries(properties)) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          zodProperties[key] = this.jsonSchemaToZod(prop as any);
+          // Make fields optional unless explicitly required
+          if (!required || !required.includes(key)) {
+            zodProperties[key] = zodProperties[key].optional();
+          }
+        }
+        return z.object(zodProperties).passthrough();
+      }
+      // No properties specified — accept any object
+      return z.object({}).passthrough();
+    }
+
+    // Handle primitives
+    switch (type) {
+      case 'string':
+        return z.string();
+      case 'number':
+        return z.number();
+      case 'integer':
+        return z.number().int();
+      case 'boolean':
+        return z.boolean();
+      case 'null':
+        return z.null();
+      default:
+        return z.any();
+    }
+  }
+
   private registerToolHandler(serverName: string, tool: Tool, registeredTools: Set<string>): void {
     const eventName = `mcp.${serverName}.${tool.name}`;
 
@@ -170,9 +232,14 @@ export class McpClientService {
     };
 
     // Register with bus using the public registerTool API
+    // Convert MCP JSON Schema to Zod schema for introspection
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const schema = (tool.inputSchema as any) || {};
-    this.bus.registerTool(eventName, handler, schema);
+    const zodSchema = this.jsonSchemaToZod(tool.inputSchema as any);
+    const toolSchema = {
+      description: tool.description || `MCP tool: ${tool.name}`,
+      schema: zodSchema,
+    };
+    this.bus.registerTool(eventName, handler, toolSchema);
     registeredTools.add(eventName);
   }
 
