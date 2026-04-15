@@ -165,11 +165,19 @@ export class EventEmitterBus implements Bus {
     for (const event of this.callableRegistry.keys()) {
       if (query && !event.includes(query)) continue;
       const toolSchema = this.callableRegistry.get(event);
+      let schema: { params: unknown } | undefined;
+      try {
+        if (toolSchema?.schema) {
+          schema = { params: zodToJsonSchema(toolSchema.schema) };
+        }
+      } catch (err) {
+        log.error(`Failed to convert schema for ${event}: ${err instanceof Error ? err.message : String(err)}`);
+      }
       result.push({
         event,
         description: toolSchema?.description || '(no description)',
         type: 'tool',
-        schema: toolSchema ? { params: zodToJsonSchema(toolSchema.schema) } : undefined,
+        schema,
       });
     }
 
@@ -186,11 +194,19 @@ export class EventEmitterBus implements Bus {
     // Check if it's a tool
     const toolSchema = this.callableRegistry.get(params.event);
     if (toolSchema) {
+      let schema: { params: unknown } | undefined;
+      try {
+        if (toolSchema.schema) {
+          schema = { params: zodToJsonSchema(toolSchema.schema) };
+        }
+      } catch (err) {
+        log.error(`Failed to convert schema for ${params.event}: ${err instanceof Error ? err.message : String(err)}`);
+      }
       return {
         event: params.event,
         description: toolSchema.description,
         type: 'tool',
-        schema: { params: zodToJsonSchema(toolSchema.schema) },
+        schema,
       };
     }
 
