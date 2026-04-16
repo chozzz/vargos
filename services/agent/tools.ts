@@ -43,6 +43,11 @@ function wrapEventAsToolDefinition(
       log.debug(`${eventName}: ${Object.entries(paramsObj).map(([k, v]) => `${k}=${JSON.stringify(v).slice(0, 100)}`).join(', ')}`);
 
       try {
+        // Auto-inject parent sessionKey for subagent calls (agent.execute only)
+        if (eventName === 'agent.execute' && !paramsObj.sessionKey) {
+          paramsObj.sessionKey = `${sessionKey}:subagent`;
+        }
+
         const result = await bus.call(eventName as never, paramsObj);
 
         let resultText = '';

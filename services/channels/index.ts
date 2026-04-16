@@ -182,7 +182,7 @@ export class ChannelService {
   }
 
   @on('agent.onCompleted')
-  private onAgentCompleted(payload: EventMap['agent.onCompleted']): void {
+  private onAgentCompleted(payload: EventMap['agent.onCompleted']): void | Promise<void> {
     const session = this.activeSessions.get(payload.sessionKey);
     if (!session) return;
 
@@ -190,22 +190,30 @@ export class ChannelService {
     session.adapter.stopTyping(payload.sessionKey, true);  // final=true to fully stop
 
     // Send reply based on success/error
-    if (payload.success && payload.response) {
-      this.bus.call('channel.send', { sessionKey: payload.sessionKey, text: payload.response });
-    } else if (!payload.success) {
-      const errorMsg = payload.error ? toMessage(payload.error) : 'Unknown error';
-      this.bus.call('channel.send', { sessionKey: payload.sessionKey, text: `Error: ${errorMsg}` });
-    }
-
-    // Update and cleanup reaction controller
-    if (session.reactionController) {
-      if (payload.success === false) {
-        session.reactionController.setError();
-      } else {
-        session.reactionController.setDone();
+    const sendReply = async () => {
+      try {
+        if (payload.success && payload.response) {
+          await this.bus.call('channel.send', { sessionKey: payload.sessionKey, text: payload.response });
+        } else if (!payload.success) {
+          const errorMsg = payload.error ? toMessage(payload.error) : 'Unknown error';
+          await this.bus.call('channel.send', { sessionKey: payload.sessionKey, text: `Error: ${errorMsg}` });
+        }
+      } catch (err) {
+        log.error(`failed to send reply: ${toMessage(err)}`);
       }
-      session.reactionController.dispose();
-    }
+
+      // Update and cleanup reaction controller
+      if (session.reactionController) {
+        if (payload.success === false) {
+          session.reactionController.setError();
+        } else {
+          session.reactionController.setDone();
+        }
+        session.reactionController.dispose();
+      }
+    };
+
+    return sendReply();
   }
 
   // ── Inbound message handling ─────────────────────────────────────────────────
@@ -257,26 +265,26 @@ export class ChannelService {
       executeParams.images = inboundMeta.images as EventMap['agent.execute']['params']['images'];
     }
 
-    // Fire agent.execute and handle immediately (response comes via agent.onCompleted event)
-    try {
-      this.bus.call('agent.execute', executeParams);
-    } catch (err) {
-      // Handle unexpected system errors (not agent errors)
+    // Execute agent (response comes via agent.onCompleted event)
+    // Handle both sync errors (e.g., tool not found) and async execution errors
+    this.bus.call('agent.execute', executeParams).catch(err => {
       const session = this.activeSessions.get(sessionKey);
       if (!session) return;
 
       const errorMsg = toMessage(err);
-      log.error(`agent.execute call failed: ${errorMsg}`);
+      log.error(`agent execution failed: ${errorMsg}`);
 
+      this.activeSessions.delete(sessionKey);
       session.adapter.stopTyping(sessionKey);
-      this.bus.call('channel.send', { sessionKey, text: `System error: ${errorMsg}` });
+
+      this.bus.call('channel.send', { sessionKey, text: `System error: ${errorMsg}` })
+        .catch(sendErr => log.error(`failed to send error message: ${toMessage(sendErr)}`));
 
       if (session.reactionController) {
         session.reactionController.setError();
         session.reactionController.dispose();
       }
-      this.activeSessions.delete(sessionKey);
-    }
+    });
   }
 
   // ── Channel startup ──────────────────────────────────────────────────────────
