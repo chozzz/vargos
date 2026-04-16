@@ -37,7 +37,7 @@ export class EventEmitterBus implements Bus {
 
   constructor(timeoutMs = DEFAULT_CALL_TIMEOUT_MS) {
     this.timeoutMs = timeoutMs;
-    this.ee.setMaxListeners(200);
+    this.ee.setMaxListeners(0); // Disable MaxListeners warning; this is a server with many legitimate listeners
   }
 
   // ── Bus interface ───────────────────────────────────────────────────────────
