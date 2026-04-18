@@ -95,23 +95,33 @@ export class AgentService {
 
   /**
    * agent.execute — Run a task
+   *
+   * Note: sessionKey is declared optional here because it's auto-injected by
+   * wrapEventAsToolDefinition() when the agent calls this as a tool. Direct callers
+   * (channels, cron, webhooks, TCP) still provide sessionKey via EventMap.
    */
   @register('agent.execute', {
-    description: 'Run the agent on a task using PiAgent session persistence.',
+    description: 'Delegates a task to another agent / subagent.',
     schema: z.object({
-      sessionKey: z.string(),
-      task: z.string(),
-      cwd: z.string().optional(),
-      thinkingLevel: z.string().optional(),
-      model: z.string().optional(),
+      // sessionKey is injected by wrapEventAsToolDefinition — the agent never provides it.
+      // Declared optional so the decorator's type inference matches the schema shape.
+      sessionKey: z.string().optional(),
+      task: z.string().describe('The task to delegate to the agent.'),
+      cwd: z.string().describe('The working directory for the agent.').optional(),
+      thinkingLevel: z.string().describe('Thinking level — passed through to PiAgent.').optional(),
+      model: z.string().describe('The default LLM model for the agent. (provider:modelId)').optional(),
       images: z.array(z.object({
         data: z.string(),
         mimeType: z.string(),
-      })).optional(),
-      timeoutMs: z.number().optional(),
+      })).describe('The images to pass to the agent.').optional(),
+      timeoutMs: z.number().describe('The timeout for the agent.').optional(),
     }),
   })
   async execute(params: EventMap['agent.execute']['params']): Promise<EventMap['agent.execute']['result']> {
+    if (!params.sessionKey) {
+      throw new Error('sessionKey is required for agent.execute');
+    }
+
     const directives = parseDirectives(params.task);
     const task = directives.cleaned || params.task;
 
@@ -123,9 +133,11 @@ export class AgentService {
       mimeType: img.mimeType,
     }));
 
-    const options: Record<string, unknown> = { images };
-    if (directives.thinkingLevel) {
-      options.thinkingLevel = directives.thinkingLevel;
+    // Set thinking level on the session (session-level setting, not per-prompt).
+    // Priority: task directive > explicit param (channels/cron/tool callers)
+    const thinkingLevel = directives.thinkingLevel || params.thinkingLevel;
+    if (thinkingLevel) {
+      session.setThinkingLevel(thinkingLevel);
     }
 
     // Apply timeout (use provided timeout or fall back to config default)
@@ -133,7 +145,7 @@ export class AgentService {
 
     this.activeRuns.add(params.sessionKey);
     try {
-      await this.promptWithTimeout(session, task, options, timeoutMs);
+      await this.promptWithTimeout(session, task, { images }, timeoutMs);
     } finally {
       this.activeRuns.delete(params.sessionKey);
     }
@@ -180,7 +192,7 @@ export class AgentService {
 
     const effectiveCwd = cwd ?? this.dataDir;
 
-    const sessionDir = path.join(this.sessionsDir, sessionKey);
+    const sessionDir = path.join(this.sessionsDir, sessionKey.replace(/:/g, path.sep));
     await fs.mkdir(sessionDir, { recursive: true });
     await fs.mkdir(this.agentDir, { recursive: true });
 
@@ -230,7 +242,7 @@ export class AgentService {
 
       // Map PiAgent events to our bus events
       // Bridge PiAgent's untyped event structure to our typed EventMap
-       
+
       switch (eventType) {
         case 'tool_execution_start': {
           const e = event as { toolName?: string; args?: unknown };

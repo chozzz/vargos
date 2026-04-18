@@ -1,7 +1,21 @@
 /**
  * Agent — Bus Tools Integration
- * 
+ *
  * Converts bus callable events with @register decorators into PiAgent ToolDefinitions.
+ *
+ * Session key injection:
+ * - Every tool closes over the parent sessionKey from getCustomTools().
+ * - For agent.execute specifically, sessionKey is auto-generated as `${parentKey}:subagent`
+ *   so the agent doesn't need to (and can't) provide its own session key.
+ * - Other tools inherit the parent sessionKey for context-aware operations
+ *   (e.g. channel.send delivers to the right recipient).
+ *
+ * Schema vs EventMap gap:
+ * - The agent.execute schema omits sessionKey (it's injected here before bus.call).
+ * - EventMap['agent.execute']['params'] still declares sessionKey as required because
+ *   direct callers (channels, cron, webhooks, TCP clients) must provide it.
+ * - This mismatch is intentional — the tool wrapper is the bridge between the agent's
+ *   view (no sessionKey) and the service's view (sessionKey required).
  */
 
 import type { ToolDefinition } from '@mariozechner/pi-coding-agent';
@@ -43,8 +57,10 @@ function wrapEventAsToolDefinition(
       log.debug(`${eventName}: ${Object.entries(paramsObj).map(([k, v]) => `${k}=${JSON.stringify(v).slice(0, 100)}`).join(', ')}`);
 
       try {
-        // Auto-inject parent sessionKey for subagent calls (agent.execute only)
-        if (eventName === 'agent.execute' && !paramsObj.sessionKey) {
+        // Auto-inject sessionKey for agent.execute subagent calls.
+        // The agent.execute schema omits sessionKey (it's always injected here),
+        // so the agent only sees { task, cwd?, thinkingLevel?, model?, images?, timeoutMs? }.
+        if (eventName === 'agent.execute') {
           paramsObj.sessionKey = `${sessionKey}:subagent`;
         }
 
@@ -52,9 +68,9 @@ function wrapEventAsToolDefinition(
 
         let resultText = '';
         if (result && typeof result === 'object') {
-          resultText = JSON.stringify(result).slice(0, 2000);
+          resultText = JSON.stringify(result).slice(0, 10_000);
         } else if (result !== undefined && result !== null) {
-          resultText = String(result);
+          resultText = String(result).slice(0, 10_000);
         }
 
         const resultTokens = Math.ceil(resultText.length / 4);
@@ -72,7 +88,7 @@ function wrapEventAsToolDefinition(
       } catch (err) {
         const message = toMessage(err);
         log.debug(`${eventName} error: ${message}`);
-        appendError({ tool: eventName, sessionKey, message }).catch(() => {});
+        appendError({ tool: eventName, sessionKey, message }).catch(() => { });
         return {
           content: [{ type: 'text' as const, text: `Error: ${message}` }],
           details: { error: message },

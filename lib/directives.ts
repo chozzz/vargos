@@ -5,16 +5,18 @@
  * not inside URLs or as partial word matches.
  */
 
-export type ThinkLevel = 'off' | 'low' | 'medium' | 'high';
+import type { ThinkingLevel } from '@mariozechner/pi-agent-core';
 
 export interface ParsedDirectives {
   /** Message with all recognized directives stripped */
   cleaned: string;
-  thinkingLevel?: ThinkLevel;
+  thinkingLevel?: ThinkingLevel;
   verbose?: boolean;
 }
 
-const THINK_LEVELS = new Set<ThinkLevel>(['off', 'low', 'medium', 'high']);
+// Mirrors ThinkingLevelSchema.options from services/config/schemas/primitives.ts.
+// Kept local to avoid lib/ → services/ import boundary violation.
+const THINK_LEVELS = new Set<string>(['off', 'minimal', 'low', 'medium', 'high', 'xhigh']);
 
 // Matches /think or /t with optional colon, then a level word
 const THINK_RE = /(?<![:/\w])\/(?:think|t)[:=\s]+(\w+)/gi;
@@ -22,13 +24,9 @@ const THINK_RE = /(?<![:/\w])\/(?:think|t)[:=\s]+(\w+)/gi;
 // Matches /verbose or /v with optional colon and optional on/off
 const VERBOSE_RE = /(?<![:/\w])\/(?:verbose|v)(?:[:=\s]+(on|off))?(?=\s|$)/gi;
 
-function isThinkLevel(v: string): v is ThinkLevel {
-  return THINK_LEVELS.has(v as ThinkLevel);
-}
-
 export function parseDirectives(text: string): ParsedDirectives {
   let cleaned = text;
-  let thinkingLevel: ThinkLevel | undefined;
+  let thinkingLevel: ThinkingLevel | undefined;
   let verbose: boolean | undefined;
 
   // Process /think directives — last match wins
@@ -37,8 +35,8 @@ export function parseDirectives(text: string): ParsedDirectives {
   THINK_RE.lastIndex = 0;
   while ((match = THINK_RE.exec(text)) !== null) {
     const level = match[1].toLowerCase();
-    if (isThinkLevel(level)) {
-      thinkingLevel = level;
+    if (THINK_LEVELS.has(level)) {
+      thinkingLevel = level as ThinkingLevel;
     }
   }
 

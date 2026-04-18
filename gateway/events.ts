@@ -28,6 +28,8 @@ export interface EventMetadata {
 // ─── Param types ──────────────────────────────────────────────────────────────
 
 export interface AgentExecuteParams {
+  /** Session key — required for direct callers (channels, cron, webhooks, TCP).
+   *  When the agent calls agent.execute as a tool, wrapEventAsToolDefinition injects this automatically. */
   sessionKey: string;
   task: string;
   /** Working directory for the agent — defaults to vargos workspace. When set,

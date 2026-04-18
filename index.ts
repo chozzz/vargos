@@ -14,9 +14,9 @@ const SERVICES: Array<[string, () => Promise<{ boot(bus: EventEmitterBus): Promi
   ['memory', () => import('./services/memory/index.js')],
   ['media', () => import('./services/media/index.js')],
   ['agent', () => import('./services/agent/index.js')],
-  ['cron', () => import('./services/cron/index.js')],
-  ['channels', () => import('./services/channels/index.js')],
-  ['mcp-client', () => import('./services/mcp-client/index.js')],
+  // ['cron', () => import('./services/cron/index.js')],
+  // ['channels', () => import('./services/channels/index.js')],
+  // ['mcp-client', () => import('./services/mcp-client/index.js')],
   // ['webhooks', () => import('./edge/webhooks/index.js')],
   // ['mcp',      () => import('./edge/mcp/index.js')],
 ];
