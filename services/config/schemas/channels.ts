@@ -12,7 +12,10 @@ const ChannelBaseSchema = z.object({
   allowFrom:  z.array(z.string()).optional(),
 });
 
-export const TelegramChannelSchema  = ChannelBaseSchema.extend({ type: z.literal('telegram'),  botToken: z.string() });
+export const TelegramChannelSchema  = ChannelBaseSchema.extend({
+  type:       z.literal('telegram'),
+  botToken:   z.string(),
+});
 export const WhatsAppChannelSchema  = ChannelBaseSchema.extend({ type: z.literal('whatsapp') });
 
 export const ChannelEntrySchema = z.discriminatedUnion('type', [

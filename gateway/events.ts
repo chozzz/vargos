@@ -90,7 +90,8 @@ export interface EventMap {
   'fs.read': { params: { path: string; offset?: number; limit?: number }; result: { content: string; mimeType: string } };
   'fs.write': { params: { path: string; content: string }; result: void };
   'fs.edit': { params: { path: string; oldText: string; newText: string }; result: void };
-  'fs.exec': { params: { command: string; timeout?: number }; result: { stdout: string; stderr: string; exitCode: number } };
+  'fs.exec': { params: { command: string; cwd?: string; timeout?: number }; result: { stdout: string; stderr: string; exitCode: number } };
+  'bash': { params: { command: string; cwd?: string; timeout?: number }; result: { stdout: string; stderr: string; exitCode: number } };
 
   // Web
   'web.fetch': { params: { url: string; extractMode?: 'markdown' | 'text'; maxChars?: number }; result: { text: string } };

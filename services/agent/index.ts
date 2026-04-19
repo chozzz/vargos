@@ -147,7 +147,7 @@ export class AgentService {
 
     this.activeRuns.add(params.sessionKey);
     try {
-      await withTimeout(session.prompt(task, { images }), timeoutMs, `Agent execution timeout after ${timeoutMs}ms`);
+      await withTimeout(session.prompt(task, { images, streamingBehavior: 'steer' }), timeoutMs, `Agent execution timeout after ${timeoutMs}ms`);
     } finally {
       this.activeRuns.delete(params.sessionKey);
     }
@@ -186,8 +186,8 @@ export class AgentService {
     const customTools = await this.getCustomTools(sessionKey);
     const systemPrompt = await this.getSystemPrompt(sessionKey, cwd);
 
-    this.logSystemPrompt(systemPrompt);
-    this.logTools(customTools);
+    // this.logSystemPrompt(systemPrompt);
+    // this.logTools(customTools);
 
     const resourceLoader = await this.createResourceLoader(systemPrompt, cwd);
 

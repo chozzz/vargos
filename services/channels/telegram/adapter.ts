@@ -58,7 +58,7 @@ export class TelegramAdapter extends InboundMediaHandler {
     this.polling = true;
     this.abortController = new AbortController();
     this.status = 'connected';
-    this.log.debug('long-polling started');
+    this.log.debug(`long-polling started for ${this.instanceId}`);
 
     this.pollLoop().catch((err) => {
       this.log.error(`poll loop exited: ${err}`);
@@ -137,13 +137,19 @@ export class TelegramAdapter extends InboundMediaHandler {
   }
 
   private async pollLoop(): Promise<void> {
+    this.log.debug(`poll loop starting with offset ${this.offset}`);
+    let cycleCount = 0;
     while (this.polling) {
       try {
+        cycleCount++;
+        this.log.debug(`poll cycle ${cycleCount}: calling getUpdates with offset ${this.offset}`);
         const updates = await this.apiCall<TelegramUpdate[]>('getUpdates', {
           offset: this.offset,
           timeout: POLL_TIMEOUT_S,
           allowed_updates: ['message'],
         });
+
+        this.log.debug(`poll cycle ${cycleCount}: received response with ${updates.length} update(s)`);
 
         for (const update of updates) {
           this.offset = update.update_id + 1;
@@ -151,7 +157,7 @@ export class TelegramAdapter extends InboundMediaHandler {
         }
       } catch (err) {
         if (!this.polling) break;
-        this.log.warn(`poll error: ${err}`);
+        this.log.warn(`poll error (cycle ${cycleCount}): ${err}`);
         await sleep(RECONNECT_DELAY_MS);
       }
     }
@@ -169,17 +175,11 @@ export class TelegramAdapter extends InboundMediaHandler {
       return;
     }
 
-    // For private chats, always process. For groups, only if mentioned.
     const isPrivateChat = msg.chat.type === 'private';
     const isGroupChat = msg.chat.type === 'group' || msg.chat.type === 'supergroup';
 
     if (!isPrivateChat && !isGroupChat) {
       this.log.debug(`ignoring ${msg.chat.type} chat from ${msg.chat.id}`);
-      return;
-    }
-
-    if (isGroupChat && !this.isMentionedInGroup(msg)) {
-      this.log.debug(`group message ignored (bot not mentioned): ${msg.chat.id} "${msg.text?.slice(0, 60) || '[media]'}"`);
       return;
     }
 
@@ -197,6 +197,12 @@ export class TelegramAdapter extends InboundMediaHandler {
     const chatId = String(msg.chat.id);
     const chatType = isGroupChat ? 'group' : 'private';
 
+    // For groups: only process if mentioned or in private chat
+    if (isGroupChat && !this.isMentioned(msg)) {
+      this.log.debug(`group message ignored (not mentioned): ${chatId} "${msg.text?.slice(0, 60) || '[media]'}"`);
+      return;
+    }
+
     if (msg.photo || msg.voice || msg.audio) {
       this.debouncer.flush(chatId);
       this.log.debug(`${chatType} media from ${chatId}`);
@@ -211,36 +217,23 @@ export class TelegramAdapter extends InboundMediaHandler {
     this.debouncer.push(chatId, msg.text!);
   }
 
-  private isMentionedInGroup(msg: TelegramMessage): boolean {
+  private isMentioned(msg: TelegramMessage): boolean {
     if (!msg.text || !this.botUser) return false;
-
     const botUsername = this.botUser.username;
-    const botId = this.botUser.id;
-    const textLower = msg.text.toLowerCase();
-
-    // Check if message text mentions the bot by username (case-insensitive)
-    if (botUsername) {
-      const mention = `@${botUsername.toLowerCase()}`;
-      if (textLower.includes(mention)) {
-        this.log.debug(`group mention detected: ${mention}`);
-        return true;
-      }
-      this.log.debug(`mention check: looking for "${mention}" in "${textLower.slice(0, 80)}"`);
-    }
-
-    // Check if it's a reply to the bot's message
-    if (msg.reply_to_message?.from?.id === botId) {
-      this.log.debug(`group reply to bot detected`);
+    if (botUsername && msg.text.toLowerCase().includes(`@${botUsername.toLowerCase()}`)) {
       return true;
     }
-
+    // Also check if it's a reply to the bot's message
+    if (msg.reply_to_message?.from?.id === this.botUser.id) {
+      return true;
+    }
     return false;
   }
 
   protected override async handleBatch(id: string, messages: string[]): Promise<void> {
     const messageId = this.latestMessageId.get(id);
-    const text = messages.join('\n');
     const sessionKey = `${this.instanceId}:${id}`;
+    const text = messages.join('\n');
     this.log.debug(`batch for ${sessionKey}: "${text.slice(0, 80)}"`);
     await this.routeToService(sessionKey, text, messageId ? { messageId } : undefined);
   }

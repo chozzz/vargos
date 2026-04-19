@@ -15,9 +15,9 @@ export class FsService {
   @register('fs.read', {
     description: 'Read a file. Returns content and mimeType. Supports text and images.',
     schema: z.object({
-      path:   z.string().describe('Absolute or ~-relative path'),
+      path: z.string().describe('Absolute or ~-relative path'),
       offset: z.number().optional().describe('Start line (1-indexed)'),
-      limit:  z.number().optional().describe('Max lines to read'),
+      limit: z.number().optional().describe('Max lines to read'),
     }),
   })
   async read(params: EventMap['fs.read']['params']): Promise<EventMap['fs.read']['result']> {
@@ -26,7 +26,7 @@ export class FsService {
     if (!stat.isFile()) throw new Error(`Not a file: ${params.path}`);
     if (stat.size > 5 * 1024 * 1024) throw new Error(`File too large (${Math.round(stat.size / 1024 / 1024)}MB). Use offset/limit.`);
 
-    const buf      = await fs.readFile(filePath);
+    const buf = await fs.readFile(filePath);
     const mimeType = await detectMimeType(buf);
 
     if (mimeType.startsWith('image/'))
@@ -34,7 +34,7 @@ export class FsService {
 
     let text = buf.toString('utf-8');
     if (params.offset !== undefined || params.limit !== undefined) {
-      const lines  = text.split('\n');
+      const lines = text.split('\n');
       const offset = (params.offset ?? 1) - 1;
       text = lines.slice(offset, offset + (params.limit ?? lines.length)).join('\n');
     }
@@ -44,7 +44,7 @@ export class FsService {
   @register('fs.write', {
     description: 'Write content to a file (creates parent dirs as needed).',
     schema: z.object({
-      path:    z.string(),
+      path: z.string(),
       content: z.string(),
     }),
   })
@@ -57,17 +57,17 @@ export class FsService {
   @register('fs.edit', {
     description: 'Replace an exact string in a file. Fails if 0 or >1 matches.',
     schema: z.object({
-      path:    z.string(),
+      path: z.string(),
       oldText: z.string().describe('Exact text to replace'),
       newText: z.string().describe('Replacement text'),
     }),
   })
   async edit(params: EventMap['fs.edit']['params']): Promise<void> {
     const filePath = resolvePath(params.path);
-    const content  = await fs.readFile(filePath, 'utf-8');
-    const count    = content.split(params.oldText).length - 1;
+    const content = await fs.readFile(filePath, 'utf-8');
+    const count = content.split(params.oldText).length - 1;
     if (count === 0) throw new Error(`Text not found in ${params.path}`);
-    if (count > 1)   throw new Error(`Found ${count} occurrences — be more specific`);
+    if (count > 1) throw new Error(`Found ${count} occurrences — be more specific`);
     await fs.writeFile(filePath, content.replace(params.oldText, params.newText), 'utf-8');
   }
 
@@ -75,6 +75,15 @@ export class FsService {
     description: 'Run a shell command. Returns stdout, stderr, exitCode.',
     schema: z.object({
       command: z.string(),
+      cwd: z.string().optional().describe('Working directory (default workspace dir)'),
+      timeout: z.number().optional().describe('Timeout ms (default 60000)'),
+    }),
+  })
+  @register('bash', {
+    description: 'Run a bash command. Returns stdout, stderr, exitCode.',
+    schema: z.object({
+      command: z.string(),
+      cwd: z.string().optional().describe('Working directory (default workspace dir)'),
       timeout: z.number().optional().describe('Timeout ms (default 60000)'),
     }),
   })
@@ -85,7 +94,14 @@ export class FsService {
     }
 
     const { workspaceDir } = getDataPaths();
-    return execShell(params.command, workspaceDir, params.timeout ?? 60_000);
+
+    // Check if working directory exists
+    const cwd = params.cwd ?? workspaceDir;
+    if (!await fs.stat(cwd).catch(() => false)) {
+      throw new Error(`Working directory does not exist: ${cwd}`);
+    }
+
+    return execShell(params.command, cwd, params.timeout ?? 60_000);
   }
 }
 
@@ -111,7 +127,7 @@ function sanitizeOutput(s: string): string {
 
 function execShell(command: string, cwd: string, timeoutMs: number): Promise<EventMap['fs.exec']['result']> {
   const spawnPromise = new Promise<EventMap['fs.exec']['result']>((resolve) => {
-    const child   = spawn('bash', ['-c', command], { cwd, env: process.env });
+    const child = spawn('bash', ['-c', command], { cwd, env: process.env });
     let stdout = '', stderr = '';
     let killed = false;
 
