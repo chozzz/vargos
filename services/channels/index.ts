@@ -242,9 +242,8 @@ export class ChannelService {
 
     let reactionController: StatusReactionController | undefined;
     if (adapter.react && messageId) {
-      const userId = adapter.extractUserId(sessionKey);
       reactionController = new StatusReactionController(
-        { react: adapter.react.bind(adapter) }, userId, messageId,
+        { react: adapter.react.bind(adapter) }, sessionKey, messageId,
       );
       reactionController.setThinking();
     }
