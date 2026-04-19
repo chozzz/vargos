@@ -57,6 +57,7 @@ export interface TelegramMessage {
   voice?: TelegramVoice;
   audio?: TelegramAudio;
   caption?: string;
+  reply_to_message?: TelegramMessage;
 }
 
 export interface TelegramUpdate {

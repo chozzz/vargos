@@ -162,26 +162,79 @@ export class TelegramAdapter extends InboundMediaHandler {
     if (!msg) return;
 
     if (!msg.text && !msg.photo && !msg.voice && !msg.audio) return;
-    if (msg.chat.type !== 'private') return;
-    if (msg.from?.id === this.botUser?.id) return;
-    if (this.allowFrom && !this.allowFrom.has(String(msg.chat.id))) return;
+
+    // Ignore bot's own messages
+    if (msg.from?.id === this.botUser?.id) {
+      this.log.debug(`ignoring own message from ${msg.chat.id}`);
+      return;
+    }
+
+    // For private chats, always process. For groups, only if mentioned.
+    const isPrivateChat = msg.chat.type === 'private';
+    const isGroupChat = msg.chat.type === 'group' || msg.chat.type === 'supergroup';
+
+    if (!isPrivateChat && !isGroupChat) {
+      this.log.debug(`ignoring ${msg.chat.type} chat from ${msg.chat.id}`);
+      return;
+    }
+
+    if (isGroupChat && !this.isMentionedInGroup(msg)) {
+      this.log.debug(`group message ignored (bot not mentioned): ${msg.chat.id} "${msg.text?.slice(0, 60) || '[media]'}"`);
+      return;
+    }
+
+    // For groups, check sender's user ID. For private, check chat ID.
+    const idToCheck = isGroupChat ? String(msg.from?.id) : String(msg.chat.id);
+    if (this.allowFrom && !this.allowFrom.has(idToCheck)) {
+      const filterType = isGroupChat ? 'sender' : 'chat';
+      this.log.debug(`ignoring whitelisted filter (${filterType}): ${idToCheck}`);
+      return;
+    }
 
     const msgKey = `${msg.chat.id}:${msg.message_id}`;
     if (!this.dedupe.add(msgKey)) return;
 
     const chatId = String(msg.chat.id);
+    const chatType = isGroupChat ? 'group' : 'private';
 
     if (msg.photo || msg.voice || msg.audio) {
       this.debouncer.flush(chatId);
+      this.log.debug(`${chatType} media from ${chatId}`);
       this.handleMedia(chatId, msg).catch((err) => {
         this.log.warn(`handleMedia error for ${chatId}: ${err}`);
       });
       return;
     }
 
-    this.log.debug(`received from ${chatId}: ${msg.text!.slice(0, 80)}`);
+    this.log.debug(`${chatType} text from ${chatId}: ${msg.text!.slice(0, 80)}`);
     this.latestMessageId.set(chatId, String(msg.message_id));
     this.debouncer.push(chatId, msg.text!);
+  }
+
+  private isMentionedInGroup(msg: TelegramMessage): boolean {
+    if (!msg.text || !this.botUser) return false;
+
+    const botUsername = this.botUser.username;
+    const botId = this.botUser.id;
+    const textLower = msg.text.toLowerCase();
+
+    // Check if message text mentions the bot by username (case-insensitive)
+    if (botUsername) {
+      const mention = `@${botUsername.toLowerCase()}`;
+      if (textLower.includes(mention)) {
+        this.log.debug(`group mention detected: ${mention}`);
+        return true;
+      }
+      this.log.debug(`mention check: looking for "${mention}" in "${textLower.slice(0, 80)}"`);
+    }
+
+    // Check if it's a reply to the bot's message
+    if (msg.reply_to_message?.from?.id === botId) {
+      this.log.debug(`group reply to bot detected`);
+      return true;
+    }
+
+    return false;
   }
 
   protected override async handleBatch(id: string, messages: string[]): Promise<void> {
