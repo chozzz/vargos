@@ -168,6 +168,14 @@ export class ChannelService {
     const session = this.activeSessions.get(payload.sessionKey);
     if (!session) return;
 
+    if (payload.sessionKey.includes(':subagent')) {
+      log.debug(`agent.onTool: subagent, skipping reaction`);
+      return;
+    }
+    else {
+      log.debug(`agent.onTool: ${payload.sessionKey} ${payload.toolName} ${payload.phase}`);
+    }
+
     if (payload.phase === 'start') {
       if (session.reactionController) {
         session.reactionController.setTool();
@@ -185,6 +193,14 @@ export class ChannelService {
   private onAgentCompleted(payload: EventMap['agent.onCompleted']): void | Promise<void> {
     const session = this.activeSessions.get(payload.sessionKey);
     if (!session) return;
+
+    if (payload.sessionKey.includes(':subagent')) {
+      log.debug(`agent.onCompleted: subagent, skipping reply`);
+      return;
+    }
+    else {
+      log.debug(`agent.onCompleted: ${payload.sessionKey} ${payload.success} ${payload.response?.slice(0, 80)}`);
+    }
 
     this.activeSessions.delete(payload.sessionKey);
     session.adapter.stopTyping(payload.sessionKey, true);  // final=true to fully stop

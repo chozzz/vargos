@@ -5,7 +5,7 @@
  *
  * Session key injection:
  * - Every tool closes over the parent sessionKey from getCustomTools().
- * - For agent.execute specifically, sessionKey is auto-generated via subagentSessionKey()
+ * - For agent.execute specifically, sessionKey is injected as ':subagent' suffix
  *   so the agent doesn't need to (and can't) provide its own session key.
  * - Other tools inherit the parent sessionKey for context-aware operations
  *   (e.g. channel.send delivers to the right recipient).
@@ -25,7 +25,6 @@ import { createLogger } from '../../lib/logger.js';
 import { isToolEvent } from '../../gateway/emitter.js';
 import { toMessage } from '../../lib/error.js';
 import { appendError } from '../../lib/error-store.js';
-import { subagentSessionKey } from '../../lib/subagent.js';
 
 const log = createLogger('agent-tools');
 
@@ -62,7 +61,7 @@ function wrapEventAsToolDefinition(
         // The agent.execute schema omits sessionKey (it's always injected here),
         // so the agent only sees { task, cwd?, thinkingLevel?, model?, images?, timeoutMs? }.
         if (eventName === 'agent.execute') {
-          paramsObj.sessionKey = subagentSessionKey(sessionKey);
+          paramsObj.sessionKey = `${sessionKey}:subagent`;
         }
 
         const result = await bus.call(eventName as never, paramsObj);

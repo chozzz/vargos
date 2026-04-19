@@ -24,17 +24,16 @@ Monitoring alert → POST /hooks/ops-alert
 
 ```jsonc
 {
-  "webhooks": {
-    "hooks": [
-      {
-        "id": "github-review",
-        "token": "your-secret-token",
-        "description": "GitHub push code review",
-        "transform": "./transforms/github-review.js",
-        "notify": ["whatsapp:61423222658"]
-      }
-    ]
-  }
+  "webhooks": [
+    {
+      "id": "github-review",
+      "name": "GitHub PR",
+      "token": "your-secret-token",
+      "description": "GitHub push code review",
+      "transform": "./transforms/github-review.js",
+      "notify": ["whatsapp:61423222658"]
+    }
+  ]
 }
 ```
 

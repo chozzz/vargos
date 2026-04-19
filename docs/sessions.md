@@ -10,11 +10,11 @@ Sessions persist conversation history and provide isolation between different in
 | `<instanceId>:<userId>` | `telegram-bot:123456` | Channel adapter |
 | `cron:<taskId>:<date>` | `cron:daily-report:2026-04-10` | Cron service |
 | `webhook:<hookId>:<timestamp>` | `webhook:github-pr:1708865234567` | Webhook service |
-| `<parent>:subagent:<timestamp>-<rand>` | `whatsapp:614:subagent:1708865240123-x7k2q` | `agent.execute` with subagent key |
+| `<parent>:subagent` | `whatsapp-personal:61423222658:subagent` | `agent.execute` with subagent key |
 
 Channel session keys use the channel's `instanceId` (from `config.channels[].id`) — not the platform type. This supports multiple instances of the same platform.
 
-Session key builder functions live in `lib/subagent.ts`: `channelSessionKey()`, `cronSessionKey()`, `webhookSessionKey()`, `subagentSessionKey()`.
+Session key builder functions live in `lib/subagent.ts`: `channelSessionKey()`, `cronSessionKey()`, `webhookSessionKey()`.
 
 ## Subagent Orchestration
 
@@ -22,16 +22,13 @@ Subagents are created by calling `agent.execute` with a child session key. No se
 
 ```typescript
 // Parent creates subagent via session key convention
-const childKey = subagentSessionKey(parentKey);
-// → "whatsapp:614:subagent:1708865240123-x7k2q"
+const childKey = `${parentKey}:subagent`;
+// → "whatsapp-personal:61423222658:subagent"
 
 await bus.call('agent.execute', { sessionKey: childKey, task: 'Research this topic' });
 ```
 
-Limits are enforced by helpers in `lib/subagent.ts`:
-- `getSubagentDepth(key)` — counts `:subagent:` occurrences
-- `canSpawnSubagent(key, maxDepth)` — depth check (default: 3)
-- `isSubagentSessionKey(key)` — type check
+Subagent depth is determined by counting `:subagent` suffixes in the session key.
 
 ## Session Isolation
 
@@ -47,11 +44,11 @@ Sessions are persisted by PiAgent's `SessionManager` to `~/.vargos/workspace/ses
 
 ```
 ~/.vargos/workspace/sessions/
-├── whatsapp-personal-61423222658/
+├── whatsapp-personal:61423222658/
 │   └── ... (PiAgent session files)
-├── cron-daily-report-2026-04-10/
+├── cron:daily-report:2026-04-10/
 │   └── ... (PiAgent session files)
-└── whatsapp-personal-61423222658:subagent:1708865240123-x7k2q/
+└── whatsapp-personal:61423222658:subagent/
     └── ... (PiAgent session files)
 ```
 
@@ -62,7 +59,7 @@ The Pi SDK's `SessionManager` handles persistence automatically — entries are 
 - **Channel sessions** (`<instanceId>:<userId>`) are keyed by sender ID per instance — one session per contact per channel instance
 - **Cron sessions** (`cron:<taskId>:<date>`) get a fresh session per fire via date suffix
 - **Webhook sessions** (`webhook:<hookId>:<ts>`) get a fresh session per fire via timestamp suffix
-- **Subagent sessions** (`*:subagent:*`) include timestamp + random suffix, always fresh
+- **Subagent sessions** (`*:subagent`) are created dynamically by parent agents for child task execution
 
 ## Streaming Events
 

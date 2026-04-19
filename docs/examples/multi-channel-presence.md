@@ -37,20 +37,18 @@ Conversations are isolated, but the same agent runtime, tools, memory, and works
 
 ```jsonc
 {
-  "channels": {
-    "instances": [
-      {
-        "id": "whatsapp-personal",
-        "type": "whatsapp",
-        "allowFrom": ["61423222658"]
-      },
-      {
-        "id": "telegram-bakabit",
-        "type": "telegram",
-        "allowFrom": ["123456789"]
-      }
-    ]
-  }
+  "channels": [
+    {
+      "id": "whatsapp-personal",
+      "type": "whatsapp",
+      "allowFrom": ["61423222658"]
+    },
+    {
+      "id": "telegram-bakabit",
+      "type": "telegram",
+      "allowFrom": ["123456789"]
+    }
+  ]
 }
 ```
 

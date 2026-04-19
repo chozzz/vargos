@@ -37,12 +37,12 @@ vargos gateway start
 Model profile "xyz" not found — available: anthropic, openai
 ```
 
-The `agent.primary` (or `agent.fallback`) references a key that doesn't exist in the `models` map. Check your `config.json`:
+The `agent.model` (or `agent.fallback`) references a provider:modelId that doesn't exist in the `providers` map. Check your `config.json`:
 
 ```jsonc
 {
-  "models": { "anthropic": { ... } },
-  "agent": { "primary": "anthropic" }   // must match a key in models
+  "providers": { "anthropic": { "baseUrl": "...", "apiKey": "...", "models": [{ "id": "claude-sonnet-4-20250514", "name": "Claude Sonnet" }] } },
+  "agent": { "model": "anthropic:claude-sonnet-4-20250514" }   // must match provider:modelId format
 }
 ```
 
