@@ -8,7 +8,7 @@ import path from 'node:path';
 import { getDataPaths } from './paths.js';
 import { sanitizeError, classifyError, type ErrorClass } from './error.js';
 
-export interface ErrorEntry {
+export interface ErrorRecord {
   ts: string;
   runId?: string;
   sessionKey?: string;
@@ -20,9 +20,9 @@ export interface ErrorEntry {
 }
 
 export async function appendError(
-  entry: Omit<ErrorEntry, 'ts' | 'errorClass'> & { errorClass?: ErrorClass | 'validation' | 'fatal' },
+  entry: Omit<ErrorRecord, 'ts' | 'errorClass'> & { errorClass?: ErrorClass | 'validation' | 'fatal' },
 ): Promise<void> {
-  const full: ErrorEntry = {
+  const full: ErrorRecord = {
     ts: new Date().toISOString(),
     errorClass: entry.errorClass ?? classifyError(entry.message),
     ...entry,

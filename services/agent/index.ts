@@ -16,6 +16,7 @@ import type { EventMap, Json } from '../../gateway/events.js';
 import type { AppConfig } from '../../services/config/index.js';
 import { createLogger } from '../../lib/logger.js';
 import { parseDirectives } from '../../lib/directives.js';
+import { withTimeout } from '../../lib/timeout.js';
 import type { AgentDeps } from './schema.js';
 import { promises as fs } from 'node:fs';
 import { getDataPaths } from '../../lib/paths.js';
@@ -145,7 +146,7 @@ export class AgentService {
 
     this.activeRuns.add(params.sessionKey);
     try {
-      await this.promptWithTimeout(session, task, { images }, timeoutMs);
+      await withTimeout(session.prompt(task, { images }), timeoutMs, `Agent execution timeout after ${timeoutMs}ms`);
     } finally {
       this.activeRuns.delete(params.sessionKey);
     }
@@ -164,23 +165,6 @@ export class AgentService {
   })
   async status(_params: EventMap['agent.status']['params']): Promise<EventMap['agent.status']['result']> {
     return { activeRuns: Array.from(this.activeRuns) };
-  }
-
-  /**
-   * Execute session.prompt with timeout protection.
-   * Uses Promise.race to enforce timeouts since session.prompt doesn't natively support timeout.
-   */
-  private promptWithTimeout(
-    session: AgentSession,
-    task: string,
-    options: { images?: ImageContent[] },
-    timeoutMs: number,
-  ): Promise<void> {
-    const timeoutPromise = new Promise<never>((_resolve, reject) => {
-      setTimeout(() => reject(new Error(`Agent execution timeout after ${timeoutMs}ms`)), timeoutMs);
-    });
-
-    return Promise.race([session.prompt(task, options), timeoutPromise]);
   }
 
   /**
@@ -251,7 +235,7 @@ export class AgentService {
               sessionKey,
               toolName: e.toolName,
               phase: 'start',
-              args: e.args as Json | undefined,
+              args: (e.args ?? {}) as Json,
             });
           }
           break;
@@ -263,7 +247,7 @@ export class AgentService {
               sessionKey,
               toolName: e.toolName,
               phase: 'end',
-              result: e.result as Json | undefined,
+              result: (e.result ?? {}) as Json,
             });
           }
           break;
@@ -279,12 +263,19 @@ export class AgentService {
         case 'turn_end': {
           const e = event as { error?: unknown };
           const response = this.extractResponse(session);
-          this.bus.emit('agent.onCompleted', {
-            sessionKey,
-            success: !e.error,
-            response: response || undefined,
-            error: undefined,
-          });
+          if (e.error) {
+            this.bus.emit('agent.onCompleted', {
+              sessionKey,
+              success: false,
+              error: String(e.error),
+            });
+          } else {
+            this.bus.emit('agent.onCompleted', {
+              sessionKey,
+              success: true,
+              response: response || '',
+            });
+          }
           break;
         }
         case 'agent_end': {

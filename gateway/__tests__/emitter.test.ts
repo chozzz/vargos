@@ -19,7 +19,7 @@ describe('EventEmitterBus', () => {
       const handler = vi.fn();
       const off = bus.on('agent.onCompleted', handler);
       off();
-      bus.emit('agent.onCompleted', { sessionKey: 'x', success: true });
+      bus.emit('agent.onCompleted', { sessionKey: 'x', success: true, response: '' });
       expect(handler).not.toHaveBeenCalled();
     });
   });

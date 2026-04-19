@@ -44,7 +44,7 @@ export function interpolatePrompt(prompt: string): string {
  * Interpolate and return both result and missing variable list.
  * Used when you need to know what failed to interpolate.
  */
-export function interpolatePromptWithMissing(prompt: string): InterpolationResult {
+function interpolatePromptWithMissing(prompt: string): InterpolationResult {
   const paths = getDataPaths();
 
   const variables: Record<string, string> = {

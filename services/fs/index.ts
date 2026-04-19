@@ -9,6 +9,7 @@ import type { EventMap } from '../../gateway/events.js';
 import { getDataPaths } from '../../lib/paths.js';
 import { detectMimeType } from '../../lib/mime.js';
 import { toMessage } from '../../lib/error.js';
+import { withTimeout } from '../../lib/timeout.js';
 
 export class FsService {
   @register('fs.read', {
@@ -109,7 +110,7 @@ function sanitizeOutput(s: string): string {
 }
 
 function execShell(command: string, cwd: string, timeoutMs: number): Promise<EventMap['fs.exec']['result']> {
-  return new Promise((resolve) => {
+  const spawnPromise = new Promise<EventMap['fs.exec']['result']>((resolve) => {
     const child   = spawn('bash', ['-c', command], { cwd, env: process.env });
     let stdout = '', stderr = '';
     let killed = false;
@@ -130,6 +131,13 @@ function execShell(command: string, cwd: string, timeoutMs: number): Promise<Eve
 
     child.on('close', done);
     child.on('error', (e) => { stderr += `\nProcess error: ${toMessage(e)}`; done(-1); });
+  });
+
+  return withTimeout(spawnPromise, timeoutMs, `Shell command timeout after ${timeoutMs}ms`).catch((err) => {
+    if (err.message.includes('timeout')) {
+      return { stdout: '', stderr: `Error: ${err.message}`, exitCode: -1 };
+    }
+    throw err;
   });
 }
 

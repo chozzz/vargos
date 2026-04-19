@@ -11,8 +11,6 @@ export interface DebounceOptions {
   maxBatch?: number;
 }
 
-export type FlushCallback = (key: string, messages: string[]) => void;
-
 export interface MessageDebouncer {
   /** Add a message for a given key. Resets the flush timer. */
   push(key: string, message: string): void;
@@ -23,7 +21,7 @@ export interface MessageDebouncer {
 }
 
 export function createMessageDebouncer(
-  onFlush: FlushCallback,
+  onFlush: (key: string, messages: string[]) => void,
   opts: DebounceOptions = {},
 ): MessageDebouncer {
   const delayMs = opts.delayMs ?? 1500;

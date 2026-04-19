@@ -259,7 +259,7 @@ describe('subscribeToSessionEvents', () => {
     });
   });
 
-  it('emits agent.onTool with undefined args when tool_execution_start has no args', () => {
+  it('emits agent.onTool with empty args when tool_execution_start has no args', () => {
     const bus = new EventEmitterBus();
     const agent = makeTestableAgent(bus);
     const { session, fire } = makeSessionStub();
@@ -270,10 +270,10 @@ describe('subscribeToSessionEvents', () => {
     agent.callSubscribe(session, 'stub-ch:user1');
     fire({ type: 'tool_execution_start', toolName: 'web.fetch' });
 
-    expect(tools[0].args).toBeUndefined();
+    expect(tools[0]).toEqual({ sessionKey: 'stub-ch:user1', toolName: 'web.fetch', phase: 'start', args: {} });
   });
 
-  it('emits agent.onTool with undefined result when tool_execution_end has no result', () => {
+  it('emits agent.onTool with empty result when tool_execution_end has no result', () => {
     const bus = new EventEmitterBus();
     const agent = makeTestableAgent(bus);
     const { session, fire } = makeSessionStub();
@@ -284,7 +284,7 @@ describe('subscribeToSessionEvents', () => {
     agent.callSubscribe(session, 'stub-ch:user1');
     fire({ type: 'tool_execution_end', toolName: 'web.fetch' });
 
-    expect(tools[0].result).toBeUndefined();
+    expect(tools[0]).toEqual({ sessionKey: 'stub-ch:user1', toolName: 'web.fetch', phase: 'end', result: {} });
   });
 
   it('does not emit agent.onTool when toolName is absent', () => {
@@ -413,7 +413,7 @@ describe('onAgentCompleted reply logic', () => {
     }
     new SendStub(bus);
 
-    bus.emit('agent.onCompleted', { sessionKey, success: true });
+    bus.emit('agent.onCompleted', { sessionKey, success: true, response: '' });
     // No response field — should not send
     await tick();
 
@@ -426,7 +426,7 @@ describe('onAgentCompleted reply logic', () => {
 
     (svc as any).activeSessions.set(sessionKey, { adapter });
 
-    bus.emit('agent.onCompleted', { sessionKey, success: true });
+    bus.emit('agent.onCompleted', { sessionKey, success: true, response: '' });
     await tick();
 
     expect(adapter.typingStopped).toContainEqual({ sessionKey, final: true });
@@ -438,7 +438,7 @@ describe('onAgentCompleted reply logic', () => {
 
     (svc as any).activeSessions.set(sessionKey, { adapter });
 
-    bus.emit('agent.onCompleted', { sessionKey, success: true });
+    bus.emit('agent.onCompleted', { sessionKey, success: true, response: '' });
     await tick();
 
     expect((svc as any).activeSessions.has(sessionKey)).toBe(false);
@@ -451,7 +451,7 @@ describe('onAgentCompleted reply logic', () => {
     const rc = { setDone: vi.fn(), setError: vi.fn(), dispose: vi.fn(), setThinking: vi.fn() };
     (svc as any).activeSessions.set(sessionKey, { adapter, reactionController: rc });
 
-    bus.emit('agent.onCompleted', { sessionKey, success: true });
+    bus.emit('agent.onCompleted', { sessionKey, success: true, response: '' });
     await tick();
 
     expect(rc.setDone).toHaveBeenCalledOnce();
@@ -466,7 +466,7 @@ describe('onAgentCompleted reply logic', () => {
     const rc = { setDone: vi.fn(), setError: vi.fn(), dispose: vi.fn(), setThinking: vi.fn() };
     (svc as any).activeSessions.set(sessionKey, { adapter, reactionController: rc });
 
-    bus.emit('agent.onCompleted', { sessionKey, success: false });
+    bus.emit('agent.onCompleted', { sessionKey, success: false, error: 'Test error' });
     await tick();
 
     expect(rc.setError).toHaveBeenCalledOnce();
@@ -479,7 +479,7 @@ describe('onAgentCompleted reply logic', () => {
     const sessionKey = 'stub-ch:unknown-user';
 
     // Should not throw, not call any adapter methods
-    bus.emit('agent.onCompleted', { sessionKey, success: true });
+    bus.emit('agent.onCompleted', { sessionKey, success: true, response: '' });
     await tick();
 
     expect(adapter.typingStopped).toHaveLength(0);
@@ -492,10 +492,10 @@ describe('onAgentCompleted reply logic', () => {
 
     (svc as any).activeSessions.set(sessionKey, { adapter });
 
-    bus.emit('agent.onCompleted', { sessionKey, success: true });
+    bus.emit('agent.onCompleted', { sessionKey, success: true, response: '' });
     await tick();
     // Fire again — session is gone, should be silent
-    bus.emit('agent.onCompleted', { sessionKey, success: true });
+    bus.emit('agent.onCompleted', { sessionKey, success: true, response: '' });
     await tick();
 
     // stopTyping called only once from first completion
@@ -519,7 +519,7 @@ describe('onAgentCompleted reply logic', () => {
     }
     new SendStub(bus);
 
-    bus.emit('agent.onCompleted', { sessionKey, success: false });
+    bus.emit('agent.onCompleted', { sessionKey, success: false, error: '' });
     await tick();
 
     expect(sent[0].text).toBe('Error: Unknown error');
@@ -740,7 +740,7 @@ describe('onAgentTool adapter updates', () => {
 
     (svc as any).activeSessions.set(sessionKey, { adapter, reactionController: rc });
 
-    bus.emit('agent.onTool', { sessionKey, toolName: 'fs.read', phase: 'start' });
+    bus.emit('agent.onTool', { sessionKey, toolName: 'fs.read', phase: 'start', args: {} });
     await tick();
 
     expect(rc.setTool).toHaveBeenCalledOnce();
@@ -754,7 +754,7 @@ describe('onAgentTool adapter updates', () => {
 
     (svc as any).activeSessions.set(sessionKey, { adapter, reactionController: rc });
 
-    bus.emit('agent.onTool', { sessionKey, toolName: 'fs.read', phase: 'end' });
+    bus.emit('agent.onTool', { sessionKey, toolName: 'fs.read', phase: 'end', result: {} });
     await tick();
 
     expect(rc.setThinking).toHaveBeenCalledOnce();
@@ -770,7 +770,7 @@ describe('onAgentTool adapter updates', () => {
 
     // Should not throw
     expect(() => {
-      bus.emit('agent.onTool', { sessionKey, toolName: 'fs.read', phase: 'start' });
+      bus.emit('agent.onTool', { sessionKey, toolName: 'fs.read', phase: 'start', args: {} });
     }).not.toThrow();
 
     await tick();

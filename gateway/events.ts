@@ -55,10 +55,16 @@ export interface EventMap {
   'agent.onDelta': { sessionKey: string; chunk: string };
 
   /** Tool lifecycle within a run. */
-  'agent.onTool': { sessionKey: string; toolName: string; phase: 'start' | 'end'; args?: Json; result?: Json };
+  'agent.onTool': (
+    { sessionKey: string; toolName: string; phase: 'start'; args: Json } |
+    { sessionKey: string; toolName: string; phase: 'end'; result: Json }
+  );
 
   /** Run finished (success or failure). */
-  'agent.onCompleted': { sessionKey: string; success: boolean; response?: string; error?: string };
+  'agent.onCompleted': (
+    { sessionKey: string; success: true; response: string } |
+    { sessionKey: string; success: false; error: string }
+  );
 
   'channel.onConnected': { instanceId: string; type: string };
   'channel.onDisconnected': { instanceId: string };
