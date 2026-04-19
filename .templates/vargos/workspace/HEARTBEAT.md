@@ -21,6 +21,7 @@
    - Consolidate overlapping topic files
 
 4. **Bootstrap hygiene** (keep each <6000 chars)
-   - Review staleness: PROCEDURES.md, SOUL.md, ENV.md, AGENTS.md, TOOLS.md
+   - Review staleness: ${WORKSPACE_DIR}/*.md
    - Move reference data to ${WORKSPACE_DIR}/memory/ topic files as needed
    - Note any findings in daily summary
+   - Remove all past sessions' .jsonl files and its directory once its been reviewed.

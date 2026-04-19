@@ -17,6 +17,7 @@ import type { AppConfig } from '../../services/config/index.js';
 import { createLogger } from '../../lib/logger.js';
 import { parseDirectives } from '../../lib/directives.js';
 import { withTimeout } from '../../lib/timeout.js';
+import { interpolatePrompt } from '../../lib/prompt-interpolate.js';
 import type { AgentDeps } from './schema.js';
 import { promises as fs } from 'node:fs';
 import { getDataPaths } from '../../lib/paths.js';
@@ -124,7 +125,7 @@ export class AgentService {
     }
 
     const directives = parseDirectives(params.task);
-    const task = directives.cleaned || params.task;
+    const task = interpolatePrompt(directives.cleaned || params.task);
 
     const session = await this.getOrCreateSession(params.sessionKey, params.cwd);
 
@@ -314,8 +315,11 @@ export class AgentService {
     const bootstrapFiles = ['CLAUDE.md', 'AGENTS.md', 'SOUL.md', 'TOOLS.md'];
     const maxCharsPerFile = 6000;
 
-    const dirs = [this.dataDir];
-    if (cwd && path.resolve(cwd) !== path.resolve(this.dataDir)) {
+    const paths = getDataPaths();
+    const workspaceDir = paths.workspaceDir;
+
+    const dirs = [workspaceDir];
+    if (cwd && path.resolve(cwd) !== path.resolve(workspaceDir)) {
       dirs.push(cwd);
     }
 
@@ -344,7 +348,8 @@ export class AgentService {
       return undefined;
     }
 
-    return sections.join('\n');
+    const prompt = sections.join('\n');
+    return interpolatePrompt(prompt);
   }
 
   /**

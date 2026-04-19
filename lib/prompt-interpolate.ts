@@ -51,11 +51,16 @@ function interpolatePromptWithMissing(prompt: string): InterpolationResult {
     WORKSPACE_DIR: paths.workspaceDir,
     DATA_DIR: paths.dataDir,
     SESSIONS_DIR: paths.sessionsDir,
+    CRON_DIR: paths.cronDir,
     CACHE_DIR: paths.cacheDir,
     LOGS_DIR: paths.logsDir,
     CHANNELS_DIR: paths.channelsDir,
     HOME: os.homedir(),
     PWD: process.cwd(),
+
+    /** Some non-path variables */
+    currentTime: new Date().toISOString(),
+    currentTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone
   };
 
   let result = prompt;

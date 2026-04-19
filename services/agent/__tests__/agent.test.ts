@@ -48,7 +48,7 @@ class TestableRuntime extends AgentService {
   }
 }
 
-function createTestRuntime(workspaceDir: string): TestableRuntime {
+function createTestRuntime(dataDir: string): TestableRuntime {
   const minimalConfig = AppConfigSchema.parse({
     providers: {
       test: {
@@ -62,18 +62,16 @@ function createTestRuntime(workspaceDir: string): TestableRuntime {
   });
 
   // Override dataDir via env
-  const originalEnv = process.env.VARGOS_DATA_DIR;
-  process.env.VARGOS_DATA_DIR = workspaceDir;
+  resetDataPaths();
+  process.env.VARGOS_DATA_DIR = dataDir;
 
   const runtime = new TestableRuntime({
     bus: { call: async () => ({}) } as unknown as Bus,
     config: minimalConfig,
   });
 
-  // Restore env
-  if (originalEnv === undefined) delete process.env.VARGOS_DATA_DIR;
-  else process.env.VARGOS_DATA_DIR = originalEnv;
-  resetDataPaths();
+  // Don't restore env yet — keep dataDir override active for runtime's lifetime
+  // (Tests will restore after they're done with the runtime)
 
   return runtime;
 }
@@ -82,6 +80,7 @@ describe('getSystemPrompt merging', () => {
   let tmpDir: string;
   let workspaceDir: string;
   let cwdDir: string;
+  let originalEnv: string | undefined;
 
   beforeEach(() => {
     tmpDir = path.join(os.tmpdir(), `agent-test-${Date.now()}`);
@@ -90,23 +89,31 @@ describe('getSystemPrompt merging', () => {
 
     mkdirSync(path.join(workspaceDir, 'agent'), { recursive: true });
     mkdirSync(cwdDir, { recursive: true });
+
+    // Save original env for cleanup
+    originalEnv = process.env.VARGOS_DATA_DIR;
   });
 
   afterEach(() => {
+    // Restore original env
+    if (originalEnv === undefined) delete process.env.VARGOS_DATA_DIR;
+    else process.env.VARGOS_DATA_DIR = originalEnv;
+    resetDataPaths();
+
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
   it('loads bootstrap files from workspace only when no cwd', async () => {
     writeFileSync(path.join(workspaceDir, 'AGENTS.md'), '# Workspace Agent');
 
-    const runtime = createTestRuntime(workspaceDir);
+    const runtime = createTestRuntime(tmpDir);
     const prompt = await runtime.testGetSystemPrompt('test-session');
 
     expect(prompt).toContain('# Workspace Agent');
   });
 
   it('returns undefined when no bootstrap files exist', async () => {
-    const runtime = createTestRuntime(workspaceDir);
+    const runtime = createTestRuntime(tmpDir);
     const prompt = await runtime.testGetSystemPrompt('test-session');
 
     expect(prompt).toBeUndefined();
@@ -116,7 +123,7 @@ describe('getSystemPrompt merging', () => {
     writeFileSync(path.join(workspaceDir, 'AGENTS.md'), '# Workspace Agent');
     writeFileSync(path.join(cwdDir, 'CLAUDE.md'), '# Project Context');
 
-    const runtime = createTestRuntime(workspaceDir);
+    const runtime = createTestRuntime(tmpDir);
     const prompt = await runtime.testGetSystemPrompt('test-session', cwdDir);
 
     expect(prompt).toContain('# Workspace Agent');
@@ -127,7 +134,7 @@ describe('getSystemPrompt merging', () => {
     writeFileSync(path.join(workspaceDir, 'AGENTS.md'), 'WORKSPACE_MARKER');
     writeFileSync(path.join(cwdDir, 'CLAUDE.md'), 'CWD_MARKER');
 
-    const runtime = createTestRuntime(workspaceDir);
+    const runtime = createTestRuntime(tmpDir);
     const prompt = await runtime.testGetSystemPrompt('test-session', cwdDir)!;
 
     const wsIdx = prompt!.indexOf('WORKSPACE_MARKER');
@@ -138,7 +145,7 @@ describe('getSystemPrompt merging', () => {
   it('does not duplicate when cwd equals workspace', async () => {
     writeFileSync(path.join(workspaceDir, 'AGENTS.md'), '# Agent');
 
-    const runtime = createTestRuntime(workspaceDir);
+    const runtime = createTestRuntime(tmpDir);
     const prompt = await runtime.testGetSystemPrompt('test-session', workspaceDir);
 
     const matches = prompt!.match(/# Agent/g);
@@ -149,7 +156,7 @@ describe('getSystemPrompt merging', () => {
     const largeContent = 'X'.repeat(10_000);
     writeFileSync(path.join(workspaceDir, 'AGENTS.md'), largeContent);
 
-    const runtime = createTestRuntime(workspaceDir);
+    const runtime = createTestRuntime(tmpDir);
     const prompt = await runtime.testGetSystemPrompt('test-session');
 
     expect(prompt).toContain('[...truncated...]');
@@ -159,7 +166,7 @@ describe('getSystemPrompt merging', () => {
   it('loads CLAUDE.md from cwd', async () => {
     writeFileSync(path.join(cwdDir, 'CLAUDE.md'), '# My Project\nBuild instructions here');
 
-    const runtime = createTestRuntime(workspaceDir);
+    const runtime = createTestRuntime(tmpDir);
     const prompt = await runtime.testGetSystemPrompt('test-session', cwdDir);
 
     expect(prompt).toContain('# My Project');

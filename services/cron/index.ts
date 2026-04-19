@@ -30,7 +30,6 @@ import {
   isHeartbeatContentEffectivelyEmpty,
   stripHeartbeatToken,
 } from '../../lib/heartbeat.js';
-import { interpolatePrompt } from '../../lib/prompt-interpolate.js';
 
 const log = createLogger('cron');
 
@@ -98,10 +97,10 @@ export class CronService {
   @register('cron.add', {
     description: 'Add a new scheduled cron task.',
     schema: z.object({
-      name:     z.string(),
+      name: z.string(),
       schedule: z.string(),
-      task:     z.string(),
-      notify:   z.array(z.string()).optional(),
+      task: z.string(),
+      notify: z.array(z.string()).optional(),
     }),
   })
   async add(params: CronAddParams): Promise<void> {
@@ -147,12 +146,12 @@ export class CronService {
   @register('cron.update', {
     description: 'Update a scheduled cron task.',
     schema: z.object({
-      id:       z.string(),
-      name:     z.string().optional(),
+      id: z.string(),
+      name: z.string().optional(),
       schedule: z.string().optional(),
-      task:     z.string().optional(),
-      enabled:  z.boolean().optional(),
-      notify:   z.array(z.string()).optional(),
+      task: z.string().optional(),
+      enabled: z.boolean().optional(),
+      notify: z.array(z.string()).optional(),
     }),
   })
   async update(params: CronUpdateParams): Promise<void> {
@@ -276,10 +275,9 @@ export class CronService {
     const sessionKey = cronSessionKey(task.id);
     log.info(`task firing: ${task.name} (${task.id}) → ${sessionKey}`);
 
-    const interpolatedTask = interpolatePrompt(task.task);
     const result = await this.bus.call('agent.execute', {
       sessionKey,
-      task: interpolatedTask,
+      task: task.task,
     });
 
     if (!result.response) return;

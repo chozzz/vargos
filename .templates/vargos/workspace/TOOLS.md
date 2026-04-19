@@ -1,43 +1,59 @@
-# TOOLS.md - Local Notes
+<!-- Bootstrap file: injected into every session. Keep under 6000 chars. -->
 
-Skills define _how_ tools work. This file is for _your_ specifics.
+# TOOLS.md - Tool Reference
 
-## Projects
+## Filesystem
 
-List your repos so the agent can find them without asking:
+- `fs.read` — read files (absolute or ~-relative paths)
+- `fs.write` — create/overwrite files (auto-creates parent dirs)
+- `fs.edit` — replace exact string in file
+- `fs.exec` — run shell commands, returns stdout/stderr/exitCode
 
-```markdown
-| Project | Path | Description |
-|---------|------|-------------|
-| myapp | ~/dev/myapp | Main web app (React, pnpm) |
-| api | ~/dev/api | Backend service (Go) |
-```
+## Memory
 
-## What Else Goes Here
+- `memory.search` — semantic search across memory files
+- `memory.read` — read specific memory file
+- `memory.write` — write to memory directory
+- `memory.stats` — memory index stats
 
-- SSH hosts and aliases
-- API endpoints and service URLs
-- Device/hardware specifics
-- Quick commands you use often
-- Anything environment-specific
+## Agents
 
-## Examples
+- `agent.execute` — spawn sub-agent for focused task
+- `agent.status` — check active agent sessions
 
-```markdown
-### Services
+## Config
 
-- postgres → localhost:5432, db: myapp
-- redis → localhost:6379
+- `config.get` — get merged app config
+- `config.set` — update config (routes to correct file)
 
-### SSH
+## Channels
 
-- dev-server → 10.0.0.5, user: deploy
+- `channel.send` — send text message
+- `channel.sendMedia` — send file/media
+- `channel.search` — list channel adapters
+- `channel.get` — channel status
 
-### Hardware
+## Cron
 
-- GPU → RTX 4090, CUDA 12.x
-```
+- `cron.search` — list scheduled tasks
+- `cron.add` / `cron.update` / `cron.remove` — manage tasks
+- `cron.run` — trigger immediately
 
----
+## Bus
 
-Add whatever helps you do your job. This is your cheat sheet.
+- `bus.search` — search available bus events
+- `bus.inspect` — get event metadata
+
+## Audio
+
+- `media.transcribeAudio` — transcribe audio file
+
+## Logs
+
+- `log.search` — search persisted logs by level/service
+
+## Project Paths
+
+## Make It Yours
+
+This is a starting point. Add your own conventions as you figure out what works.
