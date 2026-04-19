@@ -8,11 +8,11 @@ import { setLoggerBus, ts } from '../../lib/logger.js';
 import { getDataPaths } from '../../lib/paths.js';
 
 interface LogEntry {
-  ts:       string;
-  level:    LogLevel;
-  service:  string;
-  message:  string;
-  data?:    unknown;
+  ts: string;
+  level: LogLevel;
+  service: string;
+  message: string;
+  data?: unknown;
 }
 
 export class LogService {
@@ -24,21 +24,28 @@ export class LogService {
     const { level, service, message, data } = payload;
     const line = `${ts()} [${service}] ${message}${data ? ' ' + JSON.stringify(data) : ''}`;
 
-    if (level === 'info' || level === 'warn' || level === 'error') {
-      console.error(line);
+    if (level === 'debug') {
+      console.debug(line);
     }
-
-    if (level === 'warn' || level === 'error') {
-      this.persist({ ts: new Date().toISOString(), level, service, message, data }).catch(() => {});
+    else if (level === 'info') {
+      console.info(line);
+    }
+    else if (level === 'warn') {
+      console.warn(line);
+      this.persist({ ts: new Date().toISOString(), level, service, message, data }).catch(() => { });
+    }
+    else if (level === 'error') {
+      console.error(line);
+      this.persist({ ts: new Date().toISOString(), level, service, message, data }).catch(() => { });
     }
   }
 
   @register('log.search', {
     description: 'Search persisted log entries by level and/or service.',
     schema: z.object({
-      sinceMs:  z.number().optional().describe('Only return entries newer than this many ms ago'),
-      service:  z.string().optional(),
-      level:    z.enum(['debug', 'info', 'warn', 'error']).optional(),
+      sinceMs: z.number().optional().describe('Only return entries newer than this many ms ago'),
+      service: z.string().optional(),
+      level: z.enum(['debug', 'info', 'warn', 'error']).optional(),
     }),
   })
   async search(params: EventMap['log.search']['params']): Promise<EventMap['log.search']['result']> {
@@ -61,9 +68,9 @@ export class LogService {
         if (params.level && entry.level !== params.level) continue;
         if (params.service && entry.service !== params.service) continue;
         entries.push({
-          service:   entry.service,
-          error:     entry.message,
-          context:   entry.data as import('../../gateway/events.js').Json | undefined,
+          service: entry.service,
+          error: entry.message,
+          context: entry.data as import('../../gateway/events.js').Json | undefined,
           timestamp: new Date(entry.ts).getTime(),
         });
       } catch { /* skip */ }
