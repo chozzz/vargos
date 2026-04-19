@@ -20,7 +20,6 @@ import { register } from '../../gateway/decorators.js';
 import type { Bus } from '../../gateway/bus.js';
 import type { EventMap } from '../../gateway/events.js';
 import type { AppConfig, CronTask, CronAddParams, CronUpdateParams } from '../../services/config/index.js';
-import type { HeartbeatConfig } from '../../services/config/schemas/index.js';
 import { createLogger } from '../../lib/logger.js';
 import { toMessage } from '../../lib/error.js';
 import { getDataPaths } from '../../lib/paths.js';
@@ -35,13 +34,6 @@ import { interpolatePrompt } from '../../lib/prompt-interpolate.js';
 
 const log = createLogger('cron');
 
-const DEFAULT_HEARTBEAT_PROMPT = [
-  'Heartbeat poll. Read ${WORKSPACE_DIR}/HEARTBEAT.md for detailed instructions.',
-  'Follow each task strictly. Use memory.search, memory.read, memory.write bus calls as needed.',
-  'Use interpolation vars in your prompts: ${WORKSPACE_DIR}, ${DATA_DIR}, etc.',
-  'If all tasks complete successfully with no issues found, reply with exactly: HEARTBEAT_OK',
-].join(' ');
-
 // ── CronService ───────────────────────────────────────────────────────────────
 
 export class CronService {
@@ -50,19 +42,26 @@ export class CronService {
   private activeTasks = new Set<string>();
   private beforeFireHooks = new Map<string, () => Promise<boolean>>();
   private unsubscribeCompleted?: () => void;
+  private readonly cronDir: string;
 
   constructor(
     private readonly bus: Bus,
     private readonly config: AppConfig,
-  ) {}
+    cronDir?: string,
+  ) {
+    this.cronDir = cronDir ?? getDataPaths().cronDir;
+  }
 
-  start(): void {
-    for (const task of this.config.cron.tasks) {
+  async start(): Promise<void> {
+    // Load tasks from disk
+    const diskTasks = await this.loadTasksFromDisk();
+    for (const task of diskTasks) {
       this.addJob(task);
     }
 
-    if (this.config.heartbeat.enabled !== false) {
-      this.registerHeartbeat(this.config.heartbeat);
+    // Register heartbeat if task exists (loaded from disk)
+    if (this.jobs.has('heartbeat')) {
+      this.registerHeartbeat();
     }
 
     this.startAll();
@@ -86,7 +85,9 @@ export class CronService {
   })
   async search(params: EventMap['cron.search']['params']): Promise<EventMap['cron.search']['result']> {
     const { query, page, limit = 20 } = params;
-    const all = this.listPersistable();
+    const all = Array.from(this.jobs.values())
+      .filter(e => !this.ephemeralIds.has(e.task.id))
+      .map(e => e.task);
     const filtered = query
       ? all.filter(t => t.name.includes(query) || t.id.includes(query) || t.task.includes(query))
       : all;
@@ -104,10 +105,19 @@ export class CronService {
     }),
   })
   async add(params: CronAddParams): Promise<void> {
-    const task: CronTask = { ...params, id: generateId('cron'), enabled: true };
+    const id = generateId('cron');
+    if (this.jobs.has(id)) {
+      throw new Error(`Cron task already exists: ${id}`);
+    }
+
+    const task: CronTask = { ...params, id, enabled: true };
+
+    // Write to disk
+    await this.writeTaskToDisk(task);
+
+    // Register in-memory
     this.addJob(task);
     this.jobs.get(task.id)!.job.start();
-    await this.persist();
     log.info(`task added: ${task.name} (${task.id})`);
   }
 
@@ -118,11 +128,19 @@ export class CronService {
   async remove(params: EventMap['cron.remove']['params']): Promise<void> {
     const entry = this.jobs.get(params.id);
     if (!entry) return;
+
+    const isEphemeral = this.ephemeralIds.has(params.id);
+
     entry.job.stop();
     this.jobs.delete(params.id);
     this.ephemeralIds.delete(params.id);
     this.activeTasks.delete(params.id);
-    await this.persist();
+
+    // Delete from disk (only persistent tasks)
+    if (!isEphemeral) {
+      await this.deleteTaskFromDisk(params.id);
+    }
+
     log.info(`task removed: ${params.id}`);
   }
 
@@ -141,7 +159,10 @@ export class CronService {
     const entry = this.jobs.get(params.id);
     if (!entry) throw new Error(`No task with id: ${params.id}`);
 
-    const updated: CronTask = { ...entry.task, ...params };
+    const updates = Object.fromEntries(
+      Object.entries(params).filter(([, v]) => v !== undefined)
+    );
+    const updated: CronTask = { ...entry.task, ...updates };
 
     if (params.schedule && params.schedule !== entry.task.schedule) {
       entry.job.stop();
@@ -159,7 +180,12 @@ export class CronService {
       else if (params.enabled === true) entry.job.start();
     }
 
-    await this.persist();
+    // Write to disk (only persistent tasks)
+    const isEphemeral = this.ephemeralIds.has(params.id);
+    if (!isEphemeral) {
+      await this.writeTaskToDisk(updated);
+    }
+
     log.info(`task updated: ${params.id}`);
   }
 
@@ -277,28 +303,191 @@ export class CronService {
     }
   }
 
+  // ── File I/O ──────────────────────────────────────────────────────────────
+
+  private parseFrontmatterValue(value: string): unknown {
+    if (value === 'true') return true;
+    if (value === 'false') return false;
+    if (value.startsWith('[') && value.endsWith(']')) {
+      try {
+        return JSON.parse(value);
+      } catch {
+        return value;
+      }
+    }
+    return value.replace(/^["']|["']$/g, '');
+  }
+
+  private parseMarkdownTask(content: string): { frontmatter: Record<string, unknown>; body: string } | null {
+    if (!content || typeof content !== 'string') {
+      return null;
+    }
+
+    const match = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+    if (!match) return null;
+
+    const frontmatterStr = match[1]?.trim();
+    const body = match[2]?.trim() ?? '';
+
+    if (!frontmatterStr) {
+      return null; // Empty frontmatter
+    }
+
+    const frontmatter: Record<string, unknown> = {};
+    for (const line of frontmatterStr.split('\n')) {
+      if (!line.trim()) continue;
+
+      const colonIdx = line.indexOf(':');
+      if (colonIdx === -1) continue;
+
+      const key = line.substring(0, colonIdx).trim();
+      const value = line.substring(colonIdx + 1).trim();
+
+      if (!key) continue;
+
+      frontmatter[key] = this.parseFrontmatterValue(value);
+    }
+
+    return { frontmatter, body };
+  }
+
+  private serializeMarkdownTask(task: CronTask): string {
+    const { task: taskPrompt, ...metadata } = task;
+    const frontmatter = Object.entries(metadata)
+      .map(([key, value]) => {
+        if (Array.isArray(value)) {
+          return `${key}:\n${value.map(v => `  - ${v}`).join('\n')}`;
+        }
+        return `${key}: ${typeof value === 'string' ? `"${value}"` : value}`;
+      })
+      .join('\n');
+
+    return `---\n${frontmatter}\n---\n\n${taskPrompt}\n`;
+  }
+
+  private async loadTasksFromDisk(): Promise<CronTask[]> {
+    const tasks: CronTask[] = [];
+
+    try {
+      const files = await fs.readdir(this.cronDir);
+      const mdFiles = files.filter(f => f.endsWith('.md'));
+
+      if (mdFiles.length === 0) {
+        log.debug(`no tasks found in ${this.cronDir}`);
+        return tasks;
+      }
+
+      for (const filename of mdFiles) {
+        try {
+          const filepath = path.join(this.cronDir, filename);
+          const content = await fs.readFile(filepath, 'utf-8');
+
+          const parsed = this.parseMarkdownTask(content);
+          if (!parsed) {
+            log.warn(`${filename}: missing or invalid YAML frontmatter (expected --- ... ---)}`);
+            continue;
+          }
+
+          // Validate required fields
+          const { id, schedule } = parsed.frontmatter;
+          if (!id || !schedule) {
+            log.warn(`${filename}: missing required fields (id: ${id ? '✓' : '✗'}, schedule: ${schedule ? '✓' : '✗'})`);
+            continue;
+          }
+
+          const task: CronTask = {
+            id: String(id),
+            name: String(parsed.frontmatter.title || parsed.frontmatter.name || id),
+            schedule: String(schedule),
+            task: parsed.body || '',
+            enabled: parsed.frontmatter.enabled === true,
+            notify: Array.isArray(parsed.frontmatter.notify) ? parsed.frontmatter.notify.map(String) : undefined,
+            activeHours: Array.isArray(parsed.frontmatter.activeHours) ? parsed.frontmatter.activeHours.map(Number) : undefined,
+            activeHoursTimezone: parsed.frontmatter.activeHoursTimezone ? String(parsed.frontmatter.activeHoursTimezone) : undefined,
+          };
+
+          tasks.push(task);
+          log.debug(`loaded task: ${task.id}`);
+
+          // Mark heartbeat as ephemeral
+          if (task.id === 'heartbeat') {
+            this.ephemeralIds.add(task.id);
+          }
+        } catch (err) {
+          log.warn(`${filename}: ${toMessage(err)}`);
+        }
+      }
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        log.debug(`cron directory does not exist yet: ${this.cronDir}`);
+      } else {
+        log.warn(`failed to read cron directory: ${toMessage(err)}`);
+      }
+    }
+
+    return tasks;
+  }
+
+  private async writeTaskToDisk(task: CronTask): Promise<void> {
+    if (!task?.id) {
+      throw new Error('Cannot write task without id');
+    }
+
+    try {
+      await fs.mkdir(this.cronDir, { recursive: true });
+
+      const filepath = path.join(this.cronDir, `${task.id}.md`);
+      const tmpPath = `${filepath}.tmp`;
+
+      try {
+        const content = this.serializeMarkdownTask(task);
+        if (!content) {
+          throw new Error('Failed to serialize task');
+        }
+        await fs.writeFile(tmpPath, content, 'utf-8');
+        await fs.rename(tmpPath, filepath);
+        log.debug(`wrote task to disk: ${task.id}`);
+      } catch (err) {
+        try {
+          await fs.unlink(tmpPath);
+        } catch {
+          // Ignore cleanup errors
+        }
+        throw err;
+      }
+    } catch (err) {
+      log.error(`failed to write task ${task.id}: ${toMessage(err)}`);
+      throw err;
+    }
+  }
+
+  private async deleteTaskFromDisk(taskId: string): Promise<void> {
+    const filepath = path.join(this.cronDir, `${taskId}.md`);
+    try {
+      await fs.unlink(filepath);
+    } catch (err) {
+      if (!(err instanceof Error && 'code' in err && err.code === 'ENOENT')) {
+        throw err;
+      }
+      // File doesn't exist, that's fine
+    }
+  }
+
   // ── Heartbeat ─────────────────────────────────────────────────────────────
 
-  private registerHeartbeat(hb: HeartbeatConfig): void {
-    const intervalMinutes = hb.intervalMinutes ?? 30;
-    const schedule = `*/${intervalMinutes} * * * *`;
-
-    const task: CronTask = {
-      id:       'heartbeat',
-      name:     'Heartbeat',
-      schedule,
-      task:     DEFAULT_HEARTBEAT_PROMPT,
-      enabled:  true,
-      notify:   hb.notify,
-    };
-
-    this.addJob(task, { ephemeral: true });
-    if (task.enabled) this.jobs.get(task.id)!.job.start();
+  private registerHeartbeat(): void {
+    const entry = this.jobs.get('heartbeat');
+    if (!entry) {
+      log.warn('heartbeat task not found in cron tasks');
+      return;
+    }
 
     const { workspaceDir } = getDataPaths();
+    const activeHours = entry.task.activeHours as [number, number] | undefined;
+    const activeHoursTimezone = entry.task.activeHoursTimezone;
 
-    this.beforeFireHooks.set(task.id, async () => {
-      if (!isWithinActiveHours(hb.activeHours, hb.activeHoursTimezone)) return false;
+    this.beforeFireHooks.set('heartbeat', async () => {
+      if (!isWithinActiveHours(activeHours, activeHoursTimezone)) return false;
 
       const { activeRuns } = await this.bus.call('agent.status', {});
       if (activeRuns.length > 0) return false;
@@ -313,23 +502,7 @@ export class CronService {
       return true;
     });
 
-    log.info(`heartbeat registered: every ${intervalMinutes}m`);
-  }
-
-  // ── Persistence ───────────────────────────────────────────────────────────
-
-  private listPersistable(): CronTask[] {
-    return Array.from(this.jobs.values())
-      .filter(e => !this.ephemeralIds.has(e.task.id))
-      .map(e => e.task);
-  }
-
-  private async persist(): Promise<void> {
-    const config = await this.bus.call('config.get', {});
-    await this.bus.call('config.set', {
-      ...config,
-      cron: { tasks: this.listPersistable() },
-    }).catch(err => log.error(`persist: ${toMessage(err)}`));
+    log.info('heartbeat registered');
   }
 }
 
@@ -338,8 +511,8 @@ export class CronService {
 export async function boot(bus: Bus): Promise<{ stop(): void }> {
   const config = await bus.call('config.get', {});
   const svc = new CronService(bus, config);
-  svc.start();
+  await svc.start();
   bus.bootstrap(svc);
-  log.info(`started with ${config.cron.tasks.length} tasks`);
+  log.info('cron service started');
   return { stop: () => svc.stop() };
 }

@@ -88,28 +88,6 @@ Priority: `config.paths.dataDir` > `VARGOS_DATA_DIR` env > `~/.vargos`
     }
   ],
 
-  // Cron tasks
-  "cron": {
-    "tasks": [
-      {
-        "id": "daily-report",
-        "name": "Daily Report",
-        "schedule": "0 9 * * *",
-        "task": "Generate a summary of recent changes",
-        "enabled": true,
-        "notify": ["telegram:tg-bot:61423222658"]
-      }
-    ]
-  },
-
-  // Heartbeat — periodic maintenance cron
-  "heartbeat": {
-    "enabled": false,
-    "intervalMinutes": 30,
-    "activeHours": [9, 22],
-    "activeHoursTimezone": "Australia/Sydney",
-    "notify": ["telegram:tg-bot:61423222658"]
-  },
 
   // Link expansion for inbound messages
   "linkExpand": {
@@ -242,3 +220,92 @@ Legacy config formats are auto-migrated on first load:
 - `heartbeat.activeHours` object → `[start, end]` tuple + `activeHoursTimezone`
 
 See [getting-started.md](./getting-started.md) for initial setup.
+
+## Cron Tasks
+
+Cron tasks are stored as markdown files in `~/.vargos/cron/` instead of in `config.json`. Each task is a `.md` file with YAML frontmatter containing metadata and a body containing the task prompt.
+
+### File Location
+
+```
+~/.vargos/cron/
+├── daily-ai-news.md
+├── weekly-docs-review.md
+└── .templates/
+    └── heartbeat.md          # Template for onboarding
+```
+
+### File Format
+
+Each task is a markdown file with YAML frontmatter:
+
+```yaml
+---
+id: daily-ai-news
+name: Daily AI Scan
+schedule: "0 9 * * *"
+enabled: true
+activeHours: [8, 22]
+activeHoursTimezone: "Australia/Sydney"
+notify:
+  - whatsapp-vadi-indo:61423222658
+---
+
+Research today's AI news, GitHub trending, and package releases. Synthesize into a report.
+
+Reference workspace files with ${WORKSPACE_DIR} and system paths with ${DATA_DIR}.
+```
+
+### Metadata Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | string | yes | Unique identifier for the task |
+| `name` | string | yes | Human-readable task name |
+| `schedule` | string | yes | Cron expression (e.g., `"0 9 * * *"` for 9am daily) |
+| `task` | string (body) | yes | Task prompt. Supports `${WORKSPACE_DIR}`, `${DATA_DIR}`, etc. |
+| `enabled` | boolean | no | Whether the task is active (default: `true`) |
+| `activeHours` | array | no | Hour window for conditional execution: `[startHour, endHour]` (0-23). Task only runs during these hours. |
+| `activeHoursTimezone` | string | no | IANA timezone for interpreting `activeHours` (e.g., `"Australia/Sydney"`) |
+| `notify` | array | no | Channel session keys for result delivery (e.g., `["whatsapp-vadi-indo:61423222658"]`) |
+
+### Variable Interpolation
+
+Task prompts support these variables, which are interpolated at execution time:
+
+- `${WORKSPACE_DIR}` — User's workspace directory (`~/.vargos/workspace`)
+- `${DATA_DIR}` — Data directory (`~/.vargos` by default)
+- `${HOME}` — User's home directory
+- `${PWD}` — Current working directory
+
+See [prompt-variables.md](./prompt-variables.md) for the full list.
+
+### Ephemeral Tasks
+
+The heartbeat task is an ephemeral task that runs periodically to keep the agent active. It's stored in `.templates/heartbeat.md` as a template for onboarding flows. To enable heartbeat, copy it to the main cron directory or configure it in `config.json` under `heartbeat`.
+
+### Creating Tasks
+
+1. Create a new `.md` file in `~/.vargos/cron/`:
+   ```bash
+   cat > ~/.vargos/cron/my-task.md << 'EOF'
+   ---
+   id: my-task
+   name: My Task
+   schedule: "0 9 * * *"
+   enabled: true
+   ---
+
+   Your task prompt here. Use ${WORKSPACE_DIR} and ${DATA_DIR} for dynamic paths.
+   EOF
+   ```
+
+2. The task will be loaded on next startup or when the cron service reloads.
+
+### Updating Tasks
+
+Edit the `.md` file directly — metadata in the frontmatter, prompt in the body. The cron service will detect changes on reload.
+
+### Removing Tasks
+
+Delete the `.md` file from `~/.vargos/cron/` to disable a task.

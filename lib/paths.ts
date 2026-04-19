@@ -6,6 +6,7 @@ export interface DataPaths {
   workspaceDir: string;
   sessionsDir:  string;
   channelsDir:  string;
+  cronDir:      string;
   logsDir:      string;
   cacheDir:     string;
   configFile:   string;
@@ -32,6 +33,7 @@ export function getDataPaths(): DataPaths {
     workspaceDir: path.join(dataDir, 'workspace'),
     sessionsDir:  path.join(dataDir, 'sessions'),
     channelsDir:  path.join(dataDir, 'channels'),
+    cronDir:      path.join(dataDir, 'cron'),
     logsDir:      path.join(dataDir, 'logs'),
     cacheDir:     path.join(base, 'vargos'),
     configFile:   path.join(dataDir, 'config.json'),

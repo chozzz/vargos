@@ -14,19 +14,19 @@ A 9am daily cron prompts the agent to:
 
 ## Configuration
 
-```jsonc
-{
-  "cron": {
-    "tasks": [
-      {
-        "name": "Daily AI Scan",
-        "schedule": "0 9 * * *",
-        "task": "Research today's AI news, GitHub trending, and package releases. Synthesize into a report.",
-        "notify": ["whatsapp:61423222658"]
-      }
-    ]
-  }
-}
+Create `~/.vargos/cron/daily-ai-scan.md`:
+
+```yaml
+---
+id: daily-ai-scan
+name: Daily AI Scan
+schedule: "0 9 * * *"
+enabled: true
+notify:
+  - whatsapp-vadi-indo:61423222658
+---
+
+Research today's AI news, GitHub trending, and package releases. Synthesize into a report.
 ```
 
 ## How It Works

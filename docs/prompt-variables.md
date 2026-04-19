@@ -17,22 +17,17 @@ Cron task prompts and other agent instructions support variable interpolation. T
 
 ## Usage in Cron Tasks
 
-Define variables in your `config.json` cron task prompts:
+Define variables in your cron task markdown files (stored in `~/.vargos/cron/*.md`):
 
-```json
-{
-  "cron": {
-    "tasks": [
-      {
-        "id": "daily-review",
-        "name": "Daily Review",
-        "schedule": "0 9 * * *",
-        "task": "Review the checklist at ${WORKSPACE_DIR}/CHECKLIST.md and report findings.",
-        "enabled": true
-      }
-    ]
-  }
-}
+```yaml
+---
+id: daily-review
+name: Daily Review
+schedule: "0 9 * * *"
+enabled: true
+---
+
+Review the checklist at ${WORKSPACE_DIR}/CHECKLIST.md and report findings.
 ```
 
 When the cron task executes, `${WORKSPACE_DIR}` is replaced with the actual path:
@@ -42,17 +37,24 @@ Review the checklist at /home/user/.vargos/workspace/CHECKLIST.md and report fin
 
 ## Built-in Example: Heartbeat
 
-The heartbeat prompt uses interpolation to find `HEARTBEAT.md`:
+The heartbeat task is an ephemeral cron task stored at `~/.vargos/cron/.templates/heartbeat.md`. It uses interpolation to reference workspace files:
 
-```typescript
-const DEFAULT_HEARTBEAT_PROMPT = [
-  'Heartbeat poll. Read ${WORKSPACE_DIR}/HEARTBEAT.md for your checklist.',
-  'Follow it strictly — do not infer tasks from previous sessions.',
-  'If nothing needs attention, reply with exactly: HEARTBEAT_OK',
-].join(' ');
+```yaml
+---
+id: heartbeat
+name: Heartbeat
+schedule: "*/30 * * * *"
+enabled: true
+activeHours: [8, 22]
+activeHoursTimezone: "Australia/Sydney"
+---
+
+Heartbeat poll. Read ${WORKSPACE_DIR}/HEARTBEAT.md for your checklist.
+Follow it strictly — do not infer tasks from previous sessions.
+If nothing needs attention, reply with exactly: HEARTBEAT_OK
 ```
 
-This ensures the heartbeat task can always find the file regardless of the agent's current working directory.
+This ensures the heartbeat task can always find the workspace file regardless of the agent's current working directory.
 
 ## Best Practices
 
@@ -66,9 +68,20 @@ This ensures the heartbeat task can always find the file regardless of the agent
 
 ## Example: Multi-File Review Task
 
-```json
-{
-  "id": "weekly-docs-check",
-  "task": "Review all .md files in ${WORKSPACE_DIR}/docs/. Check each for:\n1. Stale information\n2. Broken references\n3. Missing context\n\nFor each issue, write a note to ${WORKSPACE_DIR}/HEARTBEAT.md under '## Docs Review'."
-}
+Create `~/.vargos/cron/weekly-docs-check.md`:
+
+```yaml
+---
+id: weekly-docs-check
+name: Weekly Docs Check
+schedule: "0 9 * * 0"
+enabled: true
+---
+
+Review all .md files in ${WORKSPACE_DIR}/docs/. Check each for:
+1. Stale information
+2. Broken references
+3. Missing context
+
+For each issue, write a note to ${WORKSPACE_DIR}/HEARTBEAT.md under '## Docs Review'.
 ```

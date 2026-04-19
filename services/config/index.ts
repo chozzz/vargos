@@ -45,10 +45,10 @@ export const AppConfigSchema = z
     auth: AuthSchema,
     channels: z.array(ChannelEntrySchema).default([]),
     cron: z.object({
-      tasks: z.array(CronTaskSchema).default([]),
-    }).default({}),
+      tasks: z.array(CronTaskSchema).optional(),
+    }).optional(),
     webhooks: z.array(WebhookEntrySchema).default([]),
-    heartbeat: HeartbeatConfigSchema.default({}),
+    heartbeat: HeartbeatConfigSchema.optional(),
     linkExpand: LinkExpandConfigSchema.default({}),
     mcp: McpClientConfigSchema.default({}),
     mcpServers: z.record(z.string(), McpServerConfigSchema).optional().describe('External MCP servers to load as bus callable events'),
