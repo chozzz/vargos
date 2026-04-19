@@ -6,9 +6,14 @@
  * Pure events subscribed: agent.onDelta, agent.onTool, agent.onCompleted
  *
  * Inbound flow:
- *   adapter → onInboundMessage → expand links → typing + reactions → agent.execute → deliver
+ *   adapter → onInboundMessage → expand links → typing + reactions → agent.execute
  *   → agent.onTool updates reaction phase
- *   → agent.onCompleted stops typing + seals reaction
+ *   → agent.onCompleted stops typing + seals reaction + delivers reply
+ *
+ * Reply routing:
+ *   - Channel-triggered: agent.onCompleted looks up activeSessions, delivers to source
+ *   - Non-channel (cron, etc): agent.onCompleted falls back to lastInteractiveSessionKey
+ *     (only if sessionKey type is not a registered adapter)
  *
  * Outbound flow: channel.send → strip markdown → chunk → adapter.send
  */
@@ -44,6 +49,7 @@ interface ActiveSession {
 export class ChannelService {
   private adapters = new Map<string, ChannelAdapter>();
   private activeSessions = new Map<string, ActiveSession>();
+  private lastInteractiveSessionKey: string | null = null;
 
   constructor(
     private readonly bus: Bus,
@@ -191,19 +197,25 @@ export class ChannelService {
 
   @on('agent.onCompleted')
   private onAgentCompleted(payload: EventMap['agent.onCompleted']): void | Promise<void> {
-    const session = this.activeSessions.get(payload.sessionKey);
-    if (!session) return;
-
-    if (payload.sessionKey.includes(':subagent')) {
-      log.debug(`agent.onCompleted: subagent, skipping reply`);
+    if (!payload.sessionKey || payload.sessionKey.includes(':subagent')) {
+      log.debug(`agent.onCompleted: no session key or subagent, skipping onAgentCompleted`);
       return;
     }
-    else {
-      log.debug(`agent.onCompleted: ${payload.sessionKey} ${payload.success} ${payload.response?.slice(0, 80)}`);
+
+    log.debug(`agent.onCompleted: ${payload.sessionKey} ${payload.success} ${payload.response?.slice(0, 80)}`);
+
+    let session = this.activeSessions.get(payload.sessionKey);
+
+    if (!session && this.lastInteractiveSessionKey) {
+      session = this.activeSessions.get(this.lastInteractiveSessionKey);
+      if (!session) {
+        log.warn(`onAgentCompleted: no interactive session on record for ${this.lastInteractiveSessionKey}`);
+        return;
+      }
     }
 
     this.activeSessions.delete(payload.sessionKey);
-    session.adapter.stopTyping(payload.sessionKey, true);  // final=true to fully stop
+    session?.adapter.stopTyping(payload.sessionKey, true);  // final=true to fully stop
 
     // Send reply based on success/error
     const sendReply = async () => {
@@ -219,13 +231,13 @@ export class ChannelService {
       }
 
       // Update and cleanup reaction controller
-      if (session.reactionController) {
+      if (session?.reactionController) {
         if (payload.success === false) {
-          session.reactionController.setError();
+          session?.reactionController.setError();
         } else {
-          session.reactionController.setDone();
+          session?.reactionController.setDone();
         }
-        session.reactionController.dispose();
+        session?.reactionController.dispose();
       }
     };
 
@@ -242,6 +254,8 @@ export class ChannelService {
     const { type: channel } = parseSessionKey(sessionKey);
     const adapter = this.adapters.get(channel);
     if (!adapter) return;
+
+    this.lastInteractiveSessionKey = sessionKey;
 
     const enrichedContent = await expandLinks(content, this.config.linkExpand).catch(() => content);
 
