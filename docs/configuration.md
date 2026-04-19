@@ -282,7 +282,7 @@ See [prompt-variables.md](./prompt-variables.md) for the full list.
 
 ### Ephemeral Tasks
 
-The heartbeat task is an ephemeral task that runs periodically to keep the agent active. It's stored in `.templates/heartbeat.md` as a template for onboarding flows. To enable heartbeat, copy it to the main cron directory or configure it in `config.json` under `heartbeat`.
+The heartbeat task is an ephemeral task that runs periodically to keep the agent active. It's stored as a template at `.templates/vargos/cron/heartbeat.md` for onboarding flows. To enable heartbeat, copy it to `~/.vargos/cron/heartbeat.md`.
 
 ### Creating Tasks
 

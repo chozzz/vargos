@@ -37,7 +37,7 @@ Review the checklist at /home/user/.vargos/workspace/CHECKLIST.md and report fin
 
 ## Built-in Example: Heartbeat
 
-The heartbeat task is an ephemeral cron task stored at `~/.vargos/cron/.templates/heartbeat.md`. It uses interpolation to reference workspace files:
+The heartbeat task is an ephemeral cron task. A template is provided at `.templates/vargos/cron/heartbeat.md` in the repo. It uses interpolation to reference workspace files:
 
 ```yaml
 ---
