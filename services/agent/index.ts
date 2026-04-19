@@ -276,16 +276,19 @@ export class AgentService {
           }
           break;
         }
-        case 'agent_end':
         case 'turn_end': {
           const e = event as { error?: unknown };
           const response = this.extractResponse(session);
           this.bus.emit('agent.onCompleted', {
             sessionKey,
-            success: eventType !== 'agent_end' || !e.error,
+            success: !e.error,
             response: response || undefined,
             error: undefined,
           });
+          break;
+        }
+        case 'agent_end': {
+          // Do nothing
           break;
         }
       }

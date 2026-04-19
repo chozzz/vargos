@@ -198,33 +198,28 @@ export class ChannelService {
   @on('agent.onCompleted')
   private onAgentCompleted(payload: EventMap['agent.onCompleted']): void | Promise<void> {
     if (!payload.sessionKey || payload.sessionKey.includes(':subagent')) {
-      log.debug(`agent.onCompleted: no session key or subagent, skipping onAgentCompleted`);
       return;
     }
 
-    log.debug(`agent.onCompleted: ${payload.sessionKey} ${payload.success} ${payload.response?.slice(0, 80)}`);
-
-    let session = this.activeSessions.get(payload.sessionKey);
+    const session = this.activeSessions.get(payload.sessionKey);
+    let targetSessionKey = payload.sessionKey;
 
     if (!session && this.lastInteractiveSessionKey) {
-      session = this.activeSessions.get(this.lastInteractiveSessionKey);
-      if (!session) {
-        log.warn(`onAgentCompleted: no interactive session on record for ${this.lastInteractiveSessionKey}`);
-        return;
+      const { type: sessionType } = parseSessionKey(payload.sessionKey);
+      if (!this.adapters.has(sessionType)) {
+        // Non-channel session with no active session — route to last interactive
+        targetSessionKey = this.lastInteractiveSessionKey;
       }
     }
-
-    this.activeSessions.delete(payload.sessionKey);
-    session?.adapter.stopTyping(payload.sessionKey, true);  // final=true to fully stop
 
     // Send reply based on success/error
     const sendReply = async () => {
       try {
         if (payload.success && payload.response) {
-          await this.bus.call('channel.send', { sessionKey: payload.sessionKey, text: payload.response });
+          await this.bus.call('channel.send', { sessionKey: targetSessionKey, text: payload.response });
         } else if (!payload.success) {
           const errorMsg = payload.error ? toMessage(payload.error) : 'Unknown error';
-          await this.bus.call('channel.send', { sessionKey: payload.sessionKey, text: `Error: ${errorMsg}` });
+          await this.bus.call('channel.send', { sessionKey: targetSessionKey, text: `Error: ${errorMsg}` });
         }
       } catch (err) {
         log.error(`failed to send reply: ${toMessage(err)}`);
@@ -241,7 +236,10 @@ export class ChannelService {
       }
     };
 
-    return sendReply();
+    return sendReply().finally(() => {
+      this.activeSessions.delete(payload.sessionKey);
+      session?.adapter.stopTyping(targetSessionKey, true);  // final=true to fully stop
+    });
   }
 
   // ── Inbound message handling ─────────────────────────────────────────────────

@@ -319,34 +319,6 @@ describe('subscribeToSessionEvents', () => {
     expect(completed[0].response).toBe('The answer is 42.');
   });
 
-  it('emits agent.onCompleted with success=false on agent_end with error', () => {
-    const bus = new EventEmitterBus();
-    const agent = makeTestableAgent(bus);
-    const { session, fire } = makeSessionStub();
-
-    const completed: EventMap['agent.onCompleted'][] = [];
-    bus.on('agent.onCompleted', (p) => completed.push(p));
-
-    agent.callSubscribe(session, 'stub-ch:user1');
-    fire({ type: 'agent_end', error: new Error('LLM timeout') });
-
-    expect(completed).toHaveLength(1);
-    expect(completed[0].success).toBe(false);
-  });
-
-  it('emits agent.onCompleted with success=true on agent_end without error', () => {
-    const bus = new EventEmitterBus();
-    const agent = makeTestableAgent(bus);
-    const { session, fire } = makeSessionStub();
-
-    const completed: EventMap['agent.onCompleted'][] = [];
-    bus.on('agent.onCompleted', (p) => completed.push(p));
-
-    agent.callSubscribe(session, 'stub-ch:user1');
-    fire({ type: 'agent_end' });
-
-    expect(completed[0].success).toBe(true);
-  });
 
   it('skips auto_retry_start without emitting anything', () => {
     const bus = new EventEmitterBus();
