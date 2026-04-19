@@ -14,9 +14,9 @@ const SERVICES: Array<[string, () => Promise<{ boot(bus: EventEmitterBus): Promi
   ['memory', () => import('./services/memory/index.js')],
   ['media', () => import('./services/media/index.js')],
   ['agent', () => import('./services/agent/index.js')],
-  // ['cron', () => import('./services/cron/index.js')],
   ['channels', () => import('./services/channels/index.js')],
-  // ['mcp-client', () => import('./services/mcp-client/index.js')],
+  ['cron', () => import('./services/cron/index.js')],
+  ['mcp-client', () => import('./services/mcp-client/index.js')],
   // ['webhooks', () => import('./edge/webhooks/index.js')],
   // ['mcp',      () => import('./edge/mcp/index.js')],
 ];
@@ -32,20 +32,17 @@ bus.bootstrap();
 
 for (const [label, load] of SERVICES) {
   try {
-    log.debug(`loading ${label}...`);
     const { boot } = await load();
-    log.debug(`booting ${label}...`);
     const { stop } = await boot(bus);
-    log.debug(`${label} booted`);
+    log.info(` ✅ "${label}" service booted`);
     if (stop) stoppers.push(stop);
   } catch (err) {
-    log.error(`failed to boot ${label}: ${err instanceof Error ? err.message : String(err)}`);
+    log.error(`❌ failed to boot ${label}: ${err instanceof Error ? err.message : String(err)}`);
     process.exit(1);
   }
 }
 
-
-// Start TCP server for CLI access\
+// Start TCP server for CLI access
 const config = await bus.call('config.get', {});
 const tcpHost = config.gateway.host ?? (process.env.BUS_HOST || '127.0.0.1');
 const tcpPort = parseInt(config.gateway.port ? String(config.gateway.port) : (process.env.BUS_PORT || '9000'), 10);
@@ -60,7 +57,8 @@ try {
 
 // Signal that boot is complete — deferred startup can proceed
 bus.emit('bus.onReady', {});
-log.info('ready\n\n');
+log.info('✅ Vargos is ready\n\n');
+
 
 // ── Shutdown ──────────────────────────────────────────────────────────────────
 

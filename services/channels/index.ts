@@ -119,7 +119,11 @@ export class ChannelService {
 
   @register('channel.search', {
     description: 'List connected channel adapters.',
-    schema: z.object({ query: z.string().optional(), page: z.number(), limit: z.number().optional() }),
+    schema: z.object({
+      query: z.string().optional(),
+      page: z.number().default(1),
+      limit: z.number().default(20),
+    }),
   })
   async search(params: EventMap['channel.search']['params']): Promise<EventMap['channel.search']['result']> {
     const all: ChannelInfo[] = Array.from(this.adapters.values()).map(a => ({
@@ -127,10 +131,12 @@ export class ChannelService {
       type: a.type,
       status: a.status,
     }));
+
     const filtered = params.query
       ? all.filter(c => c.instanceId.includes(params.query!) || c.type.includes(params.query!))
       : all;
-    return paginate(filtered, params.page, params.limit ?? 20);
+
+    return paginate(filtered, params.page ?? 1, params.limit ?? 20);
   }
 
   @register('channel.get', {
@@ -327,8 +333,8 @@ export class ChannelService {
 
     try {
       await adapter.start();
-      this.bus.emit('channel.onConnected', { instanceId: entry.id, type: entry.type });
       log.info(`channel started: ${entry.id} (${entry.type})`);
+      this.bus.emit('channel.onConnected', { instanceId: entry.id, type: entry.type });
     } catch (err) {
       log.error(`channel start failed: ${entry.id}: ${toMessage(err)}`);
       this.bus.emit('channel.onDisconnected', { instanceId: entry.id });
@@ -368,6 +374,7 @@ export class ChannelService {
   }
 
   private async startAllConfigured(): Promise<void> {
+    log.info(`starting all configured ${this.config.channels.length} channels...`);
     for (const entry of this.config.channels) {
       if (entry.enabled === false) {
         log.info(`channel skipped (disabled): ${entry.id}`);
@@ -391,6 +398,5 @@ export async function boot(bus: Bus): Promise<{ stop(): Promise<void> }> {
   const config = await bus.call('config.get', {});
   const svc = new ChannelService(bus, config);
   bus.bootstrap(svc);
-  log.info(`registered with ${config.channels.length} channel(s) configured (not started)`);
   return { stop: () => svc.stop() };
 }
