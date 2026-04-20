@@ -93,17 +93,6 @@ export type PiAgentSettings = z.infer<typeof PiAgentSettingsSchema>;
 // ─── Vargos Agent Config ───────────────────────────────────────────────────────
 
 export const AgentConfigSchema = PiAgentSettingsSchema.extend({
-  // Vargos-specific routing fields (override/extend PiAgent settings)
-  model:    z.string(),
-  fallback: z.string().optional(),
-  /** Global timeout for agent.execute (main or subagent). Milliseconds. Default: 30 minutes. */
-  executionTimeoutMs: z.number().int().positive().default(30 * 60 * 1000),
-  subagents: z.object({
-    maxSpawnDepth:     z.number().int().min(1).default(3),
-    runTimeoutSeconds: z.number().int().positive().default(300),
-    maxChildren:       z.number().int().min(0).optional(),
-    model:             z.string().optional(),
-  }).default({}),
   media: z.object({
     audio: z.string().optional(),
     image: z.string().optional(),

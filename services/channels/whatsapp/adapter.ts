@@ -5,9 +5,10 @@
 import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { WASocket } from '@whiskeysockets/baileys';
-import type { OnInboundMessageFn } from '../types.js';
-import { InboundMediaHandler, type InboundMediaSource, TYPE_LABELS } from '../media-handler.js';
-import { createWhatsAppSocket, type WhatsAppInboundMessage } from './session.js';
+import type { OnInboundMessageFn, InboundMediaSource } from '../types.js';
+import { InboundMediaHandler, TYPE_LABELS } from '../media-handler.js';
+import { createWhatsAppSocket } from './session.js';
+import type { WhatsAppInboundMessage } from './types.js';
 import { getDataPaths } from '../../../lib/paths.js';
 import { Reconnector } from '../../../lib/reconnect.js';
 

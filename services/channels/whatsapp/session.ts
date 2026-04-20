@@ -17,31 +17,12 @@ import qrcode from 'qrcode-terminal';
 import pino from 'pino';
 import { promises as fs } from 'node:fs';
 import { createLogger } from '../../../lib/logger.js';
+import type { WhatsAppSessionEvents } from './types.js';
 
 const log = createLogger('whatsapp');
 
 // libsignal-node session_record.js dumps Signal protocol state via console.info — silence it.
-console.info = () => {};
-
-export interface WhatsAppSessionEvents {
-  onQR: (qr: string) => void;
-  onConnected: (name: string) => void;
-  onDisconnected: (reason: string) => void;
-  onMessage: (msg: WhatsAppInboundMessage) => void;
-}
-
-export interface WhatsAppInboundMessage {
-  messageId: string;
-  jid: string;
-  text: string;
-  fromMe: boolean;
-  isGroup: boolean;
-  timestamp: number;
-  mediaType?: 'image' | 'audio' | 'video' | 'document' | 'sticker';
-  mediaBuffer?: Buffer;
-  mimeType?: string;
-  caption?: string;
-}
+console.info = () => { };
 
 export async function createWhatsAppSocket(
   authDir: string,
@@ -81,7 +62,7 @@ export async function createWhatsAppSocket(
         || code === DisconnectReason.forbidden) {
         const label = code === DisconnectReason.loggedOut ? 'logged_out'
           : code === DisconnectReason.connectionReplaced ? 'connection_replaced'
-          : 'forbidden';
+            : 'forbidden';
         events.onDisconnected(label);
       } else if (code === DisconnectReason.restartRequired) {
         events.onDisconnected('restart_required');
@@ -126,12 +107,12 @@ export async function processInboundMessage(
   };
 
   const mediaMsg =
-    m.imageMessage    ? { type: 'image'    as const, msg: m.imageMessage    } :
-    m.audioMessage    ? { type: 'audio'    as const, msg: m.audioMessage    } :
-    m.videoMessage    ? { type: 'video'    as const, msg: m.videoMessage    } :
-    m.documentMessage ? { type: 'document' as const, msg: m.documentMessage } :
-    m.stickerMessage  ? { type: 'sticker'  as const, msg: m.stickerMessage  } :
-    null;
+    m.imageMessage ? { type: 'image' as const, msg: m.imageMessage } :
+      m.audioMessage ? { type: 'audio' as const, msg: m.audioMessage } :
+        m.videoMessage ? { type: 'video' as const, msg: m.videoMessage } :
+          m.documentMessage ? { type: 'document' as const, msg: m.documentMessage } :
+            m.stickerMessage ? { type: 'sticker' as const, msg: m.stickerMessage } :
+              null;
 
   if (mediaMsg) {
     let mediaBuffer: Buffer | undefined;

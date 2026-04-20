@@ -7,14 +7,7 @@ import path from 'node:path';
 import { saveMedia } from '../../lib/media.js';
 import { getDataPaths } from '../../lib/paths.js';
 import { BaseChannelAdapter } from './base-adapter.js';
-
-export interface InboundMediaSource {
-  buffer: Buffer;
-  mimeType: string;
-  mediaType: 'image' | 'audio' | 'video' | 'document';
-  caption?: string;
-  duration?: number;
-}
+import type { InboundMediaSource } from './types.js';
 
 export const TYPE_LABELS: Record<string, string> = {
   audio: 'Voice message',

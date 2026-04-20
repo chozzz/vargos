@@ -4,10 +4,37 @@ import type { ChannelStatus } from '../../gateway/events.js';
 
 export type ChannelType = 'whatsapp' | 'telegram' | (string & {});
 
+export interface InboundMediaSource {
+  buffer: Buffer;
+  mimeType: string;
+  mediaType: 'image' | 'audio' | 'video' | 'document';
+  caption?: string;
+  duration?: number;
+}
+
+export interface InboundMessageMetadata {
+  /** Unique message identifier for reactions (e.g., Telegram message_id) */
+  messageId?: string;
+  /** Media attachment metadata (audio, image) with content reference */
+  media?: {
+    data?: unknown; // Raw media data, will be extracted
+    [key: string]: unknown;
+  };
+  /** Image attachments for vision models */
+  images?: Array<{ data: string; mimeType: string }>;
+  /** Adapter-specific metadata passed through */
+  [key: string]: unknown;
+}
+
+export interface ExtractedMedia {
+  filePath: string;
+  mimeType: string;
+}
+
 export type OnInboundMessageFn = (
   sessionKey: string,
   content: string,
-  metadata?: Record<string, unknown>,
+  metadata?: InboundMessageMetadata,
 ) => Promise<void>;
 
 export interface ChannelAdapter {

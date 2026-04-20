@@ -5,7 +5,7 @@
 import https from 'node:https';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import type { OnInboundMessageFn } from '../types.js';
+import type { OnInboundMessageFn, InboundMediaSource } from '../types.js';
 import type {
   TelegramUpdate,
   TelegramResponse,
@@ -13,7 +13,7 @@ import type {
   TelegramMessage,
   TelegramFile,
 } from './types.js';
-import { InboundMediaHandler, type InboundMediaSource } from '../media-handler.js';
+import { InboundMediaHandler } from '../media-handler.js';
 import { sleep } from '../../../lib/sleep.js';
 
 const API_BASE = 'https://api.telegram.org/bot';

@@ -40,8 +40,11 @@ function wrapEventAsToolDefinition(
   sessionKey: string,
   bus: Bus,
 ): ToolDefinition {
+  // Sanitize tool name for anthropic: replace dots with dashes (e.g., agent.execute → agent-execute)
+  const sanitizedName = eventName.replace(/\./g, '-');
+
   return {
-    name: eventName,
+    name: sanitizedName,
     label: eventName,
     description,
     parameters: parameters as ToolDefinition['parameters'],
@@ -58,8 +61,7 @@ function wrapEventAsToolDefinition(
 
       try {
         // Auto-inject sessionKey for agent.execute subagent calls.
-        // The agent.execute schema omits sessionKey (it's always injected here),
-        // so the agent only sees { task, cwd?, thinkingLevel?, model?, images?, timeoutMs? }.
+        // The agent.execute schema omits sessionKey (it's always injected here).
         if (eventName === 'agent.execute') {
           paramsObj.sessionKey = `${sessionKey}:subagent`;
         }

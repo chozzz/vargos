@@ -119,11 +119,8 @@ function stubAgentExecute(
       schema: z.object({
         sessionKey: z.string(),
         task: z.string(),
-        model: z.string().optional(),
-        thinkingLevel: z.string().optional(),
         images: z.array(z.object({ data: z.string(), mimeType: z.string() })).optional(),
         cwd: z.string().optional(),
-        timeoutMs: z.number().optional(),
       }),
     })
     async execute(params: EventMap['agent.execute']['params']): Promise<{ response: string }> {
@@ -600,30 +597,6 @@ describe('onInboundMessage firing agent.execute', () => {
     expect(params.task).toBe('What is the weather?');
   });
 
-  it('passes model from metadata to agent.execute', async () => {
-    const { bus, svc } = setup();
-    const sessionKey = 'stub-ch:user13';
-    const spy = stubAgentExecute(bus);
-
-    await svc.onInboundMessage(sessionKey, 'task', { model: 'anthropic:claude-opus-4' });
-    await tick();
-
-    const params = spy.mock.calls[0][0] as EventMap['agent.execute']['params'];
-    expect(params.model).toBe('anthropic:claude-opus-4');
-  });
-
-  it('passes thinkingLevel from metadata to agent.execute', async () => {
-    const { bus, svc } = setup();
-    const sessionKey = 'stub-ch:user14';
-    const spy = stubAgentExecute(bus);
-
-    await svc.onInboundMessage(sessionKey, 'task', { thinkingLevel: 'deep' });
-    await tick();
-
-    const params = spy.mock.calls[0][0] as EventMap['agent.execute']['params'];
-    expect(params.thinkingLevel).toBe('deep');
-  });
-
   it('passes images array from metadata to agent.execute', async () => {
     const { bus, svc } = setup();
     const sessionKey = 'stub-ch:user15';
@@ -637,7 +610,7 @@ describe('onInboundMessage firing agent.execute', () => {
     expect(params.images).toEqual(images);
   });
 
-  it('omits model/thinkingLevel/images when not in metadata', async () => {
+  it('omits images when not in metadata', async () => {
     const { bus, svc } = setup();
     const sessionKey = 'stub-ch:user16';
     const spy = stubAgentExecute(bus);
@@ -646,8 +619,6 @@ describe('onInboundMessage firing agent.execute', () => {
     await tick();
 
     const params = spy.mock.calls[0][0] as EventMap['agent.execute']['params'];
-    expect(params.model).toBeUndefined();
-    expect(params.thinkingLevel).toBeUndefined();
     expect(params.images).toBeUndefined();
   });
 

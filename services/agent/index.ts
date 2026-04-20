@@ -48,12 +48,8 @@ import { createCustomTools } from './tools.js';
 
 const log = createLogger('agent');
 
-/** Parse "provider:modelId" ref into its parts. */
-export function parseModelRef(ref: string): { provider: string; modelId: string } {
-  const idx = ref.indexOf(':');
-  if (idx < 0) throw new Error(`Invalid model ref "${ref}" — expected "provider:modelId"`);
-  return { provider: ref.slice(0, idx), modelId: ref.slice(idx + 1) };
-}
+// Hardcoded agent execution constants
+const EXECUTION_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 
 // ── AgentService ─────────────────────────────────────────────────────────────
 
@@ -89,10 +85,6 @@ export class AgentService {
     this.settings = SettingsManager.create(this.dataDir, this.agentDir);
     // NOTE: SettingsManager loads ~/.vargos/agent/models.json which has the
     // authoritative provider + model definitions. Pi Agent is the source of truth.
-    // config.providers is now optional/deprecated in favor of agent/models.json
-
-    const { provider, modelId } = parseModelRef(this.config.agent!.model);
-    this.settings.setDefaultModelAndProvider(provider, modelId);
   }
 
   /**
@@ -110,13 +102,10 @@ export class AgentService {
       sessionKey: z.string().optional(),
       task: z.string().describe('The task to delegate to the agent.'),
       cwd: z.string().describe('The working directory for the agent.').optional(),
-      thinkingLevel: z.string().describe('Thinking level — passed through to PiAgent.').optional(),
-      model: z.string().describe('The default LLM model for the agent. (provider:modelId)').optional(),
       images: z.array(z.object({
         data: z.string(),
         mimeType: z.string(),
       })).describe('The images to pass to the agent.').optional(),
-      timeoutMs: z.number().describe('The timeout for the agent.').optional(),
     }),
   })
   async execute(params: EventMap['agent.execute']['params']): Promise<EventMap['agent.execute']['result']> {
@@ -135,25 +124,19 @@ export class AgentService {
       mimeType: img.mimeType,
     }));
 
-    // Set thinking level on the session (session-level setting, not per-prompt).
-    // Priority: task directive > explicit param (channels/cron/tool callers)
-    const thinkingLevel = directives.thinkingLevel || params.thinkingLevel;
-    if (thinkingLevel) {
-      session.setThinkingLevel(thinkingLevel);
+    // Set thinking level from task directives if present
+    if (directives.thinkingLevel) {
+      session.setThinkingLevel(directives.thinkingLevel);
     }
-
-    // Apply timeout (use provided timeout or fall back to config default)
-    const timeoutMs = params.timeoutMs ?? this.config.agent!.executionTimeoutMs;
 
     this.activeRuns.add(params.sessionKey);
     try {
-      await withTimeout(session.prompt(task, { images, streamingBehavior: 'steer' }), timeoutMs, `Agent execution timeout after ${timeoutMs}ms`);
+      await withTimeout(session.prompt(task, { images, streamingBehavior: 'steer' }), EXECUTION_TIMEOUT_MS, `Agent execution timeout after ${EXECUTION_TIMEOUT_MS}ms`);
     } finally {
       this.activeRuns.delete(params.sessionKey);
     }
 
     const response = this.extractResponse(session);
-
     return { response };
   }
 
@@ -181,7 +164,7 @@ export class AgentService {
     await fs.mkdir(sessionDir, { recursive: true });
     await fs.mkdir(this.agentDir, { recursive: true });
 
-    const sessionManager = SessionManager.create(this.dataDir, sessionDir);
+    const sessionManager = SessionManager.create(effectiveCwd, sessionDir);
 
     const customTools = await this.getCustomTools(sessionKey);
     const systemPrompt = await this.getSystemPrompt(sessionKey, cwd);
@@ -191,8 +174,7 @@ export class AgentService {
 
     const resourceLoader = await this.createResourceLoader(systemPrompt, cwd);
 
-    const { provider: p, modelId: mId } = parseModelRef(this.config.agent!.model);
-    const model = this.modelRegistry.find(p, mId);
+    log.debug(`Creating agent session for ${sessionKey} in ${effectiveCwd}. (with ${customTools.length} tools and ${systemPrompt?.length} chars system prompt).`);
 
     const { session } = await createAgentSession({
       cwd: effectiveCwd,
@@ -201,7 +183,6 @@ export class AgentService {
       settingsManager: this.settings,
       authStorage: this.authStorage,
       modelRegistry: this.modelRegistry,
-      model,
       tools: [],
       customTools,
       resourceLoader,
@@ -293,16 +274,21 @@ export class AgentService {
    */
   protected async createResourceLoader(systemPromptOverride?: string, cwd?: string): Promise<DefaultResourceLoader> {
     const effectiveCwd = cwd ?? this.dataDir;
+    const skillsDir = path.join(this.agentDir, 'skills');
 
     const resourceLoader = new DefaultResourceLoader({
       cwd: effectiveCwd,
       agentDir: this.agentDir,
       settingsManager: this.settings,
       extensionFactories: [],
+      additionalSkillPaths: [skillsDir],
+      noSkills: false,
       ...(systemPromptOverride && { systemPrompt: systemPromptOverride }),
     });
 
     await resourceLoader.reload();
+    const { skills } = resourceLoader.getSkills();
+    log.debug(`Resource loader loaded with ${skills.length} skills.`);
     return resourceLoader;
   }
 
@@ -389,7 +375,9 @@ export class AgentService {
    * Extract the last assistant message from the session.
    * Handles both string and multipart content (text blocks).
    */
+   
   private extractResponse(session: AgentSession): string {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const messages = (session as any).state?.messages || [];
 
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -402,7 +390,9 @@ export class AgentService {
         // Handle multipart content (text blocks in arrays)
         if (Array.isArray(msg.content)) {
           return msg.content
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             .filter((block: any) => block.type === 'text')
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             .map((block: any) => block.text || '')
             .filter(Boolean)
             .join('\n');

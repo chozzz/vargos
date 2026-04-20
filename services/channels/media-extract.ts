@@ -5,6 +5,7 @@
 
 import { accessSync } from 'node:fs';
 import path from 'node:path';
+import type { ExtractedMedia } from './types.js';
 
 const MEDIA_EXTS = new Set([
   '.jpg', '.jpeg', '.png', '.gif', '.webp',
@@ -21,11 +22,6 @@ const EXT_MIME: Record<string, string> = {
 };
 
 const PATH_RE = /(?:^|[\s[(`)>])\.?(\/[\w./-]+\.(?:jpe?g|png|gif|webp|mp4|mp3|ogg|m4a|pdf))\b/gi;
-
-export interface ExtractedMedia {
-  filePath: string;
-  mimeType: string;
-}
 
 export function extractMediaPaths(text: string): ExtractedMedia[] {
   const results: ExtractedMedia[] = [];

@@ -5,7 +5,7 @@
 //   Callable — { params, result }, use bus.call / @on (wired as request/reply)
 
 export type { ThinkingLevel, ChannelEntry, CronTask, CronAddParams, CronUpdateParams, WebhookEntry, Json, AppConfig } from '../services/config/index.js';
-import type { ThinkingLevel, ChannelEntry, CronTask, CronAddParams, CronUpdateParams, WebhookEntry, Json, AppConfig } from '../services/config/index.js';
+import type { ChannelEntry, CronTask, CronAddParams, CronUpdateParams, WebhookEntry, Json, AppConfig } from '../services/config/index.js';
 
 // ─── Domain types ─────────────────────────────────────────────────────────────
 
@@ -35,12 +35,8 @@ export interface AgentExecuteParams {
   /** Working directory for the agent — defaults to vargos workspace. When set,
    *  bootstrap files (CLAUDE.md, AGENTS.md) from both cwd and workspace are merged. */
   cwd?: string;
-  thinkingLevel?: ThinkingLevel;
-  model?: string;
   /** Image attachments for vision models (base64 encoded) */
   images?: Array<{ data: string; mimeType: string }>;
-  /** Execution timeout in milliseconds. Falls back to config.agent.executionTimeoutMs if not provided. */
-  timeoutMs?: number;
 }
 
 // ─── Event map ────────────────────────────────────────────────────────────────

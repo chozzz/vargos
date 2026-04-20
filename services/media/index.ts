@@ -24,7 +24,8 @@ export class MediaService {
   private resolveProviderConfig(ref: string): { provider: string; model: string; apiKey: string; baseUrl?: string } {
     const [provider, model] = ref.split(':');
     if (!provider || !model) throw new Error('Invalid config format (expected "provider:model")');
-    const apiKey = this.config.auth?.[provider]?.key;
+    const authEntry = this.config.auth?.[provider];
+    const apiKey = authEntry && 'key' in authEntry ? authEntry.key : null;
     if (!apiKey) throw new Error(`No API key configured for ${provider}`);
     return { provider, model, apiKey, baseUrl: this.config.providers?.[provider]?.baseUrl };
   }

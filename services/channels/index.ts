@@ -29,7 +29,7 @@ import { stripMarkdown } from '../../lib/strip-markdown.js';
 import { parseSessionKey } from '../../lib/subagent.js';
 import { parseTarget } from '../../lib/channel-target.js';
 import { paginate } from '../../lib/paginate.js';
-import type { ChannelAdapter } from './types.js';
+import type { ChannelAdapter, InboundMessageMetadata } from './types.js';
 import { deliverReply } from './delivery.js';
 import { extractMediaPaths } from './media-extract.js';
 import { expandLinks } from './link-expand.js';
@@ -253,7 +253,7 @@ export class ChannelService {
   async onInboundMessage(
     sessionKey: string,
     content: string,
-    metadata?: Record<string, unknown>,
+    metadata?: InboundMessageMetadata,
   ): Promise<void> {
     const { type: channel } = parseSessionKey(sessionKey);
     const adapter = this.adapters.get(channel);
@@ -288,12 +288,6 @@ export class ChannelService {
 
     // Build agent.execute params from inbound metadata
     const executeParams: EventMap['agent.execute']['params'] = { sessionKey, task: enrichedContent };
-    if (inboundMeta.model && typeof inboundMeta.model === 'string') {
-      executeParams.model = inboundMeta.model;
-    }
-    if (inboundMeta.thinkingLevel && typeof inboundMeta.thinkingLevel === 'string') {
-      executeParams.thinkingLevel = inboundMeta.thinkingLevel as EventMap['agent.execute']['params']['thinkingLevel'];
-    }
     if (inboundMeta.images && Array.isArray(inboundMeta.images)) {
       executeParams.images = inboundMeta.images as EventMap['agent.execute']['params']['images'];
     }

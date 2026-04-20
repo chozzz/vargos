@@ -2,43 +2,10 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import { parseModelRef, AgentService } from '../index.js';
+import { AgentService } from '../index.js';
 import { AppConfigSchema } from '../../config/index.js';
 import type { Bus } from '../../../gateway/bus.js';
 import { resetDataPaths } from '../../../lib/paths.js';
-
-// ── parseModelRef ────────────────────────────────────────────────────────────
-
-describe('parseModelRef', () => {
-  it('splits provider:modelId', () => {
-    expect(parseModelRef('openrouter:minimax/minimax-m2.7')).toEqual({
-      provider: 'openrouter',
-      modelId: 'minimax/minimax-m2.7',
-    });
-  });
-
-  it('handles simple modelId without slashes', () => {
-    expect(parseModelRef('openai:gpt-4o-mini')).toEqual({
-      provider: 'openai',
-      modelId: 'gpt-4o-mini',
-    });
-  });
-
-  it('splits on first colon only', () => {
-    expect(parseModelRef('custom:some:model:id')).toEqual({
-      provider: 'custom',
-      modelId: 'some:model:id',
-    });
-  });
-
-  it('throws on missing colon', () => {
-    expect(() => parseModelRef('no-colon')).toThrow('Invalid model ref');
-  });
-
-  it('throws on empty string', () => {
-    expect(() => parseModelRef('')).toThrow('Invalid model ref');
-  });
-});
 
 // ── System prompt merging ────────────────────────────────────────────────────
 
