@@ -30,6 +30,23 @@ export const MIME_EXT: Record<string, string> = {
   'application/pdf': '.pdf',
 };
 
+// Media type to default MIME type mapping (for fallback when MIME is unknown)
+export const MEDIA_TYPE_MIME_DEFAULTS: Record<string, string> = {
+  image: 'image/jpeg',
+  audio: 'audio/ogg',
+  video: 'video/mp4',
+  document: 'application/pdf',
+};
+
+// Extension to MIME type mapping (inverse of MIME_EXT, includes common variations)
+export const EXT_TO_MIME: Record<string, string> = {
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+  '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp',
+  '.mp4': 'video/mp4', '.mp3': 'audio/mpeg',
+  '.ogg': 'audio/ogg', '.m4a': 'audio/mp4',
+  '.pdf': 'application/pdf',
+};
+
 /**
  * Get file extension for MIME type
  */

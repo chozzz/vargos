@@ -15,9 +15,9 @@ import type { Bus } from '../../gateway/bus.js';
 import type { EventMap, Json } from '../../gateway/events.js';
 import type { AppConfig } from '../../services/config/index.js';
 import { createLogger } from '../../lib/logger.js';
-import { parseDirectives } from '../../lib/directives.js';
+import { parseDirectives } from './directives.js';
 import { withTimeout } from '../../lib/timeout.js';
-import { interpolatePrompt } from '../../lib/prompt-interpolate.js';
+import { interpolatePrompt } from './prompt-interpolate.js';
 import type { AgentDeps } from './schema.js';
 import { promises as fs } from 'node:fs';
 import { getDataPaths } from '../../lib/paths.js';
@@ -137,6 +137,7 @@ export class AgentService {
     }
 
     const response = this.extractResponse(session);
+    log.info(`Agent response length: ${response?.length ?? 0}`);
     return { response };
   }
 
@@ -375,7 +376,7 @@ export class AgentService {
    * Extract the last assistant message from the session.
    * Handles both string and multipart content (text blocks).
    */
-   
+
   private extractResponse(session: AgentSession): string {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const messages = (session as any).state?.messages || [];

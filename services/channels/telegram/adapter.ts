@@ -15,6 +15,7 @@ import type {
 } from './types.js';
 import { InboundMediaHandler } from '../media-handler.js';
 import { sleep } from '../../../lib/sleep.js';
+import { validateHttpResponse } from '../../../lib/http-validate.js';
 
 const API_BASE = 'https://api.telegram.org/bot';
 const API_FILE_BASE = 'https://api.telegram.org/file/bot';
@@ -118,7 +119,7 @@ export class TelegramAdapter extends InboundMediaHandler {
       },
     }, body);
 
-    if (!res.ok) throw new Error(`Telegram ${method} failed: ${res.status} ${res.statusText}`);
+    validateHttpResponse(res, `Telegram ${method}`);
     this.log.debug(`sendMedia: ${sessionKey} ${mimeType} ${fileName}`);
   }
 
@@ -244,7 +245,7 @@ export class TelegramAdapter extends InboundMediaHandler {
 
     const url = `${API_FILE_BASE}${this.botToken}/${file.file_path}`;
     const res = await this.request(url, { method: 'GET' });
-    if (!res.ok) throw new Error(`File download failed: ${res.status}`);
+    validateHttpResponse(res, 'File download');
     return res.buffer();
   }
 
@@ -295,7 +296,7 @@ export class TelegramAdapter extends InboundMediaHandler {
       headers: { 'Content-Type': 'application/json' },
     }, body ? Buffer.from(body) : undefined);
 
-    if (!res.ok) throw new Error(`Telegram API ${method} failed: ${res.status} ${res.statusText}`);
+    validateHttpResponse(res, `Telegram API ${method}`);
 
     const data = (await res.json()) as TelegramResponse<T>;
     if (!data.ok) throw new Error(`Telegram API ${method} error: ${data.description}`);

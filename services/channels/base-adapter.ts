@@ -4,10 +4,12 @@
 
 import type { ChannelAdapter, ChannelType, OnInboundMessageFn } from './types.js';
 import type { ChannelStatus } from '../../gateway/events.js';
-import { createDedupeCache } from '../../lib/dedupe.js';
-import { createMessageDebouncer } from '../../lib/debounce.js';
+import { createDedupeCache } from './dedupe.js';
+import { createMessageDebouncer } from './debounce.js';
 import { createLogger } from '../../lib/logger.js';
+import { toMessage } from '../../lib/error.js';
 import { parseSessionKey } from '../../lib/subagent.js';
+import { TypingStateManager } from './typing-state.js';
 
 export abstract class BaseChannelAdapter implements ChannelAdapter {
   abstract readonly type: ChannelType;
@@ -18,15 +20,8 @@ export abstract class BaseChannelAdapter implements ChannelAdapter {
   protected debouncer: ReturnType<typeof createMessageDebouncer>;
   protected allowFrom: Set<string> | null;
   protected onInboundMessage?: OnInboundMessageFn;
-  protected typingIntervals = new Map<string, ReturnType<typeof setInterval>>();
-  protected typingTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
-  protected typingFailures = new Map<string, number>();
-  /** Track which users have active typing due to tool execution (for resume on completion) */
-  protected typingInToolExecution = new Set<string>();
+  protected typingState = new TypingStateManager({ ttlMs: 120_000, failureLimit: 3 });
   protected readonly log;
-
-  private static readonly TYPING_TTL_MS = 120_000;
-  private static readonly TYPING_FAILURE_LIMIT = 3;
 
   constructor(
     instanceId: string,
@@ -42,7 +37,7 @@ export abstract class BaseChannelAdapter implements ChannelAdapter {
     this.debouncer = createMessageDebouncer(
       (id, messages) => {
         this.handleBatch(id, messages).catch((err) => {
-          this.log.error('handleBatch error', { id, error: err instanceof Error ? err.message : String(err) });
+          this.log.error('handleBatch error', { id, error: toMessage(err) });
         });
       },
       { delayMs: debounceMs ?? 2000 },
@@ -61,73 +56,20 @@ export abstract class BaseChannelAdapter implements ChannelAdapter {
     return id;
   }
 
-  /**
-   * Start typing indicator. If currently in tool execution, resume after 2-min TTL.
-   */
   startTyping(sessionKey: string, inToolExecution = false): void {
-    if (this.typingIntervals.has(sessionKey)) return;
-
-    if (inToolExecution) {
-      this.typingInToolExecution.add(sessionKey);
-    }
-
-    const typing = async () => {
-      try {
-        await this.sendTypingIndicator(sessionKey);
-        this.typingFailures.delete(sessionKey);
-      } catch {
-        const failures = (this.typingFailures.get(sessionKey) ?? 0) + 1;
-        this.typingFailures.set(sessionKey, failures);
-        if (failures >= BaseChannelAdapter.TYPING_FAILURE_LIMIT) {
-          this.stopTyping(sessionKey, true);
-        }
-      }
-    };
-
-    void typing();
-    this.typingIntervals.set(sessionKey, setInterval(() => void typing(), 4000));
-    this.typingTimeouts.set(
+    this.typingState.start(
       sessionKey,
-      setTimeout(() => {
-        this.pauseTyping(sessionKey);
-      }, BaseChannelAdapter.TYPING_TTL_MS),
+      () => this.sendTypingIndicator(sessionKey),
+      inToolExecution,
     );
   }
 
-  /**
-   * Pause typing for 2 minutes. If in tool execution, will resume when agent completes.
-   * This is called automatically after 2 minutes of continuous typing.
-   */
-  private pauseTyping(sessionKey: string): void {
-    const interval = this.typingIntervals.get(sessionKey);
-    if (interval) { clearInterval(interval); this.typingIntervals.delete(sessionKey); }
-    const timeout = this.typingTimeouts.get(sessionKey);
-    if (timeout) { clearTimeout(timeout); this.typingTimeouts.delete(sessionKey); }
-    // Note: typingFailures and typingInToolExecution are preserved for potential resume
-  }
-
-  /**
-   * Resume typing after tool execution completes (called when agent.onCompleted fires).
-   */
   resumeTyping(sessionKey: string): void {
-    if (!this.typingInToolExecution.has(sessionKey)) return;
-    // Typing was paused due to 2-min TTL, resume it
-    this.startTyping(sessionKey, true);
+    this.typingState.resume(sessionKey, () => this.sendTypingIndicator(sessionKey));
   }
 
-  /**
-   * Stop typing completely (final stop, not just pause).
-   */
   stopTyping(sessionKey: string, final = true): void {
-    const interval = this.typingIntervals.get(sessionKey);
-    if (interval) { clearInterval(interval); this.typingIntervals.delete(sessionKey); }
-    const timeout = this.typingTimeouts.get(sessionKey);
-    if (timeout) { clearTimeout(timeout); this.typingTimeouts.delete(sessionKey); }
-
-    if (final) {
-      this.typingFailures.delete(sessionKey);
-      this.typingInToolExecution.delete(sessionKey);
-    }
+    this.typingState.stop(sessionKey, final);
   }
 
   protected async routeToService(sessionKey: string, content: string, metadata?: Record<string, unknown>): Promise<void> {
@@ -146,10 +88,6 @@ export abstract class BaseChannelAdapter implements ChannelAdapter {
 
   protected cleanupTimers(): void {
     this.debouncer.flushAll();
-    for (const interval of this.typingIntervals.values()) clearInterval(interval);
-    this.typingIntervals.clear();
-    for (const timeout of this.typingTimeouts.values()) clearTimeout(timeout);
-    this.typingTimeouts.clear();
-    this.typingFailures.clear();
+    this.typingState.cleanup();
   }
 }

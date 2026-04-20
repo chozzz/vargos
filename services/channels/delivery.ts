@@ -11,7 +11,7 @@ const log = createLogger('delivery');
 
 export type SendFn = (text: string) => Promise<void>;
 
-export function chunkText(text: string, maxSize: number): string[] {
+function chunkText(text: string, maxSize: number): string[] {
   if (text.length <= maxSize) return [text];
 
   const chunks: string[] = [];

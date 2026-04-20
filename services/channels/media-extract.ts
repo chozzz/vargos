@@ -6,20 +6,9 @@
 import { accessSync } from 'node:fs';
 import path from 'node:path';
 import type { ExtractedMedia } from './types.js';
+import { EXT_TO_MIME } from '../../lib/media-transcribe.js';
 
-const MEDIA_EXTS = new Set([
-  '.jpg', '.jpeg', '.png', '.gif', '.webp',
-  '.mp4', '.mp3', '.ogg', '.m4a',
-  '.pdf',
-]);
-
-const EXT_MIME: Record<string, string> = {
-  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
-  '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp',
-  '.mp4': 'video/mp4', '.mp3': 'audio/mpeg',
-  '.ogg': 'audio/ogg', '.m4a': 'audio/mp4',
-  '.pdf': 'application/pdf',
-};
+const MEDIA_EXTS = new Set(Object.keys(EXT_TO_MIME));
 
 const PATH_RE = /(?:^|[\s[(`)>])\.?(\/[\w./-]+\.(?:jpe?g|png|gif|webp|mp4|mp3|ogg|m4a|pdf))\b/gi;
 
@@ -41,7 +30,7 @@ export function extractMediaPaths(text: string): ExtractedMedia[] {
       continue;
     }
 
-    results.push({ filePath, mimeType: EXT_MIME[ext] || 'application/octet-stream' });
+    results.push({ filePath, mimeType: EXT_TO_MIME[ext] || 'application/octet-stream' });
   }
 
   return results;

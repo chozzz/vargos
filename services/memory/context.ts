@@ -4,6 +4,7 @@ import { glob } from 'tinyglobby';
 import { FSWatcher, watch } from 'node:fs';
 import type { MemoryStorage, MemoryChunk } from './types.js';
 import { createLogger } from '../../lib/logger.js';
+import { toMessage } from '../../lib/error.js';
 import { generateEmbedding, cosineSimilarity, textScore } from './embedding.js';
 import type { EmbeddingConfig } from './embedding.js';
 import { createChunks } from './chunker.js';
@@ -142,7 +143,7 @@ export class MemoryContext {
 
       await this.storage?.updateFileStatus(relPath, stat.mtime.getTime(), stat.size);
     } catch (err) {
-      log.error('failed to index', { relPath, error: err instanceof Error ? err.message : String(err) });
+      log.error('failed to index', { relPath, error: toMessage(err) });
     }
   }
 
@@ -256,7 +257,7 @@ export class MemoryContext {
         this.watcherDebounce.set(fullPath, timeout);
       });
     } catch (err) {
-      log.error('failed to start file watcher', { error: err instanceof Error ? err.message : String(err) });
+      log.error('failed to start file watcher', { error: toMessage(err) });
     }
   }
 

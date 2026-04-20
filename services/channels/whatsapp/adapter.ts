@@ -10,7 +10,9 @@ import { InboundMediaHandler, TYPE_LABELS } from '../media-handler.js';
 import { createWhatsAppSocket } from './session.js';
 import type { WhatsAppInboundMessage } from './types.js';
 import { getDataPaths } from '../../../lib/paths.js';
-import { Reconnector } from '../../../lib/reconnect.js';
+import { toMessage } from '../../../lib/error.js';
+import { Reconnector } from '../reconnect.js';
+import { MEDIA_TYPE_MIME_DEFAULTS } from '../../../lib/media-transcribe.js';
 
 export class WhatsAppAdapter extends InboundMediaHandler {
   readonly type = 'whatsapp' as const;
@@ -72,7 +74,7 @@ export class WhatsAppAdapter extends InboundMediaHandler {
             try {
               this.resetCredentialsForRepairing();
             } catch (err) {
-              this.log.error('failed to reset credentials', { error: err instanceof Error ? err.message : String(err) });
+              this.log.error('failed to reset credentials', { error: toMessage(err) });
               this.status = 'error';
               return;
             }
@@ -94,7 +96,7 @@ export class WhatsAppAdapter extends InboundMediaHandler {
       });
     } catch (err) {
       this.status = 'error';
-      this.log.error('failed to start', { error: err instanceof Error ? err.message : String(err) });
+      this.log.error('failed to start', { error: toMessage(err) });
       this.scheduleReconnect();
     }
   }
@@ -196,7 +198,7 @@ export class WhatsAppAdapter extends InboundMediaHandler {
       this.log.info(`received ${msg.mediaType} from ${msg.jid}`);
       this.debouncer.flush(this.buildUserId(msg.jid));
       this.handleMedia(msg).catch((err) => {
-        this.log.error('handleMedia error', { jid: msg.jid, error: err instanceof Error ? err.message : String(err) });
+        this.log.error('handleMedia error', { jid: msg.jid, error: toMessage(err) });
       });
       return;
     }
@@ -223,11 +225,8 @@ export class WhatsAppAdapter extends InboundMediaHandler {
     const m = msg as WhatsAppInboundMessage;
     if (!m.mediaBuffer) return null;
 
-    const mimeDefaults: Record<string, string> = {
-      image: 'image/jpeg', audio: 'audio/ogg', video: 'video/mp4', document: 'application/pdf',
-    };
     const rawMime = m.mimeType?.split(';')[0].trim();
-    const mimeType = rawMime || mimeDefaults[m.mediaType!] || 'application/octet-stream';
+    const mimeType = rawMime || MEDIA_TYPE_MIME_DEFAULTS[m.mediaType!] || 'application/octet-stream';
     return {
       buffer: m.mediaBuffer,
       mimeType,

@@ -19,8 +19,8 @@
  *   // → 'Read /home/user/.vargos/workspace/HEARTBEAT.md'
  */
 
-import { getDataPaths } from './paths.js';
-import { createLogger } from './logger.js';
+import { getDataPaths } from '../../lib/paths.js';
+import { createLogger } from '../../lib/logger.js';
 import os from 'node:os';
 import process from 'node:process';
 

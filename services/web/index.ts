@@ -3,6 +3,7 @@ import { register } from '../../gateway/decorators.js';
 import type { Bus } from '../../gateway/bus.js';
 import type { EventMap } from '../../gateway/events.js';
 import { htmlToMarkdown } from '../../lib/html.js';
+import { validateHttpResponse } from '../../lib/http-validate.js';
 
 export class WebService {
   @register('web.fetch', {
@@ -26,7 +27,7 @@ export class WebService {
       redirect: 'follow',
     });
 
-    if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+    validateHttpResponse(resp, 'Web fetch');
 
     const contentType = resp.headers.get('content-type') ?? '';
     const html        = await resp.text();

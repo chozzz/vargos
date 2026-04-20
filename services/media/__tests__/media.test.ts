@@ -396,7 +396,7 @@ describe('MediaService', () => {
 
       await expect(
         bus.call('media.transcribeAudio', { filePath: audioFile }),
-      ).rejects.toThrow(/Whisper API 401/);
+      ).rejects.toThrow(/Whisper API failed/);
     });
 
     it('handles file extension normalization', async () => {

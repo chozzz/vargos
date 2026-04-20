@@ -27,7 +27,7 @@ import { createLogger } from '../../lib/logger.js';
 import { toMessage } from '../../lib/error.js';
 import { stripMarkdown } from '../../lib/strip-markdown.js';
 import { parseSessionKey } from '../../lib/subagent.js';
-import { parseTarget } from '../../lib/channel-target.js';
+import { parseTarget } from './channel-target.js';
 import { paginate } from '../../lib/paginate.js';
 import type { ChannelAdapter, InboundMessageMetadata } from './types.js';
 import { deliverReply } from './delivery.js';

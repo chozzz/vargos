@@ -3,6 +3,7 @@ import path from 'node:path';
 import { glob } from 'tinyglobby';
 import type { MemoryChunk } from './types.js';
 import { createLogger } from '../../lib/logger.js';
+import { toMessage } from '../../lib/error.js';
 
 const log = createLogger('memory');
 
@@ -21,7 +22,7 @@ export async function indexSessions(
       allChunks.push(...chunks);
     }
   } catch (err) {
-    log.error('failed to index sessions', { error: err instanceof Error ? err.message : String(err) });
+    log.error('failed to index sessions', { error: toMessage(err) });
   }
   return allChunks;
 }
@@ -67,7 +68,7 @@ async function indexSessionFile(
 
     return chunks;
   } catch (err) {
-    log.error('failed to index session', { filePath, error: err instanceof Error ? err.message : String(err) });
+    log.error('failed to index session', { filePath, error: toMessage(err) });
     return [];
   }
 }
