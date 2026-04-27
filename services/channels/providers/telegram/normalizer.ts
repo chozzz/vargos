@@ -18,7 +18,7 @@ export function normalizeTelegramMessage(
     return null;
   }
 
-  if (!msg.text && !msg.photo && !msg.voice && !msg.audio) {
+  if (!msg.text && !msg.photo && !msg.voice && !msg.audio && !msg.document) {
     return null;
   }
 

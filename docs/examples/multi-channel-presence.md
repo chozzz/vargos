@@ -19,7 +19,7 @@ Response sent back through originating channel
 ```
 
 Session keys are channel-scoped:
-- `whatsapp-personal:61423222658`
+- `whatsapp-personal:+1234567890`
 - `telegram-bakabit:123456`
 - `cli:chat`
 
@@ -41,7 +41,7 @@ Conversations are isolated, but the same agent runtime, tools, memory, and works
     {
       "id": "whatsapp-personal",
       "type": "whatsapp",
-      "allowFrom": ["61423222658"]
+      "allowFrom": ["+1234567890"]
     },
     {
       "id": "telegram-bakabit",

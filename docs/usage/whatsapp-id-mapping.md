@@ -1,4 +1,23 @@
-# WhatsApp ID Mapping & Configuration
+# WhatsApp ID Mapping & JID Formats
+
+## Quick Reference: JID Formats
+
+| Format | Example | When | Meaning |
+|--------|---------|------|---------|
+| **Phone-based** | `+1234567890@s.whatsapp.net` | PC/Web client | Your actual phone number as JID |
+| **Linked Device** | `9876543210@lid` | Phone client | Internal device ID assigned by WhatsApp |
+
+Both represent **you** (same WhatsApp account), but from different devices.
+
+### Can They Be Normalized to 1 Identifier?
+
+**Short answer: Not at the protocol level.**
+
+These are fundamentally different identifiers in WhatsApp's system:
+- `+1234567890` = your phone number (universal, stable)
+- `9876543210` = device token (changes per device/re-auth)
+
+The phone number is more stable, but WhatsApp doesn't include it in all message contexts (especially from `@lid` devices).
 
 ## Problem
 
@@ -6,11 +25,11 @@ WhatsApp users can send messages from multiple devices, each with a different JI
 
 | Device | JID Format | Example |
 |--------|-----------|---------|
-| **PC/Web** | `PHONE@s.whatsapp.net` | `61423222658@s.whatsapp.net` |
-| **Phone** | `DEVICE_ID@lid` | `210994982838335@lid` |
-| **Group** | `DEVICE_ID@lid` or `GROUP_ID@g.us` | `210994982838335@lid` |
+| **PC/Web** | `PHONE@s.whatsapp.net` | `+1234567890@s.whatsapp.net` |
+| **Phone** | `DEVICE_ID@lid` | `9876543210@lid` |
+| **Group** | `DEVICE_ID@lid` or `GROUP_ID@g.us` | `9876543210@lid` |
 
-**Issue**: Whitelist config uses phone numbers (`+61423222658`), but phone messages use device IDs (`210994982838335@lid`). These don't match, causing whitelisted users to be rejected.
+**Issue**: Whitelist config uses phone numbers (`+1234567890`), but phone messages use device IDs (`9876543210@lid`). These don't match, causing whitelisted users to be rejected.
 
 ## Current Flow
 
@@ -36,7 +55,7 @@ Add device ID mappings to config:
 {
   "channels": [{
     "id": "whatsapp-vadi-indo",
-    "allowFrom": ["+61423222658", "210994982838335"]
+    "allowFrom": ["+1234567890", "9876543210"]
   }]
 }
 ```
@@ -48,8 +67,8 @@ Store device-to-phone mappings:
 ```json
 {
   "whatsappDeviceMap": {
-    "210994982838335": "+61423222658",
-    "114074549493846": "+62812..."
+    "9876543210": "+1234567890",
+    "9876543210": "+1234567890"
   }
 }
 ```

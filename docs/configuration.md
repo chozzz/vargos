@@ -84,7 +84,7 @@ Priority: `config.paths.dataDir` > `VARGOS_DATA_DIR` env > `~/.vargos`
       "type": "whatsapp",
       "id": "wa-personal",
       "enabled": true,
-      "allowFrom": ["61423222658"]
+      "allowFrom": ["+1234567890"]
     }
   ],
 
@@ -129,7 +129,7 @@ Priority: `config.paths.dataDir` > `VARGOS_DATA_DIR` env > `~/.vargos`
       "name": "GitHub PR",
       "token": "secret-token",
       "transform": "./transforms/github.js",
-      "notify": ["telegram:tg-bot:61423222658"]
+      "notify": ["telegram:tg-bot:+1234567890"]
     }
   ],
 
@@ -248,7 +248,7 @@ enabled: true
 activeHours: [8, 22]
 activeHoursTimezone: "Australia/Sydney"
 notify:
-  - whatsapp-vadi-indo:61423222658
+  - whatsapp-vadi-indo:+1234567890
 ---
 
 Research today's AI news, GitHub trending, and package releases. Synthesize into a report.
@@ -267,18 +267,51 @@ Reference workspace files with ${WORKSPACE_DIR} and system paths with ${DATA_DIR
 | `enabled` | boolean | no | Whether the task is active (default: `true`) |
 | `activeHours` | array | no | Hour window for conditional execution: `[startHour, endHour]` (0-23). Task only runs during these hours. |
 | `activeHoursTimezone` | string | no | IANA timezone for interpreting `activeHours` (e.g., `"Australia/Sydney"`) |
-| `notify` | array | no | Channel session keys for result delivery (e.g., `["whatsapp-vadi-indo:61423222658"]`) |
+| `notify` | array | no | Channel session keys for result delivery (e.g., `["whatsapp-vadi-indo:+1234567890"]`) |
 
 ### Variable Interpolation
 
-Task prompts support these variables, which are interpolated at execution time:
+Task prompts support variable interpolation, allowing prompts to reference dynamic paths without hardcoding them.
 
-- `${WORKSPACE_DIR}` — User's workspace directory (`~/.vargos/workspace`)
-- `${DATA_DIR}` — Data directory (`~/.vargos` by default)
-- `${HOME}` — User's home directory
-- `${PWD}` — Current working directory
+#### Supported Variables
 
-See [prompt-variables.md](./prompt-variables.md) for the full list.
+| Variable | Value | Example |
+|----------|-------|---------|
+| `${WORKSPACE_DIR}` | User's workspace directory | `~/.vargos/workspace` |
+| `${DATA_DIR}` | User's data directory (respects `$VARGOS_DATA_DIR`) | `~/.vargos` |
+| `${SESSIONS_DIR}` | Session storage directory | `~/.vargos/sessions` |
+| `${CACHE_DIR}` | Cache directory | `~/.cache/vargos` |
+| `${LOGS_DIR}` | Logs directory | `~/.vargos/logs` |
+| `${CHANNELS_DIR}` | Channels storage directory | `~/.vargos/channels` |
+| `${HOME}` | User's home directory | `/home/username` |
+| `${PWD}` | Current working directory | `/path/to/cwd` |
+
+#### Best Practices
+
+1. **Use workspace for user-editable files**: Place task checklists and configuration at `${WORKSPACE_DIR}` so users can easily find and edit them.
+2. **Use data dir for system files**: Reference system data at `${DATA_DIR}` for locations managed by Vargos.
+3. **Avoid hardcoding paths**: Don't use `/home/username/...` paths directly. Use variables for portability across machines and users.
+4. **Document path assumptions**: In task descriptions, note which files the agent will read.
+
+#### Example: Multi-File Review Task
+
+Create `~/.vargos/cron/weekly-docs-check.md`:
+
+```yaml
+---
+id: weekly-docs-check
+name: Weekly Docs Check
+schedule: "0 9 * * 0"
+enabled: true
+---
+
+Review all .md files in ${WORKSPACE_DIR}/docs/. Check each for:
+1. Stale information
+2. Broken references
+3. Missing context
+
+For each issue, write a note to ${WORKSPACE_DIR}/HEARTBEAT.md under '## Docs Review'.
+```
 
 ### Ephemeral Tasks
 

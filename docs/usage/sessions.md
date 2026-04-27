@@ -6,11 +6,11 @@ Sessions persist conversation history and provide isolation between different in
 
 | Format | Example | Created By |
 |--------|---------|-----------|
-| `<instanceId>:<userId>` | `whatsapp-personal:61423222658` | Channel adapter |
+| `<instanceId>:<userId>` | `whatsapp-personal:+1234567890` | Channel adapter |
 | `<instanceId>:<userId>` | `telegram-bot:123456` | Channel adapter |
 | `cron:<taskId>:<date>` | `cron:daily-report:2026-04-10` | Cron service |
 | `webhook:<hookId>:<timestamp>` | `webhook:github-pr:1708865234567` | Webhook service |
-| `<parent>:subagent` | `whatsapp-personal:61423222658:subagent` | `agent.execute` with subagent key |
+| `<parent>:subagent` | `whatsapp-personal:+1234567890:subagent` | `agent.execute` with subagent key |
 
 Channel session keys use the channel's `instanceId` (from `config.channels[].id`) — not the platform type. This supports multiple instances of the same platform.
 
@@ -23,7 +23,7 @@ Subagents are created by calling `agent.execute` with a child session key. No se
 ```typescript
 // Parent creates subagent via session key convention
 const childKey = `${parentKey}:subagent`;
-// → "whatsapp-personal:61423222658:subagent"
+// → "whatsapp-personal:+1234567890:subagent"
 
 await bus.call('agent.execute', { sessionKey: childKey, task: 'Research this topic' });
 ```
@@ -44,11 +44,11 @@ Sessions are persisted by PiAgent's `SessionManager` to `~/.vargos/workspace/ses
 
 ```
 ~/.vargos/workspace/sessions/
-├── whatsapp-personal:61423222658/
+├── whatsapp-personal:+1234567890/
 │   └── ... (PiAgent session files)
 ├── cron:daily-report:2026-04-10/
 │   └── ... (PiAgent session files)
-└── whatsapp-personal:61423222658:subagent/
+└── whatsapp-personal:+1234567890:subagent/
     └── ... (PiAgent session files)
 ```
 

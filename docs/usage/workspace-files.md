@@ -57,7 +57,7 @@ The heartbeat is a periodic cron task that polls the agent to perform maintenanc
   "heartbeat": {
     "enabled": true,
     "intervalMinutes": 30,
-    "notify": ["whatsapp:61423222658"],  // optional: deliver results to channel
+    "notify": ["whatsapp:+1234567890"],  // optional: deliver results to channel
     "activeHours": [8, 22],
     "activeHoursTimezone": "Australia/Sydney"
   }

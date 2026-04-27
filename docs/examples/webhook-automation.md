@@ -31,7 +31,7 @@ Monitoring alert → POST /hooks/ops-alert
       "token": "your-secret-token",
       "description": "GitHub push code review",
       "transform": "./transforms/github-review.js",
-      "notify": ["whatsapp:61423222658"]
+      "notify": ["whatsapp:+1234567890"]
     }
   ]
 }
