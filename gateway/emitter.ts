@@ -16,10 +16,10 @@ type ResPayload = { result: unknown; error?: string; _cid: string };
 type AnyHandler = (payload: unknown) => unknown;
 type HasHandlers = {
   [HANDLERS]?: Array<{ event: keyof EventMap; method: string }>;
-  [TOOLS]?: Array<{ event: keyof EventMap; method: string; schema: ToolSchema }>;
+  [TOOLS]?: Array<{ event: keyof EventMap; method: string; schema?: ToolSchema }>;
 };
 
-const DEFAULT_CALL_TIMEOUT_MS = 300_000; // 5 minutes
+const DEFAULT_CALL_TIMEOUT_MS = 900_000; // 15 minutes
 
 /**
  * Predicate: is this event metadata a usable tool?
@@ -102,9 +102,11 @@ export class EventEmitterBus implements Bus {
       this.registerHandlers(event as PureEventKey, fn.bind(svc) as AnyHandler);
     }
 
-    // Pre-populate callable registry, then register @register handlers (callable events)
+    // Pre-populate callable registry with tools that have schema (agent-callable)
     for (const { event, schema } of tools) {
-      this.callableRegistry.set(event as string, schema);
+      if (schema) {
+        this.callableRegistry.set(event as string, schema);
+      }
     }
 
     for (const { event, method } of tools) {

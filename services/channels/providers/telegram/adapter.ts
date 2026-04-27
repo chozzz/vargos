@@ -5,7 +5,8 @@
 import https from 'node:https';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import type { OnInboundMessageFn, InboundMediaSource } from '../types.js';
+import type { InboundMediaSource } from '../../types.js';
+import type { NormalizedInboundMessage, AdapterDeps } from '../../contracts.js';
 import type {
   TelegramUpdate,
   TelegramResponse,
@@ -13,14 +14,15 @@ import type {
   TelegramMessage,
   TelegramFile,
 } from './types.js';
-import { InboundMediaHandler } from '../media-handler.js';
-import { sleep } from '../../../lib/sleep.js';
-import { validateHttpResponse } from '../../../lib/http-validate.js';
+import { BaseChannelAdapter } from '../../base-adapter.js';
+import { normalizeTelegramMessage } from './normalizer.js';
+import { sleep } from '../../../../lib/sleep.js';
+import { validateHttpResponse } from '../../../../lib/http-validate.js';
+import { Reconnector } from '../../reconnect.js';
 
 const API_BASE = 'https://api.telegram.org/bot';
 const API_FILE_BASE = 'https://api.telegram.org/file/bot';
 const POLL_TIMEOUT_S = 30;
-const RECONNECT_DELAY_MS = 5000;
 
 interface FetchLike {
   ok: boolean;
@@ -30,23 +32,21 @@ interface FetchLike {
   buffer(): Promise<Buffer>;
 }
 
-export class TelegramAdapter extends InboundMediaHandler {
+export class TelegramAdapter extends BaseChannelAdapter {
   readonly type = 'telegram' as const;
 
   private botUser: TelegramUser | null = null;
   private offset = 0;
   private polling = false;
   private abortController: AbortController | null = null;
-  private latestMessageId = new Map<string, string>();
+  private reconnector = new Reconnector();
 
   constructor(
     instanceId: string,
     private readonly botToken: string,
-    allowFrom?: string[],
-    onInboundMessage?: OnInboundMessageFn,
-    debounceMs?: number,
+    deps: AdapterDeps,
   ) {
-    super(instanceId, 'telegram', allowFrom, onInboundMessage, debounceMs);
+    super(instanceId, 'telegram', deps);
   }
 
   async start(): Promise<void> {
@@ -151,6 +151,7 @@ export class TelegramAdapter extends InboundMediaHandler {
         });
 
         this.log.debug(`poll cycle ${cycleCount}: received response with ${updates.length} update(s)`);
+        this.reconnector.reset();
 
         for (const update of updates) {
           this.offset = update.update_id + 1;
@@ -159,7 +160,13 @@ export class TelegramAdapter extends InboundMediaHandler {
       } catch (err) {
         if (!this.polling) break;
         this.log.warn(`poll error (cycle ${cycleCount}): ${err}`);
-        await sleep(RECONNECT_DELAY_MS);
+        const delay = this.reconnector.next();
+        if (delay === null) {
+          this.log.error('max reconnect attempts reached');
+          this.status = 'error';
+          break;
+        }
+        await sleep(delay);
       }
     }
   }
@@ -170,52 +177,25 @@ export class TelegramAdapter extends InboundMediaHandler {
 
     if (!msg.text && !msg.photo && !msg.voice && !msg.audio) return;
 
-    // Ignore bot's own messages
-    if (msg.from?.id === this.botUser?.id) {
-      this.log.debug(`ignoring own message from ${msg.chat.id}`);
-      return;
-    }
-
-    const isPrivateChat = msg.chat.type === 'private';
-    const isGroupChat = msg.chat.type === 'group' || msg.chat.type === 'supergroup';
-
-    if (!isPrivateChat && !isGroupChat) {
-      this.log.debug(`ignoring ${msg.chat.type} chat from ${msg.chat.id}`);
-      return;
-    }
-
-    // For groups, check sender's user ID. For private, check chat ID.
-    const idToCheck = isGroupChat ? String(msg.from?.id) : String(msg.chat.id);
-    if (this.allowFrom && !this.allowFrom.has(idToCheck)) {
-      const filterType = isGroupChat ? 'sender' : 'chat';
-      this.log.debug(`ignoring whitelisted filter (${filterType}): ${idToCheck}`);
-      return;
-    }
-
-    const msgKey = `${msg.chat.id}:${msg.message_id}`;
-    if (!this.dedupe.add(msgKey)) return;
+    const normalizedMsg = normalizeTelegramMessage(msg, { botUserId: this.botUser?.id || null });
+    if (!normalizedMsg) return;
 
     const chatId = String(msg.chat.id);
-    const chatType = isGroupChat ? 'group' : 'private';
-
-    // For groups: only process if mentioned or in private chat
-    if (isGroupChat && !this.isMentioned(msg)) {
-      this.log.debug(`group message ignored (not mentioned): ${chatId} "${msg.text?.slice(0, 60) || '[media]'}"`);
-      return;
-    }
+    const msgKey = `${chatId}:${msg.message_id}`;
+    if (!this.dedupe.add(msgKey)) return;
 
     if (msg.photo || msg.voice || msg.audio) {
       this.debouncer.flush(chatId);
-      this.log.debug(`${chatType} media from ${chatId}`);
-      this.handleMedia(chatId, msg).catch((err) => {
-        this.log.warn(`handleMedia error for ${chatId}: ${err}`);
+      this.log.debug(`${msg.chat.type} media from user ${normalizedMsg.fromUserId}`);
+      this.handleMedia(chatId, msg, normalizedMsg).catch((err) => {
+        this.log.warn(`handleMedia error for ${normalizedMsg.fromUserId}: ${err}`);
       });
       return;
     }
 
-    this.log.debug(`${chatType} text from ${chatId}: ${msg.text!.slice(0, 80)}`);
+    this.log.debug(`${msg.chat.type} text from user ${normalizedMsg.fromUserId}: ${msg.text!.slice(0, 80)}`);
     this.latestMessageId.set(chatId, String(msg.message_id));
-    this.debouncer.push(chatId, msg.text!);
+    this.debouncer.push(chatId, msg.text!, normalizedMsg);
   }
 
   private isMentioned(msg: TelegramMessage): boolean {
@@ -231,13 +211,6 @@ export class TelegramAdapter extends InboundMediaHandler {
     return false;
   }
 
-  protected override async handleBatch(id: string, messages: string[]): Promise<void> {
-    const messageId = this.latestMessageId.get(id);
-    const sessionKey = `${this.instanceId}:${id}`;
-    const text = messages.join('\n');
-    this.log.debug(`batch for ${sessionKey}: "${text.slice(0, 80)}"`);
-    await this.routeToService(sessionKey, text, messageId ? { messageId } : undefined);
-  }
 
   private async downloadFile(fileId: string): Promise<Buffer> {
     const file = await this.apiCall<TelegramFile>('getFile', { file_id: fileId });
@@ -271,8 +244,13 @@ export class TelegramAdapter extends InboundMediaHandler {
     return { buffer, mimeType, mediaType: 'audio', caption, duration };
   }
 
-  private async handleMedia(chatId: string, msg: TelegramMessage): Promise<void> {
-    const sessionKey = `${this.instanceId}:${chatId}`;
+  private async handleMedia(chatId: string, msg: TelegramMessage, normalizedMsg: NormalizedInboundMessage): Promise<void> {
+    if (!this.onInboundMessage) {
+      this.log.error('No inbound message handler');
+      return;
+    }
+
+    const sessionKey = this.buildSessionKey(chatId);
     const label = msg.photo?.length ? 'photo' : (msg.voice ? 'voice' : 'audio');
     this.log.debug(`received ${label} from ${chatId}`);
 
@@ -281,7 +259,7 @@ export class TelegramAdapter extends InboundMediaHandler {
         { tgMsg: msg, chatId },
         chatId,
         sessionKey,
-        (text, metadata) => this.routeToService(sessionKey, text, { ...metadata, messageId: String(msg.message_id) }),
+        (text) => this.onInboundMessage!(sessionKey, { ...normalizedMsg, text }),
       );
     } catch (err) {
       this.log.warn(`${label} download failed for ${chatId}: ${err}`);

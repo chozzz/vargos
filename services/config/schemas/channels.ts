@@ -5,11 +5,15 @@
 import { z } from 'zod';
 
 const ChannelBaseSchema = z.object({
-  id:         z.string(),
-  enabled:    z.boolean().default(true),
-  model:      z.string().optional(),   // overrides agent.model for runs from this channel
-  debounceMs: z.number().int().min(0).optional(),
-  allowFrom:  z.array(z.string()).optional(),
+  id:                z.string(),
+  enabled:           z.boolean().default(true),
+  model:             z.string().optional(),                  // overrides agent.model for runs from this channel
+  instructionsFile: z.string().refine(v => v.endsWith('.md'), {
+    message: 'instructionsFile must be a .md file',
+  }).optional(),
+  debounceMs:        z.number().int().min(0).optional(),
+  allowFrom:         z.array(z.string()).optional(),
+  cwd:               z.string().optional(),                  // working directory for agent sessions from this channel
 });
 
 export const TelegramChannelSchema  = ChannelBaseSchema.extend({

@@ -6,3 +6,10 @@ if grep -qi "Co-Authored-By" "$1"; then
   echo "Remove the AI co-author line from your commit message."
   exit 1
 fi
+
+# Reject commits containing "Made-with: Cursor"
+if grep -qi "Made-with: Cursor" "$1"; then
+  echo "ERROR: Commit rejected — 'Made-with: Cursor' signatures are not allowed."
+  echo "Remove the 'Made-with: Cursor' line from your commit message."
+  exit 1
+fi

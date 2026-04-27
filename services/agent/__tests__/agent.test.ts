@@ -11,7 +11,7 @@ import { resetDataPaths } from '../../../lib/paths.js';
 
 class TestableRuntime extends AgentService {
   async testGetSystemPrompt(sessionKey: string, cwd?: string) {
-    return this.getSystemPrompt(sessionKey, cwd);
+    return this.getSystemPrompt(sessionKey, cwd ? { cwd } : undefined);
   }
 }
 

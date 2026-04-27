@@ -3,7 +3,7 @@
  * Prevents processing the same message twice within a TTL window
  */
 
-export interface DedupeOptions {
+export interface DedupeConfig {
   /** Time-to-live in milliseconds (default: 60_000) */
   ttlMs?: number;
   /** Max entries before oldest are evicted (default: 10_000) */
@@ -18,7 +18,7 @@ export interface DedupeCache {
   size: number;
 }
 
-export function createDedupeCache(opts: DedupeOptions = {}): DedupeCache {
+export function createDedupeCache(opts: DedupeConfig = {}): DedupeCache {
   const ttlMs = opts.ttlMs ?? 60_000;
   const maxSize = opts.maxSize ?? 10_000;
   const entries = new Map<string, number>();

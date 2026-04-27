@@ -1,18 +1,5 @@
 /**
- * MIME type detection
- */
-
-const IMAGE_MIME_MAP: Record<string, string> = {
-  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif',
-  '.webp': 'image/webp', '.bmp': 'image/bmp', '.svg': 'image/svg+xml',
-};
-
-export function getMimeTypeFromExt(ext: string): string {
-  return IMAGE_MIME_MAP[ext.toLowerCase()] || 'image/jpeg';
-}
-
-/**
- * Detect MIME type from file buffer
+ * MIME type detection from file buffer
  * Simple implementation based on magic numbers
  */
 export async function detectMimeType(buffer: Buffer): Promise<string> {

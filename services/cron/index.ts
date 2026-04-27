@@ -20,11 +20,13 @@ import { register } from '../../gateway/decorators.js';
 import type { Bus } from '../../gateway/bus.js';
 import type { EventMap } from '../../gateway/events.js';
 import type { AppConfig, CronTask, CronAddParams, CronUpdateParams } from '../../services/config/index.js';
+import { CronTaskSchema } from '../../services/config/schemas/cron.js';
 import { createLogger } from '../../lib/logger.js';
 import { toMessage } from '../../lib/error.js';
 import { getDataPaths } from '../../lib/paths.js';
 import { generateId } from '../../lib/id.js';
 import { cronSessionKey, parseSessionKey } from '../../lib/subagent.js';
+import { parseFrontmatter, serializeFrontmatter } from '../../lib/frontmatter.js';
 import {
   isWithinActiveHours,
   isHeartbeatContentEffectivelyEmpty,
@@ -204,7 +206,7 @@ export class CronService {
   // ── Internal scheduling ───────────────────────────────────────────────────
 
   private addJob(task: CronTask, opts?: { ephemeral?: boolean }): void {
-    const job = new CronJob(task.schedule, () => this.fire(task.id), null, false, 'UTC');
+    const job = new CronJob(task.schedule, () => this.fire(task.id), null, false);
     this.jobs.set(task.id, { task, job });
     if (opts?.ephemeral) this.ephemeralIds.add(task.id);
   }
@@ -275,9 +277,12 @@ export class CronService {
     const sessionKey = cronSessionKey(task.id);
     log.info(`task firing: ${task.name} (${task.id}) → ${sessionKey}`);
 
+    const metadata = task.model ? { model: task.model } : undefined;
+
     const result = await this.bus.call('agent.execute', {
       sessionKey,
       task: task.task,
+      ...(metadata && { metadata }),
     });
 
     if (!result.response) return;
@@ -303,64 +308,15 @@ export class CronService {
 
   // ── File I/O ──────────────────────────────────────────────────────────────
 
-  private parseFrontmatterValue(value: string): unknown {
-    if (value === 'true') return true;
-    if (value === 'false') return false;
-    if (value.startsWith('[') && value.endsWith(']')) {
-      try {
-        return JSON.parse(value);
-      } catch {
-        return value;
-      }
-    }
-    return value.replace(/^["']|["']$/g, '');
-  }
-
   private parseMarkdownTask(content: string): { frontmatter: Record<string, unknown>; body: string } | null {
-    if (!content || typeof content !== 'string') {
-      return null;
-    }
-
-    const match = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
-    if (!match) return null;
-
-    const frontmatterStr = match[1]?.trim();
-    const body = match[2]?.trim() ?? '';
-
-    if (!frontmatterStr) {
-      return null; // Empty frontmatter
-    }
-
-    const frontmatter: Record<string, unknown> = {};
-    for (const line of frontmatterStr.split('\n')) {
-      if (!line.trim()) continue;
-
-      const colonIdx = line.indexOf(':');
-      if (colonIdx === -1) continue;
-
-      const key = line.substring(0, colonIdx).trim();
-      const value = line.substring(colonIdx + 1).trim();
-
-      if (!key) continue;
-
-      frontmatter[key] = this.parseFrontmatterValue(value);
-    }
-
-    return { frontmatter, body };
+    const result = parseFrontmatter(content);
+    if (!result) return null;
+    return { frontmatter: result.meta, body: result.body };
   }
 
   private serializeMarkdownTask(task: CronTask): string {
     const { task: taskPrompt, ...metadata } = task;
-    const frontmatter = Object.entries(metadata)
-      .map(([key, value]) => {
-        if (Array.isArray(value)) {
-          return `${key}:\n${value.map(v => `  - ${v}`).join('\n')}`;
-        }
-        return `${key}: ${typeof value === 'string' ? `"${value}"` : value}`;
-      })
-      .join('\n');
-
-    return `---\n${frontmatter}\n---\n\n${taskPrompt}\n`;
+    return serializeFrontmatter(metadata, taskPrompt);
   }
 
   private async loadTasksFromDisk(): Promise<CronTask[]> {
@@ -386,25 +342,27 @@ export class CronService {
             continue;
           }
 
-          // Validate required fields
-          const { id, schedule } = parsed.frontmatter;
-          if (!id || !schedule) {
-            log.warn(`${filename}: missing required fields (id: ${id ? '✓' : '✗'}, schedule: ${schedule ? '✓' : '✗'})`);
-            continue;
-          }
-
+          // Build task object
           const task: CronTask = {
-            id: String(id),
-            name: String(parsed.frontmatter.title || parsed.frontmatter.name || id),
-            schedule: String(schedule),
+            id: String(parsed.frontmatter.id ?? ''),
+            name: String(parsed.frontmatter.title || parsed.frontmatter.name || parsed.frontmatter.id || ''),
+            schedule: String(parsed.frontmatter.schedule ?? ''),
             task: parsed.body || '',
             enabled: parsed.frontmatter.enabled === true,
             notify: Array.isArray(parsed.frontmatter.notify) ? parsed.frontmatter.notify.map(String) : undefined,
-            activeHours: Array.isArray(parsed.frontmatter.activeHours) ? parsed.frontmatter.activeHours.map(Number) : undefined,
+            activeHours: Array.isArray(parsed.frontmatter.activeHours) ? (parsed.frontmatter.activeHours as number[]).slice(0, 2) as [number, number] : undefined,
             activeHoursTimezone: parsed.frontmatter.activeHoursTimezone ? String(parsed.frontmatter.activeHoursTimezone) : undefined,
           };
 
-          tasks.push(task);
+          // Validate against schema
+          const validation = CronTaskSchema.safeParse(task);
+          if (!validation.success) {
+            const errors = validation.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join('; ');
+            log.error(`${filename}: schema validation failed — ${errors}`);
+            continue;
+          }
+
+          tasks.push(validation.data);
           log.debug(`loaded task: ${task.id}`);
 
           // Mark heartbeat as ephemeral

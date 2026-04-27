@@ -16,7 +16,7 @@ import makeWASocket, {
 import qrcode from 'qrcode-terminal';
 import pino from 'pino';
 import { promises as fs } from 'node:fs';
-import { createLogger } from '../../../lib/logger.js';
+import { createLogger } from '../../../../lib/logger.js';
 import type { WhatsAppSessionEvents } from './types.js';
 
 const log = createLogger('whatsapp');
@@ -95,15 +95,24 @@ export async function processInboundMessage(
   events: WhatsAppSessionEvents,
 ): Promise<void> {
   const m = msg.message!;
-  const jid = msg.key.remoteJid || '';
+  const remoteJid = msg.key.remoteJid || '';
+  const isGroup = remoteJid.endsWith('@g.us');
+  // For groups, use sender's JID; for private, use remote JID
+  // This ensures whitelist checks work per-user and sessions stay per-user
+  const jid = isGroup ? (msg.key.participant || remoteJid) : remoteJid;
+  const mentionedJids = (m.extendedTextMessage?.contextInfo?.mentionedJid ?? []) as string[];
+  const quotedSenderJid = m.extendedTextMessage?.contextInfo?.participant as string | undefined;
+
   const base = {
     messageId: msg.key.id || '',
     jid,
     fromMe: msg.key.fromMe || false,
-    isGroup: jid.endsWith('@g.us'),
+    isGroup,
     timestamp: typeof msg.messageTimestamp === 'number'
       ? msg.messageTimestamp * 1000
       : Date.now(),
+    mentionedJids: mentionedJids.length > 0 ? mentionedJids : undefined,
+    quotedSenderJid,
   };
 
   const mediaMsg =

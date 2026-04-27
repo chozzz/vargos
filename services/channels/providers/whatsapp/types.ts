@@ -7,6 +7,8 @@ export interface WhatsAppInboundMessage {
   fromMe: boolean;
   isGroup: boolean;
   timestamp: number;
+  mentionedJids?: string[];
+  quotedSenderJid?: string;
   mediaType?: 'image' | 'audio' | 'video' | 'document' | 'sticker';
   mediaBuffer?: Buffer;
   mimeType?: string;

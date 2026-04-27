@@ -3,6 +3,7 @@ import type { EventMap } from './events.js';
 import type { HandlerOf } from './bus.js';
 
 // ─── Tool schema (opt-in: makes the handler an agent-callable tool) ───────────
+// If schema is undefined, the callable is not exposed as an agent tool (internal only).
 
 export interface ToolSchema {
   description: string;
@@ -21,7 +22,7 @@ export interface HandlerEntry {
 }
 
 export interface RegisteredEntry extends HandlerEntry {
-  schema: ToolSchema;
+  schema?: ToolSchema;
 }
 
 type HasHandlers = {
@@ -53,17 +54,18 @@ export function on<E extends keyof EventMap>(event: E) {
 }
 
 /**
- * Marks a method as a callable event provider (agent-accessible RPC endpoint).
+ * Marks a method as a callable event provider.
  *
- * Required params:
+ * Params:
  *   - event: the callable event name (e.g., 'agent.execute')
- *   - tool: ToolSchema with description and zod schema for introspection
+ *   - tool: optional ToolSchema with description and zod schema
+ *           If omitted, the callable is internal (not exposed as an agent tool)
  *
  * Signature: (params: EventMap[E]['params']) => Promise<EventMap[E]['result']>
  *
  * Handlers are wired by bus.bootstrap() at boot.
  */
-export function register<E extends keyof EventMap>(event: E, tool: ToolSchema) {
+export function register<E extends keyof EventMap>(event: E, tool?: ToolSchema) {
   return function (
     method: HandlerOf<E>,
     context: ClassMethodDecoratorContext,

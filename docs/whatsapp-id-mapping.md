@@ -1,0 +1,90 @@
+# WhatsApp ID Mapping & Configuration
+
+## Problem
+
+WhatsApp users can send messages from multiple devices, each with a different JID format:
+
+| Device | JID Format | Example |
+|--------|-----------|---------|
+| **PC/Web** | `PHONE@s.whatsapp.net` | `61423222658@s.whatsapp.net` |
+| **Phone** | `DEVICE_ID@lid` | `210994982838335@lid` |
+| **Group** | `DEVICE_ID@lid` or `GROUP_ID@g.us` | `210994982838335@lid` |
+
+**Issue**: Whitelist config uses phone numbers (`+61423222658`), but phone messages use device IDs (`210994982838335@lid`). These don't match, causing whitelisted users to be rejected.
+
+## Current Flow
+
+```
+WhatsApp message arrives
+  ↓
+adapter.handleInbound(msg)
+  ↓
+Extract fromUserId = msg.jid
+  ↓
+Normalize: strip + and @suffix
+  ↓
+Compare against whitelist (phone numbers)
+  ↓
+❌ Device ID doesn't match phone number
+```
+
+## Solution Options
+
+### Option 1: Store Both Formats in Whitelist (Quick)
+Add device ID mappings to config:
+```json
+{
+  "channels": [{
+    "id": "whatsapp-vadi-indo",
+    "allowFrom": ["+61423222658", "210994982838335"]
+  }]
+}
+```
+**Pros**: Simple, works now  
+**Cons**: Manual mapping, fragile across devices, maintains duplicates
+
+### Option 2: Device ID Registry (Medium)
+Store device-to-phone mappings:
+```json
+{
+  "whatsappDeviceMap": {
+    "210994982838335": "+61423222658",
+    "114074549493846": "+62812..."
+  }
+}
+```
+**Pros**: Single source of truth  
+**Cons**: Manual sync, needs update on new device login
+
+### Option 3: Trust First Contact + Registration (Better)
+- First message from new device ID → whitelist it under the account
+- Device ID persists per account, no manual config
+- Requires user ID validation (OTP, etc.)
+
+**Pros**: Zero-touch, automatic  
+**Cons**: More complex, needs trust/approval flow
+
+### Option 4: Extract Phone from Message Context (Best)
+- WhatsApp API can provide sender's phone number in message metadata
+- Use phone number as primary whitelist key
+- Device ID becomes secondary identifier
+
+**Pros**: Universal, matches config  
+**Cons**: Requires lib-baileys enhancement or different WA client
+
+## Recommendation
+
+**Implement Option 2 + Option 1 hybrid:**
+1. Accept phone numbers in `allowFrom` (current)
+2. Add optional `whatsappDeviceMap` for known device IDs
+3. Log unmapped device IDs for easy addition to config
+4. Plan migration to Option 4 (extract phone from context)
+
+## Test Fixtures
+
+See `__tests__/fixtures/messages.ts` for real-world message shapes covering:
+- Private from PC
+- Private from phone
+- Group message
+- Group message from other user
+- Group message with mention

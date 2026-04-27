@@ -9,7 +9,6 @@ import { createLogger } from './lib/logger.js';
 const SERVICES: Array<[string, () => Promise<{ boot(bus: EventEmitterBus): Promise<{ stop?(): unknown }> }>]> = [
   ['config', () => import('./services/config/index.js')],
   ['log', () => import('./services/log/index.js')],
-  ['fs', () => import('./services/fs/index.js')],
   ['web', () => import('./services/web/index.js')],
   ['memory', () => import('./services/memory/index.js')],
   ['media', () => import('./services/media/index.js')],

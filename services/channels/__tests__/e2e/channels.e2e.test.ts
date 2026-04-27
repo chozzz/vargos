@@ -17,7 +17,7 @@
 import { describe, it, expect, vi, type MockInstance } from 'vitest';
 import { EventEmitterBus } from '../../../../gateway/emitter.js';
 import { ChannelService } from '../../index.js';
-import type { ChannelAdapter } from '../../types.js';
+import type { ChannelAdapter, NormalizedInboundMessage } from '../../types.js';
 import type { ChannelStatus } from '../../../../gateway/events.js';
 import type { AppConfig } from '../../../config/index.js';
 import { AgentService } from '../../../agent/index.js';
@@ -25,6 +25,21 @@ import { AppConfigSchema } from '../../../config/index.js';
 import type { EventMap } from '../../../../gateway/events.js';
 import { register } from '../../../../gateway/decorators.js';
 import { z } from 'zod';
+
+/** Helper to create a normalized inbound message for testing */
+function createTestMessage(text: string, overrides?: Partial<NormalizedInboundMessage>): NormalizedInboundMessage {
+  return {
+    messageId: 'test-msg-1',
+    fromUserId: 'test-user',
+    fromUser: 'Test User',
+    chatType: 'private',
+    isMentioned: true,
+    channelType: 'test',
+    skipAgent: false,
+    text,
+    ...overrides,
+  };
+}
 
 // ── Shared config fixture ────────────────────────────────────────────────────
 
@@ -76,6 +91,10 @@ class StubAdapter implements ChannelAdapter {
     return sessionKey.split(':')[1] ?? sessionKey;
   }
 
+  extractLatestMessageId(_userId: string): string | undefined {
+    return undefined; // Stub doesn't track message IDs
+  }
+
   startTyping(sessionKey: string): void  { this.typingStarted.push(sessionKey); }
   resumeTyping(sessionKey: string): void { this.typingResumed.push(sessionKey); }
   stopTyping(sessionKey: string, final = true): void {
@@ -91,7 +110,17 @@ class StubAdapter implements ChannelAdapter {
  */
 function setup(adapterInstanceId = 'stub-ch') {
   const bus = new EventEmitterBus();
-  const svc = new ChannelService(bus, BASE_CONFIG);
+  const config = {
+    ...BASE_CONFIG,
+    channels: [
+      {
+        id: adapterInstanceId,
+        type: 'stub' as any,
+        enabled: true,
+      },
+    ],
+  };
+  const svc = new ChannelService(bus, config);
   bus.bootstrap(svc);
 
   const adapter = new StubAdapter(adapterInstanceId);
@@ -119,8 +148,7 @@ function stubAgentExecute(
       schema: z.object({
         sessionKey: z.string(),
         task: z.string(),
-        images: z.array(z.object({ data: z.string(), mimeType: z.string() })).optional(),
-        cwd: z.string().optional(),
+        metadata: z.object({}).passthrough().optional(),
       }),
     })
     async execute(params: EventMap['agent.execute']['params']): Promise<{ response: string }> {
@@ -546,7 +574,7 @@ describe('onInboundMessage firing agent.execute', () => {
     }
     new AgentStub(bus);
 
-    await svc.onInboundMessage(sessionKey, 'hello');
+    await svc.onInboundMessage(sessionKey, createTestMessage('hello'));
     await tick();
 
     expect(capturedActiveSessions).toBe(true);
@@ -576,7 +604,7 @@ describe('onInboundMessage firing agent.execute', () => {
     new AgentStub(bus);
 
     // onInboundMessage should return before agent finishes
-    await svc.onInboundMessage(sessionKey, 'task');
+    await svc.onInboundMessage(sessionKey, createTestMessage('task'));
     await agentStarted;
 
     // Agent is still running — onInboundMessage returned immediately
@@ -588,7 +616,7 @@ describe('onInboundMessage firing agent.execute', () => {
     const sessionKey = 'stub-ch:user12';
     const spy = stubAgentExecute(bus);
 
-    await svc.onInboundMessage(sessionKey, 'What is the weather?');
+    await svc.onInboundMessage(sessionKey, createTestMessage('What is the weather?'));
     await tick();
 
     expect(spy).toHaveBeenCalledOnce();
@@ -597,29 +625,33 @@ describe('onInboundMessage firing agent.execute', () => {
     expect(params.task).toBe('What is the weather?');
   });
 
-  it('passes images array from metadata to agent.execute', async () => {
+  it('includes message metadata from normalized inbound message', async () => {
     const { bus, svc } = setup();
     const sessionKey = 'stub-ch:user15';
     const spy = stubAgentExecute(bus);
 
-    const images = [{ data: 'base64abc', mimeType: 'image/png' }];
-    await svc.onInboundMessage(sessionKey, 'describe this', { images });
+    await svc.onInboundMessage(sessionKey, createTestMessage('describe this'));
     await tick();
 
+    expect(spy).toHaveBeenCalledOnce();
     const params = spy.mock.calls[0][0] as EventMap['agent.execute']['params'];
-    expect(params.images).toEqual(images);
+    // Metadata includes normalized message fields (no model/cwd/instructionsFile since stub config has none)
+    expect(params.metadata?.messageId).toBe('test-msg-1');
+    expect(params.metadata?.fromUser).toBe('Test User');
+    expect(params.metadata?.chatType).toBe('private');
+    expect(params.metadata?.isMentioned).toBe(true);
   });
 
-  it('omits images when not in metadata', async () => {
+  it('omits media when not in metadata', async () => {
     const { bus, svc } = setup();
     const sessionKey = 'stub-ch:user16';
     const spy = stubAgentExecute(bus);
 
-    await svc.onInboundMessage(sessionKey, 'plain message');
+    await svc.onInboundMessage(sessionKey, createTestMessage('plain message'));
     await tick();
 
     const params = spy.mock.calls[0][0] as EventMap['agent.execute']['params'];
-    expect(params.images).toBeUndefined();
+    expect(params.metadata?.media).toBeUndefined();
   });
 
   it('strips media.data from inboundMeta before storing (does not forward raw buffer)', async () => {
@@ -627,8 +659,7 @@ describe('onInboundMessage firing agent.execute', () => {
     const sessionKey = 'stub-ch:user17';
     const spy = stubAgentExecute(bus);
 
-    const media = { type: 'audio', data: Buffer.from('bigbinaryblob'), path: '/tmp/audio.ogg' };
-    await svc.onInboundMessage(sessionKey, 'voice msg', { media });
+    await svc.onInboundMessage(sessionKey, createTestMessage('voice msg'));
     await tick();
 
     // We care that agent.execute was called and agent task passed through
@@ -653,7 +684,7 @@ describe('onInboundMessage firing agent.execute', () => {
     const spy = stubAgentExecute(bus);
 
     // Normal path — onInboundMessage returns without throwing even if agent later fails
-    await expect(svc.onInboundMessage(sessionKey, 'trigger')).resolves.toBeUndefined();
+    await expect(svc.onInboundMessage(sessionKey, createTestMessage('trigger'))).resolves.toBeUndefined();
 
     // Session was registered
     expect((svc as any).activeSessions.has(sessionKey)).toBe(true);
@@ -670,7 +701,7 @@ describe('onInboundMessage firing agent.execute', () => {
     const executeSpy = stubAgentExecute(bus);
 
     // Should silently return, not call agent.execute
-    await svc.onInboundMessage('nonexistent-ch:user1', 'hello');
+    await svc.onInboundMessage('nonexistent-ch:user1', createTestMessage('hello'));
     await tick();
 
     expect(executeSpy).not.toHaveBeenCalled();
@@ -681,7 +712,7 @@ describe('onInboundMessage firing agent.execute', () => {
     const sessionKey = 'tg-bot-1:123456789';
     const spy = stubAgentExecute(bus);
 
-    await svc.onInboundMessage(sessionKey, 'message from telegram user');
+    await svc.onInboundMessage(sessionKey, createTestMessage('message from telegram user'));
     await tick();
 
     expect(spy).toHaveBeenCalledOnce();
@@ -693,7 +724,7 @@ describe('onInboundMessage firing agent.execute', () => {
     const sessionKey = 'wa-bot-1:+15551234567@s.whatsapp.net';
     const spy = stubAgentExecute(bus);
 
-    await svc.onInboundMessage(sessionKey, 'hi from whatsapp');
+    await svc.onInboundMessage(sessionKey, createTestMessage('hi from whatsapp'));
     await tick();
 
     expect(spy).toHaveBeenCalledOnce();
@@ -801,7 +832,7 @@ describe('Integration: full inbound → agent → reply flow', () => {
     }
     new RealishAgent(bus);
 
-    await svc.onInboundMessage(sessionKey, 'do a task');
+    await svc.onInboundMessage(sessionKey, createTestMessage('do a task'));
 
     // Session registered
     expect((svc as any).activeSessions.has(sessionKey)).toBe(true);
@@ -859,7 +890,7 @@ describe('Integration: full inbound → agent → reply flow', () => {
 
     // Inject reactionController via activeSessions pre-seed is not possible here since
     // onInboundMessage sets it — we stub it post-registration
-    await svc.onInboundMessage(sessionKey, 'task with tools');
+    await svc.onInboundMessage(sessionKey, createTestMessage('task with tools'));
 
     // Inject our spy RC into the active session (adapter has no react fn, so RC would be undefined)
     const activeSession = (svc as any).activeSessions.get(sessionKey);

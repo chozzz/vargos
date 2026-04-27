@@ -4,16 +4,15 @@
 
 ## What It Does
 
-- **Event bus gateway** — isolated services communicate through a typed EventEmitterBus with RPC, pub/sub events, and streaming over TCP/JSON-RPC
 - **Any LLM** — Anthropic, OpenAI, Google, OpenRouter, Ollama, LM Studio, Groq, Together, DeepSeek, Mistral, Fireworks, Perplexity
-- **Multi-channel messaging** — route agent conversations through WhatsApp and Telegram
-- **Bus-discovered tools** — every `@register` decorated handler becomes an agent tool automatically
-- **MCP server + client** — expose tools to MCP clients and connect to external MCP servers
-- **Hybrid memory** — vector + text search over workspace files and session transcripts
-- **Scheduled tasks** — cron-based recurring tasks with channel notification delivery
-- **Webhooks** — inbound HTTP triggers that fire agent tasks with custom transforms
-- **Subagent orchestration** — reuse `agent.execute` with hierarchical session keys
-- **Media handling** — image passthrough for vision models, audio transcription via Whisper
+- **Multi-channel presence** — connect WhatsApp and Telegram bots, route messages to the agent
+- **Automatic tool discovery** — every service feature becomes available as an agent tool
+- **MCP integration** — expose your agent's tools to other applications, connect external tool servers
+- **Persistent memory** — vector + keyword search across workspace files and conversation history
+- **Scheduled tasks** — run agent tasks on a schedule, send results to channels
+- **Webhooks** — trigger agent tasks from external systems (GitHub, monitoring, etc.)
+- **Subagent delegation** — agents can spawn child agents for parallel or hierarchical work
+- **Media intelligence** — images and audio handled automatically (vision, transcription)
 
 ## Quick Start
 
@@ -43,23 +42,20 @@ First run prompts for LLM provider, model, and API key. Config is saved to `~/.v
     └─────────┘           └──────────┘            └────────────┘
 ```
 
-Services are isolated — no shared state, communication only through `bus.call()` and `bus.emit()`. Domain boundaries are enforced by ESLint.
+Services are isolated — no shared state, communication only through internal APIs. This makes Vargos reliable and easy to extend.
 
-### Inbound Message Flow
+## Key Concepts
 
-```
-User sends message (WhatsApp/Telegram)
-  ↓
-Channel adapter downloads media, converts to base64
-  ↓
-ChannelsService: expand links, start typing, init reactions
-  ↓
-bus.call('agent.execute', { sessionKey, task, images })
-  ↓
-AgentRuntime: get/create PiAgent session, run prompt
-  ↓
-Response delivered via bus.call('channel.send')
-```
+- **Agent** — An AI system that reads instructions, sees available tools, and decides what to do to help you
+- **Channel** — A messaging platform (WhatsApp, Telegram) where users can talk to the agent
+- **System prompt** — Instructions that tell the agent how to behave (from files like CLAUDE.md)
+- **Session** — A conversation thread with one user; Vargos remembers previous messages
+- **Tool** — A capability the agent can use (read a file, run code, fetch a URL, send a message)
+- **Workspace** — Your project folder where Vargos stores instructions, skills, and conversation history
+
+### Message Handling
+
+Messages go through a simple pipeline: **receive → process → execute → respond**. The agent has access to all Vargos tools and your workspace context. See [Channels](./docs/channels.md) for details.
 
 ## Documentation
 

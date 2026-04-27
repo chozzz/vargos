@@ -5,36 +5,39 @@
 import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { WASocket } from '@whiskeysockets/baileys';
-import type { OnInboundMessageFn, InboundMediaSource } from '../types.js';
-import { InboundMediaHandler, TYPE_LABELS } from '../media-handler.js';
+import type { InboundMediaSource } from '../../types.js';
+import type { NormalizedInboundMessage, AdapterDeps } from '../../contracts.js';
+import { BaseChannelAdapter } from '../../base-adapter.js';
 import { createWhatsAppSocket } from './session.js';
 import type { WhatsAppInboundMessage } from './types.js';
-import { getDataPaths } from '../../../lib/paths.js';
-import { toMessage } from '../../../lib/error.js';
-import { Reconnector } from '../reconnect.js';
-import { MEDIA_TYPE_MIME_DEFAULTS } from '../../../lib/media-transcribe.js';
+import { normalizeWhatsAppMessage } from './normalizer.js';
+import { getDataPaths } from '../../../../lib/paths.js';
+import { toMessage } from '../../../../lib/error.js';
+import { Reconnector } from '../../reconnect.js';
+import { MEDIA_TYPE_MIME_DEFAULTS } from '../../../../lib/media-transcribe.js';
 
-export class WhatsAppAdapter extends InboundMediaHandler {
+const MEDIA_TYPE_LABELS: Record<string, string> = {
+  audio: 'Voice message',
+  video: 'Video message',
+  document: 'Document',
+  sticker: 'Sticker',
+};
+
+export class WhatsAppAdapter extends BaseChannelAdapter {
   readonly type = 'whatsapp' as const;
 
   private sock: WASocket | null = null;
+  private botJid = '';
   private reconnector = new Reconnector();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private authDir = '';
   private lidCache = new Map<string, string>();
-  private latestMessageId = new Map<string, string>();
 
   constructor(
     instanceId: string,
-    allowFrom?: string[],
-    onInboundMessage?: OnInboundMessageFn,
-    debounceMs?: number,
+    deps: AdapterDeps,
   ) {
-    // WA strips leading '+' from phone numbers
-    const normalized = allowFrom?.length
-      ? allowFrom.map(p => p.replace(/^\+/, ''))
-      : undefined;
-    super(instanceId, 'whatsapp', normalized, onInboundMessage, debounceMs);
+    super(instanceId, 'whatsapp', deps);
   }
 
   async start(): Promise<void> {
@@ -60,6 +63,7 @@ export class WhatsAppAdapter extends InboundMediaHandler {
           this.log.info('scan the QR code above with WhatsApp > Linked Devices');
         },
         onConnected: (name) => {
+          this.botJid = this.sock?.user?.id || '';
           this.log.debug(`connected as ${name}`);
           this.status = 'connected';
           this.reconnector.reset();
@@ -181,44 +185,33 @@ export class WhatsAppAdapter extends InboundMediaHandler {
   }
 
   private handleInbound(msg: WhatsAppInboundMessage): void {
-    if (msg.fromMe || msg.isGroup) return;
-
-    if (this.allowFrom) {
-      const phone = this.resolvePhone(msg.jid);
-      if (!this.allowFrom.has(phone)) {
-        this.log.info(`blocked: ${msg.jid} (phone=${phone})`);
-        return;
-      }
-    }
+    if (msg.fromMe) return;
 
     if (!msg.text && !msg.mediaType) return;
     if (!this.dedupe.add(msg.messageId)) return;
 
+    const chatId = msg.isGroup ? msg.jid : msg.jid;
+    const normalizedMsg = normalizeWhatsAppMessage(msg, { botJid: this.botJid });
+
+    if (!normalizedMsg) return;
+
     if (msg.mediaType) {
-      this.log.info(`received ${msg.mediaType} from ${msg.jid}`);
-      this.debouncer.flush(this.buildUserId(msg.jid));
-      this.handleMedia(msg).catch((err) => {
-        this.log.error('handleMedia error', { jid: msg.jid, error: toMessage(err) });
+      this.log.debug(`received ${msg.mediaType} from ${normalizedMsg.fromUserId}`);
+      this.debouncer.flush(chatId);
+      this.handleMedia(msg, normalizedMsg).catch((err) => {
+        this.log.error('handleMedia error', { jid: normalizedMsg.fromUserId, error: toMessage(err) });
       });
       return;
     }
 
-    this.log.info(`received from ${msg.jid}: ${msg.text.slice(0, 80)}`);
-    const userId = this.buildUserId(msg.jid);
-    this.latestMessageId.set(userId, msg.messageId);
-    this.debouncer.push(userId, msg.text);
+    this.log.debug(`received from ${normalizedMsg.fromUserId}: ${msg.text?.slice(0, 80) || ''}`);
+    this.latestMessageId.set(chatId, msg.messageId);
+    this.debouncer.push(chatId, msg.text, normalizedMsg);
   }
 
-  private buildUserId(jid: string): string {
-    return this.resolvePhone(jid);
-  }
-
-  protected override async handleBatch(id: string, messages: string[]): Promise<void> {
-    const messageId = this.latestMessageId.get(id);
-    const text = messages.join('\n');
-    const sessionKey = `${this.instanceId}:${id}`;
-    this.log.info(`batch for ${sessionKey}: "${text.slice(0, 80)}"`);
-    await this.routeToService(sessionKey, text, messageId ? { messageId } : undefined);
+  private isMentioned(msg: WhatsAppInboundMessage): boolean {
+    if (!msg.isGroup || !this.botJid) return false;
+    return msg.mentionedJids?.includes(this.botJid) || msg.quotedSenderJid === this.botJid;
   }
 
   protected async resolveMedia(msg: unknown): Promise<InboundMediaSource | null> {
@@ -235,13 +228,21 @@ export class WhatsAppAdapter extends InboundMediaHandler {
     };
   }
 
-  private async handleMedia(msg: WhatsAppInboundMessage): Promise<void> {
-    const userId = this.buildUserId(msg.jid);
-    const sessionKey = `${this.instanceId}:${userId}`;
+  private async handleMedia(msg: WhatsAppInboundMessage, normalizedMsg: NormalizedInboundMessage): Promise<void> {
+    if (!this.onInboundMessage) {
+      this.log.error('No inbound message handler');
+      return;
+    }
+
+    const userId = msg.jid.replace(/@[^@]+$/, '');
+    const sessionKey = this.buildSessionKey(userId);
 
     if (!msg.mediaBuffer) {
-      const label = TYPE_LABELS[msg.mediaType!] || 'Media';
-      await this.routeToService(sessionKey, msg.caption ? `[${label}] ${msg.caption}` : `[${label} received]`);
+      const label = MEDIA_TYPE_LABELS[msg.mediaType!] || 'Media';
+      const content = msg.caption ? `[${label}] ${msg.caption}` : `[${label} received]`;
+
+      const messageWithText: NormalizedInboundMessage = { ...normalizedMsg, text: content };
+      await this.onInboundMessage(sessionKey, messageWithText);
       return;
     }
 
@@ -249,7 +250,7 @@ export class WhatsAppAdapter extends InboundMediaHandler {
       msg,
       userId,
       sessionKey,
-      (text, metadata) => this.routeToService(sessionKey, text, { ...metadata, messageId: msg.messageId }),
+      (text) => this.onInboundMessage!(sessionKey, { ...normalizedMsg, text }),
     );
   }
 
