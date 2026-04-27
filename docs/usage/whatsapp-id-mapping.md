@@ -1,4 +1,23 @@
-# WhatsApp ID Mapping & Configuration
+# WhatsApp ID Mapping & JID Formats
+
+## Quick Reference: JID Formats
+
+| Format | Example | When | Meaning |
+|--------|---------|------|---------|
+| **Phone-based** | `61423222658@s.whatsapp.net` | PC/Web client | Your actual phone number as JID |
+| **Linked Device** | `210994982838335@lid` | Phone client | Internal device ID assigned by WhatsApp |
+
+Both represent **you** (same WhatsApp account), but from different devices.
+
+### Can They Be Normalized to 1 Identifier?
+
+**Short answer: Not at the protocol level.**
+
+These are fundamentally different identifiers in WhatsApp's system:
+- `61423222658` = your phone number (universal, stable)
+- `210994982838335` = device token (changes per device/re-auth)
+
+The phone number is more stable, but WhatsApp doesn't include it in all message contexts (especially from `@lid` devices).
 
 ## Problem
 

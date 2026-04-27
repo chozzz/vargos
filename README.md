@@ -55,7 +55,7 @@ Services are isolated — no shared state, communication only through internal A
 
 ### Message Handling
 
-Messages go through a simple pipeline: **receive → process → execute → respond**. The agent has access to all Vargos tools and your workspace context. See [Channels](./docs/channels.md) for details.
+Messages go through a simple pipeline: **receive → process → execute → respond**. The agent has access to all Vargos tools and your workspace context. See [Channels](./docs/usage/channels.md) for details.
 
 ## Documentation
 
@@ -63,14 +63,14 @@ Messages go through a simple pipeline: **receive → process → execute → res
 |-----|-------------|
 | [Getting Started](./docs/getting-started.md) | Install, first run, config wizard |
 | [Configuration](./docs/configuration.md) | Full config reference |
-| [Channels](./docs/channels.md) | WhatsApp and Telegram setup |
-| [Webhooks](./docs/webhooks.md) | Inbound HTTP triggers |
-| [MCP](./docs/mcp.md) | MCP server and client integration |
-| [Sessions](./docs/sessions.md) | Session types and lifecycle |
-| [Runtime](./docs/runtime.md) | How agents execute |
-| [Workspace Files](./docs/workspace-files.md) | AGENTS.md, SOUL.md, TOOLS.md reference |
-| [CLI](./docs/cli.md) | Commands and gateway lifecycle |
-| [Troubleshooting](./docs/troubleshooting.md) | Common issues and fixes |
+| [Channels](./docs/usage/channels.md) | WhatsApp and Telegram setup |
+| [Webhooks](./docs/usage/webhooks.md) | Inbound HTTP triggers |
+| [MCP](./docs/usage/mcp.md) | MCP server and client integration |
+| [Sessions](./docs/usage/sessions.md) | Session types and lifecycle |
+| [Runtime](./docs/usage/runtime.md) | How agents execute |
+| [Workspace Files](./docs/usage/workspace-files.md) | AGENTS.md, SOUL.md, TOOLS.md reference |
+| [CLI](./docs/usage/cli.md) | Commands and gateway lifecycle |
+| [Troubleshooting](./docs/usage/troubleshooting.md) | Common issues and fixes |
 | [Roadmap](./docs/ROADMAP.md) | Planned features |
 
 ### Examples
@@ -79,6 +79,8 @@ Messages go through a simple pipeline: **receive → process → execute → res
 - [MCP Integration](./docs/examples/mcp-integration.md) — Connect external tool servers
 - [Scheduled Research](./docs/examples/scheduled-research.md) — Daily reports via cron
 - [Multi-Channel Presence](./docs/examples/multi-channel-presence.md) — WhatsApp + Telegram + CLI
+- [Architecture Deep Dive](./docs/architecture/bus-design.md) — Event bus patterns
+- [Extending](./docs/extending/) — Tools, skills, providers, deployment guides
 
 ## Development
 
