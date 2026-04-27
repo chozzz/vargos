@@ -1,1 +1,20 @@
+#!/bin/sh
+
+# Scan for PII/secrets before linting
+check_pii() {
+  git diff --cached --name-only | while read file; do
+    if [ -f "$file" ] && ! file "$file" | grep -q "binary"; then
+      if grep -iE "phone.*[0-9]{3}.*[0-9]{3}|[0-9]{3}-[0-9]{2}-[0-9]{4}|api[_-]?key|password[[:space:]]*[:=]|secret[[:space:]]*[:=]|token[[:space:]]*[:=]|authorization" "$file" > /dev/null 2>&1; then
+        echo "❌ BLOCKED: Potential PII/secret detected in $file"
+        echo "   Review and remove before committing"
+        echo "   (Or use: git commit --no-verify to skip)"
+        exit 1
+      fi
+    fi
+  done
+}
+
+check_pii || exit 1
+
+# Run standard precommit checks
 pnpm run precommit
