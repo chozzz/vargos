@@ -74,6 +74,12 @@ export class AgentService {
     this.authStorage = AuthStorage.create(authJsonPath);
     this.modelRegistry = ModelRegistry.create(this.authStorage, modelsJsonPath);
 
+    // Report model loading errors instead of silently falling back
+    const modelError = this.modelRegistry.getError();
+    if (modelError) {
+      throw new Error(`Failed to load models from ${modelsJsonPath}: ${modelError}`);
+    }
+
     this.settings = SettingsManager.create(paths.dataDir, this.agentDir);
     // NOTE: SettingsManager loads ~/.vargos/agent/models.json which has the
     // authoritative provider + model definitions. Pi Agent is the source of truth.
@@ -112,6 +118,7 @@ export class AgentService {
 
     // Validate model override if provided
     if (metadata?.model) {
+      log.debug(`Validating metadata model: ${metadata.model}`);
       this.validateModel(metadata.model);
     }
 
@@ -124,6 +131,9 @@ export class AgentService {
     if (directives.thinkingLevel) {
       session.setThinkingLevel(directives.thinkingLevel);
     }
+
+    // Log model being used by session
+    log.debug(`Using model: ${session.model?.provider}:${session.model?.id} (${session.model?.name})`);
 
     this.activeRuns.add(params.sessionKey);
     try {
@@ -208,8 +218,10 @@ export class AgentService {
 
     // Store system prompt in session directory
     if (process.env.LOG_LEVEL === 'debug') {
-      log.debug(`Storing system prompt and custom tools in session directory: ${sessionDir}`);
+      log.debug(`Storing debug files (modelRegistry, settings, systemPrompt, customTools) in session directory: ${sessionDir}`);
       await Promise.all([
+        fs.writeFile(path.join(sessionDir, `modelRegistry.json`), JSON.stringify(this.modelRegistry, null, 2), 'utf-8'),
+        fs.writeFile(path.join(sessionDir, `settings.json`), JSON.stringify(this.settings, null, 2), 'utf-8'),
         fs.writeFile(path.join(sessionDir, `systemPrompt.md`), session.systemPrompt ?? '', 'utf-8'),
         fs.writeFile(path.join(sessionDir, `customTools.md`), customTools.map(tool => `- ${tool.name}: ${tool.description}`).join('\n'), 'utf-8'),
       ]);
