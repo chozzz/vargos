@@ -36,6 +36,7 @@ export abstract class BaseChannelAdapter implements ChannelAdapter {
   protected latestMessageId = new Map<string, string>();
   protected transcribeFn?: (filePath: string) => Promise<string>;
   protected describeFn?: (filePath: string) => Promise<string>;
+  protected extractFn?: (filePath: string, mimeType: string) => Promise<{ text: string }>;
 
   constructor(
     instanceId: string,
@@ -47,6 +48,7 @@ export abstract class BaseChannelAdapter implements ChannelAdapter {
     this.onInboundMessage = deps.onInbound;
     this.transcribeFn = deps.transcribe;
     this.describeFn = deps.describe;
+    this.extractFn = deps.extract;
     this.log = createLogger(instanceId);
     this.debounceMs = debounceMs ?? 2000;
     this.debouncer = this.createDebouncer();
@@ -197,7 +199,21 @@ export abstract class BaseChannelAdapter implements ChannelAdapter {
       }
     }
 
-    // Default handling for audio (no transcription) or other media types
+    if (mediaType === 'document' && this.extractFn) {
+      try {
+        const { text } = await this.extractFn(savedPath, mimeType);
+        await route(`${text}\n\n[Document extracted from: ${savedPath}]`);
+        return {
+          caption: text,
+          savedPath,
+          mimeType
+        }
+      } catch (err) {
+        this.log.warn(`Document extraction failed: ${err}. Falling back to file path.`);
+      }
+    }
+
+    // Default handling for audio (no transcription), documents (no extraction), or other media types
     const label = MEDIA_TYPE_LABELS[mediaType] ?? 'Media';
     const durationSuffix = duration != null ? `, ${duration}s` : '';
     const fallbackCaption = caption || `[${label}${durationSuffix}]`;

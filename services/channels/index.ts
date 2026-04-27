@@ -323,6 +323,8 @@ export class ChannelService {
         this.bus.call('media.transcribeAudio', { filePath }).then(r => r.text),
       describe: (filePath: string) =>
         this.bus.call('media.describeImage', { filePath }).then(r => r.description),
+      extract: (filePath: string, mimeType: string) =>
+        this.bus.call('media.extractDocument', { filePath, mimeType }),
     };
 
     return this.registry.createAdapter(entry, deps);

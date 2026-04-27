@@ -260,10 +260,6 @@ export class TelegramAdapter extends BaseChannelAdapter {
 
     const sessionKey = this.buildSessionKey(chatId);
     const label = msg.photo?.length ? 'photo' : (msg.voice ? 'voice' : msg.audio ? 'audio' : 'document');
-<<<<<<< HEAD
-    this.log.debug(`received ${label} from ${chatId}`);
-=======
->>>>>>> 8d94e07 (feat: add document media support with normalized validation)
 
     try {
       const { caption, savedPath, mimeType } = await this.processInboundMedia(
@@ -272,7 +268,7 @@ export class TelegramAdapter extends BaseChannelAdapter {
         normalizedMsg,
         (text) => this.onInboundMessage!(sessionKey, { ...normalizedMsg, text }),
       );
-      this.log.debug(`received ${label} from ${chatId}: ${caption} - ${savedPath}`);
+      this.log.debug(`received ${label} from ${chatId}: ${caption} (${mimeType}) - ${savedPath}`);
     } catch (err) {
       this.log.warn(`${label} download failed for ${chatId}: ${err}`);
     }

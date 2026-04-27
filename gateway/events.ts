@@ -117,6 +117,7 @@ export interface EventMap {
   // Media
   'media.transcribeAudio': { params: { filePath: string }; result: { text: string } };
   'media.describeImage': { params: { filePath: string }; result: { description: string } };
+  'media.extractDocument': { params: { filePath: string; mimeType: string }; result: { text: string } };
 
   // Web
   'web.fetch': { params: { url: string; extractMode?: 'markdown' | 'text'; maxChars?: number }; result: { text: string } };

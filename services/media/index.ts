@@ -1,7 +1,7 @@
 /**
- * Media service — audio transcription and image description via provider abstraction
+ * Media service — audio transcription, image description, and document extraction
  *
- * Callable: media.transcribeAudio, media.describeImage
+ * Callable: media.transcribeAudio, media.describeImage, media.extractDocument
  */
 
 import { z } from 'zod';
@@ -11,6 +11,7 @@ import type { EventMap } from '../../gateway/events.js';
 import type { AppConfig } from '../../services/config/index.js';
 import { createLogger } from '../../lib/logger.js';
 import { createProvider } from './providers/index.js';
+import { extractDocument } from './extract-document.js';
 
 const log = createLogger('media');
 
@@ -54,6 +55,14 @@ export class MediaService {
     const { provider, model, apiKey, baseUrl } = this.resolveProviderConfig(imgRef);
     const description = await createProvider(provider).describeImage(params.filePath, model, apiKey, baseUrl);
     return { description };
+  }
+
+  @register('media.extractDocument', {
+    description: 'Extract text from documents (PDF, DOCX, XLSX, TXT, MD).',
+    schema: z.object({ filePath: z.string(), mimeType: z.string() }),
+  })
+  async extractDocument(params: EventMap['media.extractDocument']['params']): Promise<EventMap['media.extractDocument']['result']> {
+    return extractDocument(params.filePath, params.mimeType);
   }
 }
 

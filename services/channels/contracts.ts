@@ -38,6 +38,7 @@ export interface AdapterDeps {
   onInbound: OnInboundMessageFn;
   transcribe?: (filePath: string) => Promise<string>;
   describe?: (filePath: string) => Promise<string>;
+  extract?: (filePath: string, mimeType: string) => Promise<{ text: string }>;
 }
 
 /**

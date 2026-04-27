@@ -198,12 +198,6 @@ export class WhatsAppAdapter extends BaseChannelAdapter {
     }
 
     if (msg.mediaType) {
-      // Document support not yet implemented for WhatsApp
-      if (msg.mediaType === 'document') {
-        this.log.info(`document received (not yet supported): ${normalizedMsg.fromUserId}`);
-        return;
-      }
-
       this.log.debug(`received ${msg.mediaType} from ${normalizedMsg.fromUserId}`);
       this.debouncer.flush(chatId);
       this.handleMedia(msg, normalizedMsg).catch((err) => {
@@ -260,7 +254,7 @@ export class WhatsAppAdapter extends BaseChannelAdapter {
       normalizedMsg,
       (text) => this.onInboundMessage!(sessionKey, { ...normalizedMsg, text }),
     );
-    this.log.debug(`received ${msg.mediaType} from ${userId}: ${caption} - ${savedPath}`);
+    this.log.debug(`received ${msg.mediaType} from ${userId}: ${caption} (${mimeType}) - ${savedPath}`);
   }
 
   /**
