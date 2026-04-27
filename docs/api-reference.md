@@ -330,7 +330,7 @@ channelId:conversationId[:senderId[:threadId]]
 ```
 
 Examples:
-- `whatsapp-personal:61423222658` — DM from this user
+- `whatsapp-personal:+1234567890` — DM from this user
 - `telegram-work:G12345:U99876` — Group message from specific user
 - `cli:main:main:1234` — CLI conversation with specific thread
 

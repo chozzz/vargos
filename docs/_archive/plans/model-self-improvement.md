@@ -146,7 +146,7 @@ A weekly cron that runs the full loop autonomously:
   "name": "Weekly Model Finetuning",
   "schedule": "0 2 * * 0",
   "task": "Curate training data from the past 7 days of conversations. Finetune qwen2.5-7b as vargos-qwen-weekly. Run eval suite. If eval score > 0.85, register as default for cron tasks. Report results.",
-  "notify": ["whatsapp:61423222658"]
+  "notify": ["whatsapp:+1234567890"]
 }
 ```
 

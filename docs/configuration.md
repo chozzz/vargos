@@ -84,7 +84,7 @@ Priority: `config.paths.dataDir` > `VARGOS_DATA_DIR` env > `~/.vargos`
       "type": "whatsapp",
       "id": "wa-personal",
       "enabled": true,
-      "allowFrom": ["61423222658"]
+      "allowFrom": ["+1234567890"]
     }
   ],
 
@@ -129,7 +129,7 @@ Priority: `config.paths.dataDir` > `VARGOS_DATA_DIR` env > `~/.vargos`
       "name": "GitHub PR",
       "token": "secret-token",
       "transform": "./transforms/github.js",
-      "notify": ["telegram:tg-bot:61423222658"]
+      "notify": ["telegram:tg-bot:+1234567890"]
     }
   ],
 
@@ -248,7 +248,7 @@ enabled: true
 activeHours: [8, 22]
 activeHoursTimezone: "Australia/Sydney"
 notify:
-  - whatsapp-vadi-indo:61423222658
+  - whatsapp-vadi-indo:+1234567890
 ---
 
 Research today's AI news, GitHub trending, and package releases. Synthesize into a report.
@@ -267,7 +267,7 @@ Reference workspace files with ${WORKSPACE_DIR} and system paths with ${DATA_DIR
 | `enabled` | boolean | no | Whether the task is active (default: `true`) |
 | `activeHours` | array | no | Hour window for conditional execution: `[startHour, endHour]` (0-23). Task only runs during these hours. |
 | `activeHoursTimezone` | string | no | IANA timezone for interpreting `activeHours` (e.g., `"Australia/Sydney"`) |
-| `notify` | array | no | Channel session keys for result delivery (e.g., `["whatsapp-vadi-indo:61423222658"]`) |
+| `notify` | array | no | Channel session keys for result delivery (e.g., `["whatsapp-vadi-indo:+1234567890"]`) |
 
 ### Variable Interpolation
 
