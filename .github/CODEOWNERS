@@ -1,0 +1,15 @@
+# Code ownership and review requirements
+
+# Default: all PRs require review from repository owner
+* @chozzz
+
+# Service-specific owners (future: add team members as needed)
+/services/channels/ @chozzz
+/gateway/ @chozzz
+/lib/ @chozzz
+/agent/ @chozzz
+
+# Critical configuration
+CLAUDE.md @chozzz
+package.json @chozzz
+.github/ @chozzz

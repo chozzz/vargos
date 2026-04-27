@@ -28,6 +28,45 @@ pnpm lint             # eslint + typecheck
 config → log → fs → web → memory → media → agent → [cron → channels] → [webhooks → mcp] → [tcp server start] → bus.onReady emit
 ```
 
+## Merge to Main Workflow
+
+**Only route: PR from `dev` → `main` with squash merge**
+
+### Process
+1. **Develop** on `dev` or feature branches (never commit to `main`)
+   - Local pre-push hook blocks `git push origin main`
+2. **Push to GitHub** and create PR `dev` → `main`
+3. **All checks must pass:**
+   - Lint & type checking (`pnpm run lint`, `pnpm run typecheck`)
+   - Test suite (`pnpm run test:run`)
+   - CodeQL security analysis
+   - Semgrep SAST scanning
+   - Dependency audit
+4. **Squash merge only** (GitHub enforces this; merge commits blocked)
+5. **Auto-delete branch** after merge
+
+### Status Checks Required for Main
+- `lint-and-typecheck` — ESLint + TypeScript
+- `test` — vitest test suite
+- `codeql` — GitHub CodeQL analysis
+
+### If You Commit to Main by Accident
+```bash
+git reset --soft HEAD~1    # Undo last commit, keep changes staged
+git checkout dev
+git commit -m "your message"
+git push origin dev
+# Then create PR on GitHub
+```
+
+### Ruleset Details
+- **Enforce: Main Branch Safety & Quality Gates** (GitHub Ruleset ID: 15580628)
+  - Requires 1 approval before merge
+  - Requires all status checks pass (strict mode)
+  - Requires conversation resolution
+  - Prevents direct pushes to main
+  - Allows only squash merge strategy
+
 ## Key Patterns
 
 - Services extend a class with `@on` (pure events) and `@register` (callable RPC) decorated methods
