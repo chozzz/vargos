@@ -175,7 +175,7 @@ export class TelegramAdapter extends BaseChannelAdapter {
     const msg = update.message;
     if (!msg) return;
 
-    if (!msg.text && !msg.photo && !msg.voice && !msg.audio) return;
+    if (!msg.text && !msg.photo && !msg.voice && !msg.audio && !msg.document) return;
 
     const normalizedMsg = normalizeTelegramMessage(msg, { botUserId: this.botUser?.id || null });
     if (!normalizedMsg) return;
@@ -184,7 +184,7 @@ export class TelegramAdapter extends BaseChannelAdapter {
     const msgKey = `${chatId}:${msg.message_id}`;
     if (!this.dedupe.add(msgKey)) return;
 
-    if (msg.photo || msg.voice || msg.audio) {
+    if (msg.photo || msg.voice || msg.audio || msg.document) {
       this.debouncer.flush(chatId);
       this.log.debug(`${msg.chat.type} media from user ${normalizedMsg.fromUserId}`);
       this.handleMedia(chatId, msg, normalizedMsg).catch((err) => {
@@ -232,6 +232,13 @@ export class TelegramAdapter extends BaseChannelAdapter {
       return { buffer, mimeType: 'image/jpeg', mediaType: 'image', caption: tgMsg.caption };
     }
 
+    if (tgMsg.document) {
+      const buffer = await this.downloadFile(tgMsg.document.file_id);
+      const mimeType = tgMsg.document.mime_type || 'application/octet-stream';
+      const caption = tgMsg.caption || `[Document: ${tgMsg.document.file_name}]`;
+      return { buffer, mimeType, mediaType: 'document', caption };
+    }
+
     const fileId = tgMsg.voice?.file_id ?? tgMsg.audio?.file_id;
     if (!fileId) return null;
 
@@ -251,7 +258,7 @@ export class TelegramAdapter extends BaseChannelAdapter {
     }
 
     const sessionKey = this.buildSessionKey(chatId);
-    const label = msg.photo?.length ? 'photo' : (msg.voice ? 'voice' : 'audio');
+    const label = msg.photo?.length ? 'photo' : (msg.voice ? 'voice' : msg.audio ? 'audio' : 'document');
     this.log.debug(`received ${label} from ${chatId}`);
 
     try {

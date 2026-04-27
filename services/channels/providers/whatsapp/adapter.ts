@@ -196,6 +196,12 @@ export class WhatsAppAdapter extends BaseChannelAdapter {
     if (!normalizedMsg) return;
 
     if (msg.mediaType) {
+      // Document support not yet implemented for WhatsApp
+      if (msg.mediaType === 'document') {
+        this.log.info(`document received (not yet supported): ${normalizedMsg.fromUserId}`);
+        return;
+      }
+
       this.log.debug(`received ${msg.mediaType} from ${normalizedMsg.fromUserId}`);
       this.debouncer.flush(chatId);
       this.handleMedia(msg, normalizedMsg).catch((err) => {
