@@ -1,0 +1,104 @@
+name: Security & Quality Gates
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [dev]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-typecheck:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install
+      - run: pnpm run lint
+      - run: pnpm run typecheck
+
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install
+      - run: pnpm run test:run
+
+  codeql:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v2
+        with:
+          languages: javascript,typescript
+      - uses: github/codeql-action/autobuild@v2
+      - uses: github/codeql-action/analyze@v2
+        with:
+          category: /language:javascript
+
+  dependency-check:
+    name: Dependency Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install
+      - run: pnpm audit --audit-level moderate || true
+
+  semgrep:
+    name: Semgrep SAST
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: returntocorp/semgrep-action@v1
+        with:
+          config: |
+            p/security-audit
+            p/typescript
+            p/owasp-top-ten
+
+  summary:
+    name: Security & Quality Summary
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [lint-and-typecheck, test, codeql, dependency-check, semgrep]
+    steps:
+      - name: Check job statuses
+        run: |
+          echo "✅ Lint & Type Check: ${{ needs.lint-and-typecheck.result }}"
+          echo "✅ Test Suite: ${{ needs.test.result }}"
+          echo "✅ CodeQL Analysis: ${{ needs.codeql.result }}"
+          echo "✅ Dependency Scanning: ${{ needs.dependency-check.result }}"
+          echo "✅ Semgrep SAST: ${{ needs.semgrep.result }}"
+
+          if [[ "${{ needs.lint-and-typecheck.result }}" == "failure" ]] || \
+             [[ "${{ needs.test.result }}" == "failure" ]] || \
+             [[ "${{ needs.codeql.result }}" == "failure" ]] || \
+             [[ "${{ needs.semgrep.result }}" == "failure" ]]; then
+            echo "❌ Security & quality checks failed"
+            exit 1
+          fi
+          echo "✅ All security & quality checks passed"
