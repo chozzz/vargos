@@ -138,9 +138,10 @@ export abstract class BaseChannelAdapter implements ChannelAdapter {
     sessionKey: string,
     normalizedMsg: NormalizedInboundMessage,
     route: (text: string) => Promise<void>,
-  ): Promise<void> {
+  ): Promise<{ caption: string; savedPath: string; mimeType: string }> {
     const source = await this.resolveMedia(msg);
-    if (!source) return;
+    const defaultReturn = { caption: '', savedPath: '', mimeType: '' };
+    if (!source) return defaultReturn;
 
     const { buffer, mimeType, mediaType, caption, duration } = source;
     const mediaDir = path.join(getDataPaths().dataDir, 'media');
@@ -152,7 +153,11 @@ export abstract class BaseChannelAdapter implements ChannelAdapter {
       const durationSuffix = duration != null ? `, ${duration}s` : '';
       const fallbackCaption = caption || `[${label}${durationSuffix}]`;
       await route(`${fallbackCaption}\n\n[${label} saved: ${savedPath}]`);
-      return;
+      return {
+        caption: fallbackCaption,
+        savedPath,
+        mimeType
+      }
     }
 
     if (mediaType === 'image') {
@@ -160,21 +165,33 @@ export abstract class BaseChannelAdapter implements ChannelAdapter {
         try {
           const description = await this.describeFn(savedPath);
           await route(`${description}\n\n[Image described from: ${savedPath}]`);
-          return;
+          return {
+            caption: description,
+            savedPath,
+            mimeType
+          }
         } catch (err) {
           this.log.warn(`Image description failed: ${err}. Falling back to caption.`);
         }
       }
       const text = caption || 'User sent an image.';
       await route(`${text}\n\n[Image saved: ${savedPath}]`);
-      return;
+      return {
+        caption: text,
+        savedPath,
+        mimeType
+      }
     }
 
     if (mediaType === 'audio' && this.transcribeFn) {
       try {
         const transcription = await this.transcribeFn(savedPath);
         await route(`${transcription}\n\n[Audio transcribed from: ${savedPath}]`);
-        return;
+        return {
+          caption: transcription,
+          savedPath,
+          mimeType
+        }
       } catch (err) {
         this.log.warn(`Audio transcription failed: ${err}. Falling back to file path.`);
       }
@@ -185,5 +202,10 @@ export abstract class BaseChannelAdapter implements ChannelAdapter {
     const durationSuffix = duration != null ? `, ${duration}s` : '';
     const fallbackCaption = caption || `[${label}${durationSuffix}]`;
     await route(`${fallbackCaption}\n\n[${label} saved: ${savedPath}]`);
+    return {
+      caption: fallbackCaption,
+      savedPath,
+      mimeType,
+    }
   }
 }
