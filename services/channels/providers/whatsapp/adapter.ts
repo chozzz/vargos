@@ -248,8 +248,8 @@ export class WhatsAppAdapter extends BaseChannelAdapter {
 
     await this.processInboundMedia(
       msg,
-      userId,
       sessionKey,
+      normalizedMsg,
       (text) => this.onInboundMessage!(sessionKey, { ...normalizedMsg, text }),
     );
   }

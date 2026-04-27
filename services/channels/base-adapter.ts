@@ -129,14 +129,14 @@ export abstract class BaseChannelAdapter implements ChannelAdapter {
   /**
    * Process inbound media message.
    * @param msg - Raw message from channel
-   * @param userId - User ID
    * @param sessionKey - Session key (channel:userId)
+   * @param normalizedMsg - Normalized message with flags (skipAgent, etc)
    * @param route - Function to route processed text to onInboundMessage
    */
   protected async processInboundMedia(
     msg: unknown,
-    userId: string,
     sessionKey: string,
+    normalizedMsg: NormalizedInboundMessage,
     route: (text: string) => Promise<void>,
   ): Promise<void> {
     const source = await this.resolveMedia(msg);
@@ -145,6 +145,15 @@ export abstract class BaseChannelAdapter implements ChannelAdapter {
     const { buffer, mimeType, mediaType, caption, duration } = source;
     const mediaDir = path.join(getDataPaths().dataDir, 'media');
     const savedPath = await saveMedia({ buffer, sessionKey, mimeType, mediaDir });
+
+    // Skip transcription for messages agent won't process (e.g., group mentions)
+    if (normalizedMsg.skipAgent) {
+      const label = MEDIA_TYPE_LABELS[mediaType] ?? 'Media';
+      const durationSuffix = duration != null ? `, ${duration}s` : '';
+      const fallbackCaption = caption || `[${label}${durationSuffix}]`;
+      await route(`${fallbackCaption}\n\n[${label} saved: ${savedPath}]`);
+      return;
+    }
 
     if (mediaType === 'image') {
       if (this.describeFn) {

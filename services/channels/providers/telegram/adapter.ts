@@ -257,8 +257,8 @@ export class TelegramAdapter extends BaseChannelAdapter {
     try {
       await this.processInboundMedia(
         { tgMsg: msg, chatId },
-        chatId,
         sessionKey,
+        normalizedMsg,
         (text) => this.onInboundMessage!(sessionKey, { ...normalizedMsg, text }),
       );
     } catch (err) {
