@@ -47,11 +47,54 @@ export const EXT_TO_MIME: Record<string, string> = {
   '.pdf': 'application/pdf',
 };
 
+// Typed MIME constants by media type
+export const IMAGE_MIMES = {
+  'image/jpeg': true,
+  'image/png': true,
+  'image/gif': true,
+  'image/webp': true,
+  'image/bmp': true,
+  'image/svg+xml': true,
+} as const;
+
+export const AUDIO_MIMES = {
+  'audio/ogg': true,
+  'audio/mpeg': true,
+  'audio/mp4': true,
+  'audio/wav': true,
+  'audio/webm': true,
+  'audio/flac': true,
+  'audio/x-m4a': true,
+  'audio/mp3': true,
+} as const;
+
+export const VIDEO_MIMES = {
+  'video/mp4': true,
+} as const;
+
+export const DOCUMENT_MIMES = {
+  'application/pdf': true,
+  'application/msword': true,
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': true,
+} as const;
+
+export type ImageMimeType = keyof typeof IMAGE_MIMES;
+export type AudioMimeType = keyof typeof AUDIO_MIMES;
+export type VideoMimeType = keyof typeof VIDEO_MIMES;
+export type DocumentMimeType = keyof typeof DOCUMENT_MIMES;
+
 /**
  * Get file extension for MIME type
  */
 export function extFromMime(mimeType: string): string {
   return MIME_EXT[mimeType] || '.bin';
+}
+
+/**
+ * Get MIME type from file extension
+ */
+export function getMimeTypeFromExt(ext: string): string {
+  return EXT_TO_MIME[ext.toLowerCase()] || 'image/jpeg';
 }
 
 /**

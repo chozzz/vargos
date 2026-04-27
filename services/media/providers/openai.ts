@@ -1,7 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { WHISPER_EXTS, MIME_TO_AUDIO_EXT, normalizeApiBaseUrl } from '../../../lib/media-transcribe.js';
-import { getMimeTypeFromExt } from '../../../lib/mime.js';
+import { WHISPER_EXTS, MIME_TO_AUDIO_EXT, normalizeApiBaseUrl, getMimeTypeFromExt } from '../../../lib/media-transcribe.js';
 import { validateHttpResponse } from '../../../lib/http-validate.js';
 import type { MediaProvider } from './provider.js';
 

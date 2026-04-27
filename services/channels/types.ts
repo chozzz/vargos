@@ -1,4 +1,4 @@
-import type { ChannelStatus } from '../../gateway/events.js';
+import type { OnInboundMessageFn, NormalizedInboundMessage } from './contracts.js';
 
 /** Channel adapter interface and types */
 
@@ -12,56 +12,10 @@ export interface InboundMediaSource {
   duration?: number;
 }
 
-export interface InboundMessageMetadata {
-  /** Unique message identifier for reactions (e.g., Telegram message_id) */
-  messageId?: string;
-  /** Media attachment metadata (audio, image) with content reference */
-  media?: {
-    data?: unknown; // Raw media data, will be extracted
-    [key: string]: unknown;
-  };
-  /** Image attachments for vision models */
-  images?: Array<{ data: string; mimeType: string }>;
-  /** Adapter-specific metadata passed through */
-  [key: string]: unknown;
-}
-
 export interface ExtractedMedia {
   filePath: string;
   mimeType: string;
 }
 
-export type OnInboundMessageFn = (
-  sessionKey: string,
-  content: string,
-  metadata?: InboundMessageMetadata,
-) => Promise<void>;
-
-export interface ChannelAdapter {
-  readonly type: ChannelType;
-  /** Unique instance id from config.id */
-  readonly instanceId: string;
-  status: ChannelStatus;
-
-  /** Connect and start receiving messages (init logic included) */
-  start(): Promise<void>;
-
-  /** Gracefully disconnect */
-  stop(): Promise<void>;
-
-  /** Send a text message (sessionKey encodes recipient) */
-  send(sessionKey: string, text: string): Promise<void>;
-
-  /** Send a media file (optional) */
-  sendMedia?(sessionKey: string, filePath: string, mimeType: string, caption?: string): Promise<void>;
-
-  /** React to a message with an emoji (optional) */
-  react?(sessionKey: string, messageId: string, emoji: string): Promise<void>;
-
-  startTyping(sessionKey: string, inToolExecution?: boolean): void;
-  resumeTyping(sessionKey: string): void;
-  stopTyping(sessionKey: string, final?: boolean): void;
-
-  /** Extract userId from sessionKey for adapter-specific use. */
-  extractUserId(sessionKey: string): string;
-}
+// Re-export from contracts for backward compatibility
+export type { OnInboundMessageFn, NormalizedInboundMessage };

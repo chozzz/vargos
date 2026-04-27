@@ -2,18 +2,17 @@
  * Channel service — manages external messaging adapters.
  *
  * Callable: channel.send, channel.sendMedia, channel.search, channel.get, channel.register
- * Pure events emitted: channel.onConnected, channel.onDisconnected, channel.onInbound
+ * Pure events emitted: channel.onConnected, channel.onDisconnected
  * Pure events subscribed: agent.onDelta, agent.onTool, agent.onCompleted
  *
  * Inbound flow:
- *   adapter → onInboundMessage → expand links → typing + reactions → agent.execute
- *   → agent.onTool updates reaction phase
- *   → agent.onCompleted stops typing + seals reaction + delivers reply
+ *   adapter → normalizer → pipeline → expand links → whitelist check → agent.execute
+ *   agent.onTool updates reaction phase
+ *   agent.onCompleted stops typing + seals reaction + delivers reply
  *
  * Reply routing:
  *   - Channel-triggered: agent.onCompleted looks up activeSessions, delivers to source
- *   - Non-channel (cron, etc): agent.onCompleted falls back to lastInteractiveSessionKey
- *     (only if sessionKey type is not a registered adapter)
+ *   - Non-channel (cron, etc): agent.onCompleted ignored — caller is responsible for reply delivery
  *
  * Outbound flow: channel.send → strip markdown → chunk → adapter.send
  */
@@ -22,40 +21,65 @@ import { z } from 'zod';
 import { on, register } from '../../gateway/decorators.js';
 import type { Bus } from '../../gateway/bus.js';
 import type { EventMap, ChannelInfo } from '../../gateway/events.js';
-import type { AppConfig, ChannelEntry, TelegramChannel, WhatsAppChannel } from '../../services/config/index.js';
+import type { AppConfig, ChannelEntry } from '../../services/config/index.js';
+import { ChannelEntrySchema } from '../../services/config/index.js';
 import { createLogger } from '../../lib/logger.js';
 import { toMessage } from '../../lib/error.js';
 import { stripMarkdown } from '../../lib/strip-markdown.js';
-import { parseSessionKey } from '../../lib/subagent.js';
-import { parseTarget } from './channel-target.js';
+import { parseChannelTarget } from '../../lib/subagent.js';
 import { paginate } from '../../lib/paginate.js';
-import type { ChannelAdapter, InboundMessageMetadata } from './types.js';
+import type { ChannelAdapter, ChannelProvider, NormalizedInboundMessage, AdapterDeps } from './contracts.js';
 import { deliverReply } from './delivery.js';
 import { extractMediaPaths } from './media-extract.js';
-import { expandLinks } from './link-expand.js';
-import { StatusReactionController } from './status-reactions.js';
-import { TelegramAdapter } from './telegram/adapter.js';
-import { WhatsAppAdapter } from './whatsapp/adapter.js';
+import { InboundMessagePipeline, type PipelineSession } from './pipeline.js';
+import { loadProviders } from './provider-loader.js';
 
 const log = createLogger('channels');
 
-interface ActiveSession {
-  adapter: ChannelAdapter;
-  reactionController?: StatusReactionController;
+// ── Provider Registry ──────────────────────────────────────────────────────────
+
+class ChannelRegistry {
+  private providers = new Map<string, ChannelProvider>();
+
+  register(provider: ChannelProvider): void {
+    this.providers.set(provider.type, provider);
+  }
+
+  async createAdapter(entry: ChannelEntry, deps: AdapterDeps): Promise<ChannelAdapter | null> {
+    const provider = this.providers.get(entry.type);
+    if (!provider) {
+      log.warn(`no provider for channel type: ${entry.type}`);
+      return null;
+    }
+    return provider.createAdapter(entry.id, entry, deps);
+  }
 }
 
 // ── ChannelService ─────────────────────────────────────────────────────────────
 
 export class ChannelService {
   private adapters = new Map<string, ChannelAdapter>();
-  private activeSessions = new Map<string, ActiveSession>();
-  private lastInteractiveSessionKey: string | null = null;
+  private activeSessions = new Map<string, PipelineSession>();
+  private registry = new ChannelRegistry();
+  private pipeline: InboundMessagePipeline;
 
   constructor(
     private readonly bus: Bus,
     private readonly config: AppConfig,
   ) {
-    this.bus.on('bus.onReady', () => this.startAllConfigured());
+    this.pipeline = new InboundMessagePipeline(bus, config);
+  }
+
+  async start(): Promise<void> {
+    await this.registerProviders();
+    this.startAllConfigured();
+  }
+
+  private async registerProviders(): Promise<void> {
+    const providers = await loadProviders();
+    for (const provider of providers) {
+      this.registry.register(provider);
+    }
   }
 
   async stop(): Promise<void> {
@@ -73,7 +97,7 @@ export class ChannelService {
   })
   async send(params: EventMap['channel.send']['params']): Promise<EventMap['channel.send']['result']> {
     const { sessionKey, text } = params;
-    const target = parseTarget(sessionKey);
+    const target = parseChannelTarget(sessionKey);
     if (!target) throw new Error(`Invalid session key: ${sessionKey}`);
 
     const adapter = this.adapters.get(target.channel);
@@ -106,7 +130,7 @@ export class ChannelService {
   })
   async sendMedia(params: EventMap['channel.sendMedia']['params']): Promise<EventMap['channel.sendMedia']['result']> {
     const { sessionKey, filePath, mimeType, caption } = params;
-    const target = parseTarget(sessionKey);
+    const target = parseChannelTarget(sessionKey);
     if (!target) throw new Error(`Invalid session key: ${sessionKey}`);
 
     const adapter = this.adapters.get(target.channel);
@@ -151,17 +175,17 @@ export class ChannelService {
 
   @register('channel.register', {
     description: 'Dynamically register a new channel adapter.',
-    schema: z.object({ id: z.string(), type: z.string() }),
+    schema: ChannelEntrySchema.and(z.object({ persist: z.boolean().optional() })),
   })
   async register(params: EventMap['channel.register']['params']): Promise<void> {
     if (this.adapters.has(params.id)) {
       log.info(`channel already registered: ${params.id}`);
       return;
     }
-    const entry = params as ChannelEntry;
+    const { persist, ...entry } = params;
     await this.startChannel(entry);
 
-    if (params.persist) {
+    if (persist) {
       const config = await this.bus.call('config.get', {});
       const exists = config.channels.some(c => c.id === entry.id);
       if (!exists) {
@@ -208,15 +232,12 @@ export class ChannelService {
     }
 
     const session = this.activeSessions.get(payload.sessionKey);
-    let targetSessionKey = payload.sessionKey;
-
-    if (!session && this.lastInteractiveSessionKey) {
-      const { type: sessionType } = parseSessionKey(payload.sessionKey);
-      if (!this.adapters.has(sessionType)) {
-        // Non-channel session with no active session — route to last interactive
-        targetSessionKey = this.lastInteractiveSessionKey;
-      }
+    if (!session) {
+      // Non-channel session with no active session — ignore completion
+      return;
     }
+
+    const targetSessionKey = payload.sessionKey;
 
     // Send reply based on success/error
     const sendReply = async () => {
@@ -250,68 +271,28 @@ export class ChannelService {
 
   // ── Inbound message handling ─────────────────────────────────────────────────
 
+  /**
+   * Process a normalized inbound message from an adapter.
+   * Called by adapters after normalizing their raw message format.
+   */
   async onInboundMessage(
     sessionKey: string,
-    content: string,
-    metadata?: InboundMessageMetadata,
+    message: NormalizedInboundMessage,
   ): Promise<void> {
-    const { type: channel } = parseSessionKey(sessionKey);
-    const adapter = this.adapters.get(channel);
-    if (!adapter) return;
-
-    this.lastInteractiveSessionKey = sessionKey;
-
-    const enrichedContent = await expandLinks(content, this.config.linkExpand).catch(() => content);
-
-    const inboundMeta: Record<string, unknown> = { type: 'task', channel, ...metadata };
-    if (inboundMeta.media && typeof inboundMeta.media === 'object') {
-      const { data: _data, ...rest } = inboundMeta.media as Record<string, unknown>;
-      inboundMeta.media = rest;
+    const target = parseChannelTarget(sessionKey);
+    if (!target) {
+      log.debug(`invalid session key: ${sessionKey}`);
+      return;
     }
 
-    // Start typing with tool execution flag (will pause after 2 mins, resume on tool completion)
-    adapter.startTyping(sessionKey, true);
-
-    const messageId = metadata?.messageId && typeof metadata.messageId === 'string' ? metadata.messageId : undefined;
-
-    let reactionController: StatusReactionController | undefined;
-    if (adapter.react && messageId) {
-      reactionController = new StatusReactionController(
-        { react: adapter.react.bind(adapter) }, sessionKey, messageId,
-      );
-      reactionController.setThinking();
+    const adapter = this.adapters.get(target.channel);
+    if (!adapter) {
+      log.debug(`no adapter for channel: ${target.channel}`);
+      return;
     }
 
-    this.activeSessions.set(sessionKey, { adapter, reactionController });
-
-    log.info(`inbound: ${sessionKey} "${enrichedContent.slice(0, 80)}"`);
-
-    // Build agent.execute params from inbound metadata
-    const executeParams: EventMap['agent.execute']['params'] = { sessionKey, task: enrichedContent };
-    if (inboundMeta.images && Array.isArray(inboundMeta.images)) {
-      executeParams.images = inboundMeta.images as EventMap['agent.execute']['params']['images'];
-    }
-
-    // Execute agent (response comes via agent.onCompleted event)
-    // Handle both sync errors (e.g., tool not found) and async execution errors
-    this.bus.call('agent.execute', executeParams).catch(err => {
-      const session = this.activeSessions.get(sessionKey);
-      if (!session) return;
-
-      const errorMsg = toMessage(err);
-      log.error(`agent execution failed: ${errorMsg}`);
-
-      this.activeSessions.delete(sessionKey);
-      session.adapter.stopTyping(sessionKey);
-
-      this.bus.call('channel.send', { sessionKey, text: `System error: ${errorMsg}` })
-        .catch(sendErr => log.error(`failed to send error message: ${toMessage(sendErr)}`));
-
-      if (session.reactionController) {
-        session.reactionController.setError();
-        session.reactionController.dispose();
-      }
-    });
+    // Delegate to pipeline for policy orchestration
+    await this.pipeline.process(sessionKey, message, adapter, this.activeSessions);
   }
 
   // ── Channel startup ──────────────────────────────────────────────────────────
@@ -336,35 +317,15 @@ export class ChannelService {
   }
 
   private async createAdapter(entry: ChannelEntry): Promise<ChannelAdapter | null> {
-    const transcribeFn = (filePath: string) =>
-      this.bus.call('media.transcribeAudio', { filePath }).then(r => r.text);
-    const describeFn = (filePath: string) =>
-      this.bus.call('media.describeImage', { filePath }).then(r => r.description);
+    const deps: AdapterDeps = {
+      onInbound: this.onInboundMessage.bind(this),
+      transcribe: (filePath: string) =>
+        this.bus.call('media.transcribeAudio', { filePath }).then(r => r.text),
+      describe: (filePath: string) =>
+        this.bus.call('media.describeImage', { filePath }).then(r => r.description),
+    };
 
-    switch (entry.type) {
-      case 'telegram': {
-        const cfg = entry as TelegramChannel;
-        const adapter = new TelegramAdapter(
-          entry.id, cfg.botToken, cfg.allowFrom,
-          this.onInboundMessage.bind(this), cfg.debounceMs,
-        );
-        adapter.setTranscribeFn(transcribeFn);
-        adapter.setDescribeFn(describeFn);
-        return adapter;
-      }
-      case 'whatsapp': {
-        const cfg = entry as WhatsAppChannel;
-        const adapter = new WhatsAppAdapter(
-          entry.id, cfg.allowFrom,
-          this.onInboundMessage.bind(this), cfg.debounceMs,
-        );
-        adapter.setTranscribeFn(transcribeFn);
-        adapter.setDescribeFn(describeFn);
-        return adapter;
-      }
-      default:
-        return null;
-    }
+    return this.registry.createAdapter(entry, deps);
   }
 
   private async startAllConfigured(): Promise<void> {
@@ -391,6 +352,7 @@ export class ChannelService {
 export async function boot(bus: Bus): Promise<{ stop(): Promise<void> }> {
   const config = await bus.call('config.get', {});
   const svc = new ChannelService(bus, config);
+  await svc.start();
   bus.bootstrap(svc);
   return { stop: () => svc.stop() };
 }

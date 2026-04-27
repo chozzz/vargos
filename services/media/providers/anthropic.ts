@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { getMimeTypeFromExt } from '../../../lib/mime.js';
+import { getMimeTypeFromExt } from '../../../lib/media-transcribe.js';
 import type { MediaProvider } from './provider.js';
 
 export class AnthropicProvider implements MediaProvider {

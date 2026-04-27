@@ -18,9 +18,12 @@ import { createLogger } from '../../lib/logger.js';
 import { parseDirectives } from './directives.js';
 import { withTimeout } from '../../lib/timeout.js';
 import { interpolatePrompt } from './prompt-interpolate.js';
+import { parseFrontmatter } from '../../lib/frontmatter.js';
+import { truncate } from '../../lib/truncate.js';
 import type { AgentDeps } from './schema.js';
-import { promises as fs } from 'node:fs';
+import { existsSync, promises as fs } from 'node:fs';
 import { getDataPaths } from '../../lib/paths.js';
+import { parseSessionKey } from '../../lib/subagent.js';
 
 // Pi SDK imports
 import {
@@ -33,13 +36,6 @@ import {
   type AgentSession,
   type ToolDefinition,
 } from '@mariozechner/pi-coding-agent';
-
-// ImageContent type for vision models (matches @mariozechner/pi-ai)
-type ImageContent = {
-  type: 'image';
-  data: string;      // base64 encoded
-  mimeType: string;
-};
 
 // PiAgent event types for type-safe event mapping
 import type { AgentSessionEvent } from '@mariozechner/pi-coding-agent';
@@ -59,9 +55,7 @@ export class AgentService {
   protected sessions = new Map<string, AgentSession>();
   private activeRuns = new Set<string>();
 
-  protected dataDir: string;
   protected agentDir: string;
-  protected sessionsDir: string;
   protected authStorage: AuthStorage;
   protected modelRegistry: ModelRegistry;
   protected settings: SettingsManager;
@@ -71,9 +65,7 @@ export class AgentService {
     this.config = deps.config;
 
     const paths = getDataPaths();
-    this.dataDir = paths.dataDir;
-    this.agentDir = path.join(this.dataDir, 'agent');
-    this.sessionsDir = paths.sessionsDir;
+    this.agentDir = path.join(paths.dataDir, 'agent');
 
     // Use ~/.vargos/agent for auth and models (override PiAgent defaults)
     const authJsonPath = path.join(this.agentDir, 'auth.json');
@@ -82,7 +74,7 @@ export class AgentService {
     this.authStorage = AuthStorage.create(authJsonPath);
     this.modelRegistry = ModelRegistry.create(this.authStorage, modelsJsonPath);
 
-    this.settings = SettingsManager.create(this.dataDir, this.agentDir);
+    this.settings = SettingsManager.create(paths.dataDir, this.agentDir);
     // NOTE: SettingsManager loads ~/.vargos/agent/models.json which has the
     // authoritative provider + model definitions. Pi Agent is the source of truth.
   }
@@ -93,36 +85,40 @@ export class AgentService {
    * Note: sessionKey is declared optional here because it's auto-injected by
    * wrapEventAsToolDefinition() when the agent calls this as a tool. Direct callers
    * (channels, cron, webhooks, TCP) still provide sessionKey via EventMap.
+   * 
+   * Schema for bus event is different than runtime types AgentExecuteParams.
+   * e.g. metadata is not injected here on purpose.
    */
   @register('agent.execute', {
-    description: 'Delegates a task to another agent / subagent.',
+    description: 'Executes a task with the agent, optionally delegating to a subagent.',
     schema: z.object({
-      // sessionKey is injected by wrapEventAsToolDefinition — the agent never provides it.
-      // Declared optional so the decorator's type inference matches the schema shape.
-      sessionKey: z.string().optional(),
-      task: z.string().describe('The task to delegate to the agent.'),
-      cwd: z.string().describe('The working directory for the agent.').optional(),
-      images: z.array(z.object({
-        data: z.string(),
-        mimeType: z.string(),
-      })).describe('The images to pass to the agent.').optional(),
-    }),
+      task: z.string().describe('The task to execute.'),
+      metadata: z.object({
+        cwd: z.string().optional().describe('The current working directory to use for the agent.'),
+        model: z.string().optional().describe('Model override in format provider:modelId.'),
+        instructionsFile: z.string().optional().describe('Path to custom instructions .md file.'),
+        channelType: z.string().optional().describe('Type of channel (e.g., telegram, whatsapp).'),
+        fromUser: z.string().optional().describe('User display name.'),
+        botName: z.string().optional().describe('Bot display name.'),
+      }).optional().describe('Optional metadata for the execution context.'),
+    }).passthrough(),
   })
   async execute(params: EventMap['agent.execute']['params']): Promise<EventMap['agent.execute']['result']> {
     if (!params.sessionKey) {
       throw new Error('sessionKey is required for agent.execute');
     }
 
+    const metadata = params.metadata ?? {};
+
+    // Validate model override if provided
+    if (metadata?.model) {
+      this.validateModel(metadata.model);
+    }
+
     const directives = parseDirectives(params.task);
     const task = interpolatePrompt(directives.cleaned || params.task);
 
-    const session = await this.getOrCreateSession(params.sessionKey, params.cwd);
-
-    const images: ImageContent[] | undefined = params.images?.map(img => ({
-      type: 'image' as const,
-      data: img.data,
-      mimeType: img.mimeType,
-    }));
+    const session = await this.getOrCreateSession(params.sessionKey, params.metadata);
 
     // Set thinking level from task directives if present
     if (directives.thinkingLevel) {
@@ -131,7 +127,7 @@ export class AgentService {
 
     this.activeRuns.add(params.sessionKey);
     try {
-      await withTimeout(session.prompt(task, { images, streamingBehavior: 'steer' }), EXECUTION_TIMEOUT_MS, `Agent execution timeout after ${EXECUTION_TIMEOUT_MS}ms`);
+      await withTimeout(session.prompt(task, { streamingBehavior: 'steer' }), EXECUTION_TIMEOUT_MS, `Agent execution timeout after ${EXECUTION_TIMEOUT_MS}ms`);
     } finally {
       this.activeRuns.delete(params.sessionKey);
     }
@@ -139,6 +135,30 @@ export class AgentService {
     const response = this.extractResponse(session);
     log.info(`Agent response length: ${response?.length ?? 0}`);
     return { response };
+  }
+
+  /**
+   * agent.appendMessage — Append message to session JSONL without executing agent.
+   * Used for non-whitelisted messages (skipAgent=true) to record in history silently.
+   * Internal only — not exposed as an agent tool.
+   */
+  @register('agent.appendMessage')
+  async appendMessage(params: EventMap['agent.appendMessage']['params']): Promise<void> {
+    const session = await this.getOrCreateSession(params.sessionKey, params.metadata);
+    const sessionFile = session.sessionManager.getSessionFile();
+
+    if (!sessionFile) {
+      log.debug(`No session file for ${params.sessionKey}, skipping append`);
+      return;
+    }
+
+    log.debug(`Appending message to session ${params.sessionKey} (no execution)`);
+    session.sessionManager.appendMessage({
+      timestamp: Date.now(),
+      role: 'user',
+      content: params.task,
+    });
+    session.exportToJsonl(sessionFile);
   }
 
   /**
@@ -155,27 +175,25 @@ export class AgentService {
   /**
    * Get or create AgentSession for sessionKey.
    */
-  protected async getOrCreateSession(sessionKey: string, cwd?: string): Promise<AgentSession> {
+  protected async getOrCreateSession(sessionKey: string, metadata?: EventMap['agent.execute']['params']['metadata']): Promise<AgentSession> {
     const cached = this.sessions.get(sessionKey);
     if (cached) return cached;
 
-    const effectiveCwd = cwd ?? this.dataDir;
+    const paths = getDataPaths();
 
-    const sessionDir = path.join(this.sessionsDir, sessionKey.replace(/:/g, path.sep));
+    const effectiveCwd = metadata?.cwd ?? paths.dataDir;
+
+    const sessionDir = path.join(paths.sessionsDir, sessionKey.replace(/:/g, path.sep));
+    const sessionManager = SessionManager.create(effectiveCwd, sessionDir);
+
     await fs.mkdir(sessionDir, { recursive: true });
     await fs.mkdir(this.agentDir, { recursive: true });
 
-    const sessionManager = SessionManager.create(effectiveCwd, sessionDir);
-
     const customTools = await this.getCustomTools(sessionKey);
-    const systemPrompt = await this.getSystemPrompt(sessionKey, cwd);
+    const rawSystemPrompt = await this.getSystemPrompt(sessionKey, metadata);
+    const resourceLoader = await this.createResourceLoader(rawSystemPrompt, effectiveCwd);
 
-    // this.logSystemPrompt(systemPrompt);
-    // this.logTools(customTools);
-
-    const resourceLoader = await this.createResourceLoader(systemPrompt, cwd);
-
-    log.debug(`Creating agent session for ${sessionKey} in ${effectiveCwd}. (with ${customTools.length} tools and ${systemPrompt?.length} chars system prompt).`);
+    log.debug(`Creating agent session for ${sessionKey} in ${effectiveCwd}. (with ${customTools.length} tools and ${rawSystemPrompt?.length} chars system prompt).`);
 
     const { session } = await createAgentSession({
       cwd: effectiveCwd,
@@ -184,10 +202,18 @@ export class AgentService {
       settingsManager: this.settings,
       authStorage: this.authStorage,
       modelRegistry: this.modelRegistry,
-      tools: [],
       customTools,
       resourceLoader,
     });
+
+    // Store system prompt in session directory
+    if (process.env.LOG_LEVEL === 'debug') {
+      log.debug(`Storing system prompt and custom tools in session directory: ${sessionDir}`);
+      await Promise.all([
+        fs.writeFile(path.join(sessionDir, `systemPrompt.md`), session.systemPrompt ?? '', 'utf-8'),
+        fs.writeFile(path.join(sessionDir, `customTools.md`), customTools.map(tool => `- ${tool.name}: ${tool.description}`).join('\n'), 'utf-8'),
+      ]);
+    }
 
     this.subscribeToSessionEvents(session, sessionKey);
 
@@ -274,7 +300,8 @@ export class AgentService {
    * prompt templates. We override systemPrompt with our Vargos bootstrap files.
    */
   protected async createResourceLoader(systemPromptOverride?: string, cwd?: string): Promise<DefaultResourceLoader> {
-    const effectiveCwd = cwd ?? this.dataDir;
+    const paths = getDataPaths();
+    const effectiveCwd = cwd ?? paths.workspaceDir;
     const skillsDir = path.join(this.agentDir, 'skills');
 
     const resourceLoader = new DefaultResourceLoader({
@@ -293,40 +320,86 @@ export class AgentService {
     return resourceLoader;
   }
 
-
   /**
-   * Build system prompt by merging bootstrap files from workspace and optional cwd.
+   * Build system prompt by merging bootstrap files from workspace, optional cwd, and optional instructionsFile.
    */
-  private async getSystemPrompt(_sessionKey: string, cwd?: string): Promise<string | undefined> {
-    const sections: string[] = [];
+  private async getSystemPrompt(sessionKey: string, metadata?: EventMap['agent.execute']['params']['metadata']): Promise<string | undefined> {
     const bootstrapFiles = ['CLAUDE.md', 'AGENTS.md', 'SOUL.md', 'TOOLS.md'];
     const maxCharsPerFile = 6000;
 
-    const paths = getDataPaths();
-    const workspaceDir = paths.workspaceDir;
+    const dirs = this.collectBootstrapDirs(metadata);
 
-    const dirs = [workspaceDir];
-    if (cwd && path.resolve(cwd) !== path.resolve(workspaceDir)) {
-      dirs.push(cwd);
-    }
-
+    // Collect bootstrap file paths and instructionsFile
+    const filePathsToLoad: Array<{ type: 'bootstrap' | 'instructions'; dir?: string; filename?: string; path: string }> = [];
     for (const dir of dirs) {
       for (const filename of bootstrapFiles) {
-        const filePath = path.join(dir, filename);
+        filePathsToLoad.push({
+          type: 'bootstrap',
+          dir,
+          filename,
+          path: path.join(dir, filename),
+        });
+      }
+    }
+
+    if (metadata?.instructionsFile) {
+      filePathsToLoad.push({
+        type: 'instructions',
+        path: metadata.instructionsFile,
+      });
+    }
+
+    // Load all files in parallel
+    const fileContents = await Promise.all(
+      filePathsToLoad.map(async (item) => {
         try {
-          let content = await fs.readFile(filePath, 'utf-8');
+          const content = await fs.readFile(item.path, 'utf-8');
 
-          if (content.length > maxCharsPerFile) {
-            const headChars = Math.floor(maxCharsPerFile * 0.7);
-            const tailChars = Math.floor(maxCharsPerFile * 0.2);
-            content = `${content.slice(0, headChars)}\n\n[...truncated...]\n\n${content.slice(-tailChars)}`;
+          if (item.type === 'bootstrap') {
+            const truncated = truncate(content, maxCharsPerFile);
+            log.debug(`Loaded ${item.dir}/${item.filename}: ${truncated.length} chars`);
+            return {
+              label: `<!-- ${item.dir}/${item.filename} -->`,
+              content: truncated.trim(),
+            };
+          } else {
+            // instructionsFile: validate extension, parse frontmatter, extract body
+            if (!item.path.endsWith('.md')) {
+              log.error(`instructionsFile must be a .md file: ${item.path}`);
+              return null;
+            }
+
+            const parsed = parseFrontmatter(content);
+            if (!parsed) {
+              log.debug(`instructionsFile has no frontmatter: ${item.path}`);
+              return null;
+            }
+
+            if (parsed.meta.type !== 'prompt') {
+              log.debug(`instructionsFile type is not 'prompt': ${parsed.meta.type}`);
+              return null;
+            }
+
+            const body = truncate(parsed.body, maxCharsPerFile);
+            log.debug(`Loaded instructionsFile: ${item.path} (${body.length} chars)`);
+            return {
+              label: `<!-- ${item.path} -->`,
+              content: body.trim(),
+            };
           }
-
-          sections.push(`<!-- ${dir}/${filename} -->`, content.trim(), '');
-          log.debug(`Loaded ${dir}/${filename}: ${content.length} chars`);
         } catch {
-          log.debug(`${dir}/${filename}: not found`);
+          const label = item.type === 'bootstrap' ? `${item.dir}/${item.filename}` : item.path;
+          log.debug(`${label}: not found`);
+          return null;
         }
+      }),
+    );
+
+    // Collect non-null results in order
+    const sections: string[] = [];
+    for (const result of fileContents) {
+      if (result) {
+        sections.push(result.label, result.content, '');
       }
     }
 
@@ -336,7 +409,8 @@ export class AgentService {
     }
 
     const prompt = sections.join('\n');
-    return interpolatePrompt(prompt);
+    const context = this.buildPromptContext(sessionKey, metadata);
+    return interpolatePrompt(prompt, context);
   }
 
   /**
@@ -346,28 +420,48 @@ export class AgentService {
     return await createCustomTools(sessionKey, this.bus);
   }
 
-  // ── Debug Mode ─────────────────────────────────────────────────────────────
-
-  protected logSystemPrompt(systemPrompt?: string): void {
-    if (!systemPrompt) {
-      log.debug('System Prompt: (none - using PiAgent default)');
-      return;
+  /**
+   * Validate model override if provided.
+   */
+  private validateModel(modelSpec: string): void {
+    const [provider, modelId] = modelSpec.split(':');
+    const model = this.modelRegistry.find(provider, modelId);
+    if (!model) {
+      throw new Error(`Model not found: ${modelSpec}. Expected format: provider:modelId`);
     }
-
-    const lines = systemPrompt.split('\n');
-    log.debug(`System Prompt: ${lines.length} lines, ${systemPrompt.length} chars`);
-    log.debug(`Preview:\n${lines.slice(0, 30).join('\n')}`);
-    if (lines.length > 30) log.debug(`... (${lines.length - 30} more lines)`);
   }
 
-  protected logTools(tools: ToolDefinition[]): void {
-    log.debug(`Tools: ${tools.length} registered`);
-    tools.forEach(t => {
-      const params = t.parameters?.properties
-        ? Object.keys(t.parameters.properties as Record<string, unknown>).join(', ')
-        : 'none';
-      log.debug(`  - ${t.name}: ${t.description.slice(0, 80)}... (params: ${params})`);
-    });
+  /**
+   * Build context variables for prompt interpolation from sessionKey and metadata.
+   */
+  private buildPromptContext(
+    sessionKey: string,
+    metadata?: EventMap['agent.execute']['params']['metadata'],
+  ): Record<string, string> {
+    const { type: channelId, id: userId } = parseSessionKey(sessionKey);
+    return {
+      CHANNEL_ID: channelId,
+      USER_ID: userId,
+      ...(metadata?.channelType && { CHANNEL_TYPE: metadata.channelType }),
+      ...(metadata?.fromUser && { FROM_USER: metadata.fromUser }),
+      ...(metadata?.botName && { BOT_NAME: metadata.botName }),
+    };
+  }
+
+  /**
+   * Collect directory paths in order: workspace first, then cwd if different.
+   */
+  private collectBootstrapDirs(metadata?: EventMap['agent.execute']['params']['metadata']): string[] {
+    const paths = getDataPaths();
+    const workspaceDir = paths.workspaceDir;
+    const dirs = [workspaceDir];
+
+    if (metadata?.cwd && path.resolve(metadata.cwd) !== path.resolve(workspaceDir)) {
+      dirs.push(metadata.cwd);
+    }
+
+    // Filter dirs that do not exist
+    return dirs.filter(dir => existsSync(dir));
   }
 
   // ── Private Helpers ────────────────────────────────────────────────────────
@@ -376,7 +470,6 @@ export class AgentService {
    * Extract the last assistant message from the session.
    * Handles both string and multipart content (text blocks).
    */
-
   private extractResponse(session: AgentSession): string {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const messages = (session as any).state?.messages || [];

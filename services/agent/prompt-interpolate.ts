@@ -11,12 +11,18 @@
  * - ${HOME} → user's home directory
  * - ${PWD} → current working directory
  *
- * Missing keys fallback to a placeholder (${KEY}) and are logged as warnings.
+ * Default values use bash-style syntax: ${VAR:-default}
+ *   - Used when VAR is missing OR an empty string.
+ *   - Default may be empty: ${VAR:-} resolves to '' if VAR is missing.
+ *   - Default cannot contain '}' (closes the placeholder).
+ *
+ * Missing keys without a default fallback to the original ${KEY} placeholder
+ * and are logged as warnings.
  *
  * Usage:
- *   const prompt = 'Read ${WORKSPACE_DIR}/HEARTBEAT.md';
+ *   const prompt = 'Read ${WORKSPACE_DIR}/HEARTBEAT.md as ${BRAND:-Vargos}';
  *   const resolved = interpolatePrompt(prompt);
- *   // → 'Read /home/user/.vargos/workspace/HEARTBEAT.md'
+ *   // → 'Read /home/user/.vargos/workspace/HEARTBEAT.md as Vargos'
  */
 
 import { getDataPaths } from '../../lib/paths.js';
@@ -31,12 +37,16 @@ export interface InterpolationResult {
   missing: string[];
 }
 
+const PATTERN = /\$\{([A-Z_]+)(?::-?([^}]*))?\}/g;
+
 /**
- * Interpolate prompt variables and return result + list of missing keys.
- * Missing variables remain as ${KEY} placeholders and are logged as warnings.
+ * Interpolate prompt variables and return the resolved string.
+ * Missing variables (without a default) remain as ${KEY} placeholders and are
+ * logged as warnings. Context variables (e.g., from channel metadata) are
+ * merged into the template variables.
  */
-export function interpolatePrompt(prompt: string): string {
-  const { prompt: resolved } = interpolatePromptWithMissing(prompt);
+export function interpolatePrompt(prompt: string, context?: Record<string, string>): string {
+  const { prompt: resolved } = interpolatePromptWithMissing(prompt, context);
   return resolved;
 }
 
@@ -44,12 +54,13 @@ export function interpolatePrompt(prompt: string): string {
  * Interpolate and return both result and missing variable list.
  * Used when you need to know what failed to interpolate.
  */
-function interpolatePromptWithMissing(prompt: string): InterpolationResult {
+function interpolatePromptWithMissing(prompt: string, context?: Record<string, string>): InterpolationResult {
   const paths = getDataPaths();
+  const currentTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   const variables: Record<string, string> = {
-    WORKSPACE_DIR: paths.workspaceDir,
     DATA_DIR: paths.dataDir,
+    WORKSPACE_DIR: paths.workspaceDir,
     SESSIONS_DIR: paths.sessionsDir,
     CRON_DIR: paths.cronDir,
     CACHE_DIR: paths.cacheDir,
@@ -57,32 +68,43 @@ function interpolatePromptWithMissing(prompt: string): InterpolationResult {
     CHANNELS_DIR: paths.channelsDir,
     HOME: os.homedir(),
     PWD: process.cwd(),
+    CURRENT_DATE: new Date().toLocaleString(undefined, {
+      timeZone: currentTimezone,
+      year: 'numeric', month: 'long', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: false,
+      timeZoneName: 'short',
+    }),
+    CURRENT_TIMEZONE: currentTimezone,
 
-    /** Some non-path variables */
-    currentTime: new Date().toISOString(),
-    currentTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+    // Channel context variables
+    CHANNEL_TYPE: context?.CHANNEL_TYPE || 'unknown',
+    CHANNEL_ID: context?.CHANNEL_ID || 'unknown',
+    BOT_NAME: context?.BOT_NAME || 'unknown',
+    FROM_USER: context?.FROM_USER || 'unknown',
+
+    // Just in case context is provided, but not all variables are present.
+    ...context,
   };
 
-  let result = prompt;
   const missing: string[] = [];
 
-  // Find all ${...} patterns
-  const pattern = /\$\{([A-Z_]+)\}/g;
-  let match;
-
-  while ((match = pattern.exec(prompt)) !== null) {
-    const key = match[1];
+  const result = prompt.replace(PATTERN, (full, key: string, defaultValue?: string) => {
     const value = variables[key];
 
-    if (value) {
-      result = result.replaceAll(`\${${key}}`, value);
-    } else {
-      missing.push(key);
+    if (value !== undefined && value !== '') {
+      return value;
     }
-  }
+    if (defaultValue !== undefined) {
+      return defaultValue;
+    }
+
+    missing.push(key);
+    return full;
+  });
 
   if (missing.length > 0) {
-    log.warn(`Missing interpolation keys: ${missing.join(', ')}`, { missing, prompt });
+    log.warn(`Missing interpolation keys: ${missing.join(', ')}`);
   }
 
   return { prompt: result, missing };

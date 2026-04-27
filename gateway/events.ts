@@ -6,6 +6,8 @@
 
 export type { ThinkingLevel, ChannelEntry, CronTask, CronAddParams, CronUpdateParams, WebhookEntry, Json, AppConfig } from '../services/config/index.js';
 import type { ChannelEntry, CronTask, CronAddParams, CronUpdateParams, WebhookEntry, Json, AppConfig } from '../services/config/index.js';
+export type { ImageMimeType, AudioMimeType, VideoMimeType, DocumentMimeType } from '../lib/media-transcribe.js';
+import type { ImageMimeType, AudioMimeType, VideoMimeType, DocumentMimeType } from '../lib/media-transcribe.js';
 
 // ─── Domain types ─────────────────────────────────────────────────────────────
 
@@ -27,16 +29,49 @@ export interface EventMetadata {
 
 // ─── Param types ──────────────────────────────────────────────────────────────
 
+export interface InboundMessageMetadata {
+  /** Unique message identifier for reactions (e.g., Telegram message_id) */
+  messageId?: string;
+  /** When set to true, do not prompt agent. But still append the message to the agent's history. */
+  skipAgent?: boolean;
+  /** Working directory for the agent — defaults to vargos workspace. When set,
+   *  bootstrap files (CLAUDE.md, AGENTS.md) from both cwd and workspace are merged. */
+  cwd?: string;
+  /** Username/display name of the message sender (for group chat attribution) */
+  fromUser?: string;
+  /** Sender's user ID (for whitelist enforcement). Platform-specific: Telegram user ID, WhatsApp JID, etc. */
+  fromUserId?: string;
+  /** Chat type — 'private' for 1:1, 'group' for group chats. Helps determine if bot was explicitly addressed. */
+  chatType?: 'private' | 'group';
+  /** True if bot was explicitly mentioned or replied to in a group chat. */
+  isMentioned?: boolean;
+  /** Platform/adapter type (e.g., 'telegram', 'whatsapp') */
+  channelType?: string;
+  /** Bot's own display name (e.g., Telegram bot username) */
+  botName?: string;
+  /** Model override for this message (e.g., "claude-opus-4"). If not set, uses agent.model from config. */
+  model?: string;
+  /** Path to channel/trigger-specific instructions file to include in system prompt. Auto-created if doesn't exist. */
+  instructionsFile?: string;
+  /** Media attachment metadata with content reference — discriminated by type */
+  media?:
+  | { type: 'image'; mimeType?: ImageMimeType; path?: string; description?: string }
+  | { type: 'audio'; mimeType?: AudioMimeType; path?: string; transcription?: string }
+  | { type: 'video'; mimeType?: VideoMimeType; path?: string }
+  | { type: 'document'; mimeType?: DocumentMimeType; path?: string };
+}
+
 export interface AgentExecuteParams {
   /** Session key — required for direct callers (channels, cron, webhooks, TCP).
    *  When the agent calls agent.execute as a tool, wrapEventAsToolDefinition injects this automatically. */
   sessionKey: string;
+  /** The task to execute or delegate to the agent. */
   task: string;
-  /** Working directory for the agent — defaults to vargos workspace. When set,
-   *  bootstrap files (CLAUDE.md, AGENTS.md) from both cwd and workspace are merged. */
+  /** The current working directory to use for the agent. Fallbacks to channel's cwd config, then lastly vargos workspace dir. */
   cwd?: string;
-  /** Image attachments for vision models (base64 encoded) */
-  images?: Array<{ data: string; mimeType: string }>;
+
+  /** Metadata for the inbound message */
+  metadata?: InboundMessageMetadata;
 }
 
 // ─── Event map ────────────────────────────────────────────────────────────────
@@ -76,18 +111,12 @@ export interface EventMap {
 
   // Agent
   'agent.execute': { params: AgentExecuteParams; result: { response: string } };
+  'agent.appendMessage': { params: AgentExecuteParams; result: void };
   'agent.status': { params: { sessionKey?: string }; result: { activeRuns: string[] } };
 
   // Media
   'media.transcribeAudio': { params: { filePath: string }; result: { text: string } };
   'media.describeImage': { params: { filePath: string }; result: { description: string } };
-
-  // File system
-  'fs.read': { params: { path: string; offset?: number; limit?: number }; result: { content: string; mimeType: string } };
-  'fs.write': { params: { path: string; content: string }; result: void };
-  'fs.edit': { params: { path: string; oldText: string; newText: string }; result: void };
-  'fs.exec': { params: { command: string; cwd?: string; timeout?: number }; result: { stdout: string; stderr: string; exitCode: number } };
-  'bash': { params: { command: string; cwd?: string; timeout?: number }; result: { stdout: string; stderr: string; exitCode: number } };
 
   // Web
   'web.fetch': { params: { url: string; extractMode?: 'markdown' | 'text'; maxChars?: number }; result: { text: string } };
