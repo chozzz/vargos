@@ -4,7 +4,7 @@
  * Design:
  * - sessionKey always uses chat.id (where replies go)
  *   * Private: chat.id = user ID (123)
- *   * Group: chat.id = group ID (-5004637094)
+ *   * Group: chat.id = group ID (-100123456789)
  * - Metadata stores fromUserId separately (for whitelist checking)
  *
  * Result: Reply routing is automatic (sessionKey is correct destination),
@@ -25,11 +25,11 @@ describe('Group reply routing', () => {
     });
 
     it('group message: sessionKey uses group chat ID (negative)', () => {
-      const groupChatId = '-5004637094';
+      const groupChatId = '-100123456789';
       const sessionKey = `telegram-vargos:${groupChatId}`;
 
       const extracted = sessionKey.split(':')[1];
-      expect(extracted).toBe('-5004637094');
+      expect(extracted).toBe('-100123456789');
     });
   });
 
@@ -67,12 +67,12 @@ describe('Group reply routing', () => {
 
   describe('reply routing uses sessionKey (always correct destination)', () => {
     it('group message reply goes to group using sessionKey', () => {
-      const sessionKey = 'telegram-vargos:-5004637094'; // group chat ID
+      const sessionKey = 'telegram-vargos:-100123456789'; // group chat ID
 
       // Reply routing: always use sessionKey (already has correct destination)
       const replyDestination = sessionKey.split(':')[1];
 
-      expect(replyDestination).toBe('-5004637094'); // Group ✓
+      expect(replyDestination).toBe('-100123456789'); // Group ✓
     });
 
     it('private message reply goes to user using sessionKey', () => {
@@ -112,9 +112,9 @@ describe('Group reply routing', () => {
   });
 
   describe('end-to-end flow', () => {
-    it('alice (123) mentions bot in group (-5004637094) → reply goes to group', () => {
+    it('alice (123) mentions bot in group (-100123456789) → reply goes to group', () => {
       // Setup: Alice mentions bot in group
-      const sessionKey = 'telegram-vargos:-5004637094'; // Group (destination)
+      const sessionKey = 'telegram-vargos:-100123456789'; // Group (destination)
       const metadata: InboundMessageMetadata = {
         messageId: 'msg1',
         fromUser: 'Alice',
@@ -131,13 +131,13 @@ describe('Group reply routing', () => {
 
       // Reply routing
       const replyDestination = sessionKey.split(':')[1];
-      expect(replyDestination).toBe('-5004637094'); // Reply goes to group ✓
+      expect(replyDestination).toBe('-100123456789'); // Reply goes to group ✓
       expect(replyDestination).not.toBe('123'); // Not to Alice's private chat
     });
 
     it('non-whitelisted user in group → reply still goes to group but execution skipped', () => {
       // Setup: User 999 mentions bot in group
-      const sessionKey = 'telegram-vargos:-5004637094'; // Group (destination)
+      const sessionKey = 'telegram-vargos:-100123456789'; // Group (destination)
       const metadata: InboundMessageMetadata = {
         messageId: 'msg2',
         fromUser: 'Attacker',
@@ -154,7 +154,7 @@ describe('Group reply routing', () => {
 
       // BUT: reply destination is still correct (append-only message sent to group)
       const replyDestination = sessionKey.split(':')[1];
-      expect(replyDestination).toBe('-5004637094'); // Still goes to group (as append) ✓
+      expect(replyDestination).toBe('-100123456789'); // Still goes to group (as append) ✓
     });
   });
 });

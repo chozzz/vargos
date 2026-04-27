@@ -9,7 +9,7 @@
  * is not detected as a mention, causing skipAgent to be set to true.
  *
  * This test reproduces the issue from the logs:
- * - User 7789463749 (whitelisted) sends "@VargosBot are u up?" in group
+ * - Whitelisted user sends "@VargosBot are u up?" in group
  * - normalizer doesn't detect @mention because isMentionedInMessage is incomplete
  * - Message gets skipAgent=true, causing appendMessage instead of execute
  */
@@ -71,8 +71,8 @@ describe('Whitelist + skipAgent Bug', () => {
   let agentExecuteCalls: EventMap['agent.execute']['params'][] = [];
   let agentAppendMessageCalls: EventMap['agent.appendMessage']['params'][] = [];
 
-  const WHITELISTED_USER_ID = '7789463749';
-  const GROUP_CHAT_ID = '-5234616993';
+  const WHITELISTED_USER_ID = '100001';
+  const GROUP_CHAT_ID = '-100123456789';
 
   const mockConfig: AppConfig = {
     providers: { test: { baseUrl: 'http://localhost', apiKey: 'test', api: 'test', models: [] } },
@@ -127,15 +127,15 @@ describe('Whitelist + skipAgent Bug', () => {
   });
 
   it('whitelisted user in group with @mention SHOULD execute agent, not append', async () => {
-    // This is the exact scenario from the logs:
-    // User 7789463749 sends "@VargosBot are u up?" in group chat -5234616993
+    // This test reproduces a real bug where a whitelisted user sends a message
+    // with @mention in a group chat, but the normalizer doesn't detect the @mention
+    // because isMentionedInMessage only checks reply_to_message.
     //
     // The normalizer receives the raw TelegramMessage and must detect the @mention
     // and set isMentioned=true. If not detected, skipAgent will be set to true
     // and agent.appendMessage is called instead of agent.execute.
     //
-    // Current bug: normalizer.isMentionedInMessage only checks reply_to_message,
-    // not @username mentions in the text.
+    // Fix: Add regex pattern detection for @mentions in message text.
     const telegramMsg: TelegramMessage = {
       message_id: 100,
       from: {
