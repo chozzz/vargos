@@ -1,13 +1,12 @@
-#!/bin/bash
+#!/bin/sh
 
 # Prevent accidental direct pushes to protected branches
 
-protected_branches=("main" "master")
 current_branch=$(git rev-parse --abbrev-ref HEAD)
 
-for branch in "${protected_branches[@]}"; do
-  if [[ "$current_branch" == "$branch" ]]; then
-    echo "❌ Cannot push directly to $branch"
+case "$current_branch" in
+  main|master)
+    echo "❌ Cannot push directly to $current_branch"
     echo ""
     echo "   Workflow:"
     echo "   1. Make changes on 'dev' or feature branch"
@@ -16,13 +15,14 @@ for branch in "${protected_branches[@]}"; do
     echo "   4. All checks must pass (lint, tests, security)"
     echo "   5. Squash merge on GitHub"
     echo ""
-    echo "   If you committed to $branch by accident:"
+    echo "   If you committed to $current_branch by accident:"
     echo "   $ git reset --soft HEAD~1"
     echo "   $ git checkout dev"
     echo "   $ git commit -m 'your message'"
     echo "   $ git push origin dev"
     exit 1
-  fi
-done
-
-exit 0
+    ;;
+  *)
+    exit 0
+    ;;
+esac
