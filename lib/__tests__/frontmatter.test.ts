@@ -218,30 +218,60 @@ Body`;
   });
 
   describe('serializeFrontmatter', () => {
-    it('serializes simple metadata', () => {
+    it('serializes simple metadata (minimal quoting)', () => {
       const meta = { type: 'prompt', version: 1 };
       const body = 'This is the body';
       const result = serializeFrontmatter(meta, body);
 
       expect(result).toContain('---\n');
-      expect(result).toContain('type: "prompt"');
+      expect(result).toContain('type: prompt');
       expect(result).toContain('version: 1');
       expect(result).toContain('---\n\n');
       expect(result).toContain('This is the body\n');
     });
 
-    it('serializes multi-line arrays', () => {
+    it('quotes strings that contain YAML-special characters', () => {
+      const meta = {
+        id: 'heartbeat',
+        schedule: '*/30 * * * *',
+        timezone: 'Australia/Sydney',
+      };
+      const result = serializeFrontmatter(meta, 'body');
+
+      expect(result).toContain('id: heartbeat');
+      expect(result).toContain('schedule: "*/30 * * * *"');
+      expect(result).toContain('timezone: Australia/Sydney');
+    });
+
+    it('inlines arrays of numbers, multi-lines arrays of strings', () => {
       const meta = {
         name: 'daily-sync',
+        activeHours: [8, 22],
         schedule: ['0 9 * * *', '0 17 * * *'],
       };
       const body = 'Sync task';
       const result = serializeFrontmatter(meta, body);
 
-      expect(result).toContain('name: "daily-sync"');
+      expect(result).toContain('name: daily-sync');
+      expect(result).toContain('activeHours: [8, 22]');
       expect(result).toContain('schedule:');
-      expect(result).toContain('  - 0 9 * * *');
-      expect(result).toContain('  - 0 17 * * *');
+      expect(result).toContain('  - "0 9 * * *"');
+      expect(result).toContain('  - "0 17 * * *"');
+    });
+
+    it('skips undefined and null values', () => {
+      const meta = {
+        id: 'task-1',
+        notify: undefined,
+        model: null,
+        enabled: true,
+      };
+      const result = serializeFrontmatter(meta, 'body');
+
+      expect(result).not.toContain('notify');
+      expect(result).not.toContain('model');
+      expect(result).toContain('id: task-1');
+      expect(result).toContain('enabled: true');
     });
 
     it('serializes boolean values without quotes', () => {

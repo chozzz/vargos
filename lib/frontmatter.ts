@@ -100,13 +100,41 @@ function parseFrontmatterValue(value: string): unknown {
 
 export function serializeFrontmatter(meta: Record<string, unknown>, body: string): string {
   const frontmatter = Object.entries(meta)
-    .map(([key, value]) => {
-      if (Array.isArray(value)) {
-        return `${key}:\n${value.map(v => `  - ${v}`).join('\n')}`;
-      }
-      return `${key}: ${typeof value === 'string' ? `"${value}"` : value}`;
-    })
+    .filter(([, value]) => value !== undefined && value !== null)
+    .map(([key, value]) => formatEntry(key, value))
     .join('\n');
 
   return `---\n${frontmatter}\n---\n\n${body}\n`;
+}
+
+function formatEntry(key: string, value: unknown): string {
+  if (Array.isArray(value)) {
+    if (value.length === 0) return `${key}: []`;
+    if (value.every(v => typeof v === 'number')) {
+      return `${key}: [${value.join(', ')}]`;
+    }
+    return `${key}:\n${value.map(v => `  - ${formatScalar(v)}`).join('\n')}`;
+  }
+  return `${key}: ${formatScalar(value)}`;
+}
+
+function formatScalar(value: unknown): string {
+  if (typeof value === 'boolean' || typeof value === 'number') return String(value);
+  const s = String(value);
+  return needsQuotes(s) ? `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"` : s;
+}
+
+function needsQuotes(s: string): boolean {
+  if (s === '') return true;
+  if (/^(true|false|null|yes|no|on|off|~)$/i.test(s)) return true;
+  if (/^-?\d+(\.\d+)?$/.test(s)) return true;
+  // Starts with a YAML-special character or whitespace
+  if (/^[\s!&*?|>%@`[\]{},#"'-]/.test(s)) return true;
+  // Contains ": ", " #", tab, or newline
+  if (/:\s|\s#|\t|\n/.test(s)) return true;
+  // Trailing whitespace
+  if (/\s$/.test(s)) return true;
+  // Contains chars conventionally quoted for safety (cron expressions, etc.)
+  if (/[*?&!|>%`]/.test(s)) return true;
+  return false;
 }
