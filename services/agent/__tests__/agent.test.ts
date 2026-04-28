@@ -50,7 +50,7 @@ describe('getSystemPrompt merging', () => {
   let originalEnv: string | undefined;
 
   beforeEach(() => {
-    tmpDir = path.join(os.tmpdir(), `agent-test-${Date.now()}`);
+    tmpDir = path.join(os.tmpdir(), `agent-test-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     workspaceDir = path.join(tmpDir, 'workspace');
     cwdDir = path.join(tmpDir, 'project');
 

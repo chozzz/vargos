@@ -41,14 +41,20 @@ export interface InboundMessageMetadata {
   fromUser?: string;
   /** Sender's user ID (for whitelist enforcement). Platform-specific: Telegram user ID, WhatsApp JID, etc. */
   fromUserId?: string;
+  /** Sender's @handle on the platform (e.g. Telegram username). Optional — not all platforms have one. */
+  fromUserHandle?: string;
   /** Chat type — 'private' for 1:1, 'group' for group chats. Helps determine if bot was explicitly addressed. */
   chatType?: 'private' | 'group';
   /** True if bot was explicitly mentioned or replied to in a group chat. */
   isMentioned?: boolean;
   /** Platform/adapter type (e.g., 'telegram', 'whatsapp') */
   channelType?: string;
-  /** Bot's own display name (e.g., Telegram bot username) */
+  /** Bot's user ID on the platform (numeric for Telegram, JID for WhatsApp). */
+  botUserId?: string;
+  /** Bot's display/first name. */
   botName?: string;
+  /** Bot's @handle on the platform (e.g. Telegram bot username). */
+  botHandle?: string;
   /** Model override for this message (e.g., "claude-opus-4"). If not set, uses agent.model from config. */
   model?: string;
   /** Path to channel/trigger-specific instructions file to include in system prompt. Auto-created if doesn't exist. */

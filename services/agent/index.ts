@@ -104,8 +104,12 @@ export class AgentService {
         model: z.string().optional().describe('Model override in format provider:modelId.'),
         instructionsFile: z.string().optional().describe('Path to custom instructions .md file.'),
         channelType: z.string().optional().describe('Type of channel (e.g., telegram, whatsapp).'),
-        fromUser: z.string().optional().describe('User display name.'),
+        fromUserId: z.string().optional().describe('Sender user ID on the platform.'),
+        fromUser: z.string().optional().describe('Sender display name.'),
+        fromUserHandle: z.string().optional().describe('Sender @handle on the platform.'),
+        botUserId: z.string().optional().describe('Bot user ID on the platform.'),
         botName: z.string().optional().describe('Bot display name.'),
+        botHandle: z.string().optional().describe('Bot @handle on the platform.'),
       }).optional().describe('Optional metadata for the execution context.'),
     }).passthrough(),
   })
@@ -458,13 +462,18 @@ export class AgentService {
     sessionKey: string,
     metadata?: EventMap['agent.execute']['params']['metadata'],
   ): Record<string, string> {
-    const { type: channelId, id: userId } = parseSessionKey(sessionKey);
+    const { type: channelId, id: chatId } = parseSessionKey(sessionKey);
     return {
+      SESSION_KEY: sessionKey,
       CHANNEL_ID: channelId,
-      USER_ID: userId,
+      CHAT_ID: chatId,
       ...(metadata?.channelType && { CHANNEL_TYPE: metadata.channelType }),
-      ...(metadata?.fromUser && { FROM_USER: metadata.fromUser }),
+      ...(metadata?.fromUserId && { USER_ID: metadata.fromUserId }),
+      ...(metadata?.fromUser && { USER_NAME: metadata.fromUser }),
+      ...(metadata?.fromUserHandle && { USER_HANDLE: metadata.fromUserHandle }),
+      ...(metadata?.botUserId && { BOT_ID: metadata.botUserId }),
       ...(metadata?.botName && { BOT_NAME: metadata.botName }),
+      ...(metadata?.botHandle && { BOT_HANDLE: metadata.botHandle }),
     };
   }
 

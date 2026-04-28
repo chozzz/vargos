@@ -7,6 +7,7 @@ import type { WhatsAppInboundMessage } from './types.js';
 
 export interface WhatsAppNormalizerContext {
   botJid: string;
+  botName?: string;
 }
 
 export function normalizeWhatsAppMessage(
@@ -28,10 +29,12 @@ export function normalizeWhatsAppMessage(
   return {
     messageId: msg.messageId,
     fromUserId: msg.jid, // Store JID for whitelist checking
-    fromUser: resolvePhoneFromJid(msg.jid),
+    fromUser: msg.pushName || resolvePhoneFromJid(msg.jid),
     chatType,
     isMentioned,
     channelType: 'whatsapp',
+    botUserId: context.botJid || undefined,
+    botName: context.botName,
     skipAgent: msg.isGroup && !isMentioned ? true : false,
     text: msg.text,
     media: undefined, // Media handling done separately

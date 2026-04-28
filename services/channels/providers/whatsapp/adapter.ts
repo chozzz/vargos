@@ -190,7 +190,10 @@ export class WhatsAppAdapter extends BaseChannelAdapter {
     if (!this.dedupe.add(msg.messageId)) return;
 
     const chatId = msg.isGroup ? msg.jid : msg.jid;
-    const normalizedMsg = normalizeWhatsAppMessage(msg, { botJid: this.botJid });
+    const normalizedMsg = normalizeWhatsAppMessage(msg, {
+      botJid: this.botJid,
+      botName: this.sock?.user?.name,
+    });
 
     if (!normalizedMsg) {
       this.log.error(`whatsapp message from user ${msg.jid} not normalized`);

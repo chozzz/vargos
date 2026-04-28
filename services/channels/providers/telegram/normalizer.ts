@@ -8,6 +8,7 @@ import type { TelegramMessage } from './types.js';
 export interface TelegramNormalizerContext {
   botUserId: number | null;
   botUsername?: string;
+  botName?: string;
 }
 
 export function normalizeTelegramMessage(
@@ -33,9 +34,13 @@ export function normalizeTelegramMessage(
     messageId: String(msg.message_id),
     fromUserId: String(msg.from?.id || 0),
     fromUser: msg.from?.first_name || msg.from?.username || 'Unknown',
+    fromUserHandle: msg.from?.username,
     chatType: isPrivateChat ? 'private' : 'group',
     isMentioned,
     channelType: 'telegram',
+    botUserId: context.botUserId != null ? String(context.botUserId) : undefined,
+    botName: context.botName,
+    botHandle: context.botUsername,
     skipAgent: isGroupChat && !isMentioned ? true : false,
     text: msg.text,
     media: undefined, // Media handling done separately

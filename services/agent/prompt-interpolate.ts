@@ -10,6 +10,9 @@
  * - ${CHANNELS_DIR} → ~/.vargos/channels
  * - ${HOME} → user's home directory
  * - ${PWD} → current working directory
+ * - ${SESSION_KEY}, ${CHANNEL_ID}, ${CHANNEL_TYPE}, ${CHAT_ID} → session identity
+ * - ${USER_ID}, ${USER_NAME}, ${USER_HANDLE} → message sender (from agent metadata)
+ * - ${BOT_ID}, ${BOT_NAME}, ${BOT_HANDLE} → bot identity (from agent metadata)
  *
  * Default values use bash-style syntax: ${VAR:-default}
  *   - Used when VAR is missing OR an empty string.
@@ -77,11 +80,17 @@ function interpolatePromptWithMissing(prompt: string, context?: Record<string, s
     }),
     CURRENT_TIMEZONE: currentTimezone,
 
-    // Channel context variables
-    CHANNEL_TYPE: context?.CHANNEL_TYPE || 'unknown',
-    CHANNEL_ID: context?.CHANNEL_ID || 'unknown',
-    BOT_NAME: context?.BOT_NAME || 'unknown',
-    FROM_USER: context?.FROM_USER || 'unknown',
+    // Channel context variables — fall back to 'unknown' when not provided.
+    // Handles default to '' so templates can override with ${VAR:-fallback}.
+    CHANNEL_TYPE:  context?.CHANNEL_TYPE  || 'unknown',
+    CHANNEL_ID:    context?.CHANNEL_ID    || 'unknown',
+    CHAT_ID:       context?.CHAT_ID       || 'unknown',
+    USER_ID:       context?.USER_ID       || 'unknown',
+    USER_NAME:     context?.USER_NAME     || 'unknown',
+    USER_HANDLE:   context?.USER_HANDLE   || '',
+    BOT_ID:        context?.BOT_ID        || 'unknown',
+    BOT_NAME:      context?.BOT_NAME      || 'unknown',
+    BOT_HANDLE:    context?.BOT_HANDLE    || '',
 
     // Just in case context is provided, but not all variables are present.
     ...context,

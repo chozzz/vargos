@@ -7,6 +7,7 @@ export interface WhatsAppInboundMessage {
   fromMe: boolean;
   isGroup: boolean;
   timestamp: number;
+  pushName?: string;            // sender's WhatsApp display name (set in their profile)
   mentionedJids?: string[];
   quotedSenderJid?: string;
   mediaType?: 'image' | 'audio' | 'video' | 'document' | 'sticker';

@@ -58,9 +58,13 @@ export interface NormalizedInboundMessage {
   messageId: string;
   fromUserId: string;              // JID or phone, used for whitelist
   fromUser: string;                // Display name
+  fromUserHandle?: string;         // @handle (e.g. Telegram username)
   chatType: 'private' | 'group';
   isMentioned: boolean;
   channelType: string;
+  botUserId?: string;              // Bot's platform ID
+  botName?: string;                // Bot's display/first name
+  botHandle?: string;              // Bot's @handle
   skipAgent: boolean;              // Pre-calculated: should agent act?
   text?: string;
   media?: InboundMediaSource;

@@ -178,6 +178,7 @@ export class TelegramAdapter extends BaseChannelAdapter {
     const normalizedMsg = normalizeTelegramMessage(msg, {
       botUserId: this.botUser?.id || null,
       botUsername: this.botUser?.username,
+      botName: this.botUser?.first_name,
     });
     if (!normalizedMsg) {
       this.log.error(`${msg.chat.type} message from user ${msg.from?.id} not normalized`);
