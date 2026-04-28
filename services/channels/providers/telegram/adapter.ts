@@ -143,14 +143,14 @@ export class TelegramAdapter extends BaseChannelAdapter {
     while (this.polling) {
       try {
         cycleCount++;
-        this.log.debug(`poll cycle ${cycleCount}: calling getUpdates with offset ${this.offset}`);
+        // this.log.debug(`poll cycle ${cycleCount}: calling getUpdates with offset ${this.offset}`);
         const updates = await this.apiCall<TelegramUpdate[]>('getUpdates', {
           offset: this.offset,
           timeout: POLL_TIMEOUT_S,
           allowed_updates: ['message'],
         });
 
-        this.log.debug(`poll cycle ${cycleCount}: received response with ${updates.length} update(s)`);
+        // this.log.debug(`poll cycle ${cycleCount}: received response with ${updates.length} update(s)`);
         this.reconnector.reset();
 
         for (const update of updates) {

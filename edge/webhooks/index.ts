@@ -11,7 +11,7 @@
 import http from 'node:http';
 import { timingSafeEqual, createHash } from 'node:crypto';
 import { z } from 'zod';
-import { on, register } from '../../gateway/decorators.js';
+import { register } from '../../gateway/decorators.js';
 import type { Bus } from '../../gateway/bus.js';
 import type { EventMap } from '../../gateway/events.js';
 import type { AppConfig, WebhookEntry } from '../../services/config/index.js';
@@ -24,10 +24,10 @@ import { passthroughTransform, loadTransform } from './transform.js';
 
 const log = createLogger('webhooks');
 
-const MAX_BODY   = 1024 * 1024; // 1 MB
+const MAX_BODY = 1024 * 1024; // 1 MB
 const HOOK_ID_RE = /^[a-z0-9_-]+$/i;
-const HTTP_PORT  = 9002;
-const HTTP_HOST  = '127.0.0.1';
+const HTTP_PORT = 9002;
+const HTTP_HOST = '127.0.0.1';
 
 // ── WebhooksEdge ──────────────────────────────────────────────────────────────
 
@@ -66,7 +66,7 @@ export class WebhooksEdge {
     description: 'List registered webhook endpoints.',
     schema: z.object({
       query: z.string().optional(),
-      page:  z.number(),
+      page: z.number(),
       limit: z.number().optional(),
     }),
   })
@@ -137,9 +137,9 @@ export class WebhooksEdge {
     }
 
     // Timing-safe comparison (hash prevents length leakage)
-    const auth         = req.headers.authorization ?? '';
+    const auth = req.headers.authorization ?? '';
     const expectedHash = createHash('sha256').update(`Bearer ${hook.token}`).digest();
-    const authHash     = createHash('sha256').update(auth).digest();
+    const authHash = createHash('sha256').update(auth).digest();
     if (!timingSafeEqual(authHash, expectedHash)) {
       res.writeHead(401, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Unauthorized' }));
@@ -147,7 +147,7 @@ export class WebhooksEdge {
     }
 
     const chunks: Buffer[] = [];
-    let size      = 0;
+    let size = 0;
     let destroyed = false;
 
     req.on('error', () => {
@@ -205,25 +205,19 @@ export class WebhooksEdge {
 
     const result = await this.bus.call('agent.execute', { sessionKey, task });
 
-    if (!result.response || !hook.notify?.length) return;
-
-    // If subagents are running, delivery may be deferred by the agent runtime.
-    const { activeRuns } = await this.bus.call('agent.status', {});
-    const prefix = sessionKey + ':subagent:';
-    if (activeRuns.some(r => r.startsWith(prefix))) {
-      log.info(`${hook.id} spawned subagents — delivery deferred`);
-      return;
+    if (result.response && hook.notify?.length) {
+      log.info(`${hook.id} delivering response to ${hook.notify.length} targets`);
+      return await this.deliver(hook.notify, result.response);
     }
-
-    await this.deliver(hook.notify, result.response);
   }
 
   private async deliver(targets: string[], text: string): Promise<void> {
-    for (const target of targets) {
-      await this.bus.call('channel.send', {
-        sessionKey: target, text,
-      }).catch(err => log.error(`notify send to ${target}: ${toMessage(err)}`));
-    }
+    await Promise.all(targets.map(target => this.bus.call('channel.send', {
+      sessionKey: target,
+      text,
+    }).catch(err => log.error(`notify send to ${target}: ${toMessage(err)}`))));
+
+    return;
   }
 }
 

@@ -114,6 +114,7 @@ export class AgentService {
       throw new Error('sessionKey is required for agent.execute');
     }
 
+    log.info(`execute: START ${params.sessionKey}`);
     const metadata = params.metadata ?? {};
 
     // Validate model override if provided
@@ -133,17 +134,20 @@ export class AgentService {
     }
 
     // Log model being used by session
-    log.debug(`Using model: ${session.model?.provider}:${session.model?.id} (${session.model?.name})`);
+    log.info(`Using model: ${session.model?.provider}:${session.model?.id} (${session.model?.name})`);
 
     this.activeRuns.add(params.sessionKey);
+    const startTime = Date.now();
     try {
+      log.debug(`execute: calling session.prompt() for ${params.sessionKey}`);
       await withTimeout(session.prompt(task, { streamingBehavior: 'steer' }), EXECUTION_TIMEOUT_MS, `Agent execution timeout after ${EXECUTION_TIMEOUT_MS}ms`);
+      log.debug(`execute: session.prompt() completed in ${Date.now() - startTime}ms`);
     } finally {
       this.activeRuns.delete(params.sessionKey);
     }
 
     const response = this.extractResponse(session);
-    log.info(`Agent response length: ${response?.length ?? 0}`);
+    log.info(`execute: END ${params.sessionKey} (${response?.length ?? 0} chars, ${Date.now() - startTime}ms)`);
     return { response };
   }
 
@@ -236,9 +240,11 @@ export class AgentService {
   /**
    * Subscribe to PiAgent sessionsubscription - emit to bus for streaming + debug logging.
    */
-  protected subscribeToSessionEvents(session: AgentSession, sessionKey: string): void {
+  protected subscribeToSessionEvents(session: AgentSession, sessionKey: string, _metadata?: EventMap['agent.execute']['params']['metadata']): void {
     session.subscribe((event: AgentSessionEvent) => {
       const eventType = event.type;
+
+      // log.debug(` --- :: Agent Lifecycle = ${eventType} --- :: ${sessionKey} --- ::  `);
 
       // Skip session-specific events (auto_retry_start, auto_retry_end) - not emitted as bus events
       if (eventType === 'auto_retry_start' || eventType === 'auto_retry_end') {
@@ -282,25 +288,20 @@ export class AgentService {
           break;
         }
         case 'turn_end': {
-          const e = event as { error?: unknown };
-          const response = this.extractResponse(session);
-          if (e.error) {
-            this.bus.emit('agent.onCompleted', {
-              sessionKey,
-              success: false,
-              error: String(e.error),
-            });
-          } else {
-            this.bus.emit('agent.onCompleted', {
-              sessionKey,
-              success: true,
-              response: response || '',
-            });
-          }
           break;
         }
         case 'agent_end': {
-          // Do nothing
+          const response = this.extractResponse(session);
+
+          log.debug(`  emitting agent.onCompleted with ${response?.length ?? 0} chars`);
+          this.bus.emit('agent.onCompleted', {
+            sessionKey,
+            success: true,
+            response: response || '',
+          });
+          break;
+        }
+        default: {
           break;
         }
       }

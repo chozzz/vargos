@@ -103,8 +103,13 @@ export class ChannelService {
     const adapter = this.adapters.get(target.channel);
     if (!adapter) throw new Error(`No adapter for channel: ${target.channel}`);
 
+    log.debug(`send: received text (${text.length} chars)`);
     const cleaned = stripMarkdown(text);
-    log.info(`send: ${sessionKey} (${cleaned.length} chars)`);
+    log.info(`send: ${sessionKey} (${text.length} → ${cleaned.length} chars after stripMarkdown)`);
+
+    if (cleaned.length === 0) {
+      log.warn(`send: stripMarkdown resulted in empty string (original: ${text.length} chars)`);
+    }
 
     await deliverReply((chunk) => adapter.send(sessionKey, chunk), cleaned);
 
@@ -227,6 +232,7 @@ export class ChannelService {
 
   @on('agent.onCompleted')
   private onAgentCompleted(payload: EventMap['agent.onCompleted']): void | Promise<void> {
+    // Skip if it's a subagent session
     if (!payload.sessionKey || payload.sessionKey.includes(':subagent')) {
       return;
     }
@@ -234,39 +240,48 @@ export class ChannelService {
     const session = this.activeSessions.get(payload.sessionKey);
     if (!session) {
       // Non-channel session with no active session — ignore completion
+      log.warn(`onAgentCompleted: session not found in activeSessions: ${payload.sessionKey}`);
       return;
     }
 
     const targetSessionKey = payload.sessionKey;
+    const responseLength = payload.success && payload.response ? payload.response.length : 0;
+    const responseText = payload.success
+      ? payload.response || ''
+      : `Error: ${payload.error || 'Unknown error'}`;
 
-    // Send reply based on success/error
-    const sendReply = async () => {
-      try {
-        if (payload.success && payload.response) {
-          await this.bus.call('channel.send', { sessionKey: targetSessionKey, text: payload.response });
-        } else if (!payload.success) {
-          const errorMsg = payload.error ? toMessage(payload.error) : 'Unknown error';
-          await this.bus.call('channel.send', { sessionKey: targetSessionKey, text: `Error: ${errorMsg}` });
-        }
-      } catch (err) {
-        log.error(`failed to send reply: ${toMessage(err)}`);
-      }
+    log.info(`onAgentCompleted: ${targetSessionKey}, success=${payload.success}, responseLength=${responseLength}`);
 
-      // Update and cleanup reaction controller
+    const cleanup = () => {
       if (session?.reactionController) {
         if (payload.success === false) {
-          session?.reactionController.setError();
+          session.reactionController.setError();
         } else {
-          session?.reactionController.setDone();
+          session.reactionController.setDone();
         }
-        session?.reactionController.dispose();
+        session.reactionController.dispose();
       }
+      session.adapter.stopTyping(targetSessionKey, true);
     };
 
-    return sendReply().finally(() => {
-      this.activeSessions.delete(payload.sessionKey);
-      session?.adapter.stopTyping(targetSessionKey, true);  // final=true to fully stop
-    });
+    // Don't send empty responses on success
+    if (payload.success && !payload.response) {
+      log.debug(`  → skipping send: empty response on success`);
+      cleanup();
+      return;
+    }
+
+    this.bus.call('channel.send', { sessionKey: targetSessionKey, text: responseText })
+      .then(({ sent }) => {
+        log.debug(`  → response sent to ${targetSessionKey} successfully: ${sent}`);
+      })
+      .catch(err => log.error(`failed to send reply: ${toMessage(err)}`))
+      .finally(() => {
+        if (session) {
+          log.debug(`  → stopping typing (session stays alive for idle cleanup)`);
+          cleanup();
+        }
+      });
   }
 
   // ── Inbound message handling ─────────────────────────────────────────────────
@@ -292,6 +307,7 @@ export class ChannelService {
     }
 
     // Delegate to pipeline for policy orchestration
+    log.debug(`onInboundMessage: processing message for ${sessionKey}`);
     await this.pipeline.process(sessionKey, message, adapter, this.activeSessions);
   }
 

@@ -327,7 +327,7 @@ describe('subscribeToSessionEvents', () => {
     expect(tools).toHaveLength(0);
   });
 
-  it('emits agent.onCompleted with success=true on turn_end', () => {
+  it('emits agent.onCompleted with success=true on agent_end', () => {
     const bus = new EventEmitterBus();
     const agent = makeTestableAgent(bus);
     const { session, fire } = makeSessionStub();
@@ -336,7 +336,7 @@ describe('subscribeToSessionEvents', () => {
     bus.on('agent.onCompleted', (p) => completed.push(p));
 
     agent.callSubscribe(session, 'stub-ch:user1');
-    fire({ type: 'turn_end' });
+    fire({ type: 'agent_end' });
 
     expect(completed).toHaveLength(1);
     expect(completed[0].success).toBe(true);
@@ -457,7 +457,7 @@ describe('onAgentCompleted reply logic', () => {
     expect(adapter.typingStopped).toContainEqual({ sessionKey, final: true });
   });
 
-  it('removes session from activeSessions after completion', async () => {
+  it('keeps session alive after completion (for multiple turn_end events)', async () => {
     const { bus, svc, adapter } = setup();
     const sessionKey = 'stub-ch:user5';
 
@@ -466,7 +466,8 @@ describe('onAgentCompleted reply logic', () => {
     bus.emit('agent.onCompleted', { sessionKey, success: true, response: '' });
     await tick();
 
-    expect((svc as any).activeSessions.has(sessionKey)).toBe(false);
+    // Session stays alive to handle multiple agent.onCompleted events
+    expect((svc as any).activeSessions.has(sessionKey)).toBe(true);
   });
 
   it('calls reactionController.setDone and dispose on success', async () => {
@@ -511,7 +512,7 @@ describe('onAgentCompleted reply logic', () => {
     expect(adapter.sent).toHaveLength(0);
   });
 
-  it('second onAgentCompleted for same sessionKey is a no-op (session already deleted)', async () => {
+  it('second onAgentCompleted for same sessionKey processes both (session stays alive)', async () => {
     const { bus, svc, adapter } = setup();
     const sessionKey = 'stub-ch:user8';
 
@@ -519,12 +520,12 @@ describe('onAgentCompleted reply logic', () => {
 
     bus.emit('agent.onCompleted', { sessionKey, success: true, response: '' });
     await tick();
-    // Fire again — session is gone, should be silent
+    // Fire again — session is still alive, so it processes
     bus.emit('agent.onCompleted', { sessionKey, success: true, response: '' });
     await tick();
 
-    // stopTyping called only once from first completion
-    expect(adapter.typingStopped.filter(t => t.sessionKey === sessionKey)).toHaveLength(1);
+    // stopTyping called twice (once for each completion)
+    expect(adapter.typingStopped.filter(t => t.sessionKey === sessionKey)).toHaveLength(2);
   });
 
   it('uses Unknown error message when error field is absent on failure', async () => {
@@ -840,8 +841,8 @@ describe('Integration: full inbound → agent → reply flow', () => {
     // Let agent complete
     await new Promise(r => setTimeout(r, 20));
 
-    // Session cleaned
-    expect((svc as any).activeSessions.has(sessionKey)).toBe(false);
+    // Session stays alive for idle cleanup
+    expect((svc as any).activeSessions.has(sessionKey)).toBe(true);
     // Reply sent
     expect(sent).toHaveLength(1);
     expect(sent[0].text).toBe('Done! Here is the result.');
@@ -949,8 +950,9 @@ describe('Integration: full inbound → agent → reply flow', () => {
 
     await new Promise(r => setTimeout(r, 60));
 
-    expect((svc as any).activeSessions.has(key1)).toBe(false);
-    expect((svc as any).activeSessions.has(key2)).toBe(false);
+    // Sessions stay alive for idle cleanup
+    expect((svc as any).activeSessions.has(key1)).toBe(true);
+    expect((svc as any).activeSessions.has(key2)).toBe(true);
 
     const reply1 = sent.find(s => s.sessionKey === key1);
     const reply2 = sent.find(s => s.sessionKey === key2);

@@ -299,11 +299,12 @@ export class CronService {
   }
 
   private async deliver(targets: string[], text: string): Promise<void> {
-    for (const target of targets) {
-      await this.bus.call('channel.send', {
-        sessionKey: target, text,
-      }).catch(err => log.error(`notify send to ${target}: ${toMessage(err)}`));
-    }
+    await Promise.all(targets.map(target => this.bus.call('channel.send', {
+      sessionKey: target,
+      text,
+    }).catch(err => log.error(`notify send to ${target}: ${toMessage(err)}`))));
+
+    return;
   }
 
   // ── File I/O ──────────────────────────────────────────────────────────────
