@@ -27,6 +27,7 @@ import { getDataPaths } from '../../lib/paths.js';
 import { generateId } from '../../lib/id.js';
 import { cronSessionKey, parseSessionKey } from '../../lib/subagent.js';
 import { parseFrontmatter, serializeFrontmatter } from '../../lib/frontmatter.js';
+import { seedFromTemplate } from '../../lib/templates.js';
 import {
   isWithinActiveHours,
   isHeartbeatContentEffectivelyEmpty,
@@ -54,6 +55,8 @@ export class CronService {
   }
 
   async start(): Promise<void> {
+    await seedFromTemplate(this.cronDir, 'cron', log);
+
     // Load tasks from disk
     const diskTasks = await this.loadTasksFromDisk();
     for (const task of diskTasks) {

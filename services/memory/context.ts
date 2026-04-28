@@ -74,7 +74,7 @@ export class MemoryContext {
 
     await this.sync({ reason: 'init' });
 
-    if (this.enableFileWatcher) this.startFileWatcher();
+    if (this.enableFileWatcher) await this.startFileWatcher();
   }
 
   async close(): Promise<void> {
@@ -242,9 +242,10 @@ export class MemoryContext {
 
   // ── File watcher ───────────────────────────────────────────────────────────
 
-  private startFileWatcher(): void {
+  private async startFileWatcher(): Promise<void> {
     if (this.fileWatcher) return;
     try {
+      await fs.mkdir(this.config.memoryDir, { recursive: true });
       this.fileWatcher = watch(this.config.memoryDir, { recursive: true }, (_, filename) => {
         if (!filename?.endsWith('.md')) return;
         const fullPath = path.join(this.config.memoryDir, filename);
