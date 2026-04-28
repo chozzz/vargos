@@ -356,10 +356,23 @@ export class AgentService {
     }
 
     if (metadata?.instructionsFile) {
-      filePathsToLoad.push({
-        type: 'instructions',
-        path: metadata.instructionsFile,
-      });
+      /**
+       * 1. Check if instructionsFile is a .md file or .MD file
+       * 2. If it is, check if the directory and file exists,
+       * 3. If it doesn't create it and log a debug message
+       * 4. Then insert the file path into filePathsToLoad
+       */
+      if (metadata.instructionsFile.endsWith('.md') || metadata.instructionsFile.endsWith('.MD')) {
+        const filePath = path.join(metadata.instructionsFile);
+        if (!existsSync(filePath)) {
+          log.debug(`instructionsFile does not exist: ${filePath}, creating...`);
+          await fs.writeFile(filePath, '', 'utf-8');
+        }
+        filePathsToLoad.push({ type: 'instructions', path: filePath });
+      }
+      else {
+        log.error(`instructionsFile must be a .md file: ${metadata.instructionsFile}`);
+      }
     }
 
     // Load all files in parallel
@@ -376,12 +389,6 @@ export class AgentService {
               content: truncated.trim(),
             };
           } else {
-            // instructionsFile: validate extension, parse frontmatter, extract body
-            if (!item.path.endsWith('.md')) {
-              log.error(`instructionsFile must be a .md file: ${item.path}`);
-              return null;
-            }
-
             const parsed = parseFrontmatter(content);
             if (!parsed) {
               log.debug(`instructionsFile has no frontmatter: ${item.path}`);
