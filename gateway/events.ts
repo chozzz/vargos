@@ -57,8 +57,6 @@ export interface InboundMessageMetadata {
   botHandle?: string;
   /** Model override for this message (e.g., "claude-opus-4"). If not set, uses agent.model from config. */
   model?: string;
-  /** Path to channel/trigger-specific instructions file to include in system prompt. Auto-created if doesn't exist. */
-  instructionsFile?: string;
   /** Media attachment metadata with content reference — discriminated by type */
   media?:
   | { type: 'image'; mimeType?: ImageMimeType; path?: string; description?: string }

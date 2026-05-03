@@ -18,7 +18,6 @@ import { createLogger } from '../../lib/logger.js';
 import { parseDirectives } from './directives.js';
 import { withTimeout } from '../../lib/timeout.js';
 import { interpolatePrompt } from './prompt-interpolate.js';
-import { parseFrontmatter } from '../../lib/frontmatter.js';
 import { truncate } from '../../lib/truncate.js';
 import type { AgentDeps } from './schema.js';
 import { existsSync, promises as fs } from 'node:fs';
@@ -41,6 +40,8 @@ import {
 import type { AgentSessionEvent } from '@mariozechner/pi-coding-agent';
 
 import { createCustomTools } from './tools.js';
+import { loadChannelPersona, ensureChannelPersonaFiles, PI_BUILTIN_TOOLS } from './persona.js';
+import { resolveSkillPaths } from '../../lib/skills.js';
 
 const log = createLogger('agent');
 
@@ -102,7 +103,6 @@ export class AgentService {
       metadata: z.object({
         cwd: z.string().optional().describe('The current working directory to use for the agent.'),
         model: z.string().optional().describe('Model override in format provider:modelId.'),
-        instructionsFile: z.string().optional().describe('Path to custom instructions .md file.'),
         channelType: z.string().optional().describe('Type of channel (e.g., telegram, whatsapp).'),
         fromUserId: z.string().optional().describe('Sender user ID on the platform.'),
         fromUser: z.string().optional().describe('Sender display name.'),
@@ -208,7 +208,8 @@ export class AgentService {
     await fs.mkdir(this.agentDir, { recursive: true });
 
     const customTools = await this.getCustomTools(sessionKey);
-    const rawSystemPrompt = await this.getSystemPrompt(sessionKey, metadata);
+    const persona = await this.loadPersonaIfChannel(sessionKey, customTools);
+    const rawSystemPrompt = await this.getSystemPrompt(sessionKey, metadata, persona?.body);
     const resourceLoader = await this.createResourceLoader(rawSystemPrompt, effectiveCwd);
 
     log.debug(`Creating agent session for ${sessionKey} in ${effectiveCwd}. (with ${customTools.length} tools and ${rawSystemPrompt?.length} chars system prompt).`);
@@ -222,6 +223,8 @@ export class AgentService {
       modelRegistry: this.modelRegistry,
       customTools,
       resourceLoader,
+      ...(persona?.allowedToolNames && { allowedToolNames: persona.allowedToolNames }),
+      ...(persona?.initialActiveToolNames && { initialActiveToolNames: persona.initialActiveToolNames }),
     });
 
     // Store system prompt in session directory
@@ -319,14 +322,15 @@ export class AgentService {
   protected async createResourceLoader(systemPromptOverride?: string, cwd?: string): Promise<DefaultResourceLoader> {
     const paths = getDataPaths();
     const effectiveCwd = cwd ?? paths.workspaceDir;
-    const skillsDir = path.join(this.agentDir, 'skills');
+    // Only workspace + cwd here — Pi SDK already auto-loads <agentDir>/skills and <cwd>/.pi/skills.
+    const skillPaths = resolveSkillPaths(paths.workspaceDir, ...(cwd ? [cwd] : []));
 
     const resourceLoader = new DefaultResourceLoader({
       cwd: effectiveCwd,
       agentDir: this.agentDir,
       settingsManager: this.settings,
       extensionFactories: [],
-      additionalSkillPaths: [skillsDir],
+      additionalSkillPaths: skillPaths,
       noSkills: false,
       ...(systemPromptOverride && { systemPrompt: systemPromptOverride }),
     });
@@ -338,93 +342,59 @@ export class AgentService {
   }
 
   /**
-   * Build system prompt by merging bootstrap files from workspace, optional cwd, and optional instructionsFile.
+   * Load persona for the given sessionKey if it maps to a configured channel. Subagent
+   * sessionKeys naturally inherit because parseSessionKey strips the `:subagent:` suffix.
+   * Cron / CLI / other types return null (no persona override applied).
    */
-  private async getSystemPrompt(sessionKey: string, metadata?: EventMap['agent.execute']['params']['metadata']): Promise<string | undefined> {
+  private async loadPersonaIfChannel(sessionKey: string, customTools: ToolDefinition[]) {
+    const { type } = parseSessionKey(sessionKey);
+    const isChannel = this.config.channels.some(c => c.id === type);
+    if (!isChannel) return null;
+    const availableTools = [...PI_BUILTIN_TOOLS, ...customTools.map(t => t.name)];
+    return loadChannelPersona(type, availableTools);
+  }
+
+  /**
+   * Build system prompt by merging bootstrap files from workspace and optional cwd, then
+   * appending the channel persona body if provided.
+   */
+  private async getSystemPrompt(sessionKey: string, metadata?: EventMap['agent.execute']['params']['metadata'], personaBody?: string): Promise<string | undefined> {
     const bootstrapFiles = ['CLAUDE.md', 'AGENTS.md', 'SOUL.md', 'TOOLS.md'];
     const maxCharsPerFile = 6000;
 
     const dirs = this.collectBootstrapDirs(metadata);
 
-    // Collect bootstrap file paths and instructionsFile
-    const filePathsToLoad: Array<{ type: 'bootstrap' | 'instructions'; dir?: string; filename?: string; path: string }> = [];
+    const filePathsToLoad: Array<{ dir: string; filename: string; path: string }> = [];
     for (const dir of dirs) {
       for (const filename of bootstrapFiles) {
-        filePathsToLoad.push({
-          type: 'bootstrap',
-          dir,
-          filename,
-          path: path.join(dir, filename),
-        });
+        filePathsToLoad.push({ dir, filename, path: path.join(dir, filename) });
       }
     }
 
-    if (metadata?.instructionsFile) {
-      /**
-       * 1. Check if instructionsFile is a .md file or .MD file
-       * 2. If it is, check if the directory and file exists,
-       * 3. If it doesn't create it and log a debug message
-       * 4. Then insert the file path into filePathsToLoad
-       */
-      if (metadata.instructionsFile.endsWith('.md') || metadata.instructionsFile.endsWith('.MD')) {
-        const filePath = path.join(metadata.instructionsFile);
-        if (!existsSync(filePath)) {
-          log.debug(`instructionsFile does not exist: ${filePath}, creating...`);
-          await fs.writeFile(filePath, '', 'utf-8');
-        }
-        filePathsToLoad.push({ type: 'instructions', path: filePath });
-      }
-      else {
-        log.error(`instructionsFile must be a .md file: ${metadata.instructionsFile}`);
-      }
-    }
-
-    // Load all files in parallel
     const fileContents = await Promise.all(
       filePathsToLoad.map(async (item) => {
         try {
           const content = await fs.readFile(item.path, 'utf-8');
-
-          if (item.type === 'bootstrap') {
-            const truncated = truncate(content, maxCharsPerFile);
-            log.debug(`Loaded ${item.dir}/${item.filename}: ${truncated.length} chars`);
-            return {
-              label: `<!-- ${item.dir}/${item.filename} -->`,
-              content: truncated.trim(),
-            };
-          } else {
-            const parsed = parseFrontmatter(content);
-            if (!parsed) {
-              log.debug(`instructionsFile has no frontmatter: ${item.path}`);
-              return null;
-            }
-
-            if (parsed.meta.type !== 'prompt') {
-              log.debug(`instructionsFile type is not 'prompt': ${parsed.meta.type}`);
-              return null;
-            }
-
-            const body = truncate(parsed.body, maxCharsPerFile);
-            log.debug(`Loaded instructionsFile: ${item.path} (${body.length} chars)`);
-            return {
-              label: `<!-- ${item.path} -->`,
-              content: body.trim(),
-            };
-          }
+          const truncated = truncate(content, maxCharsPerFile);
+          log.debug(`Loaded ${item.dir}/${item.filename}: ${truncated.length} chars`);
+          return {
+            label: `<!-- ${item.dir}/${item.filename} -->`,
+            content: truncated.trim(),
+          };
         } catch {
-          const label = item.type === 'bootstrap' ? `${item.dir}/${item.filename}` : item.path;
-          log.debug(`${label}: not found`);
+          log.debug(`${item.dir}/${item.filename}: not found`);
           return null;
         }
       }),
     );
 
-    // Collect non-null results in order
     const sections: string[] = [];
     for (const result of fileContents) {
-      if (result) {
-        sections.push(result.label, result.content, '');
-      }
+      if (result) sections.push(result.label, result.content, '');
+    }
+
+    if (personaBody) {
+      sections.push('<!-- channel persona -->', personaBody.trim(), '');
     }
 
     if (sections.length === 0) {
@@ -538,6 +508,7 @@ export class AgentService {
 
 export async function boot(bus: Bus): Promise<{ stop(): void }> {
   const config = await bus.call('config.get', {});
+  await ensureChannelPersonaFiles(config.channels.map(c => c.id));
   const runtime = new AgentService({ bus, config });
   bus.bootstrap(runtime);
   return { stop: () => runtime.stop() };

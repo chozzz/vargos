@@ -81,7 +81,6 @@ export class InboundMessagePipeline {
       ...(message.botHandle && { botHandle: message.botHandle }),
       ...(channelEntry.cwd && { cwd: channelEntry.cwd }),
       ...(channelEntry.model && { model: channelEntry.model }),
-      ...(channelEntry.instructionsFile && { instructionsFile: channelEntry.instructionsFile }),
     };
 
     // If agent is skipped, just append to history

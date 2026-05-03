@@ -636,7 +636,7 @@ describe('onInboundMessage firing agent.execute', () => {
 
     expect(spy).toHaveBeenCalledOnce();
     const params = spy.mock.calls[0][0] as EventMap['agent.execute']['params'];
-    // Metadata includes normalized message fields (no model/cwd/instructionsFile since stub config has none)
+    // Metadata includes normalized message fields (no model/cwd since stub config has none)
     expect(params.metadata?.messageId).toBe('test-msg-1');
     expect(params.metadata?.fromUser).toBe('Test User');
     expect(params.metadata?.chatType).toBe('private');
