@@ -35,6 +35,8 @@
   },
   "scripts": {
     "start": "tsx index.ts",
+    "seed": "tsx scripts/seed.ts",
+    "cli": "pnpm run seed && PI_CODING_AGENT_DIR=\"${VARGOS_DATA_DIR:-$HOME/.vargos}/agent\" pi --session-dir \"${VARGOS_DATA_DIR:-$HOME/.vargos}/sessions/cli\"",
     "build": "tsc",
     "prepare": "husky && tsc",
     "test": "vitest",
