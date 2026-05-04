@@ -35,7 +35,7 @@ export interface InboundMessageMetadata {
   /** When set to true, do not prompt agent. But still append the message to the agent's history. */
   skipAgent?: boolean;
   /** Working directory for the agent — defaults to vargos workspace. When set,
-   *  bootstrap files (CLAUDE.md, AGENTS.md) from both cwd and workspace are merged. */
+   *  bootstrap files (AGENTS.md, SOUL.md, TOOLS.md) from both cwd and workspace are merged. */
   cwd?: string;
   /** Username/display name of the message sender (for group chat attribution) */
   fromUser?: string;

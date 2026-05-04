@@ -93,13 +93,13 @@ Body`;
       expect(result).toBeNull();
     });
 
-    it('returns null for empty frontmatter', () => {
+    it('returns empty meta + body for empty frontmatter wrapper', () => {
       const content = `---
 ---
 
 Body`;
       const result = parseFrontmatter(content);
-      expect(result).toBeNull();
+      expect(result).toEqual({ meta: {}, body: 'Body' });
     });
 
     it('skips empty lines in frontmatter', () => {

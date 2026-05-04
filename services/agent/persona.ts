@@ -6,102 +6,78 @@ import { createLogger } from '../../lib/logger.js';
 
 const log = createLogger('agent-persona');
 
-/** Pi SDK built-in tool names — used as the default availability set when expanding globs. */
-export const PI_BUILTIN_TOOLS = ['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls'] as const;
+export interface PersonaMeta {
+  /** Glob whitelist of customTools the channel agent can call. Empty/missing = all customTools allowed. */
+  allowedTools?: string[];
+}
 
-export interface ChannelPersona {
-  allowedToolNames?: string[];
-  initialActiveToolNames?: string[];
-  body?: string;
+export interface Persona {
+  meta: PersonaMeta;
+  body: string;
 }
 
 /**
  * Load persona for `channelId` from `~/.vargos/agents/<channelId>.md`. Re-reads from disk on
- * every call (no in-memory cache). Returns null if the file is missing or has no overrides.
+ * every call (no in-memory cache). Returns null when the file is missing, totally empty,
+ * or has neither frontmatter nor body content.
  */
-export async function loadChannelPersona(
-  channelId: string,
-  availableTools: string[],
-): Promise<ChannelPersona | null> {
-  const file = path.join(getDataPaths().dataDir, 'agents', `${channelId}.md`);
-  if (!existsSync(file)) return null;
+export async function loadChannelPersona(channelId: string): Promise<Persona | null> {
+  const files = await ensureChannelPersonaFiles([channelId]);
 
-  const content = await fs.readFile(file, 'utf-8');
-  const parsed = parseFrontmatter(content);
-
-  if (!parsed) {
-    if (!content.trim()) {
-      log.warn(`agents/${channelId}.md is empty — not loaded`);
-      return null;
-    }
-    return { body: content.trim() };
+  if (files.length === 0) {
+    log.warn(`agents/${channelId}.md is missing — not loaded`);
+    return null;
   }
 
-  const meta = parsed.meta;
+  const file = files?.[0];
+
+  if (!file || !existsSync(file)) {
+    log.warn(`agents/${channelId}.md exists but is not readable — not loaded`);
+    return null;
+  }
+
+  const content = await fs.readFile(file, 'utf-8');
+  
+  if (!content || !content.trim()) {
+    log.warn(`agents/${channelId}.md is empty — not loaded`);
+    return null;
+  }
+
+  const parsed = parseFrontmatter<PersonaMeta>(content);
+  if (!parsed) {
+    return { meta: {}, body: content.trim() };
+  }
+
   const body = parsed.body.trim();
-
-  const allowedPatterns = Array.isArray(meta.allowedTools)
-    ? (meta.allowedTools as unknown[]).map(String)
-    : undefined;
-  const initialActiveToolNames = Array.isArray(meta.initialActiveTools)
-    ? (meta.initialActiveTools as unknown[]).map(String)
-    : undefined;
-
-  const hasAllowed = allowedPatterns && allowedPatterns.length > 0;
-  const hasInitial = initialActiveToolNames && initialActiveToolNames.length > 0;
-  const hasBody = body.length > 0;
-
-  if (!hasAllowed && !hasInitial && !hasBody) {
+  const hasAllowedTools = Array.isArray(parsed.meta.allowedTools) && parsed.meta.allowedTools.length > 0;
+  if (!body && !hasAllowedTools) {
     log.warn(`agents/${channelId}.md has no overrides — not loaded`);
     return null;
   }
 
-  return {
-    allowedToolNames: hasAllowed ? expandToolGlobs(allowedPatterns!, availableTools) : undefined,
-    initialActiveToolNames: hasInitial ? initialActiveToolNames : undefined,
-    body: hasBody ? body : undefined,
-  };
-}
-
-/**
- * Expand glob patterns (only `*` wildcard) against a list of available tool names.
- * `"memory.*"` matches `memory.search`, `memory.read`, etc. `"*"` matches everything.
- * Patterns without `*` must match exactly.
- */
-export function expandToolGlobs(patterns: string[], availableTools: string[]): string[] {
-  const matched = new Set<string>();
-  for (const p of patterns) {
-    if (!p.includes('*')) {
-      if (availableTools.includes(p)) matched.add(p);
-      continue;
-    }
-    const parts = p.split('*').map(escapeRegex);
-    const re = new RegExp('^' + parts.join('.*') + '$');
-    for (const tool of availableTools) if (re.test(tool)) matched.add(tool);
-  }
-  return Array.from(matched);
-}
-
-function escapeRegex(s: string): string {
-  return s.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+  return { meta: parsed.meta, body };
 }
 
 /**
  * Ensure a persona file exists for each channel id. Copies `default.md` to
  * `~/.vargos/agents/<id>.md` if missing. Idempotent — runs at every startup.
  */
-export async function ensureChannelPersonaFiles(channelIds: string[]): Promise<void> {
+async function ensureChannelPersonaFiles(channelIds: string[]): Promise<string[]> {
   const agentsDir = path.join(getDataPaths().dataDir, 'agents');
   const defaultFile = path.join(agentsDir, 'default.md');
   if (!existsSync(defaultFile)) {
     log.warn(`${defaultFile} missing — startup template seed should have copied it`);
-    return;
+    return [];
   }
   await fs.mkdir(agentsDir, { recursive: true });
+  const files: string[] = [];
   for (const id of channelIds) {
     const file = path.join(agentsDir, `${id}.md`);
-    if (existsSync(file)) continue;
-    await fs.copyFile(defaultFile, file);
-    log.info(`seeded agent persona file: ${file}`);
+    if (!existsSync(file)) {
+      await fs.copyFile(defaultFile, file);
+      log.info(`seeded agent persona file: ${file}`);
+    }
+    files.push(file);
   }
+  return files;
 }

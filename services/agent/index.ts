@@ -40,8 +40,9 @@ import {
 import type { AgentSessionEvent } from '@mariozechner/pi-coding-agent';
 
 import { createCustomTools } from './tools.js';
-import { loadChannelPersona, ensureChannelPersonaFiles, PI_BUILTIN_TOOLS } from './persona.js';
+import { loadChannelPersona } from './persona.js';
 import { resolveSkillPaths } from '../../lib/skills.js';
+import { matchesGlob } from '../../lib/glob.js';
 
 const log = createLogger('agent');
 
@@ -150,9 +151,13 @@ export class AgentService {
       this.activeRuns.delete(params.sessionKey);
     }
 
-    const response = this.extractResponse(session);
-    log.info(`execute: END ${params.sessionKey} (${response?.length ?? 0} chars, ${Date.now() - startTime}ms)`);
-    return { response };
+    const { content, error } = this.extractFinalAssistant(session);
+    if (error) {
+      log.error(`execute: ${params.sessionKey} ended with error: ${error}`);
+      throw new Error(error);
+    }
+    log.info(`execute: END ${params.sessionKey} (${content.length} chars, ${Date.now() - startTime}ms)`);
+    return { response: content };
   }
 
   /**
@@ -207,8 +212,8 @@ export class AgentService {
     await fs.mkdir(sessionDir, { recursive: true });
     await fs.mkdir(this.agentDir, { recursive: true });
 
-    const customTools = await this.getCustomTools(sessionKey);
-    const persona = await this.loadPersonaIfChannel(sessionKey, customTools);
+    const persona = await this.loadPersonaIfChannel(sessionKey);
+    const customTools = await this.getCustomTools(sessionKey, persona?.meta.allowedTools);
     const rawSystemPrompt = await this.getSystemPrompt(sessionKey, metadata, persona?.body);
     const resourceLoader = await this.createResourceLoader(rawSystemPrompt, effectiveCwd);
 
@@ -223,8 +228,6 @@ export class AgentService {
       modelRegistry: this.modelRegistry,
       customTools,
       resourceLoader,
-      ...(persona?.allowedToolNames && { allowedToolNames: persona.allowedToolNames }),
-      ...(persona?.initialActiveToolNames && { initialActiveToolNames: persona.initialActiveToolNames }),
     });
 
     // Store system prompt in session directory
@@ -298,14 +301,14 @@ export class AgentService {
           break;
         }
         case 'agent_end': {
-          const response = this.extractResponse(session);
-
-          log.debug(`  emitting agent.onCompleted with ${response?.length ?? 0} chars`);
-          this.bus.emit('agent.onCompleted', {
-            sessionKey,
-            success: true,
-            response: response || '',
-          });
+          const { content, error } = this.extractFinalAssistant(session);
+          if (error) {
+            log.error(`agent_end with error for ${sessionKey}: ${error}`);
+            this.bus.emit('agent.onCompleted', { sessionKey, success: false, error });
+          } else {
+            log.debug(`  emitting agent.onCompleted with ${content.length} chars`);
+            this.bus.emit('agent.onCompleted', { sessionKey, success: true, response: content });
+          }
           break;
         }
         default: {
@@ -346,12 +349,11 @@ export class AgentService {
    * sessionKeys naturally inherit because parseSessionKey strips the `:subagent:` suffix.
    * Cron / CLI / other types return null (no persona override applied).
    */
-  private async loadPersonaIfChannel(sessionKey: string, customTools: ToolDefinition[]) {
+  private async loadPersonaIfChannel(sessionKey: string) {
     const { type } = parseSessionKey(sessionKey);
     const isChannel = this.config.channels.some(c => c.id === type);
     if (!isChannel) return null;
-    const availableTools = [...PI_BUILTIN_TOOLS, ...customTools.map(t => t.name)];
-    return loadChannelPersona(type, availableTools);
+    return loadChannelPersona(type);
   }
 
   /**
@@ -359,7 +361,7 @@ export class AgentService {
    * appending the channel persona body if provided.
    */
   private async getSystemPrompt(sessionKey: string, metadata?: EventMap['agent.execute']['params']['metadata'], personaBody?: string): Promise<string | undefined> {
-    const bootstrapFiles = ['CLAUDE.md', 'AGENTS.md', 'SOUL.md', 'TOOLS.md'];
+    const bootstrapFiles = ['AGENTS.md', 'SOUL.md', 'TOOLS.md'];
     const maxCharsPerFile = 6000;
 
     const dirs = this.collectBootstrapDirs(metadata);
@@ -408,10 +410,14 @@ export class AgentService {
   }
 
   /**
-   * Load custom tools from bus callable events.
+   * Load custom tools from bus callable events. When `allowedPatterns` is provided
+   * (from a channel persona), filter the tool list down to names matching at least
+   * one glob pattern. Empty/undefined patterns = all tools allowed.
    */
-  protected async getCustomTools(sessionKey: string): Promise<ToolDefinition[]> {
-    return await createCustomTools(sessionKey, this.bus);
+  protected async getCustomTools(sessionKey: string, allowedPatterns?: string[]): Promise<ToolDefinition[]> {
+    const tools = await createCustomTools(sessionKey, this.bus);
+    if (!allowedPatterns?.length) return tools;
+    return tools.filter(t => allowedPatterns.some(p => matchesGlob(p, t.name)));
   }
 
   /**
@@ -466,34 +472,40 @@ export class AgentService {
   // ── Private Helpers ────────────────────────────────────────────────────────
 
   /**
-   * Extract the last assistant message from the session.
-   * Handles both string and multipart content (text blocks).
+   * Extract the final assistant message: text content + error (when stopReason === 'error').
+   * Pi SDK records inference failures (e.g. missing API key) as assistant messages with
+   * empty content and `errorMessage` populated, instead of throwing — without inspecting
+   * `stopReason`/`errorMessage` here, those would surface as silent empty completions.
    */
-  private extractResponse(session: AgentSession): string {
+  private extractFinalAssistant(session: AgentSession): { content: string; error?: string } {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const messages = (session as any).state?.messages || [];
 
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i];
-      if (msg?.role === 'assistant' && msg.content) {
-        // Handle string content
-        if (typeof msg.content === 'string') {
-          return msg.content;
-        }
-        // Handle multipart content (text blocks in arrays)
-        if (Array.isArray(msg.content)) {
-          return msg.content
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            .filter((block: any) => block.type === 'text')
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            .map((block: any) => block.text || '')
-            .filter(Boolean)
-            .join('\n');
-        }
+      if (msg?.role !== 'assistant') continue;
+
+      const error = msg.stopReason === 'error'
+        ? (msg.errorMessage ?? 'unknown inference error')
+        : undefined;
+
+      let content = '';
+      if (typeof msg.content === 'string') {
+        content = msg.content;
+      } else if (Array.isArray(msg.content)) {
+        content = msg.content
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .filter((block: any) => block.type === 'text')
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .map((block: any) => block.text || '')
+          .filter(Boolean)
+          .join('\n');
       }
+
+      return error ? { content, error } : { content };
     }
 
-    return '';
+    return { content: '' };
   }
 
   stop(): void {
@@ -508,7 +520,6 @@ export class AgentService {
 
 export async function boot(bus: Bus): Promise<{ stop(): void }> {
   const config = await bus.call('config.get', {});
-  await ensureChannelPersonaFiles(config.channels.map(c => c.id));
   const runtime = new AgentService({ bus, config });
   bus.bootstrap(runtime);
   return { stop: () => runtime.stop() };

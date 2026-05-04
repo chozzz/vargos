@@ -10,17 +10,22 @@
  *   body content
  */
 
-export interface FrontmatterResult {
-  meta: Record<string, unknown>;
+export interface FrontmatterResult<T = Record<string, unknown>> {
+  meta: T;
   body: string;
 }
 
-export function parseFrontmatter(content: string): FrontmatterResult | null {
+/**
+ * Parse YAML-ish frontmatter. The optional generic `T` lets callers declare the expected
+ * meta shape — at runtime the parsed value is just cast (no validation), so callers should
+ * still treat fields as optional unless they validate downstream (Zod, manual checks).
+ */
+export function parseFrontmatter<T = Record<string, unknown>>(content: string): FrontmatterResult<T> | null {
   if (!content || typeof content !== 'string') {
     return null;
   }
 
-  const match = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)/);
+  const match = content.match(/^---\n([\s\S]*?)\n?---\n?([\s\S]*)/);
   if (!match) {
     return null;
   }
@@ -29,8 +34,10 @@ export function parseFrontmatter(content: string): FrontmatterResult | null {
   const metaStr = match[1].trim();
   const body = match[2]?.trim() ?? '';
 
+  // Empty frontmatter (e.g. `---\n---\n\n`) is valid — return empty meta + body so callers
+  // can distinguish "no frontmatter wrapper" (parse returns null) from "wrapper but empty".
   if (!metaStr) {
-    return null;
+    return { meta: {} as T, body };
   }
 
   const lines = metaStr.split('\n');
@@ -75,7 +82,7 @@ export function parseFrontmatter(content: string): FrontmatterResult | null {
     }
   }
 
-  return { meta, body };
+  return { meta: meta as T, body };
 }
 
 function parseFrontmatterValue(value: string): unknown {

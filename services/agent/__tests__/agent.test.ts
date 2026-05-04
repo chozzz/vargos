@@ -88,7 +88,7 @@ describe('getSystemPrompt merging', () => {
 
   it('merges bootstrap files from workspace + cwd', async () => {
     writeFileSync(path.join(workspaceDir, 'AGENTS.md'), '# Workspace Agent');
-    writeFileSync(path.join(cwdDir, 'CLAUDE.md'), '# Project Context');
+    writeFileSync(path.join(cwdDir, 'AGENTS.md'), '# Project Context');
 
     const runtime = createTestRuntime(tmpDir);
     const prompt = await runtime.testGetSystemPrompt('test-session', cwdDir);
@@ -99,7 +99,7 @@ describe('getSystemPrompt merging', () => {
 
   it('workspace files appear before cwd files', async () => {
     writeFileSync(path.join(workspaceDir, 'AGENTS.md'), 'WORKSPACE_MARKER');
-    writeFileSync(path.join(cwdDir, 'CLAUDE.md'), 'CWD_MARKER');
+    writeFileSync(path.join(cwdDir, 'AGENTS.md'), 'CWD_MARKER');
 
     const runtime = createTestRuntime(tmpDir);
     const prompt = await runtime.testGetSystemPrompt('test-session', cwdDir)!;
@@ -130,8 +130,8 @@ describe('getSystemPrompt merging', () => {
     expect(prompt!.length).toBeLessThan(largeContent.length);
   });
 
-  it('loads CLAUDE.md from cwd', async () => {
-    writeFileSync(path.join(cwdDir, 'CLAUDE.md'), '# My Project\nBuild instructions here');
+  it('loads AGENTS.md from cwd', async () => {
+    writeFileSync(path.join(cwdDir, 'AGENTS.md'), '# My Project\nBuild instructions here');
 
     const runtime = createTestRuntime(tmpDir);
     const prompt = await runtime.testGetSystemPrompt('test-session', cwdDir);
