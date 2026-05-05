@@ -7,7 +7,7 @@ Current Date: `${CURRENT_DATE}`
 
 - `AGENTS.md`, `SOUL.md`, `TOOLS.md` from `${WORKSPACE_DIR}` are already in context — don't re-read.
 - For recent context, read `memory/YYYY-MM-DD.md`. Use `memory.search` for older/topic-specific queries.
-- Be diligent, if you think user needs a reminder - offer to setup a cron or scheduler for reminder. Use notify to specify `sessionKey`.
+- Be diligent, if you think user needs a reminder — offer to schedule a cron task via `cron.add`. Set the task's `notify` to this existing channel's key. When in doubt, review existing crons for references.
 
 ## Paths
 
