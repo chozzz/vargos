@@ -1,94 +1,73 @@
 # Troubleshooting
 
-## Gateway Won't Start
+## Gateway won't start
 
-**Port in use:**
+**Port already in use** (`EADDRINUSE :::9000`): another process holds 9000. Stop it or change `gateway.port` in `~/.vargos/config.json`.
 
-```
-Error: listen EADDRINUSE :::9000
-```
+**Config invalid**: `pnpm start` exits with a Zod validation error pointing at the offending key. Schema reference: [`services/config/index.ts`](../../services/config/index.ts).
 
-Another process is using port 9000. Either stop it or change the gateway port:
+## Agent silent / sends no reply
 
-```jsonc
-{ "gateway": { "port": 9001 } }
-```
+Most common cause: the LLM call failed but Pi SDK saved an empty assistant message. Vargos surfaces this as `agent.onCompleted { success: false, error }` and channels send `Error: <message>` back to the user.
 
-**Config missing:**
+Check stdout (or `~/.vargos/logs/`) for an `[agent] ERROR` line. Common errors:
 
-```
-No configuration found
-```
+| Error | Fix |
+|---|---|
+| `No API key for provider: X` | Add API key in `~/.vargos/agent/auth.json` or set `${PROVIDER}_API_KEY` env. |
+| `Model not found: X:Y` | `defaultModel` in `agent/settings.json` must match the registry id **exactly**. Pi SDK does exact lookup; mismatch falls through to first-available provider. |
+| `Agent execution timeout after 1800000ms` | LLM hung. Check provider status. Default timeout is 30 min. |
 
-Run `vargos` or `pnpm start` to trigger the config wizard, or create `~/.vargos/config.json` manually. See [configuration.md](./configuration.md).
+If the LLM responds but the message is empty in chat: see `[channels] empty response on success` in stdout. May indicate Pi SDK's `streamingBehavior: 'steer'` interrupted an in-flight prompt with a newer one on the same sessionKey.
 
-**Stale PID file:**
+## Model resolution
 
-If `vargos gateway status` reports running but nothing is listening, remove the stale PID file:
+Pi SDK resolves `defaultProvider`+`defaultModel` from `agent/settings.json` via exact `find()`. If wrong, falls through to first available with valid auth. Inspect what loaded:
 
 ```bash
-rm ~/.vargos/gateway.pid
-vargos gateway start
+head -3 ~/.vargos/sessions/<channel>/<chat>/<latest>.jsonl
 ```
 
-## Model Not Found
+Look for the `model_change` entry.
 
-```
-Model profile "xyz" not found — available: anthropic, openai
-```
+## Whitelist / channel rejection
 
-The `agent.model` (or `agent.fallback`) references a provider:modelId that doesn't exist in the `providers` map. Check your `config.json`:
+If an inbound message doesn't trigger an agent run, check `allowFrom` on the channel entry. Non-whitelisted senders' messages are appended to history (`skipAgent` path) but the agent isn't invoked. See [`services/channels/pipeline.ts`](../../services/channels/pipeline.ts).
 
-```jsonc
-{
-  "providers": { "anthropic": { "baseUrl": "...", "apiKey": "...", "models": [{ "id": "claude-sonnet-4-20250514", "name": "Claude Sonnet" }] } },
-  "agent": { "model": "anthropic:claude-sonnet-4-20250514" }   // must match provider:modelId format
-}
-```
+Group chats: bot only runs when @-mentioned or replied-to.
 
-## API Key Issues
+## Empty / stuck responses
 
-**Missing key:**
+| Symptom | Likely cause |
+|---|---|
+| Bot stays in 🤔 forever | Tool hung mid-call — check `[agent.onTool]` in stdout; restart gateway |
+| Heartbeat never delivers | Heartbeat replied `HEARTBEAT_OK` (token pruning skips delivery) — working as designed |
+| Model returns no text | Thinking-only or tool-only turn. Try `/think:low` or rephrase. |
 
-Set via config or environment variable. Env takes priority:
+## Skill / persona changes don't take effect
+
+- **Personas**: re-read on every `getOrCreateSession`. New sessions for the same channelId pick up edits; cached sessions keep the old persona until eviction or restart.
+- **Skills**: Pi SDK reads at session creation. New session sees changes; cached sessions don't.
+
+To force reload: restart the gateway.
+
+## TCP connection failure (external clients)
+
+Gateway listens on `127.0.0.1:9000` over **raw TCP/JSON-RPC** — not HTTP. `curl http://localhost:9000` won't work. Use `nc`:
 
 ```bash
-export ANTHROPIC_API_KEY=sk-...
+echo '{"jsonrpc":"2.0","id":1,"method":"bus.search","params":{}}' | nc -q 1 127.0.0.1 9000
 ```
 
-**Wrong provider:** The env var must match the provider name — `OPENAI_API_KEY` for `openai`, `ANTHROPIC_API_KEY` for `anthropic`, etc.
-
-**Local providers:** Ollama and LM Studio require `"apiKey": "local"` in the model profile (dummy value for Pi SDK auth).
-
-## Empty Responses
-
-**maxTokens too low:** Increase `maxTokens` in the model profile. Some models default to very low limits.
-
-**Thinking-only response:** Model returned thinking tokens but no text. See [runtime.md](./runtime.md#empty-response-handling) for retry behavior. Try rephrasing or switching models.
-
-## Session Accumulation
-
-Old sessions accumulate in `~/.vargos/sessions/`. To clean up:
+## Debug logs
 
 ```bash
-# List sessions
-ls ~/.vargos/sessions/
-
-# Remove old sessions (files are base64url-encoded session keys)
-rm ~/.vargos/sessions/<filename>.jsonl
+LOG_LEVEL=debug pnpm start
 ```
 
-Run sessions (`cli:run:*`) create new files each execution. Chat sessions (`cli:chat`) reuse the same file.
+Adds verbose logging and writes per-session debug files (`systemPrompt.md`, `customTools.md`, etc.) to each session dir. See [Debugging](../debugging.md).
 
-## Health Check
+## See also
 
-```bash
-vargos health
-```
-
-Reports:
-- Config validation (missing fields, invalid values)
-- Gateway connectivity (WebSocket connection test)
-- Service status (registered services and their health)
-
-If health check fails on gateway connectivity, ensure the gateway is running: `vargos gateway start`.
+- [Debugging](../debugging.md) — log inspection and bus introspection
+- [Configuration](../configuration.md) — config schema

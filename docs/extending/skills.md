@@ -1,148 +1,47 @@
-# Creating Agent Skills
+# Skills
 
-Skills are reusable sets of instructions that guide the agent's behavior. They live in your workspace as markdown files with YAML frontmatter.
+Skills are markdown files with YAML frontmatter that the agent loads on demand. Vargos uses Pi SDK's skills format and discovery — there's no Vargos-specific skill schema.
 
-## Skill Structure
+The bundled `skill-creator` skill (at [`.templates/vargos/agent/skills/skill-creator/SKILL.md`](../../.templates/vargos/agent/skills/skill-creator/SKILL.md), seeded into `~/.vargos/agent/skills/`) is the canonical reference. Read it for full guidance on writing effective skills.
 
-```yaml
----
-name: code-review
-description: Review code for quality, security, and best practices
-tags: [development, review]
-priority: high
----
+## File shape
 
-# Your Instructions
+A skill is a directory containing at minimum `SKILL.md`. Optional siblings: `scripts/` (executables), `references/` (loaded on demand), `assets/` (output templates).
 
-When asked to review code:
-1. Check for security vulnerabilities (SQL injection, XSS, etc.)
-2. Verify error handling is present
-3. Look for performance issues
-4. Suggest improvements
-5. Keep reviews constructive
+`SKILL.md` frontmatter only needs `name` and `description`. Other fields are ignored by Pi SDK. The description is the trigger — write it to convey both **what the skill does** and **when to use it**.
 
-Never approve code without thorough review. Ask clarifying questions about intent before critiquing.
-```
+## Discovery paths
 
-## Skill File Locations
+Pi SDK auto-loads skills from:
+- `<agentDir>/skills/` — `~/.vargos/agent/skills/` (user-edited + bundled defaults)
+- `<cwd>/.pi/skills/` — Pi SDK convention for project-local skills
 
-Vargos discovers skills from:
-- `~/.vargos/workspace/skills/` — user skills
-- `~/.vargos/workspace/` — files like AGENTS.md, SOUL.md
-- Project `.skill/` directories (if specified in config)
+Vargos's [`lib/skills.ts`](../../lib/skills.ts) `resolveSkillPaths()` adds two more roots via Pi SDK's `additionalSkillPaths`:
+- `<workspaceDir>/skills/` — `~/.vargos/workspace/skills/` (user-edited)
+- `<cwd>/skills/` — project-local (when channel `cwd` is set)
 
-## Frontmatter Fields
+Pi SDK de-dups by name + realpath. Order of precedence: workspace → agent → cwd → cwd/.pi.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `name` | string | Unique identifier (used in file name: `{name}.md`) |
-| `description` | string | One-line summary shown in manifest |
-| `tags` | array | Categories for organization (development, analysis, writing, etc.) |
-| `priority` | string | optional — high, medium, low (default: medium) |
-| `enabled` | boolean | optional — whether skill is active (default: true) |
+**Bundled skills land under `agent/skills/`**, not `workspace/skills/` — `agent/` is the Pi-SDK-managed layer Vargos owns and ships defaults for; `workspace/` is reserved for user-editable additions.
 
-## How Agents Use Skills
+## How agents use skills
 
-When the agent starts a session, it:
-1. Discovers all available skills from the workspace
-2. Loads their descriptions and tags
-3. Reads relevant skill files based on task context
-4. Injects skill instructions into the system prompt
+Pi SDK injects an `<available_skills>` block into the system prompt with each skill's `name`, `description`, and `location` — but **not the body**. The agent reads the body via the `read` tool when it decides the skill is relevant. This is Anthropic's progressive-disclosure pattern.
 
-The agent decides which skills are relevant for the current task.
+The system prompt also instructs: *"Use the read tool to load a skill's file when the task matches its description."*
 
-## Example Skills
+## Channel persona `allowedTools` filter
 
-### Code Review Skill
+Channel personas can whitelist tools via glob (`memory.*`, `mcp.atlassian.*`). The whitelist filters **bus tools only** — skills (read via the file system) and Pi SDK built-ins (`read`/`bash`/`edit`/`write`/...) are always available.
 
-Create `~/.vargos/workspace/skills/code-review.md`:
+## Creating a skill
 
-```yaml
----
-name: code-review
-description: Provide thorough code review feedback
-tags: [development, review]
----
+The fastest path: ask the agent to use the bundled `skill-creator`. It guides you through concrete examples → reusable resources → init → editing → iteration.
 
-When reviewing code:
-- Check for security vulnerabilities
-- Verify error handling
-- Look for performance issues
-- Suggest improvements
-- Reference best practices
+Or just create `~/.vargos/agent/skills/<name>/SKILL.md` manually.
 
-Format feedback as:
-1. Summary of findings
-2. Issues (if any)
-3. Suggestions
-4. Approved/Request Changes
-```
+## See also
 
-### Writing Style Skill
-
-Create `~/.vargos/workspace/skills/writing.md`:
-
-```yaml
----
-name: writing
-description: Maintain consistent writing style and tone
-tags: [writing, communication]
----
-
-Write in an approachable, friendly tone:
-- Use active voice
-- Keep sentences short
-- Avoid jargon when possible
-- Provide examples
-- Anticipate reader questions
-```
-
-### Research Skill
-
-Create `~/.vargos/workspace/skills/research.md`:
-
-```yaml
----
-name: research
-description: Conduct thorough research and synthesize findings
-tags: [research, analysis]
----
-
-When researching a topic:
-1. Check multiple sources
-2. Verify information is recent
-3. Note source credibility
-4. Identify gaps or conflicting views
-5. Synthesize into clear summary
-
-Cite sources. Distinguish facts from opinions.
-```
-
-## Best Practices
-
-1. **Keep skills focused** — one skill, one clear purpose
-2. **Write for clarity** — agents read and follow these literally
-3. **Be specific** — "check for SQL injection" not "check for bugs"
-4. **Organize with tags** — tags help agents find relevant skills
-5. **Version your skills** — add date if you significantly revise
-6. **Test with agent** — ask agent to use skill and refine based on results
-7. **Document assumptions** — what environment, tools, or context does this expect?
-
-## Skill Discovery
-
-Check what skills the agent found:
-
-```bash
-# Via config command
-vargos config skills
-
-# Or ask the agent
-"What skills do you have available?"
-```
-
-The agent will list loaded skills and their descriptions.
-
-## See Also
-
-- [Workspace Files](../usage/workspace-files.md) — Full workspace structure
-- [System Prompts](../usage/runtime.md) — How skills are injected into prompts
+- [`.templates/vargos/agent/skills/skill-creator/SKILL.md`](../../.templates/vargos/agent/skills/skill-creator/SKILL.md) — bundled skill-creator
+- [Runtime](../usage/runtime.md) — system prompt assembly
+- [Personas](../usage/personas.md) — channel-scoped tool filtering

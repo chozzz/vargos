@@ -1,364 +1,68 @@
-# Bus Architecture & Service Patterns
+# Bus Architecture
 
-This document describes Vargos's event-driven architecture—how services communicate, how the bus works, and how to extend the system.
+Vargos services communicate exclusively through a typed `EventEmitterBus`. No shared state, no direct cross-domain imports — those are enforced by ESLint (`no-restricted-imports`).
 
-## Core Concepts
+Source files:
+- [`gateway/bus.ts`](../../gateway/bus.ts) — `Bus` interface
+- [`gateway/emitter.ts`](../../gateway/emitter.ts) — default `EventEmitterBus` implementation
+- [`gateway/events.ts`](../../gateway/events.ts) — typed `EventMap` (the contract — single source of truth)
+- [`gateway/decorators.ts`](../../gateway/decorators.ts) — `@on` and `@register`
+- [`gateway/tcp-server.ts`](../../gateway/tcp-server.ts) — TCP/JSON-RPC entry point
 
-Vargos is a **service-oriented event bus system**. All inter-service communication flows through a central `EventEmitterBus`. Services are:
-- **Isolated** — no shared state, no direct imports
-- **Declarative** — decorated with `@on` (listeners) and `@register` (RPC)
-- **Protocol-first** — all contracts defined in a single `EventMap`
+## Two event shapes
 
-This design makes the system:
-- ✅ Easy to test (mock the bus)
-- ✅ Easy to extend (add a service without modifying others)
-- ✅ Reliable (backpressure over crashes, graceful degradation)
-- ✅ Observable (all communication is traceable)
+| Shape | Semantic | Decorator | Caller API |
+|---|---|---|---|
+| **Pure** | Fire-and-forget | `@on('event')` | `bus.emit('event', payload)` |
+| **Callable** | Request/reply (RPC) | `@register('event', { description, schema })` | `bus.call('event', params)` |
 
----
+Each `@register`-ed callable is also auto-wrapped as an agent tool by [`services/agent/tools.ts`](../../services/agent/tools.ts) `wrapEventAsToolDefinition` — so agents call them by name, with `sessionKey` auto-injected.
 
-## Event Types
+## Service shape
 
-### Pure Events (Broadcast)
+A service is a class with `@on` / `@register` decorated methods, plus a `boot(bus)` export that instantiates it and calls `bus.bootstrap(this)`. See any of:
 
-Emitted to all listeners. Fire-and-forget, no response expected:
+- [`services/agent/index.ts`](../../services/agent/index.ts) — most elaborate
+- [`services/cron/index.ts`](../../services/cron/index.ts) — `@register` + `@on` mix
+- [`services/web/index.ts`](../../services/web/index.ts) — minimal example
 
-```typescript
-@on('agent.onDelta')
-handleDelta(payload: { sessionKey: string; chunk: string }): void
-
-bus.emit('agent.onDelta', { sessionKey: 'main', chunk: 'Hello' });
-```
-
-Examples:
-- `agent.onDelta` — agent streaming a response chunk
-- `agent.onTool` — agent called a tool
-- `agent.onCompleted` — agent finished executing
-- `channel.onConnected` — channel adapter came online
-- `log.onLog` — any service logged something
-
-### Callable Events (Request/Response)
-
-RPC-style methods. Caller waits for a response. Agent-accessible (tools):
-
-```typescript
-@register('agent.execute', {
-  description: 'Run the agent on a task',
-  schema: z.object({ 
-    sessionKey: z.string(), 
-    task: z.string() 
-  })
-})
-async execute(params: { sessionKey: string; task: string }): Promise<{ response: string }>
-
-const result = await bus.call('agent.execute', { sessionKey: 'main', task: 'hello' });
-```
-
-Examples:
-- `agent.execute` — run agent on a task
-- `agent.abort` — stop a running agent
-- `config.get` — fetch current config
-- `channel.send` — send a message to a user
-- `memory.search` — semantic search over workspace
-
----
-
-## EventMap: Single Source of Truth
-
-`gateway/events.ts` defines all contracts in one place:
-
-```typescript
-export interface EventMap {
-  // Pure events — broadcast
-  'agent.onDelta': { sessionKey: string; chunk: string };
-  'agent.onTool': { 
-    sessionKey: string; 
-    toolName: string; 
-    phase: 'start' | 'end'; 
-    args?: Json; 
-    result?: Json 
-  };
-  'agent.onCompleted': { 
-    sessionKey: string; 
-    success: boolean; 
-    response?: string; 
-    error?: string 
-  };
-  'log.onLog': { level: string; service: string; message: string; payload?: any };
-
-  // Callable events — RPC
-  'agent.execute': { 
-    params: { sessionKey: string; task: string; images?: string[] }; 
-    result: { response: string } 
-  };
-  'channel.send': { 
-    params: { sessionKey: string; text: string }; 
-    result: { sent: boolean } 
-  };
-  'memory.search': { 
-    params: { query: string; maxResults?: number }; 
-    result: MemorySearchResult[] 
-  };
-  'config.get': { 
-    params: Record<string, never>; 
-    result: AppConfig 
-  };
-  // ... more events
-}
-```
-
-All services depend on EventMap. No service invents its own events.
-
----
-
-## Service Structure
-
-Every service follows this pattern:
-
-```typescript
-import { EventMap, Bus } from './gateway/types';
-
-export class MyService {
-  private log = createLogger('my-service');
-
-  constructor(
-    private bus: Bus,
-    private config: AppConfig,
-  ) {}
-
-  // Pure event listener
-  @on('some.event')
-  private handleEvent(payload: EventMap['some.event']): void {
-    this.log.info('Got event', payload);
-  }
-
-  // Callable RPC method
-  @register('my.tool', {
-    description: 'Do something',
-    schema: z.object({ x: z.string() })
-  })
-  async myTool(params: { x: string }): Promise<{ result: string }> {
-    return { result: `Processed: ${params.x}` };
-  }
-
-  // Lifecycle
-  async start(): Promise<void> {
-    this.log.info('Starting');
-  }
-
-  async stop(): Promise<void> {
-    this.log.info('Stopping');
-  }
-}
-
-export async function boot(bus: Bus): Promise<{ stop(): Promise<void> }> {
-  const svc = new MyService(bus, await bus.call('config.get', {}));
-  await svc.start();
-  await bus.registerService(svc);
-  
-  return {
-    async stop() {
-      await svc.stop();
-    }
-  };
-}
-```
-
----
-
-## Boot Sequence
-
-Services are loaded in a specific order (see `index.ts`):
+Boot order is centrally defined in [`index.ts`](../../index.ts):
 
 ```
-1. config     → loads config.json, makes it available to others
-2. log        → structured logging, error classification
-3. fs         → file I/O (read, write, edit, exec)
-4. web        → HTTP fetch, web scraping
-5. memory     → hybrid search over workspace
-6. agent      → PiAgent runtime, session management
-7. cron       → scheduled tasks, heartbeat
-8. channels   → WhatsApp/Telegram adapters
-9. webhooks   → HTTP webhooks trigger agent
-10. mcp       → MCP server (exposes tools to Claude Desktop)
+config → log → web → memory → media → agent → channels → cron → mcp-client → tcp server → bus.onReady
 ```
 
-Each service can only call earlier services (prevent circular deps):
+`edge/mcp/` (MCP server) and `edge/webhooks/` exist in code but are commented out at boot.
 
-```
-config → (nothing)
-log, fs, web → config, log, fs, web
-memory → config, log, fs, web
-agent → config, log, fs, web, memory
-channels, cron → config, log, fs, web, memory, agent
-webhooks, mcp → all services
-```
+## Domain boundaries
 
----
+Cross-domain imports are blocked by ESLint configuration in [`eslint.config.mjs`](../../eslint.config.mjs). To call into another service, use `bus.call('other.service.method', params)`. The only allowed cross-import is type-only from `services/config/` (for `AppConfig`).
 
-## Communication Patterns
+This forces the boundaries that make services:
+- Independently testable — mock the bus, not collaborators
+- Independently deployable — services could move to separate processes by swapping the `Bus` implementation
+- Replaceable — any service can be substituted without touching another
 
-### Pattern 1: Fire and Forget
+## TCP gateway
 
-Service emits an event, doesn't wait for response:
+The TCP server speaks **JSON-RPC 2.0 over raw TCP** on `127.0.0.1:9000` (configurable via `gateway.host`/`gateway.port` in `config.json`). Not HTTP. Use `nc` or a JSON-RPC TCP client:
 
-```typescript
-bus.emit('log.onLog', { 
-  level: 'info', 
-  service: 'my-service', 
-  message: 'Something happened' 
-});
+```bash
+echo '{"jsonrpc":"2.0","id":1,"method":"bus.search","params":{}}' | nc -q 1 127.0.0.1 9000
 ```
 
-### Pattern 2: Request/Response (Sequential)
+The MCP bridge at [`edge/mcp/`](../../edge/mcp/) exposes the same surface over HTTP/SSE for MCP clients (Claude Desktop, etc.) but is currently commented out in `index.ts`.
 
-One service calls another, waits for answer:
+## Introspection
 
-```typescript
-const result = await bus.call('agent.execute', {
-  sessionKey: 'user:123',
-  task: 'What time is it?'
-});
-console.log(result.response);
-```
+The bus self-describes:
+- `bus.search` — list all registered events with metadata
+- `bus.inspect` — get one event's full schema (params + result)
 
-### Pattern 3: Subscribe to Events
+Useful for the agent itself: it can call `bus.search({ query: 'memory' })` to discover memory tools at runtime.
 
-Service listens for events and reacts:
+## See also
 
-```typescript
-@on('agent.onCompleted')
-private async onAgentDone(payload: EventMap['agent.onCompleted']): Promise<void> {
-  if (payload.success) {
-    await bus.call('channel.send', {
-      sessionKey: payload.sessionKey,
-      text: payload.response!
-    });
-  }
-}
-```
-
-### Pattern 4: Broadcast Streaming
-
-Agent streams chunks, UI listens:
-
-```typescript
-// Agent service
-for (const chunk of response) {
-  bus.emit('agent.onDelta', { sessionKey, chunk });
-}
-
-// CLI/UI service
-@on('agent.onDelta')
-private handleChunk(payload: EventMap['agent.onDelta']): void {
-  process.stdout.write(payload.chunk);
-}
-```
-
----
-
-## TCP/JSON-RPC Protocol
-
-Services communicate over TCP (port 9000) using JSON-RPC 2.0:
-
-**Request** (client → bus):
-```json
-{ 
-  "jsonrpc": "2.0", 
-  "method": "agent.execute", 
-  "params": { "sessionKey": "main", "task": "hello" }, 
-  "id": 1 
-}
-```
-
-**Response** (bus → client):
-```json
-{ 
-  "jsonrpc": "2.0", 
-  "result": { "response": "Hello! I'm ready to help." }, 
-  "id": 1 
-}
-```
-
-**Notification** (bus → subscribed clients):
-```json
-{ 
-  "jsonrpc": "2.0", 
-  "method": "bus.notify", 
-  "params": { 
-    "event": "agent.onDelta", 
-    "payload": { "sessionKey": "main", "chunk": "Hello" } 
-  } 
-}
-```
-
-This allows external clients (CLI, web UI, mobile apps) to communicate with Vargos as if it were a traditional API service.
-
----
-
-## Testing Services
-
-Services are pure functions over EventMap. Test offline:
-
-```typescript
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { MyService } from './my-service';
-
-describe('MyService', () => {
-  let mockBus: Bus;
-
-  beforeEach(() => {
-    mockBus = {
-      call: vi.fn(),
-      emit: vi.fn(),
-    };
-  });
-
-  it('handles events', async () => {
-    const svc = new MyService(mockBus, testConfig);
-    
-    svc.handleEvent({ /* payload */ });
-    
-    expect(mockBus.emit).toHaveBeenCalledWith('some.event', expect.anything());
-  });
-});
-```
-
-Integration tests use the real bus:
-
-```typescript
-import { EventEmitterBus } from './gateway/emitter';
-
-describe('Integration', () => {
-  it('agent executes task', async () => {
-    const bus = new EventEmitterBus();
-    await boot(bus);  // Loads all services
-    
-    const result = await bus.call('agent.execute', {
-      sessionKey: 'test',
-      task: 'hello'
-    });
-    
-    expect(result.response).toContain('hello');
-  });
-});
-```
-
----
-
-## Design Principles
-
-1. **Services don't import each other** — only import bus and types
-2. **EventMap is immutable** — add new events, never change existing ones
-3. **Events are public APIs** — stable contracts, use for testing
-4. **Errors flow through events** — no exceptions across service boundaries
-5. **Logging goes to bus.emit** — centralized visibility
-6. **State lives in config, sessions, or files** — not in service instances
-
----
-
-## See Also
-
-- [API Reference](../api-reference.md) — Complete event and RPC reference
-- [Channels Design](./channels-design.md) — How channel adapters integrate
-- [Debugging Guide](../debugging.md) — How to monitor and debug services
+- [API Reference](../api-reference.md) — full bus event catalog
+- [Channels Design](./channels-design.md) — channel adapter architecture
+- [Tools](../extending/tools.md) — how to add new bus methods

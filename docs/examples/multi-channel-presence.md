@@ -1,63 +1,40 @@
 # Example: Multi-Channel Presence
 
-A single agent instance reachable across WhatsApp, Telegram, and CLI simultaneously. Each channel maintains its own session and conversation history.
+A single Vargos process serves WhatsApp, Telegram, cron, and CLI simultaneously. Each channel maintains its own session keyed by `<channelId>:<chatId>`, isolated from the others. The same agent runtime, tools, memory, and workspace serve all channels.
 
-## How It Works
+## How it works
 
-Each channel runs as an adapter inside the gateway process:
+Inbound flow per channel:
 
 ```
-Inbound message (WhatsApp/Telegram)
-    ↓
-message.received event
-    ↓
-AgentService queues per session
-    ↓
-Agent executes with tools
-    ↓
-Response sent back through originating channel
+adapter (telegram/whatsapp)
+  → normalizer
+  → pipeline (whitelist, link-expand)
+  → agent.execute (or agent.appendMessage if skipAgent)
+  → reply via channel.send (back through originating channel)
 ```
 
-Session keys are channel-scoped:
-- `whatsapp-personal:+1234567890`
-- `telegram-bakabit:123456`
-- `cli:chat`
+Session keys: `telegram-personal:7789...`, `whatsapp-personal:614...`. Cron and `pnpm cli` use their own key formats — see [Sessions](../usage/sessions.md).
 
-Conversations are isolated, but the same agent runtime, tools, memory, and workspace serve all channels.
+Each channel can have its own [persona file](../usage/personas.md) at `~/.vargos/agents/<channelId>.md` to scope tool access and tweak the system prompt. Cron and webhooks deliver via `channel.send` with `fromSessionKey` so the receiver records source attribution in its history.
 
-## Supported Channels
+## Channel surface
 
 | Channel | Status | Features |
-|---------|--------|----------|
-| WhatsApp | ✅ Live | Multi-device, voice notes, media, reactions, typing indicators |
-| Telegram | ✅ Live | Bot API, voice/audio, media, reactions |
-| CLI | ✅ Live | Interactive chat and one-shot `run` mode |
+|---|---|---|
+| Telegram | ✅ | Long-polling, group chat (mention-only), voice, image, document extraction (PDF/DOCX/XLSX/TXT/MD), reactions, typing |
+| WhatsApp | ✅ | Baileys linked-devices, voice, image, reactions, typing |
+| Pi CLI (`pnpm cli`) | ✅ | Interactive REPL bound to `~/.vargos/agent` and `sessions/cli/` |
+| Slack | 📋 | Planned |
 
-## Configuration
+## Setup
 
-```jsonc
-{
-  "channels": [
-    {
-      "id": "whatsapp-personal",
-      "type": "whatsapp",
-      "allowFrom": ["+1234567890"]
-    },
-    {
-      "id": "telegram-bakabit",
-      "type": "telegram",
-      "allowFrom": ["123456789"]
-    }
-  ]
-}
-```
+Configure both channels in `~/.vargos/config.json` `channels[]`. Each entry needs `type`, `id`, optional `allowFrom`. Telegram also needs `botToken`. Schema: [`services/config/schemas/channels.ts`](../../services/config/schemas/channels.ts).
 
-## Features
+Setup walkthroughs: [Channels](../usage/channels.md).
 
-- **Message debouncing**: 2s batch window for rapid messages
-- **Status reactions**: Emoji reactions track agent progress (👀 → 🤔 → 🔧 → ✅)
-- **Typing indicators**: Shown while agent is thinking
-- **Media support**: Images, audio, video, documents
-- **Chat directives**: `/think:off`, `/verbose` to override inference settings
+## See also
 
-See [channels.md](../channels.md) for setup instructions.
+- [Channels](../usage/channels.md) — adapter setup
+- [Personas](../usage/personas.md) — per-channel behavior overrides
+- [Sessions](../usage/sessions.md) — sessionKey formats

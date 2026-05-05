@@ -1,79 +1,58 @@
 # Sessions
 
-Sessions persist conversation history and provide isolation between different interaction contexts.
+A session is one conversation thread. Pi SDK persists every turn to a JSONL file; Vargos caches the in-memory `AgentSession` keyed by sessionKey. Helpers: [`lib/subagent.ts`](../../lib/subagent.ts).
 
-## Session Key Formats
+## SessionKey formats
 
-| Format | Example | Created By |
-|--------|---------|-----------|
-| `<instanceId>:<userId>` | `whatsapp-personal:+1234567890` | Channel adapter |
-| `<instanceId>:<userId>` | `telegram-bot:123456` | Channel adapter |
-| `cron:<taskId>:<date>` | `cron:daily-report:2026-04-10` | Cron service |
-| `webhook:<hookId>:<timestamp>` | `webhook:github-pr:1708865234567` | Webhook service |
-| `<parent>:subagent` | `whatsapp-personal:+1234567890:subagent` | `agent.execute` with subagent key |
+| Format | Example | Source |
+|---|---|---|
+| `<channelId>:<chatId>` | `telegram-personal:7789463749` | Channel adapter |
+| `cron:<taskId>:<YYYY-MM-DD>` | `cron:heartbeat:2026-05-06` | `cronSessionKey` |
+| `webhook:<hookId>:<ms>` | `webhook:github:1746...` | `webhookSessionKey` |
+| `<parent>:subagent:<child>` | `telegram-personal:7789...:subagent:research-1` | Subagent dispatch |
 
-Channel session keys use the channel's `instanceId` (from `config.channels[].id`) — not the platform type. This supports multiple instances of the same platform.
+`parseSessionKey` strips the `:subagent:` suffix when present, so a subagent's parsed `type` matches the parent's. This is what lets channel personas and channel-routing work for nested agents automatically.
 
-Session key builder functions live in `lib/subagent.ts`: `channelSessionKey()`, `cronSessionKey()`, `webhookSessionKey()`.
+`parseChannelTarget` splits on the first `:` to get `{ channel, userId }` — used by `channel.send` to find the right adapter.
 
-## Subagent Orchestration
+## Storage layout
 
-Subagents are created by calling `agent.execute` with a child session key. No separate `agent.spawn` endpoint is needed.
+Sessions live under `~/.vargos/sessions/<sessionKey-with-/>/` — Vargos converts `:` in sessionKey to path separators when computing the directory (see [`services/agent/index.ts`](../../services/agent/index.ts) `getOrCreateSession`). Each prompt creates a new JSONL file in that dir. When `LOG_LEVEL=debug`, the dir also gets `systemPrompt.md`, `customTools.md`, etc.
 
-```typescript
-// Parent creates subagent via session key convention
-const childKey = `${parentKey}:subagent`;
-// → "whatsapp-personal:+1234567890:subagent"
-
-await bus.call('agent.execute', { sessionKey: childKey, task: 'Research this topic' });
-```
-
-Subagent depth is determined by counting `:subagent` suffixes in the session key.
-
-## Session Isolation
-
-Each session key maps to an independent conversation. Sessions do **not** share history:
-
-- Cron jobs use `cron:<taskId>:<date>` — fresh session per fire
-- Cron results are delivered only to explicit `notify` targets configured per task
-- Cross-session context is possible through workspace files (memory files, MEMORY.md)
-
-## Storage
-
-Sessions are persisted by PiAgent's `SessionManager` to `~/.vargos/workspace/sessions/<sessionKey>/`.
-
-```
-~/.vargos/workspace/sessions/
-├── whatsapp-personal:+1234567890/
-│   └── ... (PiAgent session files)
-├── cron:daily-report:2026-04-10/
-│   └── ... (PiAgent session files)
-└── whatsapp-personal:+1234567890:subagent/
-    └── ... (PiAgent session files)
-```
-
-The Pi SDK's `SessionManager` handles persistence automatically — entries are written to disk and reloaded on session creation. No manual history injection is needed.
+Examples:
+- `~/.vargos/sessions/telegram-personal/7789463749/`
+- `~/.vargos/sessions/cron/heartbeat/2026-05-06/`
+- `~/.vargos/sessions/cli/` (used by `pnpm cli`)
 
 ## Lifecycle
 
-- **Channel sessions** (`<instanceId>:<userId>`) are keyed by sender ID per instance — one session per contact per channel instance
-- **Cron sessions** (`cron:<taskId>:<date>`) get a fresh session per fire via date suffix
-- **Webhook sessions** (`webhook:<hookId>:<ts>`) get a fresh session per fire via timestamp suffix
-- **Subagent sessions** (`*:subagent`) are created dynamically by parent agents for child task execution
+1. **First touch** — `agent.execute` calls `getOrCreateSession`. If not cached, Vargos creates a Pi SDK `AgentSession`, loads any existing JSONL, and caches it.
+2. **Each turn** — Pi SDK appends to the JSONL. Streaming events flow through `subscribeToSessionEvents` → bus.
+3. **`agent_end`** — `agent.onCompleted` emits with the final response. **The session stays in memory** for follow-ups.
+4. **Restart** — in-memory cache is empty after `pnpm start`. Next call for that sessionKey loads from disk.
 
-## Streaming Events
+## skipAgent path
 
-Agent v2 emits streaming events to the bus during execution:
+For inbound messages where the agent shouldn't run (whitelist rejection, group chat without bot mention), the channel pipeline records the message into history without firing the LLM via `agent.appendMessage`. No LLM call, no streaming, no `agent.onCompleted`.
 
-| Event | Emitted When |
-|-------|-------------|
-| `agent.onDelta` | Text streaming delta from PiAgent |
-| `agent.onTool` | Tool execution start/end |
-| `agent.onCompleted` | Session finished (success or error) |
+## Cross-session injection
 
-These are mapped from PiAgent's internal events in `subscribeToSessionEvents()`:
-- `message_update` → `agent.onDelta`
-- `tool_execution_start` / `tool_execution_end` → `agent.onTool`
-- `agent_end` / `turn_end` → `agent.onCompleted`
+When `channel.send` is called with `fromSessionKey`, it sends the outbound text **and** appends `[fromSessionKey] text` to the target session's history (also via `agent.appendMessage`). Used by:
 
-See [runtime.md](./runtime.md) for agent execution details.
+- Cron `notify` delivery
+- Webhook `notify` delivery
+- Agent forwarding from one channel to another (set `fromSessionKey: ${SESSION_KEY}` per `AGENTS.md` instructions)
+
+Heartbeat is the one cron task that omits `fromSessionKey` — its outputs land in the channel but not in history.
+
+## Memory indexer
+
+[`services/memory/session-indexer.ts`](../../services/memory/session-indexer.ts) watches `~/.vargos/sessions/**/*.jsonl` and chunks turns into searchable embeddings. The agent uses `memory.search` to find prior turns across all sessions.
+
+The heartbeat task curates: sessions → daily summaries (`memory/YYYY-MM-DD.md`) → topic files (`memory/<topic>.md`) → `MEMORY.md` index.
+
+## See also
+
+- [Runtime](./runtime.md) — execution flow
+- [Personas](./personas.md) — per-channel system-prompt overrides
+- [API Reference](../api-reference.md) — `agent.execute`, `agent.appendMessage`

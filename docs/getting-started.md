@@ -12,42 +12,45 @@ cd vargos
 pnpm install
 ```
 
-## First Run
+## First run
 
 ```bash
 pnpm start
 ```
 
-First run prompts for identity (your name, agent name/vibe), LLM provider, storage, and optional channels. Identity is saved to `SOUL.md`, LLM/storage config to `~/.vargos/config.json`.
+This boots the gateway and all services. On first run, [`lib/templates.ts`](../lib/templates.ts) seeds defaults from [`.templates/vargos/`](../.templates/vargos/) into `~/.vargos/`.
 
-Supported providers: Anthropic, OpenAI, Google, OpenRouter, Ollama, LM Studio, Groq, Together, DeepSeek, Mistral, Fireworks, Perplexity.
+You'll need at minimum:
+- A provider entry in `~/.vargos/agent/models.json` and credentials in `~/.vargos/agent/auth.json` (or the matching `${PROVIDER}_API_KEY` env var)
+- `defaultProvider` + `defaultModel` set in `~/.vargos/agent/settings.json`
 
-## Chat
+Supported providers (registered out of the box, configure as needed): Anthropic, OpenAI, Google, OpenRouter, Ollama, LM Studio, Groq, Together, DeepSeek, Mistral, Fireworks, Perplexity, vLLM.
 
-```bash
-pnpm chat
-```
-
-Requires a running gateway. Start one with `pnpm start` or `vargos gateway start`.
-
-## One-Shot Task
+## Pi CLI mode
 
 ```bash
-pnpm cli run "Analyze this codebase"
+pnpm cli                     # interactive Pi CLI bound to ~/.vargos/agent
+pnpm cli "what's in /tmp?"   # one-shot
 ```
 
-## Interactive Menu
+`pnpm cli` execs `pi` (Pi SDK CLI) with `PI_CODING_AGENT_DIR=$HOME/.vargos/agent` and `--session-dir $HOME/.vargos/sessions/cli`. Sessions land alongside channel/cron sessions and are searchable by the memory indexer.
+
+## Connecting channels
+
+Edit `~/.vargos/config.json` `channels[]` to add Telegram or WhatsApp adapters. See [Channels](./usage/channels.md).
+
+## Manual reseed
 
 ```bash
-pnpm cli
+pnpm seed
 ```
 
-Bare `vargos` (or `pnpm cli`) opens an interactive menu with breadcrumb navigation for all commands.
+Re-runs the `.templates/vargos/` → `~/.vargos/` recursive copy. Idempotent; doesn't overwrite existing files.
 
-## What's Next
+## What's next
 
-- [Configuration](./configuration.md) — config reference, model profiles, API keys
-- [CLI](./cli.md) — all commands and options
-- [Channels](./channels.md) — WhatsApp and Telegram setup
-- [MCP](./mcp.md) — MCP server for tool integration
-- [Runtime](./runtime.md) — execution model, cron, heartbeat
+- [Configuration](./configuration.md) — full config reference
+- [Channels](./usage/channels.md) — WhatsApp and Telegram setup
+- [Personas](./usage/personas.md) — per-channel behavior overrides
+- [Runtime](./usage/runtime.md) — execution flow
+- [MCP](./usage/mcp.md) — connect external MCP servers

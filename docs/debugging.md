@@ -1,213 +1,85 @@
 # Debugging Guide
 
-## Debug Modes
-
-### Agent Debug Mode
-
-Enable detailed agent execution logging:
+## Log levels
 
 ```bash
-export AGENT_DEBUG=true
-vargos start
+LOG_LEVEL=debug pnpm start
 ```
 
-This logs:
-- Every turn of the agent
-- Tools called and their results
-- Final response before delivery
-- Token counts
+Levels: `debug`, `info`, `warn`, `error`. At `debug`:
 
-### Service Debug Logging
+- Every agent run logs `execute: START`, `execute: END`, model in use, tool calls.
+- Each session dir gets a `systemPrompt.md`, `customTools.md`, `modelRegistry.json`, `settings.json` dump on creation. Inspect to see exactly what the agent saw.
 
-Set log level for detailed service traces:
+## Log locations
+
+| Path | Content |
+|---|---|
+| stdout | Live structured logs (`log.onLog` events) |
+| `~/.vargos/logs/errors.jsonl` | Error-level entries only, append-only JSONL |
+| `~/.vargos/sessions/<channel>/<chat>/*.jsonl` | Per-prompt session history (Pi SDK format) |
+| `~/.vargos/sessions/<channel>/<chat>/systemPrompt.md` | Final assembled system prompt (debug mode only) |
+
+## Inspecting a session
 
 ```bash
-export LOG_LEVEL=debug
-vargos start
+ls -lat ~/.vargos/sessions/telegram-personal/CHATID/ | head
+tail -1 ~/.vargos/sessions/telegram-personal/CHATID/<latest>.jsonl | jq
 ```
 
-Levels: `trace`, `debug`, `info`, `warn`, `error`
+Each line is a `SessionEntry`. Look for:
+- `type: "session"` — header (cwd, version, id)
+- `type: "model_change"` — what model the session resolved to
+- `type: "message"` with `role: "user"` / `"assistant"`
+- `stopReason: "error"` + `errorMessage` on assistant messages → the LLM call failed; Vargos surfaces as `agent.onCompleted { success: false, error }`
 
-### Channel Adapter Debugging
+## Common debug paths
 
-For channel-specific issues:
+### Agent silent / no reply
+
+1. Tail stdout for `[agent] ERROR` — Vargos surfaces inference errors (Pi SDK `stopReason === 'error'`).
+2. Check the latest session JSONL's last assistant message for `errorMessage`.
+3. Confirm the model resolved correctly via the session's `model_change` event.
+
+### Channel not receiving
+
+1. Check channel started cleanly: `[telegram-foo] long-polling started` or `[whatsapp-foo] connected as ...`.
+2. Telegram groups: bot only fires on `@`-mention or reply.
+3. Check `allowFrom` whitelist — rejected senders log `[channels-pipeline] DEBUG user X not whitelisted - skipping agent`.
+
+### Tool not found / not exposed
+
+Open the gateway TCP socket and call `bus.search`:
 
 ```bash
-export LOG_LEVEL=debug
-export CHANNEL_DEBUG=whatsapp
-vargos start
+echo '{"jsonrpc":"2.0","id":1,"method":"bus.search","params":{}}' | nc -q 1 127.0.0.1 9000
 ```
 
-Watch for:
-- Message normalization issues
-- Whitelist matching failures
-- Send failures and retries
+The agent sees a filtered subset based on the channel persona's `allowedTools` glob — check `~/.vargos/agents/<channelId>.md`.
 
-## Log Locations
-
-| File | Content |
-|------|---------|
-| `~/.vargos/logs/errors.jsonl` | All errors (structured JSON) |
-| `systemd` | Service output (journalctl -u vargos) |
-| `/var/log/syslog` | System-wide logs |
-| `.vargos/sessions/<key>/` | Session transcript and memory |
-
-## Log Format
-
-```
-[HH:MM:SS] [service-name] [LEVEL] message | payload
-```
-
-Example:
-```
-[14:23:45] [agent] [DEBUG] tool.execute | {"tool":"read","args":{"path":"/tmp/test.txt"}}
-[14:23:46] [agent] [DEBUG] tool.result | {"success":true,"lines":42}
-[14:23:47] [agent] [INFO] execution.complete | {"sessionKey":"user:123","success":true}
-```
-
-## Common Debug Scenarios
-
-### Agent Not Responding
-
-1. Check agent service is running:
-```bash
-curl -X POST http://localhost:9000 \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","method":"agent.execute","params":{"sessionKey":"test","task":"hello"},"id":1}'
-```
-
-2. Enable AGENT_DEBUG and check logs
-3. Check if API key is valid: `export OPENAI_API_KEY=sk-...`
-4. Check session file: `ls -la ~/.vargos/sessions/test/`
-
-### Tool Failing
-
-1. Check tool is registered:
-```bash
-curl -X POST http://localhost:9000 \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","method":"config.get","params":{},"id":1}' | jq '.result.tools'
-```
-
-2. Enable AGENT_DEBUG to see tool parameters
-3. Test tool directly: `vargos tool test <tool-name> '{"arg":"value"}'`
-
-### Channel Not Receiving Messages
-
-1. Check channel is connected:
-```bash
-journalctl -u vargos | grep -i whatsapp
-```
-
-2. Enable CHANNEL_DEBUG=whatsapp
-3. Check whitelist: is sender in `allowFrom`?
-4. Check adaptor status: restart channel service
-
-### Session Timeout
-
-Sessions default to 30 minutes idle. Check:
-```bash
-ls -la ~/.vargos/sessions/
-ls -la ~/.vargos/sessions/<key>/
-```
-
-Recent files = active session. Old files = timeout candidates.
-
-### Memory Search Not Working
-
-1. Check workspace is indexed:
-```bash
-ls -la ~/.vargos/workspace/
-```
-
-2. Test search directly:
-```bash
-curl -X POST http://localhost:9000 \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","method":"memory.search","params":{"query":"test"},"id":1}'
-```
-
-3. Check database: `sqlite3 ~/.vargos/vargos.db "SELECT COUNT(*) FROM documents;"`
-
-## Structured Logging
-
-Vargos emits structured logs. Parse with `jq`:
+### Memory search returning nothing
 
 ```bash
-# All errors
-tail -f ~/.vargos/logs/errors.jsonl | jq 'select(.level=="error")'
-
-# Errors from specific service
-tail -f ~/.vargos/logs/errors.jsonl | jq 'select(.service=="agent")'
-
-# Last 10 errors
-tail ~/.vargos/logs/errors.jsonl | jq -s 'reverse | .[0:10] | reverse[]'
+echo '{"jsonrpc":"2.0","id":1,"method":"memory.stats","params":{}}' | nc -q 1 127.0.0.1 9000
 ```
 
-## Performance Profiling
+The indexer watches `~/.vargos/workspace/**/*.md` and chunks JSONL session files. New writes get indexed within 5s. Embeddings disabled (`embeddingProvider: 'none'`) → only BM25 text scoring.
 
-Check response times:
+### `pnpm cli` doesn't see Vargos data
 
-```bash
-time curl -X POST http://localhost:9000 \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","method":"agent.execute","params":{"sessionKey":"test","task":"hello"},"id":1}'
-```
+`pnpm cli` execs Pi CLI with `PI_CODING_AGENT_DIR=$VARGOS_DATA_DIR/agent` and `--session-dir $VARGOS_DATA_DIR/sessions/cli`. Confirm with `pnpm cli --list-models | head`.
 
-Expected: <5 seconds for simple tasks, <30 seconds for complex tasks.
+## Querying the bus
 
-If slow:
-- Check database size: `du -sh ~/.vargos/vargos.db`
-- Check session count: `find ~/.vargos/sessions -type d | wc -l`
-- Run vacuum: `sqlite3 ~/.vargos/vargos.db "VACUUM;"`
+The gateway speaks JSON-RPC 2.0 over TCP — not HTTP. Useful direct calls:
 
-## Inspecting Sessions
+- `bus.search` — list all events
+- `bus.inspect { event: "agent.execute" }` — schema for one event
+- `agent.status` — currently active runs
+- `memory.stats` — index size
 
-View session transcript:
+## See also
 
-```bash
-cat ~/.vargos/sessions/user:123/user:123.jsonl | jq '.[] | "\(.role): \(.content)"'
-```
-
-View session metadata:
-
-```bash
-ls -la ~/.vargos/sessions/user:123/
-cat ~/.vargos/sessions/user:123/.meta.json | jq
-```
-
-## Testing Components
-
-### Test Agent Directly
-
-```bash
-node -e "
-const { boot } = require('./services/agent');
-const { EventEmitterBus } = require('./gateway/emitter');
-
-const bus = new EventEmitterBus();
-await boot(bus);
-const result = await bus.call('agent.execute', {
-  sessionKey: 'test',
-  task: 'What is 2+2?'
-});
-console.log(result);
-"
-```
-
-### Test Channel Adapter
-
-```bash
-node -e "
-const { WhatsAppAdapter } = require('./services/channels/providers/whatsapp');
-const adapter = new WhatsAppAdapter('test', { botToken: '...' });
-await adapter.start();
-const normalized = await adapter.normalizeInbound(rawMessage);
-console.log(normalized);
-"
-```
-
-## See Also
-
-- [Architecture](./architecture/bus-design.md) — Understanding service communication
-- [Deployment](./deployment.md) — Production setup and monitoring
+- [Troubleshooting](./usage/troubleshooting.md) — common error fixes
+- [Runtime](./usage/runtime.md) — execution flow
+- [API Reference](./api-reference.md) — bus event catalog

@@ -1,137 +1,66 @@
 # Runtime
 
-The agent runtime wraps the Pi SDK to execute LLM-powered agent sessions with tool access, streaming, and session management.
+How `agent.execute` runs a turn. Implementation: [`services/agent/index.ts`](../../services/agent/index.ts).
 
-## Execution Flow
-
-```
-User message (WhatsApp / Telegram / Cron / Webhook)
-  │
-  ├─ ChannelsService.onInboundMessage() / cron.fire()
-  │   ├─ Resolves config: model, thinking level, chat directives
-  │   └─ Calls bus.call('agent.execute', { sessionKey, task, images })
-  │
-  ├─ AgentRuntime.execute()
-  │   │
-  │   ├─ 1. getOrCreateSession(sessionKey, cwd)
-  │   │      Creates PiAgent session via SessionManager
-  │   │      Custom tools loaded from bus @register handlers
-  │   │      System prompt built from workspace bootstrap files
-  │   │      Skills loaded from workspace/skills/
-  │   │
-  │   ├─ 2. session.prompt(task, { images })
-  │   │      PiAgent calls LLM with tools available
-  │   │      Streams deltas → lifecycle events → tool calls → response
-  │   │
-  │   └─ 3. extractResponse(session)
-  │         Extracts last assistant message from session history
-  │
-  └─ Response returned to caller → delivered to channel/caller
-```
-
-## Pi SDK Prompt Ownership
-
-Vargos owns the system prompt. The Pi SDK's `AgentSession` normally builds its own default prompt and resets to it on every `prompt()` call. We bypass this by:
-
-1. Building our prompt before session creation from workspace files (CLAUDE.md, AGENTS.md, SOUL.md, TOOLS.md)
-2. Passing it as `systemPrompt` to the `DefaultResourceLoader` (SDK uses it as `customPrompt` — pass-through mode)
-3. Overriding `agentsFilesOverride` to return empty (prevents ancestor CLAUDE.md/AGENTS.md duplication)
-
-This makes `_baseSystemPrompt` our prompt, so the SDK reset is a no-op.
-
-## System Prompt
-
-Built by `AgentRuntime.getSystemPrompt()`:
-
-| Order | Section | Content |
-|-------|---------|---------|
-| 1 | Bootstrap files | CLAUDE.md → AGENTS.md → SOUL.md → TOOLS.md (6K char limit each) |
-| 2 | Skills | Available skills manifest (name + description) |
-
-Bootstrap files are loaded from `~/.vargos/` (the data directory). If a `cwd` is provided, files from both locations are merged (workspace first, then cwd).
-
-## Skills
-
-Reusable prompt recipes stored as `~/.vargos/workspace/skills/<name>/SKILL.md` with YAML frontmatter.
-
-### Structure
+## Boot order
 
 ```
-~/.vargos/workspace/skills/
-├── code-review/SKILL.md     frontmatter: name, description, tags
-├── deep-research/SKILL.md   body: full instructions the agent follows
-├── plan/SKILL.md
-└── ...
+config → log → web → memory → media → agent → channels → cron → mcp-client → tcp server → bus.onReady
 ```
 
-### Lifecycle: Discover → Activate → Execute
+Defined in [`index.ts`](../../index.ts). `edge/mcp/` (MCP server) and `edge/webhooks/` exist in code but are commented out at boot.
 
-```
-1. DISCOVER — at session creation
-   loadSkillsFromDir() reads frontmatter from each SKILL.md
-   → manifest injected into system prompt under "## Available Skills"
+Templates seed first: `seedDataDir(getDataPaths().dataDir, log)` runs before any service boots, recursively copying any missing files from [`.templates/vargos/`](../../.templates/vargos/) into `~/.vargos/`. See [`lib/templates.ts`](../../lib/templates.ts).
 
-2. ACTIVATE — agent uses skill
-   Agent sees skill name + description in system prompt
-   Follows instructions from the skill's SKILL.md body
+## Execution flow
 
-3. EXECUTE — agent follows skill instructions
-   No special runtime — skills are prompt injection.
-   Agent uses existing tools (exec, read, write, web_fetch, etc.)
-```
+`agent.execute` →
+1. Parse directives (`/think:`, `/verbose`)
+2. `getOrCreateSession(sessionKey, metadata)` — load or create the Pi SDK `AgentSession`
+3. `loadPersonaIfChannel(sessionKey)` — channel sessionKeys only
+4. `getCustomTools(sessionKey, persona.allowedTools?)` — bus tools, glob-filtered
+5. `getSystemPrompt(sessionKey, metadata, persona.body?)` — assemble + interpolate
+6. `session.prompt(task, { streamingBehavior: 'steer' })` — Pi SDK runs the turn
+7. `extractFinalAssistant(session)` — read final message, surface inference errors
 
-### Creating Skills
+Streaming events flow through `subscribeToSessionEvents` → `agent.onDelta` / `agent.onTool` / `agent.onCompleted` on the bus.
 
-The agent can create new skills by writing a SKILL.md file:
+## System prompt assembly
 
-```markdown
----
-name: my-skill
-description: One-line description shown in the manifest
-tags: [category, tags]
----
+In order:
 
-# Instructions
+1. **Pi SDK base prompt** — built-in agent instructions.
+2. **Pi SDK skills metadata** — `<available_skills>` block (name + description + location only). Skill bodies are read on demand via the `read` tool (Anthropic's progressive-disclosure pattern). Discovery roots: see [Skills](../extending/skills.md).
+3. **Pi SDK context files** — auto-walked from `cwd`: `AGENTS.md` or `CLAUDE.md` per ancestor directory. Rendered as `# Project Context`.
+4. **Vargos bootstrap files** — `AGENTS.md`, `SOUL.md`, `TOOLS.md` from `<workspaceDir>` and `<cwd>`. Each head/tail-truncated at 6K chars. `CLAUDE.md` is intentionally **not** in this list — Pi SDK handles it via step 3.
+5. **Channel persona body** — content of `~/.vargos/agents/<channelId>.md` (see [Personas](./personas.md)).
+6. **Interpolation** — every `${VAR}` and `${VAR:-default}` replaced. Variables: see [Configuration](../configuration.md#interpolation-variables).
 
-Detailed instructions the agent follows when this skill is activated.
-```
+## Tools available to the agent
 
-New skills appear in the manifest on the next run automatically.
+- **Pi SDK built-ins** (always): `read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`.
+- **Bus tools** — every `@register`-ed callable across services, wrapped by [`services/agent/tools.ts`](../../services/agent/tools.ts).
+- **MCP client tools** — external MCP servers from `mcpServers` config, namespaced `mcp.<server>.<tool>`.
+- **Persona filter** — channel persona's `allowedTools` glob whitelist filters the bus + MCP list. Built-ins always pass through.
 
-## Streaming Events
+## Session caching
 
-The runtime subscribes to PiAgent events and re-emits them to the bus:
+Sessions are cached in-memory by `sessionKey`. They stay alive after `agent_end` for follow-up messages. Pi SDK persists each turn to `~/.vargos/sessions/<sessionKey-with-/>/<timestamp>_<uuid>.jsonl`. On restart, the next call for that sessionKey loads history from disk.
 
-| PiAgent Event | Bus Event | Payload |
-|---------------|-----------|---------|
-| `message_update` | `agent.onDelta` | `{ sessionKey, chunk }` |
-| `tool_execution_start` | `agent.onTool` | `{ sessionKey, toolName, phase: 'start', args }` |
-| `tool_execution_end` | `agent.onTool` | `{ sessionKey, toolName, phase: 'end', result }` |
-| `agent_end` / `turn_end` | `agent.onCompleted` | `{ sessionKey, success, response?, error? }` |
+## Inference error surfacing
 
-This enables real-time typing indicators, tool progress visibility, and run completion handling for channels and CLI clients.
+Pi SDK records LLM call failures (e.g. expired API key) as an assistant message with empty `content` and `stopReason === 'error'` + `errorMessage`. Vargos detects this:
+- `agent.execute` **throws** with the underlying error message.
+- `agent.onCompleted` emits `success: false, error`.
+- Channel pipeline catches and sends `Error: <msg>` back to the user.
 
-## Model Registration
+## Subagents
 
-The runtime registers models with the Pi SDK dynamically:
+`agent.execute` is itself a registered tool. The agent calls it on a child sessionKey (`<parent>:subagent:<child>`) to delegate work. Parent's persona is inherited — `parseSessionKey` strips the `:subagent:` suffix.
 
-- Providers configured in `config.providers` are registered with the `ModelRegistry`
-- API keys resolved from env vars (`${PROVIDER}_API_KEY`) with fallback to config
-- Custom base URLs supported (Ollama, LM Studio, OpenRouter)
-- Local providers need a dummy `"local"` API key for Pi SDK auth
-- Supported: `anthropic`, `openai`, `google`, `openrouter`, `ollama`, `lmstudio`, `groq`, `together`, `deepseek`, `mistral`, `fireworks`, `perplexity`
+## See also
 
-## Debug Mode
-
-Enable with `AGENT_DEBUG=true`:
-
-- Logs system prompt preview (first 30 lines)
-- Lists all registered tools with parameters
-- Logs PiAgent events (excluding `message_update`)
-- Logs skills loaded from each directory
-
-```bash
-AGENT_DEBUG=true pnpm start
-```
-
-See [mcp.md](./mcp.md) for tool details, [sessions.md](./sessions.md) for session lifecycle.
+- [Sessions](./sessions.md) — sessionKey shapes and storage layout
+- [Personas](./personas.md) — per-channel system prompt + tool whitelist
+- [API Reference](../api-reference.md) — `agent.execute` params + events
+- [`services/agent/index.ts`](../../services/agent/index.ts) — source of truth
