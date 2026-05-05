@@ -92,11 +92,15 @@ export class ChannelService {
   // ── Callable handlers ────────────────────────────────────────────────────────
 
   @register('channel.send', {
-    description: 'Send a text message to a channel recipient.',
-    schema: z.object({ sessionKey: z.string(), text: z.string() }),
+    description: 'Send a text message to a channel recipient. Optional `fromSessionKey` will trigger agent.appendMessage to record the text in target history.',
+    schema: z.object({
+      sessionKey: z.string(),
+      text: z.string(),
+      fromSessionKey: z.string().optional(),
+    }),
   })
   async send(params: EventMap['channel.send']['params']): Promise<EventMap['channel.send']['result']> {
-    const { sessionKey, text } = params;
+    const { sessionKey, text, fromSessionKey } = params;
     const target = parseChannelTarget(sessionKey);
     if (!target) throw new Error(`Invalid session key: ${sessionKey}`);
 
@@ -119,6 +123,13 @@ export class ChannelService {
         await adapter.sendMedia(sessionKey, filePath, mimeType)
           .catch(err => log.error(`media send failed: ${filePath}: ${err}`));
       }
+    }
+
+    if (fromSessionKey) {
+      this.bus.call('agent.appendMessage', {
+        sessionKey,
+        content: `[${fromSessionKey}] ${text}`,
+      }).catch(err => log.error(`history append to ${sessionKey} from ${fromSessionKey}: ${toMessage(err)}`));
     }
 
     return { sent: true };

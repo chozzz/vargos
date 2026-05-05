@@ -78,6 +78,10 @@ export interface AgentExecuteParams {
   metadata?: InboundMessageMetadata;
 }
 
+export interface AgentAppendMessageParams extends Pick<AgentExecuteParams, 'sessionKey' | 'metadata'> {
+  content: string;
+}
+
 // ─── Event map ────────────────────────────────────────────────────────────────
 
 export interface EventMap {
@@ -115,7 +119,7 @@ export interface EventMap {
 
   // Agent
   'agent.execute': { params: AgentExecuteParams; result: { response: string } };
-  'agent.appendMessage': { params: AgentExecuteParams; result: void };
+  'agent.appendMessage': { params: AgentAppendMessageParams; result: void };
   'agent.status': { params: { sessionKey?: string }; result: { activeRuns: string[] } };
 
   // Media
@@ -127,7 +131,17 @@ export interface EventMap {
   'web.fetch': { params: { url: string; extractMode?: 'markdown' | 'text'; maxChars?: number }; result: { text: string } };
 
   // Channels
-  'channel.send': { params: { sessionKey: string; text: string }; result: { sent: boolean } };
+  'channel.send': {
+    params: {
+      sessionKey: string;
+      text: string;
+      /** Optional source sessionKey for cross-session forwards. When set, the message is also
+       *  appended to the target session's history as `[fromSessionKey] text` so the receiving
+       *  agent knows it came from elsewhere (cron, webhook, agent forwarding to another channel). */
+      fromSessionKey?: string;
+    };
+    result: { sent: boolean };
+  };
   'channel.sendMedia': { params: { sessionKey: string; filePath: string; mimeType: string; caption?: string }; result: { sent: boolean } };
   'channel.search': { params: { query?: string; page: number; limit?: number }; result: Pagination<ChannelInfo> };
   'channel.get': { params: { instanceId: string }; result: ChannelInfo };

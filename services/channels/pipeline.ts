@@ -88,7 +88,7 @@ export class InboundMessagePipeline {
       log.info(`inbound (skipAgent): ${sessionKey} "${enrichedContent.slice(0, 80)}"`);
       this.bus.call('agent.appendMessage', {
         sessionKey,
-        task: enrichedContent,
+        content: enrichedContent,
         metadata,
       }).catch(err => log.error(`failed to append message: ${toMessage(err)}`));
       return;

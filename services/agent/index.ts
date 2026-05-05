@@ -176,10 +176,11 @@ export class AgentService {
     }
 
     log.debug(`Appending message to session ${params.sessionKey} (no execution)`);
+
     session.sessionManager.appendMessage({
       timestamp: Date.now(),
       role: 'user',
-      content: params.task,
+      content: params.content,
     });
     session.exportToJsonl(sessionFile);
   }

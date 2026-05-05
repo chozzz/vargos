@@ -207,17 +207,15 @@ export class WebhooksEdge {
 
     if (result.response && hook.notify?.length) {
       log.info(`${hook.id} delivering response to ${hook.notify.length} targets`);
-      return await this.deliver(hook.notify, result.response);
+
+      await Promise.all(hook.notify.map(target =>
+        this.bus.call('channel.send', {
+          sessionKey: target,
+          text: result.response,
+          fromSessionKey: sessionKey,
+        }).catch(err => log.error(`notify send to ${target}: ${toMessage(err)}`)),
+      ));
     }
-  }
-
-  private async deliver(targets: string[], text: string): Promise<void> {
-    await Promise.all(targets.map(target => this.bus.call('channel.send', {
-      sessionKey: target,
-      text,
-    }).catch(err => log.error(`notify send to ${target}: ${toMessage(err)}`))));
-
-    return;
   }
 }
 
