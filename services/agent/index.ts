@@ -85,6 +85,48 @@ export class AgentService {
     this.settings = SettingsManager.create(paths.dataDir, this.agentDir);
     // NOTE: SettingsManager loads ~/.vargos/agent/models.json which has the
     // authoritative provider + model definitions. Pi Agent is the source of truth.
+
+    // Apply retry settings for transient error recovery
+    this.settings.applyOverrides({
+      retry: {
+        enabled: true,
+        maxRetries: 3,
+        baseDelayMs: 1000,
+        provider: {
+          timeoutMs: 120000, // 2 min per API call
+          maxRetries: 3,
+          maxRetryDelayMs: 30000, // exponential backoff up to 30s
+        },
+      },
+    });
+  }
+
+  /**
+   * Persist retry settings to disk during boot
+   */
+  async start() {
+    try {
+      const settingsPath = path.join(this.agentDir, 'settings.json');
+      const currentData = await fs.readFile(settingsPath, 'utf-8');
+      const currentSettings = JSON.parse(currentData);
+      const updated = {
+        ...currentSettings,
+        retry: {
+          enabled: true,
+          maxRetries: 3,
+          baseDelayMs: 1000,
+          provider: {
+            timeoutMs: 120000,
+            maxRetries: 3,
+            maxRetryDelayMs: 30000,
+          },
+        },
+      };
+      await fs.writeFile(settingsPath, JSON.stringify(updated, null, 2), 'utf-8');
+      log.debug('Agent retry settings persisted to settings.json');
+    } catch (err) {
+      log.warn(`Failed to persist retry settings: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   /**
@@ -523,5 +565,6 @@ export async function boot(bus: Bus): Promise<{ stop(): void }> {
   const config = await bus.call('config.get', {});
   const runtime = new AgentService({ bus, config });
   bus.bootstrap(runtime);
+  await runtime.start(); // Persist retry settings
   return { stop: () => runtime.stop() };
 }
