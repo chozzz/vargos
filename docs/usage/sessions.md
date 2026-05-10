@@ -22,7 +22,7 @@ Sessions live under `~/.vargos/sessions/<sessionKey-with-/>/` — Vargos convert
 Examples:
 - `~/.vargos/sessions/telegram-personal/7789463749/`
 - `~/.vargos/sessions/cron/heartbeat/2026-05-06/`
-- `~/.vargos/sessions/cli/` (used by `pnpm cli`)
+- `~/.vargos/sessions/cli/` (used by `pnpm chat`)
 
 ## Lifecycle
 

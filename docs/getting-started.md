@@ -15,10 +15,14 @@ pnpm install
 ## First run
 
 ```bash
+# Quick: npx runs the setup wizard automatically on first run
+npx @chozzz/vargos
+
+# Or boot the server directly (wizard runs automatically if unconfigured)
 pnpm start
 ```
 
-This boots the gateway and all services. On first run, [`lib/templates.ts`](../lib/templates.ts) seeds defaults from [`.templates/vargos/`](../.templates/vargos/) into `~/.vargos/`.
+This boots the gateway and all services. On first run, the interactive setup wizard prompts for provider, model, and API key, then writes config to `~/.vargos/`. [`lib/templates.ts`](../lib/templates.ts) also seeds defaults from [`.templates/vargos/`](../.templates/vargos/) into `~/.vargos/`.
 
 You'll need at minimum:
 - A provider entry in `~/.vargos/agent/models.json` and credentials in `~/.vargos/agent/auth.json` (or the matching `${PROVIDER}_API_KEY` env var)
@@ -26,14 +30,23 @@ You'll need at minimum:
 
 Supported providers (registered out of the box, configure as needed): Anthropic, OpenAI, Google, OpenRouter, Ollama, LM Studio, Groq, Together, DeepSeek, Mistral, Fireworks, Perplexity, vLLM.
 
+## CLI management
+
+```bash
+vargos                 # First-run wizard or help
+vargos start           # Boot the server
+vargos onboard         # Re-run setup wizard
+vargos config          # Show current configuration
+```
+
 ## Pi CLI mode
 
 ```bash
-pnpm cli                     # interactive Pi CLI bound to ~/.vargos/agent
-pnpm cli "what's in /tmp?"   # one-shot
+pnpm chat                     # interactive Pi SDK REPL bound to ~/.vargos/agent
+pnpm chat "what's in /tmp?"   # one-shot
 ```
 
-`pnpm cli` execs `pi` (Pi SDK CLI) with `PI_CODING_AGENT_DIR=$HOME/.vargos/agent` and `--session-dir $HOME/.vargos/sessions/cli`. Sessions land alongside channel/cron sessions and are searchable by the memory indexer.
+`pnpm chat` execs `pi` (Pi SDK CLI) with `PI_CODING_AGENT_DIR=$HOME/.vargos/agent` and `--session-dir $HOME/.vargos/sessions/cli`. Sessions land alongside channel/cron sessions and are searchable by the memory indexer.
 
 ## Connecting channels
 

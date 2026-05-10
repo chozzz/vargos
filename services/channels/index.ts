@@ -22,7 +22,6 @@ import { on, register } from '../../gateway/decorators.js';
 import type { Bus } from '../../gateway/bus.js';
 import type { EventMap, ChannelInfo } from '../../gateway/events.js';
 import type { AppConfig, ChannelEntry } from '../../services/config/index.js';
-import { ChannelEntrySchema } from '../../services/config/index.js';
 import { createLogger } from '../../lib/logger.js';
 import { toMessage } from '../../lib/error.js';
 import { stripMarkdown } from '../../lib/strip-markdown.js';
@@ -191,7 +190,18 @@ export class ChannelService {
 
   @register('channel.register', {
     description: 'Dynamically register a new channel adapter.',
-    schema: ChannelEntrySchema.and(z.object({ persist: z.boolean().optional() })),
+    // Flat object required: discriminatedUnion produces type:null in JSON Schema, rejected by Anthropic API.
+    schema: z.object({
+      id:         z.string(),
+      type:       z.enum(['telegram', 'whatsapp']),
+      enabled:    z.boolean().optional(),
+      model:      z.string().optional(),
+      debounceMs: z.number().int().min(0).optional(),
+      allowFrom:  z.array(z.string()).optional(),
+      cwd:        z.string().optional(),
+      botToken:   z.string().optional(),
+      persist:    z.boolean().optional(),
+    }),
   })
   async register(params: EventMap['channel.register']['params']): Promise<void> {
     if (this.adapters.has(params.id)) {

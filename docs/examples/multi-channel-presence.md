@@ -14,7 +14,7 @@ adapter (telegram/whatsapp)
   → reply via channel.send (back through originating channel)
 ```
 
-Session keys: `telegram-personal:7789...`, `whatsapp-personal:614...`. Cron and `pnpm cli` use their own key formats — see [Sessions](../usage/sessions.md).
+Session keys: `telegram-personal:7789...`, `whatsapp-personal:614...`. Cron and `pnpm chat` use their own key formats — see [Sessions](../usage/sessions.md).
 
 Each channel can have its own [persona file](../usage/personas.md) at `~/.vargos/agents/<channelId>.md` to scope tool access and tweak the system prompt. Cron and webhooks deliver via `channel.send` with `fromSessionKey` so the receiver records source attribution in its history.
 
@@ -24,7 +24,7 @@ Each channel can have its own [persona file](../usage/personas.md) at `~/.vargos
 |---|---|---|
 | Telegram | ✅ | Long-polling, group chat (mention-only), voice, image, document extraction (PDF/DOCX/XLSX/TXT/MD), reactions, typing |
 | WhatsApp | ✅ | Baileys linked-devices, voice, image, reactions, typing |
-| Pi CLI (`pnpm cli`) | ✅ | Interactive REPL bound to `~/.vargos/agent` and `sessions/cli/` |
+| Pi CLI (`pnpm chat`) | ✅ | Interactive REPL bound to `~/.vargos/agent` and `sessions/cli/` |
 | Slack | 📋 | Planned |
 
 ## Setup

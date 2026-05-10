@@ -159,7 +159,8 @@ Pi-SDK-powered runtime (`@mariozechner/pi-coding-agent`) with Vargos-managed con
 | Feature | Status |
 |---------|--------|
 | `pnpm start` — boot gateway + all services | ✅ |
-| `pnpm cli` — Pi SDK CLI bound to `~/.vargos/agent` and sessions in `sessions/cli/` | ✅ |
+| `pnpm chat` — Pi SDK CLI bound to `~/.vargos/agent` and sessions in `sessions/cli/` | ✅ |
+| `pnpm cli` — Vargos management CLI (start, onboard, config) | ✅ |
 | `pnpm seed` — manual `seedDataDir()` invocation | ✅ |
 
 ## MCP Bridge

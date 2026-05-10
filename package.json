@@ -28,16 +28,20 @@
     ".templates",
     "README.md",
     "LICENSE",
-    "CONTRIBUTING.md"
+    "CONTRIBUTING.md",
+    "CHANGELOG.md",
+    "CODE_OF_CONDUCT.md",
+    "SECURITY.md"
   ],
   "bin": {
-    "vargos": "./dist/index.js"
+    "vargos": "./dist/cli.js"
   },
   "scripts": {
     "start": "tsx index.ts",
     "seed": "tsx scripts/seed.ts",
-    "cli": "pnpm run seed && PI_CODING_AGENT_DIR=\"${VARGOS_DATA_DIR:-$HOME/.vargos}/agent\" pi --session-dir \"${VARGOS_DATA_DIR:-$HOME/.vargos}/sessions/cli\"",
-    "build": "tsc",
+    "cli": "tsx cli.ts",
+    "chat": "tsx scripts/seed.ts && PI_CODING_AGENT_DIR=\"${VARGOS_DATA_DIR:-$HOME/.vargos}/agent\" pi --session-dir \"${VARGOS_DATA_DIR:-$HOME/.vargos}/sessions/cli\"",
+    "build": "rm -rf dist && tsc && cp -r .templates dist/.templates",
     "prepare": "husky && tsc",
     "test": "vitest",
     "test:run": "vitest run",

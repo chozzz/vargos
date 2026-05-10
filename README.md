@@ -17,13 +17,19 @@
 ## Quick Start
 
 ```bash
+# npx (no install)
+npx @chozzz/vargos
+
+# or clone + run
 git clone https://github.com/chozzz/vargos.git
 cd vargos
 pnpm install
 pnpm start
 ```
 
-First run prompts for LLM provider, model, and API key. Config is saved to `~/.vargos/config.json`.
+First run launches an interactive setup wizard (provider, model, API key). Config is saved to `~/.vargos/`.
+
+After setup: `vargos start` boots the server, `vargos onboard` re-runs the wizard, `vargos config` shows current settings.
 
 ## Architecture
 
@@ -79,18 +85,28 @@ Messages go through a simple pipeline: **receive → process → execute → res
 - [Architecture Deep Dive](./docs/architecture/bus-design.md) — Event bus patterns
 - [Extending](./docs/extending/) — Tools, skills, providers
 
+## Usage
+
+```bash
+vargos                 # First-run wizard or help
+vargos start           # Boot the server (gateway + all services)
+vargos onboard         # Re-run setup wizard
+vargos config          # Show current configuration
+```
+
 ## Development
 
 ```bash
 pnpm install          # Install deps
-pnpm start            # Start gateway + all services
-pnpm cli              # Pi CLI bound to ~/.vargos (interactive REPL)
+pnpm start            # Start gateway + all services (alias: vargos start)
+pnpm chat             # Pi SDK interactive REPL bound to ~/.vargos/agent
 pnpm seed             # Re-seed .templates/vargos/ → ~/.vargos/ (idempotent)
+pnpm cli              # Run the CLI entrypoint directly (tsx cli.ts)
 pnpm test             # Tests (watch mode)
 pnpm run test:run     # Tests (single run)
 pnpm run typecheck    # TypeScript check
 pnpm lint             # ESLint + typecheck
-```
+pnpm build            # Clean + compile + copy templates → dist/
 
 ## Contributing
 

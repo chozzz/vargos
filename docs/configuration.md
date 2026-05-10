@@ -45,7 +45,7 @@ Default-value syntax: `${VAR:-fallback}`. Used when `VAR` is missing or empty.
 
 `agent/auth.json` holds API keys and OAuth tokens. Env override: `${PROVIDER}_API_KEY` (e.g. `ANTHROPIC_API_KEY`) takes precedence.
 
-To run Pi CLI against the same config: `pnpm cli` (sets `PI_CODING_AGENT_DIR` and `--session-dir` automatically).
+To run Pi CLI against the same config: `pnpm chat` (sets `PI_CODING_AGENT_DIR` and `--session-dir` automatically).
 
 ## MCP
 

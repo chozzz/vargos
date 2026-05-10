@@ -7,7 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 pnpm install          # install deps
 pnpm start            # boot gateway + all services
-pnpm cli              # Pi SDK CLI bound to ~/.vargos/agent (interactive REPL)
+pnpm chat             # Pi SDK CLI bound to ~/.vargos/agent (interactive REPL)
+pnpm cli              # run the CLI entrypoint directly (tsx cli.ts)
 pnpm seed             # manual `seedDataDir()` — re-copy missing template files into ~/.vargos/
 pnpm run typecheck    # tsc --noEmit
 pnpm run test:run     # single test run

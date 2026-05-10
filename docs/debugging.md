@@ -65,9 +65,9 @@ echo '{"jsonrpc":"2.0","id":1,"method":"memory.stats","params":{}}' | nc -q 1 12
 
 The indexer watches `~/.vargos/workspace/**/*.md` and chunks JSONL session files. New writes get indexed within 5s. Embeddings disabled (`embeddingProvider: 'none'`) → only BM25 text scoring.
 
-### `pnpm cli` doesn't see Vargos data
+### `pnpm chat` doesn't see Vargos data
 
-`pnpm cli` execs Pi CLI with `PI_CODING_AGENT_DIR=$VARGOS_DATA_DIR/agent` and `--session-dir $VARGOS_DATA_DIR/sessions/cli`. Confirm with `pnpm cli --list-models | head`.
+`pnpm chat` execs Pi CLI with `PI_CODING_AGENT_DIR=$VARGOS_DATA_DIR/agent` and `--session-dir $VARGOS_DATA_DIR/sessions/cli`. Confirm with `pnpm chat --list-models | head`.
 
 ## Querying the bus
 
