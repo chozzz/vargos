@@ -19,7 +19,7 @@ pnpm lint             # eslint + typecheck
 
 - **Logging**: `createLogger('service-name')` (no `console.log`).
 - **Domain boundaries**: services talk via `bus.call()` / `bus.emit()`; cross-domain imports are blocked by ESLint (`no-restricted-imports`).
-- **Config**: `~/.vargos/config.json` + `~/.vargos/agent/{models,settings,auth}.json` consolidated by `services/config`.
+- **Config**: `~/.vargos/config.json` + `~/.vargos/agent/{mcp,models,settings,auth}.json`. MCP servers configured in `agent/mcp.json` (shared with Pi SDK); others consolidated by `services/config`.
 - **API keys**: provider entries in `agent/models.json`; env `${PROVIDER}_API_KEY` overrides.
 - **Skills**: auto-loaded from `~/.vargos/agent/skills/`, `~/.vargos/workspace/skills/`, `<cwd>/skills/`, `<cwd>/.pi/skills/`. Pi SDK injects `name` + `description`; body is read on demand. Bundled: `skill-creator`.
 - **Bootstrap files**: only `AGENTS.md`, `SOUL.md`, `TOOLS.md` from workspace + cwd are merged into the system prompt (`services/agent/index.ts:365`). `CLAUDE.md` is **not** in this list — Pi SDK auto-discovers it from cwd separately as `# Project Context`.

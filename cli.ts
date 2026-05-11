@@ -37,6 +37,7 @@ function usage(): void {
     vargos start           Boot the agent server (gateway + all services)
     vargos onboard         Interactive setup wizard (provider, model, API key)
     vargos config          Show current configuration
+    vargos chat            Start an interactive chat session with the agent
 
   Options:
     --version, -v          Show version
@@ -115,6 +116,13 @@ if (cmd === 'start') {
   // Boot the gateway + all services (index.ts)
   await import('./index.js');
   // index.ts blocks forever, so we never reach here normally
+  process.exit(0);
+}
+
+// chat subcommand
+if (cmd === 'chat') {
+  const { execSync } = await import('node:child_process');
+  execSync('pnpm chat', { stdio: 'inherit', cwd: import.meta.dirname });
   process.exit(0);
 }
 

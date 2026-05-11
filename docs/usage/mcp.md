@@ -7,11 +7,32 @@ Vargos has two sides to MCP:
 
 ## Client (active)
 
-External MCP servers are configured under `mcpServers` in `~/.vargos/config.json`. Each entry follows MCP's standard server config (`command`, `args`, `env`).
+External MCP servers are configured in `~/.vargos/agent/mcp.json` (shared with Pi SDK). This file is seeded with examples on first run.
 
 At boot, [`services/mcp-client/`](../../services/mcp-client/) spawns each server, lists its tools, and registers them on the bus namespaced as `mcp.<server>.<tool>`. The agent calls them like any other bus tool. Channel persona `allowedTools` globs apply (e.g. `mcp.atlassian.*`).
 
 If a server fails to start, the gateway logs a warning and continues — it won't block boot.
+
+### Configuration
+
+```json
+{
+  "mcpServers": {
+    "server-name": {
+      "command": "npx",
+      "args": ["@modelcontextprotocol/server-package"],
+      "env": { "API_KEY": "${API_KEY}" },
+      "enabled": true
+    }
+  }
+}
+```
+
+Each server entry supports:
+- `command` — executable name (e.g., `npx`, `node`, `python`)
+- `args` — array of arguments (optional, or space-separated in `command`)
+- `env` — environment variables to pass (optional; merges with process.env)
+- `enabled` — set to `false` to skip a server (optional; defaults to `true`)
 
 Configuration schema reference: [`services/config/index.ts`](../../services/config/index.ts) (`mcpServers` field).
 

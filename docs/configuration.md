@@ -1,10 +1,11 @@
 # Configuration
 
-Vargos splits config across **four files** under `~/.vargos/`. The split keeps secrets isolated and lets the config service patch each file independently.
+Vargos splits config across **five files** under `~/.vargos/`. The split keeps secrets isolated and aligns with Pi SDK's structure.
 
 | File | Purpose | Schema |
 |---|---|---|
-| `config.json` | App config: channels, cron, webhooks, MCP, gateway | [`services/config/index.ts`](../services/config/index.ts) `AppConfigSchema` |
+| `config.json` | App config: channels, cron, webhooks, gateway | [`services/config/index.ts`](../services/config/index.ts) `AppConfigSchema` |
+| `agent/mcp.json` | External MCP servers (shared with Pi SDK) | See [MCP](#mcp) |
 | `agent/models.json` | Provider definitions and model registry (Pi SDK owned) | [Pi SDK `ModelRegistry`](../node_modules/@mariozechner/pi-coding-agent/dist/core/model-registry.d.ts) |
 | `agent/settings.json` | Default model, thinking level, media providers | Pi SDK `SettingsManager` |
 | `agent/auth.json` | Provider API keys + OAuth tokens | Pi SDK `AuthStorage` |
@@ -49,7 +50,9 @@ To run Pi CLI against the same config: `pnpm chat` (sets `PI_CODING_AGENT_DIR` a
 
 ## MCP
 
-External MCP servers live under `mcpServers` in `config.json`, loaded by [`services/mcp-client/`](../services/mcp-client/). Tools are namespaced as `mcp.<server>.<tool>` on the bus.
+External MCP servers are configured in `~/.vargos/agent/mcp.json`, which is shared between Vargos (`pnpm start`) and Pi SDK CLI (`pnpm chat`). See [MCP documentation](./usage/mcp.md) for examples and setup.
+
+Tools are namespaced as `mcp.<server>.<tool>` on the bus when the Vargos server is running.
 
 The MCP **server** (Vargos exposing itself as an MCP server) lives in [`edge/mcp/`](../edge/mcp/) and is currently commented out in [`index.ts`](../index.ts).
 
