@@ -63,6 +63,14 @@ try {
 bus.emit('bus.onReady', {});
 log.info('✅ Vargos is ready\n\n');
 
+// ── Global error handlers ────────────────────────────────────────────────────
+// Prevent undici socket errors (UND_ERR_SOCKET "other side closed") from
+// crashing the process when LLM providers close connections after streaming.
+
+process.on('uncaughtException', (err) => {
+  log.error(`uncaughtException: ${err.stack ?? err.message ?? err}`);
+  // Do NOT exit — most undici/stream errors are non-fatal teardown noise.
+});
 
 // ── Shutdown ──────────────────────────────────────────────────────────────────
 
