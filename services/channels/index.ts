@@ -22,7 +22,6 @@ import { on, register } from '../../gateway/decorators.js';
 import type { Bus } from '../../gateway/bus.js';
 import type { EventMap, ChannelInfo } from '../../gateway/events.js';
 import type { AppConfig, ChannelEntry } from '../../services/config/index.js';
-import { ChannelEntrySchema } from '../../services/config/index.js';
 import { createLogger } from '../../lib/logger.js';
 import { toMessage } from '../../lib/error.js';
 import { stripMarkdown } from '../../lib/strip-markdown.js';
@@ -92,19 +91,28 @@ export class ChannelService {
   // ── Callable handlers ────────────────────────────────────────────────────────
 
   @register('channel.send', {
-    description: 'Send a text message to a channel recipient.',
-    schema: z.object({ sessionKey: z.string(), text: z.string() }),
+    description: 'Send a text message to a channel recipient. Optional `fromSessionKey` will trigger agent.appendMessage to record the text in target history.',
+    schema: z.object({
+      sessionKey: z.string(),
+      text: z.string(),
+      fromSessionKey: z.string().optional(),
+    }),
   })
   async send(params: EventMap['channel.send']['params']): Promise<EventMap['channel.send']['result']> {
-    const { sessionKey, text } = params;
+    const { sessionKey, text, fromSessionKey } = params;
     const target = parseChannelTarget(sessionKey);
     if (!target) throw new Error(`Invalid session key: ${sessionKey}`);
 
     const adapter = this.adapters.get(target.channel);
     if (!adapter) throw new Error(`No adapter for channel: ${target.channel}`);
 
+    log.debug(`send: received text (${text.length} chars)`);
     const cleaned = stripMarkdown(text);
-    log.info(`send: ${sessionKey} (${cleaned.length} chars)`);
+    log.info(`send: ${sessionKey} (${text.length} → ${cleaned.length} chars after stripMarkdown)`);
+
+    if (cleaned.length === 0) {
+      log.warn(`send: stripMarkdown resulted in empty string (original: ${text.length} chars)`);
+    }
 
     await deliverReply((chunk) => adapter.send(sessionKey, chunk), cleaned);
 
@@ -114,6 +122,13 @@ export class ChannelService {
         await adapter.sendMedia(sessionKey, filePath, mimeType)
           .catch(err => log.error(`media send failed: ${filePath}: ${err}`));
       }
+    }
+
+    if (fromSessionKey) {
+      this.bus.call('agent.appendMessage', {
+        sessionKey,
+        content: `[${fromSessionKey}] ${text}`,
+      }).catch(err => log.error(`history append to ${sessionKey} from ${fromSessionKey}: ${toMessage(err)}`));
     }
 
     return { sent: true };
@@ -175,7 +190,18 @@ export class ChannelService {
 
   @register('channel.register', {
     description: 'Dynamically register a new channel adapter.',
-    schema: ChannelEntrySchema.and(z.object({ persist: z.boolean().optional() })),
+    // Flat object required: discriminatedUnion produces type:null in JSON Schema, rejected by Anthropic API.
+    schema: z.object({
+      id:         z.string(),
+      type:       z.enum(['telegram', 'whatsapp']),
+      enabled:    z.boolean().optional(),
+      model:      z.string().optional(),
+      debounceMs: z.number().int().min(0).optional(),
+      allowFrom:  z.array(z.string()).optional(),
+      cwd:        z.string().optional(),
+      botToken:   z.string().optional(),
+      persist:    z.boolean().optional(),
+    }),
   })
   async register(params: EventMap['channel.register']['params']): Promise<void> {
     if (this.adapters.has(params.id)) {
@@ -227,6 +253,7 @@ export class ChannelService {
 
   @on('agent.onCompleted')
   private onAgentCompleted(payload: EventMap['agent.onCompleted']): void | Promise<void> {
+    // Skip if it's a subagent session
     if (!payload.sessionKey || payload.sessionKey.includes(':subagent')) {
       return;
     }
@@ -234,39 +261,48 @@ export class ChannelService {
     const session = this.activeSessions.get(payload.sessionKey);
     if (!session) {
       // Non-channel session with no active session — ignore completion
+      log.warn(`onAgentCompleted: session not found in activeSessions: ${payload.sessionKey}`);
       return;
     }
 
     const targetSessionKey = payload.sessionKey;
+    const responseLength = payload.success && payload.response ? payload.response.length : 0;
+    const responseText = payload.success
+      ? payload.response || ''
+      : `Error: ${payload.error || 'Unknown error'}`;
 
-    // Send reply based on success/error
-    const sendReply = async () => {
-      try {
-        if (payload.success && payload.response) {
-          await this.bus.call('channel.send', { sessionKey: targetSessionKey, text: payload.response });
-        } else if (!payload.success) {
-          const errorMsg = payload.error ? toMessage(payload.error) : 'Unknown error';
-          await this.bus.call('channel.send', { sessionKey: targetSessionKey, text: `Error: ${errorMsg}` });
-        }
-      } catch (err) {
-        log.error(`failed to send reply: ${toMessage(err)}`);
-      }
+    log.info(`onAgentCompleted: ${targetSessionKey}, success=${payload.success}, responseLength=${responseLength}`);
 
-      // Update and cleanup reaction controller
+    const cleanup = () => {
       if (session?.reactionController) {
         if (payload.success === false) {
-          session?.reactionController.setError();
+          session.reactionController.setError();
         } else {
-          session?.reactionController.setDone();
+          session.reactionController.setDone();
         }
-        session?.reactionController.dispose();
+        session.reactionController.dispose();
       }
+      session.adapter.stopTyping(targetSessionKey, true);
     };
 
-    return sendReply().finally(() => {
-      this.activeSessions.delete(payload.sessionKey);
-      session?.adapter.stopTyping(targetSessionKey, true);  // final=true to fully stop
-    });
+    // Don't send empty responses on success
+    if (payload.success && !payload.response) {
+      log.debug(`  → skipping send: empty response on success`);
+      cleanup();
+      return;
+    }
+
+    this.bus.call('channel.send', { sessionKey: targetSessionKey, text: responseText })
+      .then(({ sent }) => {
+        log.debug(`  → response sent to ${targetSessionKey} successfully: ${sent}`);
+      })
+      .catch(err => log.error(`failed to send reply: ${toMessage(err)}`))
+      .finally(() => {
+        if (session) {
+          log.debug(`  → stopping typing (session stays alive for idle cleanup)`);
+          cleanup();
+        }
+      });
   }
 
   // ── Inbound message handling ─────────────────────────────────────────────────
@@ -292,6 +328,7 @@ export class ChannelService {
     }
 
     // Delegate to pipeline for policy orchestration
+    log.debug(`onInboundMessage: processing message for ${sessionKey}`);
     await this.pipeline.process(sessionKey, message, adapter, this.activeSessions);
   }
 
@@ -323,6 +360,8 @@ export class ChannelService {
         this.bus.call('media.transcribeAudio', { filePath }).then(r => r.text),
       describe: (filePath: string) =>
         this.bus.call('media.describeImage', { filePath }).then(r => r.description),
+      extract: (filePath: string, mimeType: string) =>
+        this.bus.call('media.extractDocument', { filePath, mimeType }),
     };
 
     return this.registry.createAdapter(entry, deps);

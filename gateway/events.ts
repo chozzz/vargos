@@ -35,24 +35,28 @@ export interface InboundMessageMetadata {
   /** When set to true, do not prompt agent. But still append the message to the agent's history. */
   skipAgent?: boolean;
   /** Working directory for the agent — defaults to vargos workspace. When set,
-   *  bootstrap files (CLAUDE.md, AGENTS.md) from both cwd and workspace are merged. */
+   *  bootstrap files (AGENTS.md, SOUL.md, TOOLS.md) from both cwd and workspace are merged. */
   cwd?: string;
   /** Username/display name of the message sender (for group chat attribution) */
   fromUser?: string;
   /** Sender's user ID (for whitelist enforcement). Platform-specific: Telegram user ID, WhatsApp JID, etc. */
   fromUserId?: string;
+  /** Sender's @handle on the platform (e.g. Telegram username). Optional — not all platforms have one. */
+  fromUserHandle?: string;
   /** Chat type — 'private' for 1:1, 'group' for group chats. Helps determine if bot was explicitly addressed. */
   chatType?: 'private' | 'group';
   /** True if bot was explicitly mentioned or replied to in a group chat. */
   isMentioned?: boolean;
   /** Platform/adapter type (e.g., 'telegram', 'whatsapp') */
   channelType?: string;
-  /** Bot's own display name (e.g., Telegram bot username) */
+  /** Bot's user ID on the platform (numeric for Telegram, JID for WhatsApp). */
+  botUserId?: string;
+  /** Bot's display/first name. */
   botName?: string;
+  /** Bot's @handle on the platform (e.g. Telegram bot username). */
+  botHandle?: string;
   /** Model override for this message (e.g., "claude-opus-4"). If not set, uses agent.model from config. */
   model?: string;
-  /** Path to channel/trigger-specific instructions file to include in system prompt. Auto-created if doesn't exist. */
-  instructionsFile?: string;
   /** Media attachment metadata with content reference — discriminated by type */
   media?:
   | { type: 'image'; mimeType?: ImageMimeType; path?: string; description?: string }
@@ -72,6 +76,10 @@ export interface AgentExecuteParams {
 
   /** Metadata for the inbound message */
   metadata?: InboundMessageMetadata;
+}
+
+export interface AgentAppendMessageParams extends Pick<AgentExecuteParams, 'sessionKey' | 'metadata'> {
+  content: string;
 }
 
 // ─── Event map ────────────────────────────────────────────────────────────────
@@ -111,18 +119,29 @@ export interface EventMap {
 
   // Agent
   'agent.execute': { params: AgentExecuteParams; result: { response: string } };
-  'agent.appendMessage': { params: AgentExecuteParams; result: void };
+  'agent.appendMessage': { params: AgentAppendMessageParams; result: void };
   'agent.status': { params: { sessionKey?: string }; result: { activeRuns: string[] } };
 
   // Media
   'media.transcribeAudio': { params: { filePath: string }; result: { text: string } };
   'media.describeImage': { params: { filePath: string }; result: { description: string } };
+  'media.extractDocument': { params: { filePath: string; mimeType: string }; result: { text: string } };
 
   // Web
   'web.fetch': { params: { url: string; extractMode?: 'markdown' | 'text'; maxChars?: number }; result: { text: string } };
 
   // Channels
-  'channel.send': { params: { sessionKey: string; text: string }; result: { sent: boolean } };
+  'channel.send': {
+    params: {
+      sessionKey: string;
+      text: string;
+      /** Optional source sessionKey for cross-session forwards. When set, the message is also
+       *  appended to the target session's history as `[fromSessionKey] text` so the receiving
+       *  agent knows it came from elsewhere (cron, webhook, agent forwarding to another channel). */
+      fromSessionKey?: string;
+    };
+    result: { sent: boolean };
+  };
   'channel.sendMedia': { params: { sessionKey: string; filePath: string; mimeType: string; caption?: string }; result: { sent: boolean } };
   'channel.search': { params: { query?: string; page: number; limit?: number }; result: Pagination<ChannelInfo> };
   'channel.get': { params: { instanceId: string }; result: ChannelInfo };

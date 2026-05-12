@@ -47,6 +47,14 @@ export interface TelegramFile {
   file_size?: number;
 }
 
+export interface TelegramDocument {
+  file_name: string;
+  mime_type: string;
+  file_id: string;
+  file_unique_id: string;
+  file_size: number;
+}
+
 export interface TelegramMessage {
   message_id: number;
   from?: TelegramUser;
@@ -56,6 +64,7 @@ export interface TelegramMessage {
   photo?: TelegramPhotoSize[];
   voice?: TelegramVoice;
   audio?: TelegramAudio;
+  document?: TelegramDocument;
   caption?: string;
   reply_to_message?: TelegramMessage;
 }

@@ -45,6 +45,9 @@ export const EXT_TO_MIME: Record<string, string> = {
   '.mp4': 'video/mp4', '.mp3': 'audio/mpeg',
   '.ogg': 'audio/ogg', '.m4a': 'audio/mp4',
   '.pdf': 'application/pdf',
+  '.txt': 'text/plain', '.md': 'text/markdown',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 };
 
 // Typed MIME constants by media type
@@ -73,9 +76,11 @@ export const VIDEO_MIMES = {
 } as const;
 
 export const DOCUMENT_MIMES = {
+  'text/plain': true,
+  'text/markdown': true,
   'application/pdf': true,
-  'application/msword': true,
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': true,
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': true,
 } as const;
 
 export type ImageMimeType = keyof typeof IMAGE_MIMES;

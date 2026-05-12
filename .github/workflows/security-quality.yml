@@ -12,7 +12,6 @@ concurrency:
 
 jobs:
   lint-and-typecheck:
-    name: Lint & Type Check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,7 +25,6 @@ jobs:
       - run: pnpm run typecheck
 
   test:
-    name: Test Suite
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -39,7 +37,6 @@ jobs:
       - run: pnpm run test:run
 
   codeql:
-    name: CodeQL Analysis
     runs-on: ubuntu-latest
     permissions:
       security-events: write
@@ -81,7 +78,6 @@ jobs:
             p/owasp-top-ten
 
   summary:
-    name: Security & Quality Summary
     runs-on: ubuntu-latest
     if: always()
     needs: [lint-and-typecheck, test, codeql, dependency-check, semgrep]

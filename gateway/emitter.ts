@@ -19,7 +19,7 @@ type HasHandlers = {
   [TOOLS]?: Array<{ event: keyof EventMap; method: string; schema?: ToolSchema }>;
 };
 
-const DEFAULT_CALL_TIMEOUT_MS = 900_000; // 15 minutes
+const DEFAULT_CALL_TIMEOUT_MS = 35 * 60 * 1000; // 35 minutes (exceeds agent.execute 30min timeout)
 
 /**
  * Predicate: is this event metadata a usable tool?

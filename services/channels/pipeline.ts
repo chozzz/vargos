@@ -65,13 +65,31 @@ export class InboundMessagePipeline {
       }
     }
 
+    // Build metadata once — used for both skipAgent (appendMessage) and active (execute) paths.
+    // Sessions are cached on first creation, so dropping fields here bakes them as 'unknown'
+    // into the systemPrompt for the lifetime of the session.
+    const metadata: EventMap['agent.execute']['params']['metadata'] = {
+      ...(message.messageId && { messageId: message.messageId }),
+      ...(message.fromUserId && { fromUserId: message.fromUserId }),
+      ...(message.fromUser && { fromUser: message.fromUser }),
+      ...(message.fromUserHandle && { fromUserHandle: message.fromUserHandle }),
+      ...(message.chatType && { chatType: message.chatType }),
+      ...(message.isMentioned !== undefined && { isMentioned: message.isMentioned }),
+      ...(message.channelType && { channelType: message.channelType }),
+      ...(message.botUserId && { botUserId: message.botUserId }),
+      ...(message.botName && { botName: message.botName }),
+      ...(message.botHandle && { botHandle: message.botHandle }),
+      ...(channelEntry.cwd && { cwd: channelEntry.cwd }),
+      ...(channelEntry.model && { model: channelEntry.model }),
+    };
+
     // If agent is skipped, just append to history
     if (shouldSkipAgent) {
       log.info(`inbound (skipAgent): ${sessionKey} "${enrichedContent.slice(0, 80)}"`);
       this.bus.call('agent.appendMessage', {
         sessionKey,
-        task: enrichedContent,
-        metadata: { cwd: channelEntry.cwd },
+        content: enrichedContent,
+        metadata,
       }).catch(err => log.error(`failed to append message: ${toMessage(err)}`));
       return;
     }
@@ -93,18 +111,6 @@ export class InboundMessagePipeline {
     activeSessions.set(sessionKey, { adapter, reactionController });
 
     log.info(`inbound: ${sessionKey} "${enrichedContent.slice(0, 80)}"`);
-
-    // Build metadata for agent
-    const metadata: EventMap['agent.execute']['params']['metadata'] = {
-      ...(message.messageId && { messageId: message.messageId }),
-      ...(message.fromUser && { fromUser: message.fromUser }),
-      ...(message.chatType && { chatType: message.chatType }),
-      ...(message.isMentioned !== undefined && { isMentioned: message.isMentioned }),
-      ...(message.channelType && { channelType: message.channelType }),
-      ...(channelEntry.cwd && { cwd: channelEntry.cwd }),
-      ...(channelEntry.model && { model: channelEntry.model }),
-      ...(channelEntry.instructionsFile && { instructionsFile: channelEntry.instructionsFile }),
-    };
 
     // Execute agent
     this.bus.call('agent.execute', {

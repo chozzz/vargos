@@ -9,6 +9,7 @@ import { z } from 'zod';
 export const ProviderConfigSchema = z.object({
   baseUrl: z.string(),
   api: z.string().default('openai-completions').describe('API type (default: openai-completions)'),
+  apiKey: z.string().optional().describe('API key (optional, required for custom providers)'),
   models: z.array(z.object({
     id: z.string(),
     name: z.string(),

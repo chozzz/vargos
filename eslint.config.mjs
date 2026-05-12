@@ -12,7 +12,7 @@ export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    ignores: ["node_modules/**", "dist/**", "out/**", "apps/**", "packages/**"],
+    ignores: ["node_modules/**", "dist/**", "out/**", "apps/**", "packages/**", ".templates/**"],
   },
   {
     rules: {

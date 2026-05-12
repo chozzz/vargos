@@ -143,14 +143,14 @@ export class TelegramAdapter extends BaseChannelAdapter {
     while (this.polling) {
       try {
         cycleCount++;
-        this.log.debug(`poll cycle ${cycleCount}: calling getUpdates with offset ${this.offset}`);
+        // this.log.debug(`poll cycle ${cycleCount}: calling getUpdates with offset ${this.offset}`);
         const updates = await this.apiCall<TelegramUpdate[]>('getUpdates', {
           offset: this.offset,
           timeout: POLL_TIMEOUT_S,
           allowed_updates: ['message'],
         });
 
-        this.log.debug(`poll cycle ${cycleCount}: received response with ${updates.length} update(s)`);
+        // this.log.debug(`poll cycle ${cycleCount}: received response with ${updates.length} update(s)`);
         this.reconnector.reset();
 
         for (const update of updates) {
@@ -175,16 +175,21 @@ export class TelegramAdapter extends BaseChannelAdapter {
     const msg = update.message;
     if (!msg) return;
 
-    if (!msg.text && !msg.photo && !msg.voice && !msg.audio) return;
-
-    const normalizedMsg = normalizeTelegramMessage(msg, { botUserId: this.botUser?.id || null });
-    if (!normalizedMsg) return;
+    const normalizedMsg = normalizeTelegramMessage(msg, {
+      botUserId: this.botUser?.id || null,
+      botUsername: this.botUser?.username,
+      botName: this.botUser?.first_name,
+    });
+    if (!normalizedMsg) {
+      this.log.error(`${msg.chat.type} message from user ${msg.from?.id} not normalized`);
+      return;
+    }
 
     const chatId = String(msg.chat.id);
     const msgKey = `${chatId}:${msg.message_id}`;
     if (!this.dedupe.add(msgKey)) return;
 
-    if (msg.photo || msg.voice || msg.audio) {
+    if (msg.photo || msg.voice || msg.audio || msg.document) {
       this.debouncer.flush(chatId);
       this.log.debug(`${msg.chat.type} media from user ${normalizedMsg.fromUserId}`);
       this.handleMedia(chatId, msg, normalizedMsg).catch((err) => {
@@ -232,6 +237,13 @@ export class TelegramAdapter extends BaseChannelAdapter {
       return { buffer, mimeType: 'image/jpeg', mediaType: 'image', caption: tgMsg.caption };
     }
 
+    if (tgMsg.document) {
+      const buffer = await this.downloadFile(tgMsg.document.file_id);
+      const mimeType = tgMsg.document.mime_type || 'application/octet-stream';
+      const caption = tgMsg.caption || `[Document: ${tgMsg.document.file_name}]`;
+      return { buffer, mimeType, mediaType: 'document', caption };
+    }
+
     const fileId = tgMsg.voice?.file_id ?? tgMsg.audio?.file_id;
     if (!fileId) return null;
 
@@ -251,16 +263,16 @@ export class TelegramAdapter extends BaseChannelAdapter {
     }
 
     const sessionKey = this.buildSessionKey(chatId);
-    const label = msg.photo?.length ? 'photo' : (msg.voice ? 'voice' : 'audio');
-    this.log.debug(`received ${label} from ${chatId}`);
+    const label = msg.photo?.length ? 'photo' : (msg.voice ? 'voice' : msg.audio ? 'audio' : 'document');
 
     try {
-      await this.processInboundMedia(
+      const { caption, savedPath, mimeType } = await this.processInboundMedia(
         { tgMsg: msg, chatId },
-        chatId,
         sessionKey,
+        normalizedMsg,
         (text) => this.onInboundMessage!(sessionKey, { ...normalizedMsg, text }),
       );
+      this.log.debug(`received ${label} from ${chatId}: ${caption} (${mimeType}) - ${savedPath}`);
     } catch (err) {
       this.log.warn(`${label} download failed for ${chatId}: ${err}`);
     }

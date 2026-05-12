@@ -7,6 +7,8 @@ import type { TelegramMessage } from './types.js';
 
 export interface TelegramNormalizerContext {
   botUserId: number | null;
+  botUsername?: string;
+  botName?: string;
 }
 
 export function normalizeTelegramMessage(
@@ -18,7 +20,7 @@ export function normalizeTelegramMessage(
     return null;
   }
 
-  if (!msg.text && !msg.photo && !msg.voice && !msg.audio) {
+  if (!msg.text && !msg.photo && !msg.voice && !msg.audio && !msg.document) {
     return null;
   }
 
@@ -26,22 +28,26 @@ export function normalizeTelegramMessage(
   const isPrivateChat = chatType === 'private';
   const isGroupChat = chatType === 'group' || chatType === 'supergroup';
 
-  const isMentioned = isPrivateChat || isMentionedInMessage(msg, context.botUserId);
+  const isMentioned = isPrivateChat || isMentionedInMessage(msg, context.botUserId, context.botUsername);
 
   return {
     messageId: String(msg.message_id),
     fromUserId: String(msg.from?.id || 0),
     fromUser: msg.from?.first_name || msg.from?.username || 'Unknown',
+    fromUserHandle: msg.from?.username,
     chatType: isPrivateChat ? 'private' : 'group',
     isMentioned,
     channelType: 'telegram',
+    botUserId: context.botUserId != null ? String(context.botUserId) : undefined,
+    botName: context.botName,
+    botHandle: context.botUsername,
     skipAgent: isGroupChat && !isMentioned ? true : false,
     text: msg.text,
     media: undefined, // Media handling done separately
   };
 }
 
-function isMentionedInMessage(msg: TelegramMessage, botUserId: number | null): boolean {
+function isMentionedInMessage(msg: TelegramMessage, botUserId: number | null, botUsername?: string): boolean {
   if (!msg.text || !botUserId) return false;
 
   // Check if message is a reply to the bot
@@ -49,14 +55,14 @@ function isMentionedInMessage(msg: TelegramMessage, botUserId: number | null): b
     return true;
   }
 
-  // Check if bot's username is mentioned with @ (e.g., @BotName)
-  // Telegram usernames are alphanumeric + underscores, 5-32 chars
-  // For now, we detect common mention patterns like @vargosbot, @VargosBot, etc.
-  // The regex matches @word boundaries
-  const mentionPattern = /@[\w]+/g;
-  const mentions = msg.text.match(mentionPattern) || [];
-  if (mentions.length > 0) {
-    return true;
+  // Check if this specific bot's username is mentioned with @
+  if (botUsername) {
+    const mentionPattern = /@[\w]+/g;
+    const mentions = msg.text.match(mentionPattern) || [];
+    const botMentionPattern = new RegExp(`@${botUsername}\\b`, 'i');
+    if (mentions.some(m => botMentionPattern.test(m))) {
+      return true;
+    }
   }
 
   return false;

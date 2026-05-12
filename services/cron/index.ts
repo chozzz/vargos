@@ -295,15 +295,16 @@ export class CronService {
 
     if (!task.notify?.length) return;
 
-    await this.deliver(task.notify, cleaned);
-  }
-
-  private async deliver(targets: string[], text: string): Promise<void> {
-    for (const target of targets) {
-      await this.bus.call('channel.send', {
-        sessionKey: target, text,
-      }).catch(err => log.error(`notify send to ${target}: ${toMessage(err)}`));
-    }
+    // Heartbeat: plain send (omit fromSessionKey so channel.send skips history injection).
+    // Other tasks: pass our cron sessionKey so the target session records the cross-session push.
+    const isHeartbeat = task.id === 'heartbeat';
+    await Promise.all(task.notify.map(target =>
+      this.bus.call('channel.send', {
+        sessionKey: target,
+        text: cleaned,
+        ...(isHeartbeat ? {} : { fromSessionKey: sessionKey }),
+      }).catch(err => log.error(`notify send to ${target}: ${toMessage(err)}`)),
+    ));
   }
 
   // ── File I/O ──────────────────────────────────────────────────────────────

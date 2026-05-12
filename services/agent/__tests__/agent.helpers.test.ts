@@ -63,7 +63,7 @@ describe('validateModel', () => {
 
   beforeEach(() => {
     originalEnv = process.env.VARGOS_DATA_DIR;
-    tmpDir = path.join(os.tmpdir(), `agent-test-${Date.now()}`);
+    tmpDir = path.join(os.tmpdir(), `agent-test-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     runtime = createTestRuntime(tmpDir);
   });
 
@@ -104,7 +104,7 @@ describe('buildPromptContext', () => {
 
   beforeEach(() => {
     originalEnv = process.env.VARGOS_DATA_DIR;
-    tmpDir = path.join(os.tmpdir(), `agent-test-${Date.now()}`);
+    tmpDir = path.join(os.tmpdir(), `agent-test-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     runtime = createTestRuntime(tmpDir);
   });
 
@@ -113,10 +113,10 @@ describe('buildPromptContext', () => {
     resetDataPaths();
   });
 
-  it('extracts channel and user from sessionKey', () => {
+  it('extracts channel and chat from sessionKey', () => {
     const context = runtime.testBuildPromptContext('telegram:user123');
     expect(context.CHANNEL_ID).toBe('telegram');
-    expect(context.USER_ID).toBe('user123');
+    expect(context.CHAT_ID).toBe('user123');
   });
 
   it('includes metadata channel type', () => {
@@ -126,30 +126,42 @@ describe('buildPromptContext', () => {
     expect(context.CHANNEL_TYPE).toBe('telegram');
   });
 
-  it('includes metadata from user', () => {
+  it('includes sender identity', () => {
     const context = runtime.testBuildPromptContext('telegram:user123', {
+      fromUserId: '42',
       fromUser: 'Alice',
+      fromUserHandle: 'alice_handle',
     });
-    expect(context.FROM_USER).toBe('Alice');
+    expect(context.USER_ID).toBe('42');
+    expect(context.USER_NAME).toBe('Alice');
+    expect(context.USER_HANDLE).toBe('alice_handle');
   });
 
-  it('includes metadata bot name', () => {
+  it('includes bot identity', () => {
     const context = runtime.testBuildPromptContext('telegram:user123', {
+      botUserId: '99',
       botName: 'MyBot',
+      botHandle: 'mybot_handle',
     });
+    expect(context.BOT_ID).toBe('99');
     expect(context.BOT_NAME).toBe('MyBot');
+    expect(context.BOT_HANDLE).toBe('mybot_handle');
   });
 
   it('includes all metadata fields together', () => {
     const context = runtime.testBuildPromptContext('telegram:user123', {
       channelType: 'telegram',
+      fromUserId: '42',
       fromUser: 'Alice',
+      botUserId: '99',
       botName: 'MyBot',
     });
     expect(context.CHANNEL_ID).toBe('telegram');
-    expect(context.USER_ID).toBe('user123');
+    expect(context.CHAT_ID).toBe('user123');
     expect(context.CHANNEL_TYPE).toBe('telegram');
-    expect(context.FROM_USER).toBe('Alice');
+    expect(context.USER_ID).toBe('42');
+    expect(context.USER_NAME).toBe('Alice');
+    expect(context.BOT_ID).toBe('99');
     expect(context.BOT_NAME).toBe('MyBot');
   });
 
@@ -157,15 +169,18 @@ describe('buildPromptContext', () => {
     const context = runtime.testBuildPromptContext('telegram:user123', {
       channelType: 'telegram',
     });
-    expect(context).not.toHaveProperty('FROM_USER');
+    expect(context).not.toHaveProperty('USER_NAME');
+    expect(context).not.toHaveProperty('USER_HANDLE');
     expect(context).not.toHaveProperty('BOT_NAME');
+    expect(context).not.toHaveProperty('BOT_HANDLE');
   });
 
   it('handles missing metadata gracefully', () => {
     const context = runtime.testBuildPromptContext('telegram:user123');
+    expect(context.SESSION_KEY).toBe('telegram:user123');
     expect(context.CHANNEL_ID).toBe('telegram');
-    expect(context.USER_ID).toBe('user123');
-    expect(Object.keys(context)).toHaveLength(2);
+    expect(context.CHAT_ID).toBe('user123');
+    expect(Object.keys(context)).toHaveLength(3);
   });
 });
 
@@ -176,7 +191,7 @@ describe('collectBootstrapDirs', () => {
 
   beforeEach(() => {
     originalEnv = process.env.VARGOS_DATA_DIR;
-    tmpDir = path.join(os.tmpdir(), `agent-test-${Date.now()}`);
+    tmpDir = path.join(os.tmpdir(), `agent-test-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     mkdirSync(path.join(tmpDir, 'workspace'), { recursive: true });
     runtime = createTestRuntime(tmpDir);
   });

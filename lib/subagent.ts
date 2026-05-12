@@ -1,11 +1,6 @@
 /**
  * Pure session key helpers — no domain dependencies.
  */
-
-export function channelSessionKey(channel: string, userId: string): string {
-  return `${channel}:${userId}`;
-}
-
 export function cronSessionKey(taskId: string): string {
   return `cron:${taskId}:${new Date().toISOString().slice(0, 10)}`;
 }

@@ -1,28 +1,14 @@
 # Example: MCP Integration
 
-Vargos is both an MCP **server** (exposes its 25 tools to external clients like Claude Desktop) and an MCP **client** (connects to external MCP servers and makes their tools available to the agent).
+Vargos is both an MCP **server** (exposes its bus surface to external clients like Claude Desktop) and an MCP **client** (loads external MCP servers and makes their tools available to the agent).
 
-## As an MCP Server
+The MCP server (`edge/mcp/`) is currently commented out in [`index.ts`](../../index.ts) — only the client side is active. This example covers both for when the server is re-enabled.
 
-Any MCP client can connect to Vargos and call its built-in tools — filesystem, web search, session management, agent spawning, memory, etc.
+## As an MCP client (active)
 
-**Claude Desktop config:**
-```json
-{
-  "mcpServers": {
-    "vargos": {
-      "command": "pnpm",
-      "args": ["--cwd", "/path/to/vargos", "start"]
-    }
-  }
-}
-```
+Connect external MCP servers; their tools appear to the agent as bus tools, namespaced `mcp.<server>.<tool>`.
 
-Auth via bearer token (`config.mcp.bearerToken`). HTTP on port 9001 or stdio transport.
-
-## As an MCP Client
-
-Connect to external MCP servers and their tools appear in the agent's tool list automatically.
+Add to `~/.vargos/config.json`:
 
 ```jsonc
 {
@@ -39,13 +25,22 @@ Connect to external MCP servers and their tools appear in the agent's tool list 
 }
 ```
 
-The agent sees external MCP tools as `<server>:<tool_name>` — e.g., `atlassian:jira_create_issue`.
+The agent sees `mcp.atlassian.jira_create_issue`, etc. Channel personas can whitelist via glob: `allowedTools: ["mcp.atlassian.*"]`.
 
-## Use Cases
+## As an MCP server (when re-enabled)
 
-- **Jira integration**: Create issues, search tickets, update status from agent conversations
-- **GitHub tools**: Create PRs, search issues, manage repositories
-- **Database tools**: Query databases, run migrations via MCP
-- **Custom tools**: Any MCP server you build or find
+External clients connect to Vargos's HTTP MCP endpoint and call any registered bus method. Bearer-token auth.
 
-See [mcp.md](../mcp.md) for transport options and [configuration.md](../configuration.md) for full config reference.
+Once `edge/mcp/` is uncommented in `index.ts`, configure your MCP client to point at `http://127.0.0.1:9001/mcp` with the configured bearer token. For Claude Desktop, use `mcp-remote` as a stdio↔HTTP shim.
+
+## Common use cases
+
+- **Jira / Atlassian** — create issues, search tickets, update status from chat
+- **GitHub** — PRs, issues, repo management
+- **Databases** — query, migrate via MCP
+- **Custom** — any MCP server you build or find
+
+## See also
+
+- [MCP](../usage/mcp.md) — client + server overview
+- [Configuration](../configuration.md) — `mcpServers` and `mcp` schemas

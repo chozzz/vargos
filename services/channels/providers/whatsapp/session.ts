@@ -111,6 +111,7 @@ export async function processInboundMessage(
     timestamp: typeof msg.messageTimestamp === 'number'
       ? msg.messageTimestamp * 1000
       : Date.now(),
+    pushName: msg.pushName || undefined,
     mentionedJids: mentionedJids.length > 0 ? mentionedJids : undefined,
     quotedSenderJid,
   };

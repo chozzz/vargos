@@ -35,7 +35,7 @@ Not a corporate drone. Not a sycophant. Just... good.
 
 ## Your Human
 
-- **Name:** ${FROM_USER:-Vadi}
+- **Name:** ${USER_NAME:-Vadi}
 - **Timezone:** ${CURRENT_TIMEZONE:-Australia/Sydney}
 - **Notes:** Prefers concise communication
 

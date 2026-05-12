@@ -36,6 +36,7 @@ export abstract class BaseChannelAdapter implements ChannelAdapter {
   protected latestMessageId = new Map<string, string>();
   protected transcribeFn?: (filePath: string) => Promise<string>;
   protected describeFn?: (filePath: string) => Promise<string>;
+  protected extractFn?: (filePath: string, mimeType: string) => Promise<{ text: string }>;
 
   constructor(
     instanceId: string,
@@ -47,6 +48,7 @@ export abstract class BaseChannelAdapter implements ChannelAdapter {
     this.onInboundMessage = deps.onInbound;
     this.transcribeFn = deps.transcribe;
     this.describeFn = deps.describe;
+    this.extractFn = deps.extract;
     this.log = createLogger(instanceId);
     this.debounceMs = debounceMs ?? 2000;
     this.debouncer = this.createDebouncer();
@@ -129,52 +131,97 @@ export abstract class BaseChannelAdapter implements ChannelAdapter {
   /**
    * Process inbound media message.
    * @param msg - Raw message from channel
-   * @param userId - User ID
    * @param sessionKey - Session key (channel:userId)
+   * @param normalizedMsg - Normalized message with flags (skipAgent, etc)
    * @param route - Function to route processed text to onInboundMessage
    */
   protected async processInboundMedia(
     msg: unknown,
-    userId: string,
     sessionKey: string,
+    normalizedMsg: NormalizedInboundMessage,
     route: (text: string) => Promise<void>,
-  ): Promise<void> {
+  ): Promise<{ caption: string; savedPath: string; mimeType: string }> {
     const source = await this.resolveMedia(msg);
-    if (!source) return;
+    const defaultReturn = { caption: '', savedPath: '', mimeType: '' };
+    if (!source) return defaultReturn;
 
     const { buffer, mimeType, mediaType, caption, duration } = source;
     const mediaDir = path.join(getDataPaths().dataDir, 'media');
     const savedPath = await saveMedia({ buffer, sessionKey, mimeType, mediaDir });
+
+    // Skip transcription for messages agent won't process (e.g., group mentions)
+    if (normalizedMsg.skipAgent) {
+      const label = MEDIA_TYPE_LABELS[mediaType] ?? 'Media';
+      const durationSuffix = duration != null ? `, ${duration}s` : '';
+      const fallbackCaption = caption || `[${label}${durationSuffix}]`;
+      await route(`${fallbackCaption}\n\n[${label} saved: ${savedPath}]`);
+      return {
+        caption: fallbackCaption,
+        savedPath,
+        mimeType
+      }
+    }
 
     if (mediaType === 'image') {
       if (this.describeFn) {
         try {
           const description = await this.describeFn(savedPath);
           await route(`${description}\n\n[Image described from: ${savedPath}]`);
-          return;
+          return {
+            caption: description,
+            savedPath,
+            mimeType
+          }
         } catch (err) {
           this.log.warn(`Image description failed: ${err}. Falling back to caption.`);
         }
       }
       const text = caption || 'User sent an image.';
       await route(`${text}\n\n[Image saved: ${savedPath}]`);
-      return;
+      return {
+        caption: text,
+        savedPath,
+        mimeType
+      }
     }
 
     if (mediaType === 'audio' && this.transcribeFn) {
       try {
         const transcription = await this.transcribeFn(savedPath);
         await route(`${transcription}\n\n[Audio transcribed from: ${savedPath}]`);
-        return;
+        return {
+          caption: transcription,
+          savedPath,
+          mimeType
+        }
       } catch (err) {
         this.log.warn(`Audio transcription failed: ${err}. Falling back to file path.`);
       }
     }
 
-    // Default handling for audio (no transcription) or other media types
+    if (mediaType === 'document' && this.extractFn) {
+      try {
+        const { text } = await this.extractFn(savedPath, mimeType);
+        await route(`${text}\n\n[Document extracted from: ${savedPath}]`);
+        return {
+          caption: text,
+          savedPath,
+          mimeType
+        }
+      } catch (err) {
+        this.log.warn(`Document extraction failed: ${err}. Falling back to file path.`);
+      }
+    }
+
+    // Default handling for audio (no transcription), documents (no extraction), or other media types
     const label = MEDIA_TYPE_LABELS[mediaType] ?? 'Media';
     const durationSuffix = duration != null ? `, ${duration}s` : '';
     const fallbackCaption = caption || `[${label}${durationSuffix}]`;
     await route(`${fallbackCaption}\n\n[${label} saved: ${savedPath}]`);
+    return {
+      caption: fallbackCaption,
+      savedPath,
+      mimeType,
+    }
   }
 }

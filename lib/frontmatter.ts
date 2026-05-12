@@ -10,17 +10,22 @@
  *   body content
  */
 
-export interface FrontmatterResult {
-  meta: Record<string, unknown>;
+export interface FrontmatterResult<T = Record<string, unknown>> {
+  meta: T;
   body: string;
 }
 
-export function parseFrontmatter(content: string): FrontmatterResult | null {
+/**
+ * Parse YAML-ish frontmatter. The optional generic `T` lets callers declare the expected
+ * meta shape — at runtime the parsed value is just cast (no validation), so callers should
+ * still treat fields as optional unless they validate downstream (Zod, manual checks).
+ */
+export function parseFrontmatter<T = Record<string, unknown>>(content: string): FrontmatterResult<T> | null {
   if (!content || typeof content !== 'string') {
     return null;
   }
 
-  const match = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)/);
+  const match = content.match(/^---\n([\s\S]*?)\n?---\n?([\s\S]*)/);
   if (!match) {
     return null;
   }
@@ -29,8 +34,10 @@ export function parseFrontmatter(content: string): FrontmatterResult | null {
   const metaStr = match[1].trim();
   const body = match[2]?.trim() ?? '';
 
+  // Empty frontmatter (e.g. `---\n---\n\n`) is valid — return empty meta + body so callers
+  // can distinguish "no frontmatter wrapper" (parse returns null) from "wrapper but empty".
   if (!metaStr) {
-    return null;
+    return { meta: {} as T, body };
   }
 
   const lines = metaStr.split('\n');
@@ -75,7 +82,7 @@ export function parseFrontmatter(content: string): FrontmatterResult | null {
     }
   }
 
-  return { meta, body };
+  return { meta: meta as T, body };
 }
 
 function parseFrontmatterValue(value: string): unknown {
@@ -100,13 +107,41 @@ function parseFrontmatterValue(value: string): unknown {
 
 export function serializeFrontmatter(meta: Record<string, unknown>, body: string): string {
   const frontmatter = Object.entries(meta)
-    .map(([key, value]) => {
-      if (Array.isArray(value)) {
-        return `${key}:\n${value.map(v => `  - ${v}`).join('\n')}`;
-      }
-      return `${key}: ${typeof value === 'string' ? `"${value}"` : value}`;
-    })
+    .filter(([, value]) => value !== undefined && value !== null)
+    .map(([key, value]) => formatEntry(key, value))
     .join('\n');
 
   return `---\n${frontmatter}\n---\n\n${body}\n`;
+}
+
+function formatEntry(key: string, value: unknown): string {
+  if (Array.isArray(value)) {
+    if (value.length === 0) return `${key}: []`;
+    if (value.every(v => typeof v === 'number')) {
+      return `${key}: [${value.join(', ')}]`;
+    }
+    return `${key}:\n${value.map(v => `  - ${formatScalar(v)}`).join('\n')}`;
+  }
+  return `${key}: ${formatScalar(value)}`;
+}
+
+function formatScalar(value: unknown): string {
+  if (typeof value === 'boolean' || typeof value === 'number') return String(value);
+  const s = String(value);
+  return needsQuotes(s) ? `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"` : s;
+}
+
+function needsQuotes(s: string): boolean {
+  if (s === '') return true;
+  if (/^(true|false|null|yes|no|on|off|~)$/i.test(s)) return true;
+  if (/^-?\d+(\.\d+)?$/.test(s)) return true;
+  // Starts with a YAML-special character or whitespace
+  if (/^[\s!&*?|>%@`[\]{},#"'-]/.test(s)) return true;
+  // Contains ": ", " #", tab, or newline
+  if (/:\s|\s#|\t|\n/.test(s)) return true;
+  // Trailing whitespace
+  if (/\s$/.test(s)) return true;
+  // Contains chars conventionally quoted for safety (cron expressions, etc.)
+  if (/[*?&!|>%`]/.test(s)) return true;
+  return false;
 }

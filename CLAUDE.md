@@ -6,70 +6,47 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 pnpm install          # install deps
-pnpm start            # start gateway + all services
+pnpm start            # boot gateway + all services
+pnpm chat             # Pi SDK CLI bound to ~/.vargos/agent (interactive REPL)
+pnpm cli              # run the CLI entrypoint directly (tsx cli.ts)
+pnpm seed             # manual `seedDataDir()` — re-copy missing template files into ~/.vargos/
 pnpm run typecheck    # tsc --noEmit
 pnpm run test:run     # single test run
 pnpm lint             # eslint + typecheck
 ```
 
-## AI-Specific Tips
+## Conventions
 
-- **No `console.log`** — use `createLogger('service-name')` which emits to `log.onLog`
-- **Domain boundaries** are enforced by ESLint. Services communicate only via `bus.call()` and `bus.emit()`
-- **Config** is loaded from `~/.vargos/config.json` + `agent/models.json` + `agent/settings.json` (three-file consolidation)
-- **API keys** are resolved from `agent/models.json` provider configs, not env vars
-- **Workspace skills** from `~/.vargos/workspace/skills/<name>/SKILL.md` are auto-loaded by the Pi SDK
-- **Chat directives** (`/think:<level>`, `/verbose`) are parsed by `lib/directives.ts` before reaching the agent
-- **Commit messages** must not contain "Co-Authored-By" — the commit-msg hook rejects them
+- **Logging**: `createLogger('service-name')` (no `console.log`).
+- **Domain boundaries**: services talk via `bus.call()` / `bus.emit()`; cross-domain imports are blocked by ESLint (`no-restricted-imports`).
+- **Config**: `~/.vargos/config.json` + `~/.vargos/agent/{mcp,models,settings,auth}.json`. MCP servers configured in `agent/mcp.json` (shared with Pi SDK); others consolidated by `services/config`.
+- **API keys**: provider entries in `agent/models.json`; env `${PROVIDER}_API_KEY` overrides.
+- **Skills**: auto-loaded from `~/.vargos/agent/skills/`, `~/.vargos/workspace/skills/`, `<cwd>/skills/`, `<cwd>/.pi/skills/`. Pi SDK injects `name` + `description`; body is read on demand. Bundled: `skill-creator`.
+- **Bootstrap files**: only `AGENTS.md`, `SOUL.md`, `TOOLS.md` from workspace + cwd are merged into the system prompt (`services/agent/index.ts:365`). `CLAUDE.md` is **not** in this list — Pi SDK auto-discovers it from cwd separately as `# Project Context`.
+- **Channel personas**: per-channel system-prompt overrides at `~/.vargos/agents/<channelId>.md`. Frontmatter `allowedTools?: string[]` (glob whitelist applied to bus tools); body appended after bootstrap. `default.md` seeds new channels at boot.
+- **Cross-channel forwarding**: `channel.send` with `fromSessionKey` injects `[fromSessionKey] text` into target session history via `agent.appendMessage` (no agent run on receiver).
+- **Directives**: `/think:<level>`, `/verbose` parsed by `services/agent/directives.ts` before agent runs.
+- **Interpolation**: `${VAR}` / `${VAR:-default}` in prompts and persona/cron files. Vars: `WORKSPACE_DIR`, `DATA_DIR`, `SESSIONS_DIR`, `CRON_DIR`, `LOGS_DIR`, `CHANNELS_DIR`, `CACHE_DIR`, `HOME`, `PWD`, `CURRENT_DATE`, `CURRENT_TIMEZONE`, `SESSION_KEY`, `CHANNEL_ID`, `CHANNEL_TYPE`, `CHAT_ID`, `USER_ID`, `USER_NAME`, `USER_HANDLE`, `BOT_ID`, `BOT_NAME`, `BOT_HANDLE`. Note: `USER_ID` is the sender's platform ID; `CHAT_ID` is the chat session ID parsed from sessionKey.
+- **Inference errors surface**: `agent.execute` throws on Pi SDK `stopReason === 'error'`; `agent.onCompleted` emits `{ success: false, error }`.
+- **Templates**: `.templates/vargos/` recursively seeded into `~/.vargos/` at startup (`lib/templates.ts`); `pnpm seed` for manual reseeding.
+- **Frontmatter parser** is generic — `parseFrontmatter<T>(content)` returns `{ meta: T, body }`; empty wrapper `---\n---` is valid.
+- **Commit hook** rejects messages containing "Co-Authored-By".
 
 ## Service Boot Order
 
 ```
-config → log → fs → web → memory → media → agent → [cron → channels] → [webhooks → mcp] → [tcp server start] → bus.onReady emit
+config → log → web → memory → media → agent → channels → cron → mcp-client → tcp server → bus.onReady
 ```
 
-## Merge to Main Workflow
-
-**Only route: PR from `dev` → `main` with squash merge**
-
-### Process
-1. **Develop** on `dev` or feature branches (never commit to `main`)
-   - Local pre-push hook blocks `git push origin main`
-2. **Push to GitHub** and create PR `dev` → `main`
-3. **All checks must pass:**
-   - Lint & type checking (`pnpm run lint`, `pnpm run typecheck`)
-   - Test suite (`pnpm run test:run`)
-   - CodeQL security analysis
-   - Semgrep SAST scanning
-   - Dependency audit
-4. **Squash merge only** (GitHub enforces this; merge commits blocked)
-5. **Auto-delete branch** after merge
-
-### Status Checks Required for Main
-- `lint-and-typecheck` — ESLint + TypeScript
-- `test` — vitest test suite
-- `codeql` — GitHub CodeQL analysis
-
-### If You Commit to Main by Accident
-```bash
-git reset --soft HEAD~1    # Undo last commit, keep changes staged
-git checkout dev
-git commit -m "your message"
-git push origin dev
-# Then create PR on GitHub
-```
-
-### Ruleset Details
-- **Enforce: Main Branch Safety & Quality Gates** (GitHub Ruleset ID: 15580628)
-  - Requires 1 approval before merge
-  - Requires all status checks pass (strict mode)
-  - Requires conversation resolution
-  - Prevents direct pushes to main
-  - Allows only squash merge strategy
+`edge/mcp/` and `edge/webhooks/` exist in code but are commented out in `index.ts` (currently disabled at boot).
 
 ## Key Patterns
 
-- Services extend a class with `@on` (pure events) and `@register` (callable RPC) decorated methods
-- Each service exports a `boot(bus)` function that calls `bus.bootstrap(this)`
-- Cross-service imports are forbidden. Use `bus.call('service.method', params)` instead
-- Type-only imports from `services/config/` are allowed for type-checking `AppConfig`
+- Services extend a class with `@on` (pure events) and `@register` (callable RPC) decorated methods.
+- Each service exports a `boot(bus)` function that calls `bus.bootstrap(this)`.
+- Cross-service imports are forbidden. Use `bus.call('service.method', params)` instead.
+- Type-only imports from `services/config/` are allowed for type-checking `AppConfig`.
+
+## Workflow
+
+PRs go from a feature branch into `dev`. The maintainer merges `dev` → `main` via squash-only. Status checks (`lint-and-typecheck`, `test`, `codeql`) must pass. Pre-push hook blocks `git push origin main`. Full workflow + ruleset details in [CONTRIBUTING.md](./CONTRIBUTING.md).

@@ -1,69 +1,58 @@
 # Roadmap
 
-Planned features for Vargos.
+Planned features for Vargos. For shipped features, see [FEATURES.md](../FEATURES.md).
 
-## Voice Integration
+## Voice integration
 
-**Status:** Not started
+Inbound and outbound voice support.
 
-Inbound and outbound voice support via Twilio and LocalAI.
-
-### Inbound Voice (Twilio)
 - Twilio phone channel adapter
-- STT/TTS bridge via LocalAI (port 8090)
+- STT/TTS bridge (LocalAI or hosted)
 - Transparent transcription of WhatsApp/Telegram voice notes
-- Optional voice replies (`voiceReplyMode: always | mirror | never`)
+- Optional voice replies
+- `phone_call(to, instructions, persona?)` tool — initiates Twilio call, spawns a subagent session for autonomous voice conversation, returns transcript
+- Hospitality / concierge persona pack for caller-ID-driven sessions
 
-### Outbound Voice Calls
-- `phone_call(to, instructions, persona?)` tool
-- Initiates Twilio call, spawns subagent session for autonomous voice conversation
-- Returns transcript + summary
-- Use case: cron tasks that need to call and gather information
+## More channels
 
-### Guest Voice Agent Plugins
-- Hospitality support: resolve caller ID → load guest profile + persona
-- Voice session with shared hotel-concierge skill pack
-- Concurrent calls isolated per callSid
+- **Slack** — Bolt SDK or Socket Mode + xoxb tokens. Single biggest gap.
+- Discord, Signal, Matrix, Teams (lower priority)
 
 ## Web UI / Observability
 
-**Status:** Not started
+`WebService` exposing agent runs, sessions, cron, channels, config via HTTP + SSE. Real-time streaming deltas, tool execution visibility, session history viewer, cron management. Bearer-token auth like the MCP bridge.
 
-New `WebService` exposing agent runs, sessions, cron tasks, channels, and config via HTTP + Server-Sent Events.
+## Re-enable disabled edge services
 
-- Real-time streaming deltas and tool execution visibility
-- Session history viewer
-- Cron task management
-- Channel connection status
-- Same auth pattern as MCP bridge (bearer token)
+Both currently commented out in [`index.ts`](../../index.ts):
 
-## Session Cost Tracking
+- [`edge/mcp/`](../../edge/mcp/) — MCP server (HTTP, port 9001)
+- [`edge/webhooks/`](../../edge/webhooks/) — webhook receiver (HTTP, port 9002)
 
-**Status:** Not started
+Bring them back when the surface stabilizes.
 
-Track token usage and cost per session, per channel, per cron task.
+## Session cost tracking
 
-- Per-model cost calculation
-- Daily/weekly/monthly aggregation
-- Budget alerts via channel notification
+Token usage + cost per session / channel / cron task. Daily/weekly aggregation, budget alerts via channel notification.
 
-## Media Enhancements
+## Media enhancements
 
-**Status:** Partially implemented
+- Image description fallback for non-vision models
+- Image size limits + compression
+- Document extraction parity for WhatsApp (currently Telegram-only)
 
-- [x] Audio transcription (Whisper API)
-- [x] Image passthrough (vision models)
-- [ ] Image description fallback for non-vision models
-- [ ] Media transform storage (searchable media history)
-- [ ] Image size limits and compression
+## Agent enhancements
 
-## Agent Enhancements
+- Model switching mid-session
+- Compaction config exposure
+- Per-model/per-session thinking budget
+- Session export/import
 
-**Status:** Partially implemented
+## Tighter loops
 
-- [x] Streaming events passthrough to bus
-- [x] Subagent orchestration via `agent.execute`
-- [ ] Model switching mid-session
-- [ ] Compaction configuration exposure
-- [ ] Thinking budget configuration per model/session
-- [ ] Session export/import
+- File-watcher-driven persona reload (currently re-read on session creation; would benefit from cache invalidation on write)
+- `bus.notify` for opt-in pub/sub patterns beyond the current `agent.on*` events
+
+## See also
+
+- [FEATURES.md](../FEATURES.md) — what's shipped

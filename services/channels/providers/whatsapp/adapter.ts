@@ -187,13 +187,18 @@ export class WhatsAppAdapter extends BaseChannelAdapter {
   private handleInbound(msg: WhatsAppInboundMessage): void {
     if (msg.fromMe) return;
 
-    if (!msg.text && !msg.mediaType) return;
     if (!this.dedupe.add(msg.messageId)) return;
 
     const chatId = msg.isGroup ? msg.jid : msg.jid;
-    const normalizedMsg = normalizeWhatsAppMessage(msg, { botJid: this.botJid });
+    const normalizedMsg = normalizeWhatsAppMessage(msg, {
+      botJid: this.botJid,
+      botName: this.sock?.user?.name,
+    });
 
-    if (!normalizedMsg) return;
+    if (!normalizedMsg) {
+      this.log.error(`whatsapp message from user ${msg.jid} not normalized`);
+      return;
+    }
 
     if (msg.mediaType) {
       this.log.debug(`received ${msg.mediaType} from ${normalizedMsg.fromUserId}`);
@@ -246,12 +251,13 @@ export class WhatsAppAdapter extends BaseChannelAdapter {
       return;
     }
 
-    await this.processInboundMedia(
+    const { caption, savedPath, mimeType } = await this.processInboundMedia(
       msg,
-      userId,
       sessionKey,
+      normalizedMsg,
       (text) => this.onInboundMessage!(sessionKey, { ...normalizedMsg, text }),
     );
+    this.log.debug(`received ${msg.mediaType} from ${userId}: ${caption} (${mimeType}) - ${savedPath}`);
   }
 
   /**

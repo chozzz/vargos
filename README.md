@@ -17,13 +17,19 @@
 ## Quick Start
 
 ```bash
+# npx (no install)
+npx @chozzz/vargos
+
+# or clone + run
 git clone https://github.com/chozzz/vargos.git
 cd vargos
 pnpm install
 pnpm start
 ```
 
-First run prompts for LLM provider, model, and API key. Config is saved to `~/.vargos/config.json`.
+First run launches an interactive setup wizard (provider, model, API key). Config is saved to `~/.vargos/`.
+
+After setup: `vargos start` boots the server, `vargos onboard` re-runs the wizard, `vargos config` shows current settings.
 
 ## Architecture
 
@@ -48,14 +54,14 @@ Services are isolated — no shared state, communication only through internal A
 
 - **Agent** — An AI system that reads instructions, sees available tools, and decides what to do to help you
 - **Channel** — A messaging platform (WhatsApp, Telegram) where users can talk to the agent
-- **System prompt** — Instructions that tell the agent how to behave (from files like CLAUDE.md)
+- **System prompt** — Instructions that tell the agent how to behave (merged from `AGENTS.md`, `SOUL.md`, `TOOLS.md` in your workspace + per-channel persona files)
 - **Session** — A conversation thread with one user; Vargos remembers previous messages
 - **Tool** — A capability the agent can use (read a file, run code, fetch a URL, send a message)
 - **Workspace** — Your project folder where Vargos stores instructions, skills, and conversation history
 
 ### Message Handling
 
-Messages go through a simple pipeline: **receive → process → execute → respond**. The agent has access to all Vargos tools and your workspace context. See [Channels](./docs/channels.md) for details.
+Messages go through a simple pipeline: **receive → process → execute → respond**. The agent has access to all Vargos tools and your workspace context. See [Channels](./docs/usage/channels.md) for details.
 
 ## Documentation
 
@@ -63,33 +69,44 @@ Messages go through a simple pipeline: **receive → process → execute → res
 |-----|-------------|
 | [Getting Started](./docs/getting-started.md) | Install, first run, config wizard |
 | [Configuration](./docs/configuration.md) | Full config reference |
-| [Channels](./docs/channels.md) | WhatsApp and Telegram setup |
-| [Webhooks](./docs/webhooks.md) | Inbound HTTP triggers |
-| [MCP](./docs/mcp.md) | MCP server and client integration |
-| [Sessions](./docs/sessions.md) | Session types and lifecycle |
-| [Runtime](./docs/runtime.md) | How agents execute |
-| [Workspace Files](./docs/workspace-files.md) | AGENTS.md, SOUL.md, TOOLS.md reference |
-| [CLI](./docs/cli.md) | Commands and gateway lifecycle |
-| [Troubleshooting](./docs/troubleshooting.md) | Common issues and fixes |
+| [Channels](./docs/usage/channels.md) | WhatsApp and Telegram setup |
+| [MCP](./docs/usage/mcp.md) | MCP server and client integration |
+| [Sessions](./docs/usage/sessions.md) | Session types and lifecycle |
+| [Runtime](./docs/usage/runtime.md) | How agents execute |
+| [Workspace Files](./docs/usage/workspace-files.md) | AGENTS.md, SOUL.md, TOOLS.md reference |
+| [Troubleshooting](./docs/usage/troubleshooting.md) | Common issues and fixes |
 | [Roadmap](./docs/ROADMAP.md) | Planned features |
 
 ### Examples
 
-- [Webhook Automation](./docs/examples/webhook-automation.md) — GitHub, monitoring alerts
 - [MCP Integration](./docs/examples/mcp-integration.md) — Connect external tool servers
 - [Scheduled Research](./docs/examples/scheduled-research.md) — Daily reports via cron
 - [Multi-Channel Presence](./docs/examples/multi-channel-presence.md) — WhatsApp + Telegram + CLI
+- [Architecture Deep Dive](./docs/architecture/bus-design.md) — Event bus patterns
+- [Extending](./docs/extending/) — Tools, skills, providers
+
+## Usage
+
+```bash
+vargos                 # First-run wizard or help
+vargos start           # Boot the server (gateway + all services)
+vargos onboard         # Re-run setup wizard
+vargos config          # Show current configuration
+```
 
 ## Development
 
 ```bash
 pnpm install          # Install deps
-pnpm start            # Start runtime
+pnpm start            # Start gateway + all services (alias: vargos start)
+pnpm chat             # Pi SDK interactive REPL bound to ~/.vargos/agent
+pnpm seed             # Re-seed .templates/vargos/ → ~/.vargos/ (idempotent)
+pnpm cli              # Run the CLI entrypoint directly (tsx cli.ts)
 pnpm test             # Tests (watch mode)
 pnpm run test:run     # Tests (single run)
 pnpm run typecheck    # TypeScript check
 pnpm lint             # ESLint + typecheck
-```
+pnpm build            # Clean + compile + copy templates → dist/
 
 ## Contributing
 

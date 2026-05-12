@@ -5,15 +5,19 @@
  *   edge/mcp exports bus events as MCP tools to external clients (outbound)
  *   this service imports external MCP servers as bus events (inbound)
  *
- * Config shape:
- *   config.mcpServers = {
- *     "server-name": { transport: "stdio", command: "node server.js" },
+ * MCP servers are configured in ~/.vargos/agent/mcp.json:
+ *   {
+ *     "mcpServers": {
+ *       "server-name": { command: "node server.js" },
+ *     }
  *   }
  *
  * Tools become callable events: mcp.server-name.toolName on the bus
  */
 
 import { z } from 'zod';
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
@@ -21,6 +25,7 @@ import type { Bus } from '../../gateway/bus.js';
 import type { AppConfig } from '../../services/config/index.js';
 import { createLogger } from '../../lib/logger.js';
 import { toMessage } from '../../lib/error.js';
+import { getDataPaths } from '../../lib/paths.js';
 
 const log = createLogger('mcp-client');
 
@@ -41,12 +46,32 @@ export class McpClientService {
   ) {}
 
   async start(): Promise<void> {
-    if (!this.config.mcpServers || Object.keys(this.config.mcpServers).length === 0) {
+    const { dataDir } = getDataPaths();
+    const mcpConfigPath = path.join(dataDir, 'agent', 'mcp.json');
+
+    let mcpServers = this.config.mcpServers || {};
+
+    // Load from agent/mcp.json if it exists (merged with config.mcpServers)
+    if (existsSync(mcpConfigPath)) {
+      try {
+        const content = readFileSync(mcpConfigPath, 'utf8');
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const mcpConfig = JSON.parse(content) as any;
+        if (mcpConfig.mcpServers) {
+          mcpServers = { ...mcpServers, ...mcpConfig.mcpServers };
+          log.info(`loaded MCP servers from agent/mcp.json`);
+        }
+      } catch (err) {
+        log.warn(`failed to load agent/mcp.json: ${toMessage(err)}`);
+      }
+    }
+
+    if (!mcpServers || Object.keys(mcpServers).length === 0) {
       log.debug('no MCP servers configured');
       return;
     }
 
-    for (const [name, serverConfig] of Object.entries(this.config.mcpServers)) {
+    for (const [name, serverConfig] of Object.entries(mcpServers)) {
       // Skip disabled servers
       if ((serverConfig as any).enabled === false) {
         log.debug(`MCP server disabled: ${name}`);
@@ -69,8 +94,8 @@ export class McpClientService {
 
     if (this.servers.size > 0) {
       log.info(`connected ${this.servers.size} MCP server(s)`);
-    } else if (Object.keys(this.config.mcpServers).length > 0) {
-      log.debug(`no MCP servers available (${Object.keys(this.config.mcpServers).length} configured but not connectable)`);
+    } else if (Object.keys(mcpServers).length > 0) {
+      log.debug(`no MCP servers available (${Object.keys(mcpServers).length} configured but not connectable)`);
     }
   }
 
@@ -86,7 +111,7 @@ export class McpClientService {
     if (!cmdStr) throw new Error(`server ${name}: stdio transport requires command`);
 
     let cmd: string;
-    let args: string[] = [];
+    let args: string[];
 
     if (Array.isArray(config.args)) {
       // Separate command and args arrays

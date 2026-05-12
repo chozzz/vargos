@@ -20,3 +20,6 @@ jobs:
       - run: pnpm run typecheck
       - run: pnpm run test:run
       - run: pnpm lint
+      - run: pnpm run build
+      - name: Smoke test (boot + timeout)
+        run: timeout 10 node dist/index.js || [ $? -eq 124 ]

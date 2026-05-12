@@ -27,6 +27,7 @@ import type { EventMap } from '../../../../gateway/event-map.js';
 class MockTelegramAdapter extends BaseChannelAdapter {
   readonly type = 'telegram' as const;
   botUserId = 987654321;
+  botUsername = 'VargosBot';
 
   constructor(instanceId: string, deps: AdapterDeps) {
     super(instanceId, 'telegram', deps);
@@ -56,7 +57,10 @@ class MockTelegramAdapter extends BaseChannelAdapter {
     if (!this.onInboundMessage) throw new Error('onInboundMessage not set');
 
     // Normalize like the real adapter does
-    const normalizedMsg = normalizeTelegramMessage(telegramMsg, { botUserId: this.botUserId });
+    const normalizedMsg = normalizeTelegramMessage(telegramMsg, {
+      botUserId: this.botUserId,
+      botUsername: this.botUsername,
+    });
     if (!normalizedMsg) throw new Error('Failed to normalize message');
 
     return this.onInboundMessage(sessionKey, normalizedMsg);

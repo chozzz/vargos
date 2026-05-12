@@ -1,6 +1,8 @@
 import { EventEmitterBus } from './gateway/emitter.js';
 import { startTCPServer } from './gateway/tcp-server.js';
 import { createLogger } from './lib/logger.js';
+import { getDataPaths } from './lib/paths.js';
+import { seedDataDir } from './lib/templates.js';
 
 // ── Boot order ────────────────────────────────────────────────────────────────
 // Each entry: [label, () => import(module)]
@@ -28,6 +30,9 @@ const stoppers: Array<() => unknown> = [];
 
 // Bootstrap the bus itself (registers bus.search and bus.inspect)
 bus.bootstrap();
+
+// First-run seed: copy any missing entries from .templates/vargos/ into the data dir
+await seedDataDir(getDataPaths().dataDir, log);
 
 for (const [label, load] of SERVICES) {
   try {
@@ -58,6 +63,14 @@ try {
 bus.emit('bus.onReady', {});
 log.info('✅ Vargos is ready\n\n');
 
+// ── Global error handlers ────────────────────────────────────────────────────
+// Prevent undici socket errors (UND_ERR_SOCKET "other side closed") from
+// crashing the process when LLM providers close connections after streaming.
+
+process.on('uncaughtException', (err) => {
+  log.error(`uncaughtException: ${err.stack ?? err.message ?? err}`);
+  // Do NOT exit — most undici/stream errors are non-fatal teardown noise.
+});
 
 // ── Shutdown ──────────────────────────────────────────────────────────────────
 
