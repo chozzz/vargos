@@ -35,11 +35,12 @@ jobs:
 
           # Get current version
           CURRENT_VERSION=$(node -p "require('./package.json').version")
-          echo "Current version: $CURRENT_VERSION"
+          echo "CURRENT_VERSION=$CURRENT_VERSION" >> $GITHUB_ENV
 
           # Bump patch version
           NEW_VERSION=$(echo $CURRENT_VERSION | awk -F. '{print $1"."$2"."$3+1}')
-          echo "New version: $NEW_VERSION"
+          echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+          echo "Bumping version: $CURRENT_VERSION → $NEW_VERSION"
 
           # Update package.json
           sed -i "s/\"version\": \"$CURRENT_VERSION\"/\"version\": \"$NEW_VERSION\"/" package.json
@@ -52,3 +53,19 @@ jobs:
 
           # Publish to npm
           pnpm publish --access public
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ env.NEW_VERSION }}
+          name: v${{ env.NEW_VERSION }}
+          body: |
+            📦 Version ${{ env.NEW_VERSION }}
+
+            **Changes:** Auto-published from main branch
+
+            [View on npm](https://www.npmjs.com/package/@chozzz/vargos/v/${{ env.NEW_VERSION }})
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
