@@ -11,6 +11,8 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { getDataPaths } from './lib/paths.js';
 
 // ── Runtime guard ────────────────────────────────────────────────────────────
@@ -26,7 +28,9 @@ if (v[0] < MIN_NODE) {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-const VERSION = (await import('./package.json', { with: { type: 'json' } })).default.version;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const VERSION = JSON.parse(readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')).version;
 
 function usage(): void {
   console.log(`
