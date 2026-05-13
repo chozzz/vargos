@@ -1,0 +1,36 @@
+# Source
+src/
+tsconfig.json
+vitest.config.ts
+
+# Build artifacts (keep only cli.js)
+dist/**
+!dist/cli.js
+!dist/cli.d.ts
+!dist/cli.d.ts.map
+!dist/cli.js.map
+!dist/cli/
+!dist/.templates/
+
+# Development
+.github/
+docs/
+__tests__/
+*.test.ts
+.eslintrc.json
+.prettierrc
+husky/
+lint-staged.config.js
+.git/
+.gitignore
+
+# Dependencies
+node_modules/
+pnpm-lock.yaml
+.pnpm-debug.log
+
+# Misc
+.DS_Store
+*.log
+.env
+.env.local
