@@ -1,6 +1,6 @@
 {
   "name": "@chozzz/vargos",
-  "version": "2.0.4",
+  "version": "2.0.5",
   "packageManager": "pnpm@10.33.2",
   "description": "Self-hosted agent OS with persistent memory, multi-channel presence, tools, scheduling, and sub-agent orchestration",
   "license": "Apache-2.0",
@@ -29,6 +29,7 @@
     "dist/cli.d.ts",
     "dist/cli.d.ts.map",
     "dist/cli/",
+    "dist/lib/",
     "dist/.templates/",
     "README.md",
     "LICENSE",
