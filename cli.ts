@@ -26,7 +26,7 @@ if (v[0] < MIN_NODE) {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-const VERSION = '2.0.3';
+const VERSION = (await import('./package.json', { with: { type: 'json' } })).default.version;
 
 function usage(): void {
   console.log(`
