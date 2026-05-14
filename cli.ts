@@ -30,7 +30,10 @@ if (v[0] < MIN_NODE) {
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const VERSION = JSON.parse(readFileSync(path.join(__dirname, 'package.json'), 'utf8')).version;
+const pkgPath = existsSync(path.join(__dirname, 'package.json'))
+  ? path.join(__dirname, 'package.json')
+  : path.join(__dirname, '..', 'package.json');
+const VERSION = JSON.parse(readFileSync(pkgPath, 'utf8')).version;
 
 function usage(): void {
   console.log(`
