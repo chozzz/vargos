@@ -120,7 +120,9 @@ if (cmd === 'start') {
   try {
     // Boot the gateway + all services (index.ts)
     await import('./index.js');
-    // index.ts blocks forever, so we never reach here normally
+    // index.ts starts an HTTP server and event listeners that keep process alive
+    // Should block forever, but exit cleanly if it returns
+    process.exit(0);
   } catch (err) {
     console.error('Failed to start Vargos:', err);
     process.exit(1);
