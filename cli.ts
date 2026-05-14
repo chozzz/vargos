@@ -119,10 +119,10 @@ if (cmd === 'onboard') {
 if (cmd === 'start') {
   try {
     // Boot the gateway + all services (index.ts)
+    // The TCP server will keep the event loop alive indefinitely
     await import('./index.js');
-    // index.ts starts an HTTP server and event listeners that keep process alive
-    // Should block forever, but exit cleanly if it returns
-    process.exit(0);
+    // Once services are booted, wait forever (TCP server keeps event loop alive)
+    await new Promise(() => {});
   } catch (err) {
     console.error('Failed to start Vargos:', err);
     process.exit(1);
