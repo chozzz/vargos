@@ -117,10 +117,14 @@ if (cmd === 'onboard') {
 
 // start subcommand
 if (cmd === 'start') {
-  // Boot the gateway + all services (index.ts)
-  await import('./index.js');
-  // index.ts blocks forever, so we never reach here normally
-  process.exit(0);
+  try {
+    // Boot the gateway + all services (index.ts)
+    await import('./index.js');
+    // index.ts blocks forever, so we never reach here normally
+  } catch (err) {
+    console.error('Failed to start Vargos:', err);
+    process.exit(1);
+  }
 }
 
 // chat subcommand
