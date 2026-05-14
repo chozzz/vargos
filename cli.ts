@@ -131,9 +131,25 @@ if (cmd === 'start') {
 
 // chat subcommand
 if (cmd === 'chat') {
+  // Seed data dir first (replaces tsx scripts/seed.ts)
+  const paths = getDataPaths();
+  const { createLogger } = await import('./lib/logger.js');
+  const log = createLogger('seed');
+  await (await import('./lib/templates.js')).seedDataDir(paths.dataDir, log);
+
+  // Then run pi CLI with environment variables
   const { execSync } = await import('node:child_process');
-  execSync('pnpm chat', { stdio: 'inherit', cwd: import.meta.dirname });
-  process.exit(0);
+  const dataDir = paths.dataDir;
+  const agentDir = `${dataDir}/agent`;
+
+  execSync(`pi --session-dir "${dataDir}/sessions/cli"`, {
+    stdio: 'inherit',
+    env: {
+      ...process.env,
+      PI_CODING_AGENT_DIR: agentDir,
+      VARGOS_DATA_DIR: dataDir,
+    },
+  });
 }
 
 // No command — first-run or help
