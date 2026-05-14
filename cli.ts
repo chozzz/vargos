@@ -11,6 +11,8 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { getDataPaths } from './lib/paths.js';
 
 // ── Runtime guard ────────────────────────────────────────────────────────────
@@ -26,7 +28,9 @@ if (v[0] < MIN_NODE) {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-const VERSION = '2.0.3';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const VERSION = JSON.parse(readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')).version;
 
 function usage(): void {
   console.log(`
@@ -113,10 +117,16 @@ if (cmd === 'onboard') {
 
 // start subcommand
 if (cmd === 'start') {
-  // Boot the gateway + all services (index.ts)
-  await import('./index.js');
-  // index.ts blocks forever, so we never reach here normally
-  process.exit(0);
+  try {
+    // Boot the gateway + all services (index.ts)
+    // The TCP server will keep the event loop alive indefinitely
+    await import('./index.js');
+    // Once services are booted, wait forever (TCP server keeps event loop alive)
+    await new Promise(() => {});
+  } catch (err) {
+    console.error('Failed to start Vargos:', err);
+    process.exit(1);
+  }
 }
 
 // chat subcommand
