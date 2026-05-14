@@ -30,7 +30,7 @@ if (v[0] < MIN_NODE) {
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const VERSION = JSON.parse(readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')).version;
+const VERSION = JSON.parse(readFileSync(path.join(__dirname, 'package.json'), 'utf8')).version;
 
 function usage(): void {
   console.log(`
@@ -142,7 +142,24 @@ if (cmd === 'chat') {
   const dataDir = paths.dataDir;
   const agentDir = `${dataDir}/agent`;
 
-  execSync(`pi --session-dir "${dataDir}/sessions/cli"`, {
+  // Find pi CLI via node_modules (required for global npm installs)
+  let piCliPath = 'pi';
+  try {
+    // Search for pi package in node_modules up the tree
+    let searchDir = __dirname;
+    while (searchDir !== '/') {
+      const piPath = path.join(searchDir, 'node_modules', '@mariozechner', 'pi-coding-agent', 'dist', 'cli.js');
+      if (existsSync(piPath)) {
+        piCliPath = piPath;
+        break;
+      }
+      searchDir = path.dirname(searchDir);
+    }
+  } catch {
+    // fallback to 'pi' command
+  }
+
+  execSync(`node "${piCliPath}" --session-dir "${dataDir}/sessions/cli"`, {
     stdio: 'inherit',
     env: {
       ...process.env,
