@@ -34,6 +34,21 @@ import { InboundMessagePipeline, type PipelineSession } from './pipeline.js';
 import { loadProviders } from './provider-loader.js';
 
 const log = createLogger('channels');
+const TOOL_ARGS_PREVIEW_CHARS = 160;
+
+function formatToolLog(payload: EventMap['agent.onTool']): string {
+  const base = `agent.onTool: ${payload.sessionKey} ${payload.toolName} ${payload.phase}`;
+  if (payload.phase !== 'start') return base;
+
+  const args = JSON.stringify(payload.args);
+  if (!args || args === '{}') return base;
+
+  const preview = args.length > TOOL_ARGS_PREVIEW_CHARS
+    ? `${args.slice(0, TOOL_ARGS_PREVIEW_CHARS)}...`
+    : args;
+
+  return `${base} args=${preview}`;
+}
 
 // ── Provider Registry ──────────────────────────────────────────────────────────
 
@@ -192,15 +207,15 @@ export class ChannelService {
     description: 'Dynamically register a new channel adapter.',
     // Flat object required: discriminatedUnion produces type:null in JSON Schema, rejected by Anthropic API.
     schema: z.object({
-      id:         z.string(),
-      type:       z.enum(['telegram', 'whatsapp']),
-      enabled:    z.boolean().optional(),
-      model:      z.string().optional(),
+      id: z.string(),
+      type: z.enum(['telegram', 'whatsapp']),
+      enabled: z.boolean().optional(),
+      model: z.string().optional(),
       debounceMs: z.number().int().min(0).optional(),
-      allowFrom:  z.array(z.string()).optional(),
-      cwd:        z.string().optional(),
-      botToken:   z.string().optional(),
-      persist:    z.boolean().optional(),
+      allowFrom: z.array(z.string()).optional(),
+      cwd: z.string().optional(),
+      botToken: z.string().optional(),
+      persist: z.boolean().optional(),
     }),
   })
   async register(params: EventMap['channel.register']['params']): Promise<void> {
@@ -234,9 +249,8 @@ export class ChannelService {
       log.debug(`agent.onTool: subagent, skipping reaction`);
       return;
     }
-    else {
-      log.debug(`agent.onTool: ${payload.sessionKey} ${payload.toolName} ${payload.phase}`);
-    }
+
+    log.debug(formatToolLog(payload));
 
     if (payload.phase === 'start') {
       if (session.reactionController) {

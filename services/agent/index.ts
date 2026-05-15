@@ -243,7 +243,9 @@ export class AgentService {
    */
   protected async getOrCreateSession(sessionKey: string, metadata?: EventMap['agent.execute']['params']['metadata']): Promise<AgentSession> {
     const cached = this.sessions.get(sessionKey);
-    if (cached) return cached;
+    if (cached) {
+      return cached;
+    }
 
     const paths = getDataPaths();
 
@@ -275,12 +277,16 @@ export class AgentService {
 
     // Store system prompt in session directory
     if (process.env.LOG_LEVEL === 'debug') {
-      log.debug(`Storing debug files (modelRegistry, settings, systemPrompt, customTools) in session directory: ${sessionDir}`);
+      // Create a new debug directory under the session directory to avoid cluttering the main session files
+      const debugDir = path.join(sessionDir, '.debug');
+      if (!existsSync(debugDir)) {
+        await fs.mkdir(debugDir, { recursive: true });
+      }
+
+      log.debug(`Storing debug files in session's debug directory: ${debugDir}`);
       await Promise.all([
-        fs.writeFile(path.join(sessionDir, `modelRegistry.json`), JSON.stringify(this.modelRegistry, null, 2), 'utf-8'),
-        fs.writeFile(path.join(sessionDir, `settings.json`), JSON.stringify(this.settings, null, 2), 'utf-8'),
-        fs.writeFile(path.join(sessionDir, `systemPrompt.md`), session.systemPrompt ?? '', 'utf-8'),
-        fs.writeFile(path.join(sessionDir, `customTools.md`), customTools.map(tool => `- ${tool.name}: ${tool.description}`).join('\n'), 'utf-8'),
+        fs.writeFile(path.join(debugDir, `systemPrompt.md`), session.systemPrompt ?? '', 'utf-8'),
+        fs.writeFile(path.join(debugDir, `metadata.json`), JSON.stringify(metadata ?? {}, null, 2), 'utf-8'),
       ]);
     }
 
@@ -439,7 +445,7 @@ export class AgentService {
     }
 
     if (personaBody) {
-      sections.push('<!-- channel persona -->', personaBody.trim(), '');
+      sections.push('<!-- channel persona -->', '<channel-persona>', personaBody.trim(), '</channel-persona>');
     }
 
     if (sections.length === 0) {
