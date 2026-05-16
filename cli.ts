@@ -125,7 +125,7 @@ if (cmd === 'start') {
     // The TCP server will keep the event loop alive indefinitely
     await import('./index.js');
     // Once services are booted, wait forever (TCP server keeps event loop alive)
-    await new Promise(() => {});
+    await new Promise(() => { });
   } catch (err) {
     console.error('Failed to start Vargos:', err);
     process.exit(1);
@@ -138,7 +138,7 @@ if (cmd === 'chat') {
   const paths = getDataPaths();
   const { createLogger } = await import('./lib/logger.js');
   const log = createLogger('seed');
-  await (await import('./lib/templates.js')).seedDataDir(paths.dataDir, log);
+  await (await import('./lib/templates.js')).seedDataDir(log);
 
   // Then run pi CLI with environment variables
   const { execSync } = await import('node:child_process');

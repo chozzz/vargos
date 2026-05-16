@@ -1,6 +1,7 @@
 import { promises as fs, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { getDataPaths } from './paths.js';
 
 /** Walk up from this module to locate `.templates/vargos/`. Works in both dev and dist layouts. */
 export function findTemplatesRoot(): string | null {
@@ -13,28 +14,36 @@ export function findTemplatesRoot(): string | null {
   return null;
 }
 
-/** Walks both trees in parallel; copies only leaf files that don't exist on target. */
-async function copyMissing(
+/** Walks both trees in parallel; copies missing files, and refreshes workspace markdown templates. */
+async function seedTree(
   srcDir: string,
   destDir: string,
+  relativeDir: string,
   logger: { info: (s: string) => void },
 ): Promise<void> {
   await fs.mkdir(destDir, { recursive: true });
   for (const entry of await fs.readdir(srcDir, { withFileTypes: true })) {
-    const src  = path.join(srcDir,  entry.name);
+    const src = path.join(srcDir, entry.name);
     const dest = path.join(destDir, entry.name);
+    const relativePath = path.join(relativeDir, entry.name);
     if (entry.isDirectory()) {
-      await copyMissing(src, dest, logger);
-    } else if (!existsSync(dest)) {
+      await seedTree(src, dest, relativePath, logger);
+    } else if (shouldReseed(relativePath) || !existsSync(dest)) {
       await fs.copyFile(src, dest);
       logger.info(`seeded ${dest}`);
     }
   }
 }
 
-/** Seed `dataDir` from `.templates/vargos/` — recursively copies any missing files. User edits are preserved; user deletes will be re-seeded on next boot. */
+function shouldReseed(relativePath: string): boolean {
+  const parts = relativePath.split(path.sep);
+  return parts.length === 2
+    && parts[0] === 'workspace'
+    && path.extname(relativePath).toLowerCase() === '.md';
+}
+
+/** Seed the VARGOS data dir from `.templates/vargos/`. Workspace markdown is refreshed; other user edits are preserved. */
 export async function seedDataDir(
-  dataDir: string,
   logger: { info: (s: string) => void; warn: (s: string) => void },
 ): Promise<void> {
   const root = findTemplatesRoot();
@@ -42,5 +51,5 @@ export async function seedDataDir(
     logger.warn('.templates/vargos not found — skipping seed');
     return;
   }
-  await copyMissing(root, dataDir, logger);
+  await seedTree(root, getDataPaths().dataDir, '', logger);
 }

@@ -142,17 +142,18 @@ export class AgentService {
   @register('agent.execute', {
     description: 'Executes a task with the agent, optionally delegating to a subagent.',
     schema: z.object({
+      /**
+       * `sessionKey` is intentionally not registered as schema here because when agent.execute is called as a tool from within an agent session, the `sessionKey` is auto-injected by wrapEventAsToolDefinition(). For direct calls from channels, cron, webhooks, TCP, the `sessionKey` is provided in the EventMap and is required for execution.
+       * @see wrapEventAsToolDefinition in tools.ts for how `sessionKey` is injected when called as a tool.
+       */
       task: z.string().describe('The task to execute.'),
       metadata: z.object({
         cwd: z.string().optional().describe('The current working directory to use for the agent.'),
         model: z.string().optional().describe('Model override in format provider:modelId.'),
-        channelType: z.string().optional().describe('Type of channel (e.g., telegram, whatsapp).'),
-        fromUserId: z.string().optional().describe('Sender user ID on the platform.'),
-        fromUser: z.string().optional().describe('Sender display name.'),
-        fromUserHandle: z.string().optional().describe('Sender @handle on the platform.'),
-        botUserId: z.string().optional().describe('Bot user ID on the platform.'),
-        botName: z.string().optional().describe('Bot display name.'),
-        botHandle: z.string().optional().describe('Bot @handle on the platform.'),
+        /**
+         * Not all metadata fields need to be registered into MCP schemas, since they're primarily for internal use.
+         * If one needs to see what else is in metadata, @see AgentExecuteParams in schema.ts and the debug metadata.json file stored in session's debug directory.
+         */
       }).optional().describe('Optional metadata for the execution context.'),
     }).passthrough(),
   })

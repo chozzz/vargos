@@ -24,3 +24,14 @@
    - Review staleness: ${WORKSPACE_DIR}/AGENTS.md, SOUL.md, TOOLS.md only
    - Move reference data to ${WORKSPACE_DIR}/memory/<topic>.md files as needed
    - Note any findings in daily summary
+
+5. **Workspace cleanup**
+   - Remove or relocate one-off root files that no longer belong in the bootstrap surface
+   - Keep durable reference material in topic memory files, not ad hoc root documents
+   - Preserve user-created files unless they are clearly obsolete or the user asked for cleanup
+
+6. **Skill hygiene**
+   - Review repeated workflows, useful procedures, and durable know-how
+   - If a pattern would help future agents, create or update a skill instead of bloating AGENTS.md, SOUL.md, or TOOLS.md
+   - Keep skills focused on repeatable procedures, not one-off notes
+

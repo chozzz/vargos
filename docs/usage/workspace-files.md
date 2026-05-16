@@ -1,6 +1,6 @@
 # Workspace Files
 
-Vargos seeds `~/.vargos/workspace/` from [`.templates/vargos/workspace/`](../../.templates/vargos/workspace/) on every startup (idempotent — existing files aren't overwritten). These files shape how the agent behaves, what it remembers, and how it responds.
+Vargos seeds `~/.vargos/workspace/` from [`.templates/vargos/workspace/`](../../.templates/vargos/workspace/) on every startup. Markdown files directly under `workspace/` are refreshed from the bundled templates each time; other seeded files keep local edits. These files shape how the agent behaves, what it remembers, and how it responds.
 
 For how they're injected into the system prompt, see [Runtime](./runtime.md).
 

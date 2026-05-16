@@ -58,7 +58,7 @@ Edit `~/.vargos/config.json` `channels[]` to add Telegram or WhatsApp adapters. 
 pnpm seed
 ```
 
-Re-runs the `.templates/vargos/` → `~/.vargos/` recursive copy. Idempotent; doesn't overwrite existing files.
+Re-runs the `.templates/vargos/` → `~/.vargos/` recursive copy. Existing files are preserved except `workspace/*.md`, which is refreshed from the bundled template.
 
 ## What's next
 
