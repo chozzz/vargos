@@ -8,6 +8,7 @@
  */
 
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
 import * as p from '@clack/prompts';
 import { getDataPaths } from '../lib/paths.js';
 
@@ -227,6 +228,51 @@ export async function onboard(): Promise<void> {
   });
 
   spinner.stop('Configuration saved.');
+
+  // ── MCP Adapter Setup ────────────────────────────────────────────────────────
+
+  const enableMcp = (await p.confirm({
+    message: 'Enable MCP (Model Context Protocol) support for accessing tools in chat?',
+    initialValue: true,
+  })) as boolean | symbol;
+
+  if (!p.isCancel(enableMcp) && enableMcp) {
+    const spinnerMcp = p.spinner();
+    spinnerMcp.start('Setting up MCP adapter…');
+
+    try {
+      const { execSync } = await import('node:child_process');
+      // Find pi CLI via node_modules (same logic as chat command)
+      let piCliPath = 'pi';
+      try {
+        const searchDir = process.cwd();
+        const piPath = path.join(
+          searchDir,
+          'node_modules',
+          '@mariozechner',
+          'pi-coding-agent',
+          'dist',
+          'cli.js',
+        );
+        if (existsSync(piPath)) piCliPath = piPath;
+      } catch {
+        // fallback to 'pi' command
+      }
+
+      execSync(`node "${piCliPath}" install npm:pi-mcp-adapter`, {
+        stdio: 'pipe',
+        env: { ...process.env, PI_CODING_AGENT_DIR: agentDir },
+      });
+
+      spinnerMcp.stop('MCP adapter installed.');
+    } catch {
+      spinnerMcp.stop('MCP setup skipped (pi CLI not available yet).');
+      p.note(
+        'You can enable MCP later by running: pi install npm:pi-mcp-adapter',
+        'MCP Setup',
+      );
+    }
+  }
 
   // ── Done ─────────────────────────────────────────────────────────────────
 

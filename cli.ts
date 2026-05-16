@@ -162,6 +162,32 @@ if (cmd === 'chat') {
     // fallback to 'pi' command
   }
 
+  // Ensure pi-mcp-adapter is installed to the Vargos agent directory
+  try {
+    const settingsPath = path.join(agentDir, 'settings.json');
+    const settingsContent = existsSync(settingsPath)
+      ? JSON.parse(readFileSync(settingsPath, 'utf8'))
+      : {};
+    const packages = settingsContent.packages ?? [];
+
+    if (!packages.includes('npm:pi-mcp-adapter')) {
+      // Auto-install pi-mcp-adapter silently
+      try {
+        execSync(`node "${piCliPath}" install npm:pi-mcp-adapter`, {
+          stdio: 'pipe',
+          env: {
+            ...process.env,
+            PI_CODING_AGENT_DIR: agentDir,
+          },
+        });
+      } catch {
+        // Silently ignore MCP setup failure — chat still works without it
+      }
+    }
+  } catch {
+    // Skip MCP setup if there's any issue
+  }
+
   execSync(`node "${piCliPath}" --session-dir "${dataDir}/sessions/cli"`, {
     stdio: 'inherit',
     env: {
