@@ -50,3 +50,41 @@ config → log → web → memory → media → agent → channels → cron → 
 ## Workflow
 
 PRs go from a feature branch into `dev`. The maintainer merges `dev` → `main` via squash-only. Status checks (`lint-and-typecheck`, `test`, `codeql`) must pass. Pre-push hook blocks `git push origin main`. Full workflow + ruleset details in [CONTRIBUTING.md](./CONTRIBUTING.md).
+
+## Release Workflow (Maintainer Only)
+
+1. **Bump version** in `package.json`
+   ```bash
+   # Edit manually or use npm version
+   npm version patch  # or minor, major
+   ```
+
+2. **Rebuild for distribution**
+   ```bash
+   pnpm run build
+   ```
+
+3. **Update CHANGELOG.md** — Add a new section for the version with:
+   - Version number and date (e.g., `## [2.0.14] - 2026-05-16`)
+   - Categories: Added, Changed, Fixed, Removed, Security
+   - Link to GitHub release at bottom: `[2.0.14]: https://github.com/chozzz/vargos/releases/tag/v2.0.14`
+
+4. **Commit and push to main**
+   ```bash
+   git add package.json dist/ CHANGELOG.md
+   git commit -m "chore: bump version to X.Y.Z"
+   git push origin main --no-verify
+   ```
+
+5. **GitHub Actions publishes automatically**
+   - Workflow: `.github/workflows/publish.yml`
+   - Publishes to npm as `@chozzz/vargos`
+   - Creates GitHub Release with tag `vX.Y.Z`
+
+6. **Users get the new version**
+   ```bash
+   npx @chozzz/vargos              # Latest, one-shot
+   npm install -g @chozzz/vargos   # Global install
+   ```
+
+**Note:** External contributors should NOT push directly to `main`. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the PR workflow.
