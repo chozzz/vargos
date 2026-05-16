@@ -32,6 +32,7 @@
 
 6. **Skill hygiene**
    - Review repeated workflows, useful procedures, and durable know-how
-   - If a pattern would help future agents, create or update a skill instead of bloating AGENTS.md, SOUL.md, or TOOLS.md
+   - If a pattern would help future agents, recommend creating or updating a skill instead of bloating AGENTS.md, SOUL.md, or TOOLS.md
+   - Do not create or update skills during heartbeat unless the user already asked for it; include a concise recommendation in the heartbeat output instead
    - Keep skills focused on repeatable procedures, not one-off notes
 
