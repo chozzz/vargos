@@ -244,6 +244,13 @@ export class CronService {
       return;
     }
 
+    // Check activeHours for all tasks (not just heartbeat)
+    if (entry.task.activeHours &&
+        !isWithinActiveHours(entry.task.activeHours as [number, number], entry.task.activeHoursTimezone)) {
+      log.debug(`task outside active hours, not firing: ${id}`);
+      return;
+    }
+
     const hook = this.beforeFireHooks.get(id);
     const check = hook ? hook() : Promise.resolve(true);
 

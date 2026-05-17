@@ -189,7 +189,9 @@ export class WhatsAppAdapter extends BaseChannelAdapter {
 
     if (!this.dedupe.add(msg.messageId)) return;
 
-    const chatId = msg.isGroup ? msg.jid : msg.jid;
+    // Normalize JID suffix so text and media paths produce the same session key.
+    // Handles @lid (linked device), @s.whatsapp.net (primary), and @g.us (group).
+    const chatId = msg.jid.replace(/@[^@]+$/, '');
     const normalizedMsg = normalizeWhatsAppMessage(msg, {
       botJid: this.botJid,
       botName: this.sock?.user?.name,
