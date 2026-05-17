@@ -274,8 +274,8 @@ export class ChannelService {
 
     const session = this.activeSessions.get(payload.sessionKey);
     if (!session) {
-      // Non-channel session with no active session — ignore completion
-      log.warn(`onAgentCompleted: session not found in activeSessions: ${payload.sessionKey}`);
+      // Non-channel session (cron, webhook, etc.) with no active session — expected, ignore
+      log.debug(`onAgentCompleted: session not found in activeSessions: ${payload.sessionKey}`);
       return;
     }
 
