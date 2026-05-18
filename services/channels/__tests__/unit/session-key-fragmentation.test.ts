@@ -4,8 +4,9 @@
  * The WhatsApp adapter used to produce different session keys for text vs media
  * messages from the same user because only the media path stripped JID suffixes.
  *
- * Fix: handleInbound now normalizes JIDs by stripping @lid / @s.whatsapp.net / @g.us
- * suffixes before building session keys, matching the media path behavior.
+ * Fix: handleInbound now uses Baileys' jidDecode to extract the user portion
+ * of JIDs, which is consistent regardless of JID suffix (@lid, @s.whatsapp.net,
+ * device suffixes like :10, etc.).
  *
  * These tests verify session key consistency across text and media paths.
  */
@@ -17,9 +18,19 @@ function buildSessionKey(instanceId: string, userId: string): string {
   return `${instanceId}:${userId}`;
 }
 
-/** Fixed: both text and media paths normalize JIDs by stripping the @ suffix */
+/** Simulates Baileys jidDecode(user portion extraction) */
+function extractUser(jid: string): string {
+  const atIdx = jid.indexOf('@');
+  if (atIdx === -1) return jid;
+  const userPart = jid.slice(0, atIdx);
+  // Strip device suffix (e.g., :10, :0)
+  const colonIdx = userPart.indexOf(':');
+  return colonIdx === -1 ? userPart : userPart.slice(0, colonIdx);
+}
+
+/** Fixed: both text and media paths use jidDecode for consistent session keys */
 function normalizedSessionKey(instanceId: string, rawJid: string): string {
-  const userId = rawJid.replace(/@[^@]+$/, '');
+  const userId = extractUser(rawJid);
   return buildSessionKey(instanceId, userId);
 }
 
@@ -69,15 +80,36 @@ describe('WhatsApp Session Key Consistency (text vs media) — FIXED', () => {
 
     it('same user from different devices still produces different keys (known limitation)', () => {
       // @lid and @s.whatsapp.net IDs are different numbers — lid mapping requires
-      // the lid-mapping reverse file from WhatsApp, which isn't always available.
-      // This test documents that cross-device identity merging is a separate concern
-      // from the text-vs-media fragmentation bug that was fixed.
+      // the Baileys LIDMappingStore, which maps opaque LID IDs to phone numbers.
+      // Without the mapping store accessible externally, cross-device identity
+      // merging is not currently possible. This is a WhatsApp protocol limitation.
       const lidKey = normalizedSessionKey(instanceId, lidJid);
       const primaryKey = normalizedSessionKey(instanceId, primaryJid);
 
-      // These are intentionally different — lid→phone mapping is handled separately
-      // via lidToPhone resolution for display names, not session identity.
       expect(lidKey).not.toBe(primaryKey);
+    });
+  });
+
+  describe('device suffix handling (multi-device)', () => {
+    it('strips device suffix :10 from JID', () => {
+      expect(normalizedSessionKey(instanceId, '61423222658:10@s.whatsapp.net'))
+        .toBe('whatsapp-vadi-indo:61423222658');
+    });
+
+    it('strips device suffix :0 from JID', () => {
+      expect(normalizedSessionKey(instanceId, '61423222658:0@s.whatsapp.net'))
+        .toBe('whatsapp-vadi-indo:61423222658');
+    });
+
+    it('same user with and without device suffix produces same key', () => {
+      const withDevice = normalizedSessionKey(instanceId, '61423222658:10@s.whatsapp.net');
+      const withoutDevice = normalizedSessionKey(instanceId, '61423222658@s.whatsapp.net');
+      expect(withDevice).toBe(withoutDevice);
+    });
+
+    it('handles LID JID with device suffix', () => {
+      expect(normalizedSessionKey(instanceId, '210994982838335:5@lid'))
+        .toBe('whatsapp-vadi-indo:210994982838335');
     });
   });
 

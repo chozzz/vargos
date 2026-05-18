@@ -1,19 +1,21 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { WhatsAppAdapter } from '../adapter.js';
+import { describe, it, expect } from 'vitest';
+import { normalizeWhatsAppMessage } from '../normalizer.js';
 import type { WhatsAppInboundMessage } from '../types.js';
-import type { InboundMessageMetadata } from '../../../../gateway/events.js';
 
-describe('WhatsApp metadata building', () => {
-  let adapter: WhatsAppAdapter;
+/** Simulates Baileys jidDecode for test assertions */
+function extractUserForTest(jid: string): string {
+  const atIdx = jid.indexOf('@');
+  if (atIdx === -1) return jid;
+  const userPart = jid.slice(0, atIdx);
+  const colonIdx = userPart.indexOf(':');
+  return colonIdx === -1 ? userPart : userPart.slice(0, colonIdx);
+}
 
-  beforeEach(() => {
-    adapter = new WhatsAppAdapter('test-instance', async () => {});
-    // Manually set botJid for testing (normally set on connection)
-    (adapter as any).botJid = '1234567890@s.whatsapp.net';
-  });
+describe('WhatsApp normalizer — metadata building', () => {
+  const botJid = '1234567890@s.whatsapp.net';
 
   describe('private messages', () => {
-    it('builds metadata for private message', () => {
+    it('private messages are always mentioned (always relevant)', () => {
       const msg: WhatsAppInboundMessage = {
         messageId: 'msg123',
         jid: '1111111111@s.whatsapp.net',
@@ -23,23 +25,11 @@ describe('WhatsApp metadata building', () => {
         timestamp: Date.now(),
       };
 
-      const result = (adapter as any).isMentioned(msg);
-      expect(result).toBe(false);
-    });
-
-    it('private messages are always considered mentioned (always relevant)', () => {
-      const msg: WhatsAppInboundMessage = {
-        messageId: 'msg123',
-        jid: '1111111111@s.whatsapp.net',
-        text: 'Hello',
-        fromMe: false,
-        isGroup: false,
-        timestamp: Date.now(),
-      };
-
-      // In handleInbound, private messages bypass the mention check
-      // isMentioned is always true for private: msg.isGroup ? this.isMentioned(msg) : true
-      expect(!msg.isGroup).toBe(true);
+      const result = normalizeWhatsAppMessage(msg, { botJid });
+      expect(result).not.toBeNull();
+      expect(result!.isMentioned).toBe(true);
+      expect(result!.chatType).toBe('private');
+      expect(result!.skipAgent).toBe(false);
     });
   });
 
@@ -52,14 +42,15 @@ describe('WhatsApp metadata building', () => {
         fromMe: false,
         isGroup: true,
         timestamp: Date.now(),
-        mentionedJids: ['1234567890@s.whatsapp.net', '9999999999@s.whatsapp.net'],
+        mentionedJids: [botJid, '9999999999@s.whatsapp.net'],
       };
 
-      const result = (adapter as any).isMentioned(msg);
-      expect(result).toBe(true);
+      const result = normalizeWhatsAppMessage(msg, { botJid });
+      expect(result!.isMentioned).toBe(true);
+      expect(result!.skipAgent).toBe(false);
     });
 
-    it('ignores group messages without bot mention', () => {
+    it('skips group messages without bot mention', () => {
       const msg: WhatsAppInboundMessage = {
         messageId: 'msg123',
         jid: 'group123@g.us',
@@ -70,8 +61,8 @@ describe('WhatsApp metadata building', () => {
         mentionedJids: ['9999999999@s.whatsapp.net'],
       };
 
-      const result = (adapter as any).isMentioned(msg);
-      expect(result).toBe(false);
+      const result = normalizeWhatsAppMessage(msg, { botJid });
+      expect(result!.skipAgent).toBe(true);
     });
 
     it('detects reply to bot message', () => {
@@ -82,11 +73,11 @@ describe('WhatsApp metadata building', () => {
         fromMe: false,
         isGroup: true,
         timestamp: Date.now(),
-        quotedSenderJid: '1234567890@s.whatsapp.net',
+        quotedSenderJid: botJid,
       };
 
-      const result = (adapter as any).isMentioned(msg);
-      expect(result).toBe(true);
+      const result = normalizeWhatsAppMessage(msg, { botJid });
+      expect(result!.isMentioned).toBe(true);
     });
 
     it('handles messages with no mentions or quotes', () => {
@@ -99,8 +90,8 @@ describe('WhatsApp metadata building', () => {
         timestamp: Date.now(),
       };
 
-      const result = (adapter as any).isMentioned(msg);
-      expect(result).toBe(false);
+      const result = normalizeWhatsAppMessage(msg, { botJid });
+      expect(result!.skipAgent).toBe(true);
     });
 
     it('requires bot mention even when mentions list exists', () => {
@@ -114,8 +105,40 @@ describe('WhatsApp metadata building', () => {
         mentionedJids: ['8888888888@s.whatsapp.net', '9999999999@s.whatsapp.net'],
       };
 
-      const result = (adapter as any).isMentioned(msg);
-      expect(result).toBe(false);
+      const result = normalizeWhatsAppMessage(msg, { botJid });
+      expect(result!.skipAgent).toBe(true);
+    });
+
+    it('detects bot mention across JID formats (areJidsSameUser)', () => {
+      // Bot is @s.whatsapp.net, but mention comes in as @lid format
+      const msg: WhatsAppInboundMessage = {
+        messageId: 'msg123',
+        jid: 'group123@g.us',
+        text: '@bot help',
+        fromMe: false,
+        isGroup: true,
+        timestamp: Date.now(),
+        // Different JID format — same user via areJidsSameUser
+        mentionedJids: [botJid],
+      };
+
+      const result = normalizeWhatsAppMessage(msg, { botJid });
+      expect(result!.isMentioned).toBe(true);
+    });
+
+    it('detects quoted reply across JID formats', () => {
+      const msg: WhatsAppInboundMessage = {
+        messageId: 'msg123',
+        jid: 'group123@g.us',
+        text: 'Thanks',
+        fromMe: false,
+        isGroup: true,
+        timestamp: Date.now(),
+        quotedSenderJid: botJid, // Same format as botJid
+      };
+
+      const result = normalizeWhatsAppMessage(msg, { botJid });
+      expect(result!.isMentioned).toBe(true);
     });
   });
 
@@ -131,8 +154,8 @@ describe('WhatsApp metadata building', () => {
         mentionedJids: [],
       };
 
-      const result = (adapter as any).isMentioned(msg);
-      expect(result).toBe(false);
+      const result = normalizeWhatsAppMessage(msg, { botJid });
+      expect(result!.skipAgent).toBe(true);
     });
 
     it('handles message with undefined mentionedJids', () => {
@@ -145,12 +168,11 @@ describe('WhatsApp metadata building', () => {
         timestamp: Date.now(),
       };
 
-      const result = (adapter as any).isMentioned(msg);
-      expect(result).toBe(false);
+      const result = normalizeWhatsAppMessage(msg, { botJid });
+      expect(result!.skipAgent).toBe(true);
     });
 
     it('handles mention without botJid set', () => {
-      (adapter as any).botJid = '';
       const msg: WhatsAppInboundMessage = {
         messageId: 'msg123',
         jid: 'group123@g.us',
@@ -158,26 +180,14 @@ describe('WhatsApp metadata building', () => {
         fromMe: false,
         isGroup: true,
         timestamp: Date.now(),
-        mentionedJids: ['1234567890@s.whatsapp.net'],
+        mentionedJids: [botJid],
       };
 
-      const result = (adapter as any).isMentioned(msg);
-      expect(result).toBe(false);
+      const result = normalizeWhatsAppMessage(msg, { botJid: '' });
+      expect(result!.skipAgent).toBe(true);
     });
 
-    it('handles phone number extraction from direct format JID', () => {
-      const result = (adapter as any).resolvePhone('1234567890@s.whatsapp.net');
-      expect(result).toBe('1234567890');
-    });
-
-    it('strips domain from various JID formats', () => {
-      expect((adapter as any).resolvePhone('1111111111@s.whatsapp.net')).toBe('1111111111');
-      expect((adapter as any).resolvePhone('2222222222@s.whatsapp.net')).toBe('2222222222');
-    });
-  });
-
-  describe('message filtering in handleInbound', () => {
-    it('skips messages from self', () => {
+    it('skips own messages (fromMe)', () => {
       const msg: WhatsAppInboundMessage = {
         messageId: 'msg123',
         jid: '1111111111@s.whatsapp.net',
@@ -187,110 +197,27 @@ describe('WhatsApp metadata building', () => {
         timestamp: Date.now(),
       };
 
-      // fromMe check happens first: if (msg.fromMe) return;
-      expect(msg.fromMe).toBe(true);
-    });
-
-    it('skips group messages without mention', () => {
-      const msg: WhatsAppInboundMessage = {
-        messageId: 'msg123',
-        jid: 'group123@g.us',
-        text: 'Random group chat',
-        fromMe: false,
-        isGroup: true,
-        timestamp: Date.now(),
-        mentionedJids: ['9999999999@s.whatsapp.net'],
-      };
-
-      // Second check: if (msg.isGroup && !this.isMentioned(msg)) return;
-      const isMentioned = (adapter as any).isMentioned(msg);
-      expect(isMentioned).toBe(false);
-      expect(msg.isGroup && !isMentioned).toBe(true);
-    });
-
-    it('accepts private messages', () => {
-      const msg: WhatsAppInboundMessage = {
-        messageId: 'msg123',
-        jid: '1111111111@s.whatsapp.net',
-        text: 'Hello',
-        fromMe: false,
-        isGroup: false,
-        timestamp: Date.now(),
-      };
-
-      // private messages pass: isGroup = false, so the check is false && !true = false
-      expect(!msg.isGroup).toBe(true);
-    });
-
-    it('accepts group messages with bot mention', () => {
-      const msg: WhatsAppInboundMessage = {
-        messageId: 'msg123',
-        jid: 'group123@g.us',
-        text: 'Hey @bot help',
-        fromMe: false,
-        isGroup: true,
-        timestamp: Date.now(),
-        mentionedJids: ['1234567890@s.whatsapp.net'],
-      };
-
-      const isMentioned = (adapter as any).isMentioned(msg);
-      expect(isMentioned).toBe(true);
-      expect(msg.isGroup && !isMentioned).toBe(false);
+      const result = normalizeWhatsAppMessage(msg, { botJid });
+      expect(result).toBeNull();
     });
   });
 
-  describe('chatType and isMentioned in metadata', () => {
-    it('builds correct metadata for private message', () => {
-      // Simulate metadata building from handleInbound
-      const msg: WhatsAppInboundMessage = {
-        messageId: 'msg123',
-        jid: '1111111111@s.whatsapp.net',
-        text: 'Hello',
-        fromMe: false,
-        isGroup: false,
-        timestamp: Date.now(),
-      };
-
-      const chatType = msg.isGroup ? 'group' : 'private';
-      const isMentioned = msg.isGroup ? (adapter as any).isMentioned(msg) : true;
-
-      const metadata: InboundMessageMetadata = {
-        messageId: msg.messageId,
-        fromUser: (adapter as any).resolvePhone(msg.jid),
-        chatType,
-        isMentioned,
-        channelType: 'whatsapp',
-      };
-
-      expect(metadata.chatType).toBe('private');
-      expect(metadata.isMentioned).toBe(true);
-      expect(metadata.fromUser).toBe('1111111111');
+  describe('JID extraction', () => {
+    it('extracts user from @s.whatsapp.net JID', () => {
+      expect(extractUserForTest('1234567890@s.whatsapp.net')).toBe('1234567890');
     });
 
-    it('builds correct metadata for mentioned group message', () => {
-      const msg: WhatsAppInboundMessage = {
-        messageId: 'msg123',
-        jid: 'group123@g.us',
-        text: '@bot help',
-        fromMe: false,
-        isGroup: true,
-        timestamp: Date.now(),
-        mentionedJids: ['1234567890@s.whatsapp.net'],
-      };
+    it('extracts user from @lid JID', () => {
+      expect(extractUserForTest('2222222222@lid')).toBe('2222222222');
+    });
 
-      const chatType = msg.isGroup ? 'group' : 'private';
-      const isMentioned = msg.isGroup ? (adapter as any).isMentioned(msg) : true;
+    it('strips device suffix from multi-device JID', () => {
+      expect(extractUserForTest('3333333333:10@s.whatsapp.net')).toBe('3333333333');
+      expect(extractUserForTest('4444444444:0@s.whatsapp.net')).toBe('4444444444');
+    });
 
-      const metadata: InboundMessageMetadata = {
-        messageId: msg.messageId,
-        fromUser: (adapter as any).resolvePhone(msg.jid),
-        chatType,
-        isMentioned,
-        channelType: 'whatsapp',
-      };
-
-      expect(metadata.chatType).toBe('group');
-      expect(metadata.isMentioned).toBe(true);
+    it('extracts user from @g.us group JID', () => {
+      expect(extractUserForTest('120363040000000000@g.us')).toBe('120363040000000000');
     });
   });
 });

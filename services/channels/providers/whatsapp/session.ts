@@ -9,6 +9,7 @@ import makeWASocket, {
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
   downloadMediaMessage,
+  jidNormalizedUser,
   type WASocket,
   type ConnectionState,
   type WAMessage,
@@ -95,13 +96,21 @@ export async function processInboundMessage(
   events: WhatsAppSessionEvents,
 ): Promise<void> {
   const m = msg.message!;
-  const remoteJid = msg.key.remoteJid || '';
+  // Baileys normalizes JID structure in cleanMessage() (strips device/agent suffixes,
+  // converts @c.us→@s.whatsapp.net) but does NOT resolve LID→PN. We apply
+  // jidNormalizedUser here as a defense-in-depth to ensure consistent JID format.
+  const remoteJid = jidNormalizedUser(msg.key.remoteJid || '');
   const isGroup = remoteJid.endsWith('@g.us');
-  // For groups, use sender's JID; for private, use remote JID
-  // This ensures whitelist checks work per-user and sessions stay per-user
-  const jid = isGroup ? (msg.key.participant || remoteJid) : remoteJid;
-  const mentionedJids = (m.extendedTextMessage?.contextInfo?.mentionedJid ?? []) as string[];
-  const quotedSenderJid = m.extendedTextMessage?.contextInfo?.participant as string | undefined;
+  // For groups, use sender's JID (participant); for private, use remote JID.
+  // This ensures whitelist checks work per-user and sessions stay per-user.
+  const rawJid = isGroup ? (msg.key.participant || remoteJid) : remoteJid;
+  const jid = jidNormalizedUser(rawJid);
+  const mentionedJids = (m.extendedTextMessage?.contextInfo?.mentionedJid ?? []).map(
+    (j: string) => jidNormalizedUser(j),
+  );
+  const quotedSenderJid = m.extendedTextMessage?.contextInfo?.participant
+    ? jidNormalizedUser(m.extendedTextMessage.contextInfo.participant as string)
+    : undefined;
 
   const base = {
     messageId: msg.key.id || '',
