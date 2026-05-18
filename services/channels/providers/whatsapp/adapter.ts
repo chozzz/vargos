@@ -4,6 +4,7 @@
 
 import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { jidDecode, jidNormalizedUser } from '@whiskeysockets/baileys';
 import type { WASocket } from '@whiskeysockets/baileys';
 import type { InboundMediaSource } from '../../types.js';
 import type { NormalizedInboundMessage, AdapterDeps } from '../../contracts.js';
@@ -31,7 +32,6 @@ export class WhatsAppAdapter extends BaseChannelAdapter {
   private reconnector = new Reconnector();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private authDir = '';
-  private lidCache = new Map<string, string>();
 
   constructor(
     instanceId: string,
@@ -158,30 +158,13 @@ export class WhatsAppAdapter extends BaseChannelAdapter {
   }
 
   private toJid(id: string): string {
-    if (id.includes('@')) return id;
+    // If already a full JID with domain, normalize and return
+    if (id.includes('@')) {
+      const decoded = jidDecode(id);
+      if (decoded) return jidNormalizedUser(id);
+    }
+    // Plain phone number — append canonical domain
     return `${id.replace(/^\+/, '')}@s.whatsapp.net`;
-  }
-
-  private resolvePhone(jid: string): string {
-    if (jid.endsWith('@s.whatsapp.net')) return jid.replace('@s.whatsapp.net', '');
-    if (jid.endsWith('@lid')) {
-      const lid = jid.replace('@lid', '');
-      return this.lidToPhone(lid);
-    }
-    return jid;
-  }
-
-  private lidToPhone(lid: string): string {
-    const cached = this.lidCache.get(lid);
-    if (cached) return cached;
-    try {
-      const file = path.join(this.authDir, `lid-mapping-${lid}_reverse.json`);
-      const phone = JSON.parse(readFileSync(file, 'utf-8')) as string;
-      this.lidCache.set(lid, phone);
-      return phone;
-    } catch {
-      return lid;
-    }
   }
 
   private handleInbound(msg: WhatsAppInboundMessage): void {
@@ -189,7 +172,7 @@ export class WhatsAppAdapter extends BaseChannelAdapter {
 
     if (!this.dedupe.add(msg.messageId)) return;
 
-    const chatId = msg.isGroup ? msg.jid : msg.jid;
+    const chatId = msg.jid;
     const normalizedMsg = normalizeWhatsAppMessage(msg, {
       botJid: this.botJid,
       botName: this.sock?.user?.name,
@@ -214,11 +197,6 @@ export class WhatsAppAdapter extends BaseChannelAdapter {
     this.debouncer.push(chatId, msg.text, normalizedMsg);
   }
 
-  private isMentioned(msg: WhatsAppInboundMessage): boolean {
-    if (!msg.isGroup || !this.botJid) return false;
-    return msg.mentionedJids?.includes(this.botJid) || msg.quotedSenderJid === this.botJid;
-  }
-
   protected async resolveMedia(msg: unknown): Promise<InboundMediaSource | null> {
     const m = msg as WhatsAppInboundMessage;
     if (!m.mediaBuffer) return null;
@@ -239,7 +217,7 @@ export class WhatsAppAdapter extends BaseChannelAdapter {
       return;
     }
 
-    const userId = msg.jid.replace(/@[^@]+$/, '');
+    const userId = msg.jid;
     const sessionKey = this.buildSessionKey(userId);
 
     if (!msg.mediaBuffer) {

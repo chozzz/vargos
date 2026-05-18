@@ -2,6 +2,7 @@
  * WhatsApp message normalizer — converts WhatsApp adapter output to canonical form.
  */
 
+import { jidDecode, areJidsSameUser } from '@whiskeysockets/baileys';
 import type { NormalizedInboundMessage } from '../../contracts.js';
 import type { WhatsAppInboundMessage } from './types.js';
 
@@ -42,13 +43,14 @@ export function normalizeWhatsAppMessage(
 }
 
 function isMentionedInGroup(msg: WhatsAppInboundMessage, botJid: string): boolean {
-  // Check if bot was explicitly mentioned
-  if (msg.mentionedJids?.includes(botJid)) {
+  // Check if bot was explicitly mentioned via areJidsSameUser
+  // (handles @lid vs @s.whatsapp.net format differences)
+  if (msg.mentionedJids?.some(jid => areJidsSameUser(jid, botJid))) {
     return true;
   }
 
   // Check if it's a reply to bot's message
-  if (msg.quotedSenderJid === botJid) {
+  if (msg.quotedSenderJid && areJidsSameUser(msg.quotedSenderJid, botJid)) {
     return true;
   }
 
@@ -56,10 +58,7 @@ function isMentionedInGroup(msg: WhatsAppInboundMessage, botJid: string): boolea
 }
 
 function resolvePhoneFromJid(jid: string): string {
-  // Extract phone number from JID
-  // Format: "614123456789@s.whatsapp.net" or "123456789@lid"
-  if (jid.includes('@')) {
-    return jid.split('@')[0];
-  }
-  return jid;
+  // Use Baileys' jidDecode to extract user portion (handles @s.whatsapp.net, @lid, device suffixes, etc.)
+  const decoded = jidDecode(jid);
+  return decoded?.user || jid;
 }
