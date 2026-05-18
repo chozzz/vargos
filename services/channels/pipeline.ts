@@ -85,7 +85,7 @@ export class InboundMessagePipeline {
 
     // If agent is skipped, just append to history
     if (shouldSkipAgent) {
-      log.info(`inbound (skipAgent): ${sessionKey} "${enrichedContent.slice(0, 80)}"`);
+      log.info(`← ${sessionKey} (skipAgent) "${enrichedContent.slice(0, 80)}"`);
       this.bus.call('agent.appendMessage', {
         sessionKey,
         content: enrichedContent,
@@ -110,7 +110,7 @@ export class InboundMessagePipeline {
 
     activeSessions.set(sessionKey, { adapter, reactionController });
 
-    log.info(`inbound: ${sessionKey} "${enrichedContent.slice(0, 80)}"`);
+    log.info(`← ${sessionKey} "${enrichedContent.slice(0, 80)}"`);
 
     // Execute agent
     this.bus.call('agent.execute', {

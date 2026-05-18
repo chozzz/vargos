@@ -162,12 +162,10 @@ export class AgentService {
       throw new Error('sessionKey is required for agent.execute');
     }
 
-    log.info(`execute: START ${params.sessionKey}`);
+    log.debug(`execute: START ${params.sessionKey}`);
     const metadata = params.metadata ?? {};
 
-    // Validate model override if provided
     if (metadata?.model) {
-      log.debug(`Validating metadata model: ${metadata.model}`);
       this.validateModel(metadata.model);
     }
 
@@ -176,20 +174,15 @@ export class AgentService {
 
     const session = await this.getOrCreateSession(params.sessionKey, params.metadata);
 
-    // Set thinking level from task directives if present
     if (directives.thinkingLevel) {
       session.setThinkingLevel(directives.thinkingLevel);
     }
 
-    // Log model being used by session
-    log.info(`Using model: ${session.model?.provider}:${session.model?.id} (${session.model?.name})`);
-
     this.activeRuns.add(params.sessionKey);
     const startTime = Date.now();
+    const modelTag = `${session.model?.provider}:${session.model?.id}`;
     try {
-      log.debug(`execute: calling session.prompt() for ${params.sessionKey}`);
       await withTimeout(session.prompt(task, { streamingBehavior: 'steer' }), EXECUTION_TIMEOUT_MS, `Agent execution timeout after ${EXECUTION_TIMEOUT_MS}ms`);
-      log.debug(`execute: session.prompt() completed in ${Date.now() - startTime}ms`);
     } finally {
       this.activeRuns.delete(params.sessionKey);
     }
@@ -199,7 +192,8 @@ export class AgentService {
       log.error(`execute: ${params.sessionKey} ended with error: ${error}`);
       throw new Error(error);
     }
-    log.info(`execute: END ${params.sessionKey} (${content.length} chars, ${Date.now() - startTime}ms)`);
+    const elapsed = Date.now() - startTime;
+    log.info(`${params.sessionKey} → ${content.length} chars in ${elapsed}ms (${modelTag})`);
     return { response: content };
   }
 
@@ -263,7 +257,7 @@ export class AgentService {
     const rawSystemPrompt = await this.getSystemPrompt(sessionKey, metadata, persona?.body);
     const resourceLoader = await this.createResourceLoader(rawSystemPrompt, effectiveCwd);
 
-    log.debug(`Creating agent session for ${sessionKey} in ${effectiveCwd}. (with ${customTools.length} tools and ${rawSystemPrompt?.length} chars system prompt).`);
+    log.debug(`session: ${sessionKey} created (${customTools.length} tools, ${rawSystemPrompt?.length ?? 0} chars prompt)`);
 
     const { session } = await createAgentSession({
       cwd: effectiveCwd,
@@ -276,9 +270,7 @@ export class AgentService {
       resourceLoader,
     });
 
-    // Store system prompt in session directory
     if (process.env.LOG_LEVEL === 'debug') {
-      // Create a new debug directory under the session directory to avoid cluttering the main session files
       const debugDir = path.join(sessionDir, '.debug');
       if (!existsSync(debugDir)) {
         await fs.mkdir(debugDir, { recursive: true });
@@ -445,6 +437,8 @@ export class AgentService {
       if (result) sections.push(result.label, result.content, '');
     }
 
+    // Also log bootstrap files loaded
+    log.debug(`session: ${sessionKey} bootstrap ${sections.filter(s => s.startsWith('<!--')).length} files, ${sections.join('\n').length} chars`);
     if (personaBody) {
       sections.push('<!-- channel persona -->', '<channel-persona>', personaBody.trim(), '</channel-persona>');
     }

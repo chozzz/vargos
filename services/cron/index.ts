@@ -222,7 +222,7 @@ export class CronService {
         log.debug(`skipping disabled job: ${task.id}`);
       }
     }
-    log.info(`${count} jobs started`);
+      log.info(`${count} jobs started`);
   }
 
   private stopAll(): void {
@@ -282,7 +282,7 @@ export class CronService {
 
   private async executeTask(task: CronTask): Promise<void> {
     const sessionKey = cronSessionKey(task.id);
-    log.info(`task firing: ${task.name} (${task.id}) → ${sessionKey}`);
+    log.info(`⏰ ${task.name} (${task.id})`);
 
     const metadata = task.model ? { model: task.model } : undefined;
 
