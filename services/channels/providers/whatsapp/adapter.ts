@@ -167,20 +167,12 @@ export class WhatsAppAdapter extends BaseChannelAdapter {
     return `${id.replace(/^\+/, '')}@s.whatsapp.net`;
   }
 
-  /** Extract the user portion of a JID using Baileys' decoder. */
-  private extractUser(jid: string): string {
-    const decoded = jidDecode(jid);
-    return decoded?.user || jid;
-  }
-
   private handleInbound(msg: WhatsAppInboundMessage): void {
     if (msg.fromMe) return;
 
     if (!this.dedupe.add(msg.messageId)) return;
 
-    // Use Baileys' jidDecode to extract stable user ID regardless of JID suffix.
-    // Handles @s.whatsapp.net, @lid, @g.us, device suffixes (:10), etc.
-    const chatId = this.extractUser(msg.jid);
+    const chatId = msg.jid;
     const normalizedMsg = normalizeWhatsAppMessage(msg, {
       botJid: this.botJid,
       botName: this.sock?.user?.name,
@@ -225,7 +217,7 @@ export class WhatsAppAdapter extends BaseChannelAdapter {
       return;
     }
 
-    const userId = this.extractUser(msg.jid);
+    const userId = msg.jid;
     const sessionKey = this.buildSessionKey(userId);
 
     if (!msg.mediaBuffer) {

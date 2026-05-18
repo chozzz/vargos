@@ -42,8 +42,9 @@ function usage(): void {
   Usage:
     vargos                 First-run setup or show this help
     vargos start           Boot the agent server (gateway + all services)
-    vargos onboard         Interactive setup wizard (provider, model, API key)
+    vargos onboard         Interactive setup wizard (provider, model, API key, channels)
     vargos config          Show current configuration
+    vargos channels        Manage messaging channels (list, register, deregister, pair)
     vargos chat            Start an interactive chat session with the agent
 
   Options:
@@ -196,6 +197,100 @@ if (cmd === 'chat') {
       VARGOS_DATA_DIR: dataDir,
     },
   });
+}
+
+// channels subcommand
+if (cmd === 'channels') {
+  const sub = process.argv[3];
+  const { listChannels, registerChannel, deregisterChannel, pairWhatsApp } = await import('./cli/channels.js');
+
+  if (sub === 'list' || !sub) {
+    const channels = listChannels();
+    if (channels.length === 0) {
+      console.log('No channels configured.\n');
+      console.log('  vargos channels register whatsapp <id>');
+      console.log('  vargos channels register telegram <id> --bot-token <token>');
+    } else {
+      console.log('Channels:\n');
+      for (const ch of channels) {
+        const status = ch.type === 'whatsapp'
+          ? (ch.registered ? '✅ paired' : '⚠ not paired')
+          : '✅ configured';
+        const tokenHint = ch.botToken ? ` (key: ${ch.botToken.slice(0, 8)}…)` : '';
+        console.log(`  ${ch.id}  [${ch.type}]  ${status}${tokenHint}`);
+      }
+      console.log('');
+    }
+    process.exit(0);
+  }
+
+  if (sub === 'register') {
+    const type = process.argv[4] as 'telegram' | 'whatsapp' | undefined;
+    const id = process.argv[5];
+
+    if (!type || !id || !['telegram', 'whatsapp'].includes(type)) {
+      console.log('Usage: vargos channels register <telegram|whatsapp> <id> [--bot-token <token>]');
+      process.exit(1);
+    }
+
+    try {
+      const tgBotKey = type === 'telegram'
+        ? process.argv[process.argv.indexOf('--bot-token') + 1]
+        : undefined;
+
+      if (type === 'telegram' && !tgBotKey) {
+        console.log('Telegram requires --bot-token <token>');
+        process.exit(1);
+      }
+
+      registerChannel({ id, type, botToken: tgBotKey });
+      console.log(`✅ Channel "${id}" registered.`);
+
+      if (type === 'whatsapp') {
+        console.log(`   Run "vargos channels pair whatsapp ${id}" to scan the QR code.`);
+      }
+    } catch (err) {
+      console.error(`❌ ${err instanceof Error ? err.message : err}`);
+      process.exit(1);
+    }
+    process.exit(0);
+  }
+
+  if (sub === 'deregister') {
+    const id = process.argv[4];
+    if (!id) {
+      console.log('Usage: vargos channels deregister <id>');
+      process.exit(1);
+    }
+    try {
+      deregisterChannel(id);
+      console.log(`✅ Channel "${id}" removed.`);
+    } catch (err) {
+      console.error(`❌ ${err instanceof Error ? err.message : err}`);
+      process.exit(1);
+    }
+    process.exit(0);
+  }
+
+  if (sub === 'pair') {
+    const type = process.argv[4];
+    const id = process.argv[5];
+    if (type !== 'whatsapp' || !id) {
+      console.log('Usage: vargos channels pair whatsapp <id>');
+      process.exit(1);
+    }
+    console.log('Scan the QR code with WhatsApp → Linked Devices\n');
+    try {
+      await pairWhatsApp(id);
+    } catch (err) {
+      console.error(`❌ ${err instanceof Error ? err.message : err}`);
+      process.exit(1);
+    }
+    process.exit(0);
+  }
+
+  console.log('Usage: vargos channels [list|register|deregister|pair]');
+  process.exit(1);
 }
 
 // No command — first-run or help
