@@ -30,6 +30,9 @@ export function normalizeTelegramMessage(
 
   const isMentioned = isPrivateChat || isMentionedInMessage(msg, context.botUserId, context.botUsername);
 
+  // Use caption as fallback for media messages (documents, photos, audio, voice)
+  const textContent = msg.text ?? msg.caption;
+
   return {
     messageId: String(msg.message_id),
     fromUserId: String(msg.from?.id || 0),
@@ -42,23 +45,27 @@ export function normalizeTelegramMessage(
     botName: context.botName,
     botHandle: context.botUsername,
     skipAgent: isGroupChat && !isMentioned ? true : false,
-    text: msg.text,
+    text: textContent,
     media: undefined, // Media handling done separately
   };
 }
 
 function isMentionedInMessage(msg: TelegramMessage, botUserId: number | null, botUsername?: string): boolean {
-  if (!msg.text || !botUserId) return false;
+  if (!botUserId) return false;
 
   // Check if message is a reply to the bot
   if (msg.reply_to_message?.from?.id === botUserId) {
     return true;
   }
 
+  // Check text content — use caption for media messages (documents, photos, etc.)
+  const textContent = msg.text ?? msg.caption;
+  if (!textContent) return false;
+
   // Check if this specific bot's username is mentioned with @
   if (botUsername) {
     const mentionPattern = /@[\w]+/g;
-    const mentions = msg.text.match(mentionPattern) || [];
+    const mentions = textContent.match(mentionPattern) || [];
     const botMentionPattern = new RegExp(`@${botUsername}\\b`, 'i');
     if (mentions.some(m => botMentionPattern.test(m))) {
       return true;
