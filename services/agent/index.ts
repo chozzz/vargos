@@ -22,7 +22,7 @@ import { truncate } from '../../lib/truncate.js';
 import type { AgentDeps } from './schema.js';
 import { existsSync, promises as fs } from 'node:fs';
 import { getDataPaths } from '../../lib/paths.js';
-import { parseSessionKey } from '../../lib/subagent.js';
+import { parseSessionKey, isSubagentSession } from '../../lib/subagent.js';
 
 // Pi SDK imports
 import {
@@ -40,7 +40,7 @@ import {
 import type { AgentSessionEvent } from '@mariozechner/pi-coding-agent';
 
 import { createCustomTools } from './tools.js';
-import { loadChannelPersona } from './persona.js';
+import { loadChannelPersona, loadSubagentPersona } from './persona.js';
 import { resolveSkillPaths } from '../../lib/skills.js';
 import { matchesGlob } from '../../lib/glob.js';
 
@@ -387,11 +387,13 @@ export class AgentService {
   }
 
   /**
-   * Load persona for the given sessionKey if it maps to a configured channel. Subagent
-   * sessionKeys naturally inherit because parseSessionKey strips the `:subagent:` suffix.
-   * Cron / CLI / other types return null (no persona override applied).
+   * Load persona for the given sessionKey.
+   * - Subagent sessions: load `agents/subagent.md` (preamble + allowedTools whitelist).
+   * - Channel sessions: load `agents/<channelId>.md` (persona + tool filter).
+   * - Cron / CLI / other types: return null (no persona override applied).
    */
   private async loadPersonaIfChannel(sessionKey: string) {
+    if (isSubagentSession(sessionKey)) return loadSubagentPersona();
     const { type } = parseSessionKey(sessionKey);
     const isChannel = this.config.channels.some(c => c.id === type);
     if (!isChannel) return null;
@@ -399,10 +401,18 @@ export class AgentService {
   }
 
   /**
-   * Build system prompt by merging bootstrap files from workspace and optional cwd, then
-   * appending the channel persona body if provided.
+   * Build system prompt.
+   * - Subagent sessions: return the persona body from `agents/subagent.md`.
+   *   No bootstrap files (AGENTS.md, SOUL.md, TOOLS.md) are loaded — the parent's
+   *   task description is the subagent's sole context.
+   * - Parent/other sessions: merge AGENTS.md + SOUL.md + TOOLS.md from workspace/cwd,
+   *   then append channel persona body if provided.
    */
   private async getSystemPrompt(sessionKey: string, metadata?: EventMap['agent.execute']['params']['metadata'], personaBody?: string): Promise<string | undefined> {
+    if (isSubagentSession(sessionKey)) {
+      return personaBody?.trim() || undefined;
+    }
+
     const bootstrapFiles = ['AGENTS.md', 'SOUL.md', 'TOOLS.md'];
     const maxCharsPerFile = 6000;
 
@@ -461,7 +471,10 @@ export class AgentService {
   protected async getCustomTools(sessionKey: string, allowedPatterns?: string[]): Promise<ToolDefinition[]> {
     const tools = await createCustomTools(sessionKey, this.bus);
     if (!allowedPatterns?.length) return tools;
-    return tools.filter(t => allowedPatterns.some(p => matchesGlob(p, t.name)));
+    // Match on `label` (original event name with dots, e.g. "memory.search")
+    // rather than `name` (sanitized with dashes, e.g. "memory-search"),
+    // so that frontmatter patterns like "memory.*" work as expected.
+    return tools.filter(t => allowedPatterns.some(p => matchesGlob(p, t.label)));
   }
 
   /**

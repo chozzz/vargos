@@ -59,6 +59,26 @@ export async function loadChannelPersona(channelId: string): Promise<Persona | n
 }
 
 /**
+ * Load the subagent persona from `~/.vargos/agents/subagent.md`.
+ * Seeded from `.templates/vargos/agents/subagent.md` on startup (copy-missing).
+ * Returns null if the file is missing or empty.
+ */
+export async function loadSubagentPersona(): Promise<Persona | null> {
+  const file = path.join(getDataPaths().dataDir, 'agents', 'subagent.md');
+  if (!existsSync(file)) {
+    log.warn('agents/subagent.md not found — subagent running without preamble or tool restrictions');
+    return null;
+  }
+
+  const content = await fs.readFile(file, 'utf-8');
+  if (!content.trim()) return null;
+
+  const parsed = parseFrontmatter<PersonaMeta>(content);
+  if (!parsed) return { meta: {}, body: content.trim() };
+  return { meta: parsed.meta, body: parsed.body.trim() };
+}
+
+/**
  * Ensure a persona file exists for each channel id. Copies `default.md` to
  * `~/.vargos/agents/<id>.md` if missing. Idempotent — runs at every startup.
  */
