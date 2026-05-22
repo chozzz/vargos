@@ -22,7 +22,7 @@ import { truncate } from '../../lib/truncate.js';
 import type { AgentDeps } from './schema.js';
 import { existsSync, promises as fs } from 'node:fs';
 import { getDataPaths } from '../../lib/paths.js';
-import { parseSessionKey } from '../../lib/subagent.js';
+import { parseSessionKey, isSubagentSession } from '../../lib/subagent.js';
 
 // Pi SDK imports
 import {
@@ -40,7 +40,7 @@ import {
 import type { AgentSessionEvent } from '@mariozechner/pi-coding-agent';
 
 import { createCustomTools } from './tools.js';
-import { loadChannelPersona } from './persona.js';
+import { loadChannelPersona, loadSubagentPersona } from './persona.js';
 import { resolveSkillPaths } from '../../lib/skills.js';
 import { matchesGlob } from '../../lib/glob.js';
 
@@ -162,12 +162,10 @@ export class AgentService {
       throw new Error('sessionKey is required for agent.execute');
     }
 
-    log.info(`execute: START ${params.sessionKey}`);
+    log.debug(`execute: START ${params.sessionKey}`);
     const metadata = params.metadata ?? {};
 
-    // Validate model override if provided
     if (metadata?.model) {
-      log.debug(`Validating metadata model: ${metadata.model}`);
       this.validateModel(metadata.model);
     }
 
@@ -176,20 +174,15 @@ export class AgentService {
 
     const session = await this.getOrCreateSession(params.sessionKey, params.metadata);
 
-    // Set thinking level from task directives if present
     if (directives.thinkingLevel) {
       session.setThinkingLevel(directives.thinkingLevel);
     }
 
-    // Log model being used by session
-    log.info(`Using model: ${session.model?.provider}:${session.model?.id} (${session.model?.name})`);
-
     this.activeRuns.add(params.sessionKey);
     const startTime = Date.now();
+    const modelTag = `${session.model?.provider}:${session.model?.id}`;
     try {
-      log.debug(`execute: calling session.prompt() for ${params.sessionKey}`);
       await withTimeout(session.prompt(task, { streamingBehavior: 'steer' }), EXECUTION_TIMEOUT_MS, `Agent execution timeout after ${EXECUTION_TIMEOUT_MS}ms`);
-      log.debug(`execute: session.prompt() completed in ${Date.now() - startTime}ms`);
     } finally {
       this.activeRuns.delete(params.sessionKey);
     }
@@ -199,7 +192,8 @@ export class AgentService {
       log.error(`execute: ${params.sessionKey} ended with error: ${error}`);
       throw new Error(error);
     }
-    log.info(`execute: END ${params.sessionKey} (${content.length} chars, ${Date.now() - startTime}ms)`);
+    const elapsed = Date.now() - startTime;
+    log.info(`${params.sessionKey} → ${content.length} chars in ${elapsed}ms (${modelTag})`);
     return { response: content };
   }
 
@@ -263,7 +257,7 @@ export class AgentService {
     const rawSystemPrompt = await this.getSystemPrompt(sessionKey, metadata, persona?.body);
     const resourceLoader = await this.createResourceLoader(rawSystemPrompt, effectiveCwd);
 
-    log.debug(`Creating agent session for ${sessionKey} in ${effectiveCwd}. (with ${customTools.length} tools and ${rawSystemPrompt?.length} chars system prompt).`);
+    log.debug(`session: ${sessionKey} created (${customTools.length} tools, ${rawSystemPrompt?.length ?? 0} chars prompt)`);
 
     const { session } = await createAgentSession({
       cwd: effectiveCwd,
@@ -276,9 +270,7 @@ export class AgentService {
       resourceLoader,
     });
 
-    // Store system prompt in session directory
     if (process.env.LOG_LEVEL === 'debug') {
-      // Create a new debug directory under the session directory to avoid cluttering the main session files
       const debugDir = path.join(sessionDir, '.debug');
       if (!existsSync(debugDir)) {
         await fs.mkdir(debugDir, { recursive: true });
@@ -395,11 +387,13 @@ export class AgentService {
   }
 
   /**
-   * Load persona for the given sessionKey if it maps to a configured channel. Subagent
-   * sessionKeys naturally inherit because parseSessionKey strips the `:subagent:` suffix.
-   * Cron / CLI / other types return null (no persona override applied).
+   * Load persona for the given sessionKey.
+   * - Subagent sessions: load `agents/subagent.md` (preamble + allowedTools whitelist).
+   * - Channel sessions: load `agents/<channelId>.md` (persona + tool filter).
+   * - Cron / CLI / other types: return null (no persona override applied).
    */
   private async loadPersonaIfChannel(sessionKey: string) {
+    if (isSubagentSession(sessionKey)) return loadSubagentPersona();
     const { type } = parseSessionKey(sessionKey);
     const isChannel = this.config.channels.some(c => c.id === type);
     if (!isChannel) return null;
@@ -407,10 +401,18 @@ export class AgentService {
   }
 
   /**
-   * Build system prompt by merging bootstrap files from workspace and optional cwd, then
-   * appending the channel persona body if provided.
+   * Build system prompt.
+   * - Subagent sessions: return the persona body from `agents/subagent.md`.
+   *   No bootstrap files (AGENTS.md, SOUL.md, TOOLS.md) are loaded — the parent's
+   *   task description is the subagent's sole context.
+   * - Parent/other sessions: merge AGENTS.md + SOUL.md + TOOLS.md from workspace/cwd,
+   *   then append channel persona body if provided.
    */
   private async getSystemPrompt(sessionKey: string, metadata?: EventMap['agent.execute']['params']['metadata'], personaBody?: string): Promise<string | undefined> {
+    if (isSubagentSession(sessionKey)) {
+      return personaBody?.trim() || undefined;
+    }
+
     const bootstrapFiles = ['AGENTS.md', 'SOUL.md', 'TOOLS.md'];
     const maxCharsPerFile = 6000;
 
@@ -445,6 +447,8 @@ export class AgentService {
       if (result) sections.push(result.label, result.content, '');
     }
 
+    // Also log bootstrap files loaded
+    log.debug(`session: ${sessionKey} bootstrap ${sections.filter(s => s.startsWith('<!--')).length} files, ${sections.join('\n').length} chars`);
     if (personaBody) {
       sections.push('<!-- channel persona -->', '<channel-persona>', personaBody.trim(), '</channel-persona>');
     }
@@ -467,7 +471,10 @@ export class AgentService {
   protected async getCustomTools(sessionKey: string, allowedPatterns?: string[]): Promise<ToolDefinition[]> {
     const tools = await createCustomTools(sessionKey, this.bus);
     if (!allowedPatterns?.length) return tools;
-    return tools.filter(t => allowedPatterns.some(p => matchesGlob(p, t.name)));
+    // Match on `label` (original event name with dots, e.g. "memory.search")
+    // rather than `name` (sanitized with dashes, e.g. "memory-search"),
+    // so that frontmatter patterns like "memory.*" work as expected.
+    return tools.filter(t => allowedPatterns.some(p => matchesGlob(p, t.label)));
   }
 
   /**

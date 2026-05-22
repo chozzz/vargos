@@ -60,7 +60,10 @@ try {
 
 // Signal that boot is complete — deferred startup can proceed
 bus.emit('bus.onReady', {});
-log.info('✅ Vargos is ready\n\n');
+
+// Boot summary
+const svcList = SERVICES.map(([label]) => label);
+log.info(`✅ ${svcList.length} services booted: ${svcList.join(', ')}`);
 
 // ── Global error handlers ────────────────────────────────────────────────────
 // Prevent undici socket errors (UND_ERR_SOCKET "other side closed") from

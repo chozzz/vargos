@@ -121,14 +121,8 @@ export class ChannelService {
     const adapter = this.adapters.get(target.channel);
     if (!adapter) throw new Error(`No adapter for channel: ${target.channel}`);
 
-    log.debug(`send: received text (${text.length} chars)`);
+    log.debug(`send: ${sessionKey} (${text.length} chars)`);
     const cleaned = stripMarkdown(text);
-    log.info(`send: ${sessionKey} (${text.length} → ${cleaned.length} chars after stripMarkdown)`);
-
-    if (cleaned.length === 0) {
-      log.warn(`send: stripMarkdown resulted in empty string (original: ${text.length} chars)`);
-    }
-
     await deliverReply((chunk) => adapter.send(sessionKey, chunk), cleaned);
 
     if (adapter.sendMedia) {
@@ -285,7 +279,7 @@ export class ChannelService {
       ? payload.response || ''
       : `Error: ${payload.error || 'Unknown error'}`;
 
-    log.info(`onAgentCompleted: ${targetSessionKey}, success=${payload.success}, responseLength=${responseLength}`);
+    log.info(`→ ${targetSessionKey} ${payload.success ? '✓' : '✗'} (${responseLength} chars)`);
 
     const cleanup = () => {
       if (session?.reactionController) {
@@ -308,7 +302,7 @@ export class ChannelService {
 
     this.bus.call('channel.send', { sessionKey: targetSessionKey, text: responseText })
       .then(({ sent }) => {
-        log.debug(`  → response sent to ${targetSessionKey} successfully: ${sent}`);
+      log.debug(`→ ${targetSessionKey} sent=${sent}`);
       })
       .catch(err => log.error(`failed to send reply: ${toMessage(err)}`))
       .finally(() => {

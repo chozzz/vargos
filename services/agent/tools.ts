@@ -5,10 +5,13 @@
  *
  * Session key injection:
  * - Every tool closes over the parent sessionKey from getCustomTools().
- * - For agent.execute specifically, sessionKey is injected as ':subagent' suffix
- *   so the agent doesn't need to (and can't) provide its own session key.
- * - Other tools inherit the parent sessionKey for context-aware operations
- *   (e.g. channel.send delivers to the right recipient).
+ * - For agent.execute specifically, a unique `:subagent:<id>` suffix is generated
+ *   so each delegation gets its own isolated session (supports parallel subagents).
+ * - Other tools inherit the parent sessionKey for context-aware operations.
+ *
+ * Subagent tool filtering:
+ * - Controlled by the `allowedTools` glob whitelist in `agents/subagent.md` frontmatter.
+ * - Applied by `AgentService.getCustomTools()` via `matchesGlob` — not enforced here.
  *
  * Schema vs EventMap gap:
  * - The agent.execute schema omits sessionKey (it's injected here before bus.call).
@@ -25,6 +28,7 @@ import { createLogger } from '../../lib/logger.js';
 import { isToolEvent } from '../../gateway/emitter.js';
 import { toMessage } from '../../lib/error.js';
 import { appendError } from '../../lib/error-store.js';
+import { subagentSessionKey } from '../../lib/subagent.js';
 
 const log = createLogger('agent-tools');
 
@@ -61,9 +65,9 @@ function wrapEventAsToolDefinition(
 
       try {
         // Auto-inject sessionKey for agent.execute subagent calls.
-        // The agent.execute schema omits sessionKey (it's always injected here).
+        // Each delegation gets a unique session key to support parallel subagents.
         if (eventName === 'agent.execute') {
-          paramsObj.sessionKey = `${sessionKey}:subagent`;
+          paramsObj.sessionKey = subagentSessionKey(sessionKey);
         }
 
         const result = await bus.call(eventName as never, paramsObj);
@@ -73,6 +77,14 @@ function wrapEventAsToolDefinition(
           resultText = JSON.stringify(result).slice(0, 10_000);
         } else if (result !== undefined && result !== null) {
           resultText = String(result).slice(0, 10_000);
+        }
+
+        // Head+tail truncation for large results (preserves start and end, drops middle).
+        const MAX_RESULT_CHARS = 20_000;
+        if (resultText.length > MAX_RESULT_CHARS) {
+          const head = Math.floor(MAX_RESULT_CHARS * 0.7);
+          const tail = Math.floor(MAX_RESULT_CHARS * 0.2);
+          resultText = `${resultText.slice(0, head)}\n\n[…truncated ${resultText.length - head - tail} chars…]\n\n${resultText.slice(-tail)}`;
         }
 
         const resultTokens = Math.ceil(resultText.length / 4);
@@ -102,10 +114,16 @@ function wrapEventAsToolDefinition(
 
 /**
  * Create PiAgent custom tools from bus callable events.
+ *
+ * Subagent tool filtering (agent.execute, channel.send, etc.) is handled by the
+ * `allowedTools` glob whitelist in `agents/subagent.md` frontmatter, applied
+ * by `AgentService.getCustomTools()` via `matchesGlob`.
  */
 export async function createCustomTools(sessionKey: string, bus: Bus): Promise<ToolDefinition[]> {
   const metadata = await bus.call('bus.search', {});
-  return metadata.filter(isToolEvent).map(m =>
-    wrapEventAsToolDefinition(m.event, m.description, (m.schema?.params as Record<string, unknown>) || {}, sessionKey, bus),
-  );
+  return metadata
+    .filter(isToolEvent)
+    .map(m =>
+      wrapEventAsToolDefinition(m.event, m.description, (m.schema?.params as Record<string, unknown>) || {}, sessionKey, bus),
+    );
 }
