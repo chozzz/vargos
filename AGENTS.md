@@ -9,7 +9,7 @@ pnpm install          # install deps
 pnpm start            # boot gateway + all services
 pnpm chat             # Pi SDK CLI bound to ~/.vargos/agent (interactive REPL)
 pnpm cli              # run the CLI entrypoint directly (tsx cli.ts)
-pnpm seed             # manual `seedDataDir()` — refresh workspace markdown + copy missing templates into ~/.vargos/
+pnpm seed             # manual `seedDataDir()` — copy missing templates into ~/.vargos/
 pnpm run typecheck    # tsc --noEmit
 pnpm run test:run     # single test run
 pnpm lint             # eslint + typecheck
@@ -28,7 +28,7 @@ pnpm lint             # eslint + typecheck
 - **Directives**: `/think:<level>`, `/verbose` parsed by `services/agent/directives.ts` before agent runs.
 - **Interpolation**: `${VAR}` / `${VAR:-default}` in prompts and persona/cron files. Vars: `WORKSPACE_DIR`, `DATA_DIR`, `SESSIONS_DIR`, `CRON_DIR`, `LOGS_DIR`, `CHANNELS_DIR`, `CACHE_DIR`, `HOME`, `PWD`, `CURRENT_DATE`, `CURRENT_TIMEZONE`, `SESSION_KEY`, `CHANNEL_ID`, `CHANNEL_TYPE`, `CHAT_ID`, `USER_ID`, `USER_NAME`, `USER_HANDLE`, `BOT_ID`, `BOT_NAME`, `BOT_HANDLE`. Note: `USER_ID` is the sender's platform ID; `CHAT_ID` is the chat session ID parsed from sessionKey.
 - **Inference errors surface**: `agent.execute` throws on Pi SDK `stopReason === 'error'`; `agent.onCompleted` emits `{ success: false, error }`.
-- **Templates**: `.templates/vargos/` recursively seeded into `~/.vargos/` at startup (`lib/templates.ts`); `workspace/*.md` is refreshed every seed, other files are copy-missing only. Use `pnpm seed` for manual reseeding.
+- **Templates**: `.templates/` recursively seeded into `~/.vargos/` at startup (`lib/templates.ts`); copy-missing only — user edits are always preserved. Use `pnpm seed` for manual reseeding.
 - **Frontmatter parser** is generic — `parseFrontmatter<T>(content)` returns `{ meta: T, body }`; empty wrapper `---\n---` is valid.
 - **Commit hook** rejects messages containing "Co-Authored-By".
 

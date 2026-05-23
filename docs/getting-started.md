@@ -22,7 +22,7 @@ npx @chozzz/vargos
 pnpm start
 ```
 
-This boots the gateway and all services. On first run, the interactive setup wizard prompts for provider, model, and API key, then writes config to `~/.vargos/`. [`lib/templates.ts`](../lib/templates.ts) also seeds defaults from [`.templates/vargos/`](../.templates/vargos/) into `~/.vargos/`.
+This boots the gateway and all services. On first run, the interactive setup wizard prompts for provider, model, and API key, then writes config to `~/.vargos/`. [`lib/templates.ts`](../lib/templates.ts) also seeds defaults from [`.templates/`](../.templates/) into `~/.vargos/`.
 
 You'll need at minimum:
 - A provider entry in `~/.vargos/agent/models.json` and credentials in `~/.vargos/agent/auth.json` (or the matching `${PROVIDER}_API_KEY` env var)
@@ -58,7 +58,7 @@ Edit `~/.vargos/config.json` `channels[]` to add Telegram or WhatsApp adapters. 
 pnpm seed
 ```
 
-Re-runs the `.templates/vargos/` → `~/.vargos/` recursive copy. Existing files are preserved except `workspace/*.md`, which is refreshed from the bundled template.
+Re-runs the `.templates/` → `~/.vargos/` recursive copy. Copy-missing only — existing files are always preserved.
 
 ## What's next
 

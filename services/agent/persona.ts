@@ -60,7 +60,7 @@ export async function loadChannelPersona(channelId: string): Promise<Persona | n
 
 /**
  * Load the subagent persona from `~/.vargos/agents/subagent.md`.
- * Seeded from `.templates/vargos/agents/subagent.md` on startup (copy-missing).
+ * Seeded from `.templates/agents/subagent.md` on startup (copy-missing).
  * Returns null if the file is missing or empty.
  */
 export async function loadSubagentPersona(): Promise<Persona | null> {

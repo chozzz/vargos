@@ -141,6 +141,21 @@ export abstract class BaseChannelAdapter implements ChannelAdapter {
     normalizedMsg: NormalizedInboundMessage,
     route: (text: string) => Promise<void>,
   ): Promise<{ caption: string; savedPath: string; mimeType: string }> {
+    // Skip all media processing in watch mode — no download, no save, no API cost.
+    // Just route a placeholder so the session history records that media arrived.
+    if (normalizedMsg.skipAgent) {
+      const source = await this.resolveMedia(msg);
+      const defaultReturn = { caption: '', savedPath: '', mimeType: '' };
+      if (!source) return defaultReturn;
+
+      const { mediaType, caption, duration } = source;
+      const label = MEDIA_TYPE_LABELS[mediaType] ?? 'Media';
+      const durationSuffix = duration != null ? `, ${duration}s` : '';
+      const fallbackCaption = caption || `[${label}${durationSuffix}]`;
+      await route(`${fallbackCaption}\n\n[${label} received]`);
+      return { caption: fallbackCaption, savedPath: '', mimeType: '' };
+    }
+
     const source = await this.resolveMedia(msg);
     const defaultReturn = { caption: '', savedPath: '', mimeType: '' };
     if (!source) return defaultReturn;
@@ -148,19 +163,6 @@ export abstract class BaseChannelAdapter implements ChannelAdapter {
     const { buffer, mimeType, mediaType, caption, duration } = source;
     const mediaDir = path.join(getDataPaths().dataDir, 'media');
     const savedPath = await saveMedia({ buffer, sessionKey, mimeType, mediaDir });
-
-    // Skip transcription for messages agent won't process (e.g., group mentions)
-    if (normalizedMsg.skipAgent) {
-      const label = MEDIA_TYPE_LABELS[mediaType] ?? 'Media';
-      const durationSuffix = duration != null ? `, ${duration}s` : '';
-      const fallbackCaption = caption || `[${label}${durationSuffix}]`;
-      await route(`${fallbackCaption}\n\n[${label} saved: ${savedPath}]`);
-      return {
-        caption: fallbackCaption,
-        savedPath,
-        mimeType
-      }
-    }
 
     if (mediaType === 'image') {
       if (this.describeFn) {
