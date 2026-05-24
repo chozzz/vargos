@@ -10,7 +10,7 @@ config → log → web → memory → media → agent → channels → cron → 
 
 Defined in [`index.ts`](../../index.ts). `edge/mcp/` (MCP server) and `edge/webhooks/` exist in code but are commented out at boot.
 
-Templates seed first: `seedDataDir(log)` runs before any service boots, recursively copying missing files from [`.templates/vargos/`](../../.templates/vargos/) into `~/.vargos/`. Existing files are preserved except `workspace/*.md`, which is refreshed from the bundled template on every seed. See [`lib/templates.ts`](../../lib/templates.ts).
+Templates seed first: `seedDataDir(log)` runs before any service boots, recursively copying missing files from [`.templates/`](../../.templates/) into `~/.vargos/`. Copy-missing only — user edits are always preserved. See [`lib/templates.ts`](../../lib/templates.ts).
 
 ## Execution flow
 

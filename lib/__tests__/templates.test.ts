@@ -27,7 +27,7 @@ describe('seedDataDir', () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('refreshes workspace markdown while preserving existing files elsewhere', async () => {
+  it('copies missing files only — preserves existing user edits', async () => {
     const workspaceAgents = path.join(tmpDir, 'workspace', 'AGENTS.md');
     const cronHeartbeat = path.join(tmpDir, 'cron', 'heartbeat.md');
 
@@ -38,8 +38,17 @@ describe('seedDataDir', () => {
 
     await seedDataDir(logger);
 
-    expect(readFileSync(workspaceAgents, 'utf-8')).not.toBe('local workspace edit');
-    expect(readFileSync(workspaceAgents, 'utf-8')).toContain('## Self-Awareness');
+    // User edits are preserved (copy-missing only)
+    expect(readFileSync(workspaceAgents, 'utf-8')).toBe('local workspace edit');
     expect(readFileSync(cronHeartbeat, 'utf-8')).toBe('local cron edit');
+  });
+
+  it('seeds files that do not exist in data dir', async () => {
+    const workspaceAgents = path.join(tmpDir, 'workspace', 'AGENTS.md');
+
+    await seedDataDir(logger);
+
+    // New file should be seeded
+    expect(readFileSync(workspaceAgents, 'utf-8')).toContain('## Self-Awareness');
   });
 });

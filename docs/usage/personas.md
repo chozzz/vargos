@@ -1,6 +1,6 @@
 # Channel Personas
 
-Per-channel system-prompt overrides at `~/.vargos/agents/<channelId>.md`. Implementation: [`services/agent/persona.ts`](../../services/agent/persona.ts). Template: [`.templates/vargos/agents/default.md`](../../.templates/vargos/agents/default.md).
+Per-channel system-prompt overrides at `~/.vargos/agents/<channelId>.md`. Implementation: [`services/agent/persona.ts`](../../services/agent/persona.ts). Template: [`.templates/agents/default.md`](../../.templates/agents/default.md).
 
 ## How it works
 

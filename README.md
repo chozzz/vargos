@@ -100,7 +100,7 @@ vargos config          # Show current configuration
 pnpm install          # Install deps
 pnpm start            # Start gateway + all services (alias: vargos start)
 pnpm chat             # Pi SDK interactive REPL bound to ~/.vargos/agent
-pnpm seed             # Re-seed .templates/vargos/ → ~/.vargos/ (idempotent)
+pnpm seed             # Re-seed .templates/ → ~/.vargos/ (idempotent)
 pnpm cli              # Run the CLI entrypoint directly (tsx cli.ts)
 pnpm test             # Tests (watch mode)
 pnpm run test:run     # Tests (single run)

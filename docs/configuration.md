@@ -22,7 +22,7 @@ The old `instructionsFile` field has been removed — channel system-prompt over
 
 File-based, one task per markdown file at `~/.vargos/cron/<id>.md`. Frontmatter schema: [`services/config/schemas/cron.ts`](../services/config/schemas/cron.ts). Body is the prompt the agent runs. Notify outputs are sent via `channel.send` with `fromSessionKey` so target session history records the source.
 
-The bundled `heartbeat` task is the canonical example — see [`.templates/vargos/cron/heartbeat.md`](../.templates/vargos/cron/heartbeat.md).
+The bundled `heartbeat` task is the canonical example — see [`.templates/cron/heartbeat.md`](../.templates/cron/heartbeat.md).
 
 ## Interpolation variables
 

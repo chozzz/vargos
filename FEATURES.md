@@ -107,7 +107,7 @@ Pi-SDK-powered runtime (`@mariozechner/pi-coding-agent`) with Vargos-managed con
 
 | Feature | Status |
 |---------|--------|
-| `.templates/vargos/` tree recursively seeded into `~/.vargos/` at startup | ✅ |
+| `.templates/` tree recursively seeded into `~/.vargos/` at startup (copy-missing only) | ✅ |
 | `pnpm seed` for manual re-seed | ✅ |
 | Bundled templates: `workspace/{AGENTS,SOUL,TOOLS,MEMORY,HEARTBEAT}.md`, `cron/heartbeat.md`, `agents/default.md`, `agent/skills/skill-creator/SKILL.md` | ✅ |
 | Auto-create `~/.vargos/{workspace,sessions,channels,cron,logs}/` on first boot | ✅ |
@@ -119,7 +119,7 @@ Pi-SDK-powered runtime (`@mariozechner/pi-coding-agent`) with Vargos-managed con
 |---------|--------|
 | Pi SDK auto-discovery: `<agentDir>/skills/`, `<cwd>/.pi/skills/` | ✅ |
 | Vargos additional paths via `lib/skills.ts` `resolveSkillPaths`: `<workspaceDir>/skills/`, `<cwd>/skills/` | ✅ |
-| Bundled `skill-creator` skill at `.templates/vargos/agent/skills/skill-creator/SKILL.md` | ✅ |
+| Bundled `skill-creator` skill at `.templates/agent/skills/skill-creator/SKILL.md` | ✅ |
 | Skills metadata in system prompt (description-first, body via `read` tool on demand) | ✅ |
 
 ## Model Management

@@ -1,6 +1,6 @@
 # Workspace Files
 
-Vargos seeds `~/.vargos/workspace/` from [`.templates/vargos/workspace/`](../../.templates/vargos/workspace/) on every startup. Markdown files directly under `workspace/` are refreshed from the bundled templates each time; other seeded files keep local edits. These files shape how the agent behaves, what it remembers, and how it responds.
+Vargos seeds `~/.vargos/workspace/` from [`.templates/workspace/`](../../.templates/workspace/) on startup. Files are copied only if they don't already exist — user edits are always preserved. These files shape how the agent behaves, what it remembers, and how it responds.
 
 For how they're injected into the system prompt, see [Runtime](./runtime.md).
 
@@ -32,7 +32,7 @@ memory.search / memory.read
 
 ## Heartbeat
 
-The heartbeat task runs as a normal cron task at `~/.vargos/cron/heartbeat.md` (seeded from [`.templates/vargos/cron/heartbeat.md`](../../.templates/vargos/cron/heartbeat.md)). Its prompt body points the agent at `${WORKSPACE_DIR}/HEARTBEAT.md` for the actual checklist.
+The heartbeat task runs as a normal cron task at `~/.vargos/cron/heartbeat.md` (seeded from [`.templates/cron/heartbeat.md`](../../.templates/cron/heartbeat.md)). Its prompt body points the agent at `${WORKSPACE_DIR}/HEARTBEAT.md` for the actual checklist.
 
 When the agent finishes its run, replies of exactly `HEARTBEAT_OK` are pruned (no notification sent). Anything else gets delivered to the configured `notify` channels — but not injected into target session history (cron special-cases heartbeat to omit `fromSessionKey`, treating its outputs as ephemeral).
 

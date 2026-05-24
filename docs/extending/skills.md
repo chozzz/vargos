@@ -2,7 +2,7 @@
 
 Skills are markdown files with YAML frontmatter that the agent loads on demand. Vargos uses Pi SDK's skills format and discovery — there's no Vargos-specific skill schema.
 
-The bundled `skill-creator` skill (at [`.templates/vargos/agent/skills/skill-creator/SKILL.md`](../../.templates/vargos/agent/skills/skill-creator/SKILL.md), seeded into `~/.vargos/agent/skills/`) is the canonical reference. Read it for full guidance on writing effective skills.
+The bundled `skill-creator` skill (at [`.templates/agent/skills/skill-creator/SKILL.md`](../../.templates/agent/skills/skill-creator/SKILL.md), seeded into `~/.vargos/agent/skills/`) is the canonical reference. Read it for full guidance on writing effective skills.
 
 ## File shape
 
@@ -42,6 +42,6 @@ Or just create `~/.vargos/agent/skills/<name>/SKILL.md` manually.
 
 ## See also
 
-- [`.templates/vargos/agent/skills/skill-creator/SKILL.md`](../../.templates/vargos/agent/skills/skill-creator/SKILL.md) — bundled skill-creator
+- [`.templates/agent/skills/skill-creator/SKILL.md`](../../.templates/agent/skills/skill-creator/SKILL.md) — bundled skill-creator
 - [Runtime](../usage/runtime.md) — system prompt assembly
 - [Personas](../usage/personas.md) — channel-scoped tool filtering
