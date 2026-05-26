@@ -10,7 +10,7 @@ Inbound flow per channel:
 adapter (telegram/whatsapp)
   → normalizer
   → pipeline (whitelist, link-expand)
-  → agent.execute (or agent.appendMessage if skipAgent)
+  → agent.execute (or agent.appendMessage if shouldExecute returns false)
   → reply via channel.send (back through originating channel)
 ```
 

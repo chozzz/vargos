@@ -70,6 +70,12 @@ function wrapEventAsToolDefinition(
           paramsObj.sessionKey = subagentSessionKey(sessionKey);
         }
 
+        // Auto-inject sessionKey for channel.send if not provided.
+        // Allows the agent to call channel-send without knowing its own sessionKey.
+        if (eventName === 'channel.send' && !paramsObj.sessionKey) {
+          paramsObj.sessionKey = sessionKey;
+        }
+
         const result = await bus.call(eventName as never, paramsObj);
 
         let resultText = '';

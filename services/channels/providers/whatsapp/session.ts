@@ -101,10 +101,11 @@ export async function processInboundMessage(
   // jidNormalizedUser here as a defense-in-depth to ensure consistent JID format.
   const remoteJid = jidNormalizedUser(msg.key.remoteJid || '');
   const isGroup = remoteJid.endsWith('@g.us');
-  // For groups, use sender's JID (participant); for private, use remote JID.
-  // This ensures whitelist checks work per-user and sessions stay per-user.
-  const rawJid = isGroup ? (msg.key.participant || remoteJid) : remoteJid;
-  const jid = jidNormalizedUser(rawJid);
+  // Session key uses remoteJid (group JID for groups, user JID for private).
+  // This ensures replies and reactions route to the correct destination.
+  // Whitelist checks use participant (sender) separately.
+  const jid = jidNormalizedUser(isGroup ? (msg.key.participant || remoteJid) : remoteJid);
+  const sessionJid = remoteJid; // always the chat/group for session key routing
   const mentionedJids = (m.extendedTextMessage?.contextInfo?.mentionedJid ?? []).map(
     (j: string) => jidNormalizedUser(j),
   );
@@ -115,6 +116,7 @@ export async function processInboundMessage(
   const base = {
     messageId: msg.key.id || '',
     jid,
+    sessionJid, // group JID for groups, user JID for private — used for session key + routing
     fromMe: msg.key.fromMe || false,
     isGroup,
     timestamp: typeof msg.messageTimestamp === 'number'

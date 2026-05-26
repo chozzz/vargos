@@ -16,10 +16,10 @@ Templates seed first: `seedDataDir(log)` runs before any service boots, recursiv
 
 `agent.execute` →
 1. Parse directives (`/think:`, `/verbose`)
-2. `getOrCreateSession(sessionKey, metadata)` — load or create the Pi SDK `AgentSession`
+2. `getOrCreateSession(sessionKey, { cwd, model })` — load or create the Pi SDK `AgentSession`
 3. `loadPersonaIfChannel(sessionKey)` — channel sessionKeys only
 4. `getCustomTools(sessionKey, persona.allowedTools?)` — bus tools, glob-filtered
-5. `getSystemPrompt(sessionKey, metadata, persona.body?)` — assemble + interpolate
+5. `getSystemPrompt(sessionKey, persona.body?)` — assemble + interpolate
 6. `session.prompt(task, { streamingBehavior: 'steer' })` — Pi SDK runs the turn
 7. `extractFinalAssistant(session)` — read final message, surface inference errors
 
@@ -34,7 +34,7 @@ In order:
 3. **Pi SDK context files** — auto-walked from `cwd`: `AGENTS.md` or `CLAUDE.md` per ancestor directory. Rendered as `# Project Context`.
 4. **Vargos bootstrap files** — `AGENTS.md`, `SOUL.md`, `TOOLS.md` from `<workspaceDir>` and `<cwd>`. Each head/tail-truncated at 6K chars. `CLAUDE.md` is intentionally **not** in this list — Pi SDK handles it via step 3.
 5. **Channel persona body** — content of `~/.vargos/agents/<channelId>.md` (see [Personas](./personas.md)).
-6. **Interpolation** — every `${VAR}` and `${VAR:-default}` replaced. Variables: see [Configuration](../configuration.md#interpolation-variables).
+6. **Interpolation** — every `${VAR}` and `${VAR:-default}` replaced. Available variables: paths (`WORKSPACE_DIR`, `DATA_DIR`, etc.), time (`CURRENT_DATE`, `CURRENT_TIMEZONE`), session (`SESSION_KEY`), and documentation placeholders (`PROVIDER`, `VAR`). See [Configuration](../configuration.md#interpolation-variables).
 
 ## Tools available to the agent
 

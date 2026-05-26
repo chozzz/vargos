@@ -9,6 +9,6 @@ import { TelegramAdapter } from './adapter.js';
 export default {
   type: 'telegram',
   async createAdapter(instanceId: string, config: TelegramChannel, deps: AdapterDeps): Promise<ChannelAdapter> {
-    return new TelegramAdapter(instanceId, config.botToken, deps);
+    return new TelegramAdapter(instanceId, config.botToken, deps, config.allowFrom);
   },
 } satisfies ChannelProvider<TelegramChannel>;

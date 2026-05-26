@@ -45,8 +45,9 @@ export class TelegramAdapter extends BaseChannelAdapter {
     instanceId: string,
     private readonly botToken: string,
     deps: AdapterDeps,
+    allowFrom?: string[],
   ) {
-    super(instanceId, 'telegram', deps);
+    super(instanceId, 'telegram', deps, allowFrom);
   }
 
   async start(): Promise<void> {
@@ -268,9 +269,9 @@ export class TelegramAdapter extends BaseChannelAdapter {
     try {
       const { caption, savedPath, mimeType } = await this.processInboundMedia(
         { tgMsg: msg, chatId },
-        sessionKey,
-        normalizedMsg,
         (text) => this.onInboundMessage!(sessionKey, { ...normalizedMsg, text }),
+        sessionKey,
+        this.shouldExecute(chatId, normalizedMsg.chatType, normalizedMsg.isMentioned),
       );
       this.log.debug(`received ${label} from ${chatId}: ${caption} (${mimeType}) - ${savedPath}`);
     } catch (err) {

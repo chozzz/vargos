@@ -4,7 +4,7 @@
 
 import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { jidDecode, jidNormalizedUser } from '@whiskeysockets/baileys';
+import { jidDecode, jidNormalizedUser, areJidsSameUser } from '@whiskeysockets/baileys';
 import type { WASocket } from '@whiskeysockets/baileys';
 import type { InboundMediaSource } from '../../types.js';
 import type { NormalizedInboundMessage, AdapterDeps } from '../../contracts.js';
@@ -29,6 +29,7 @@ export class WhatsAppAdapter extends BaseChannelAdapter {
 
   private sock: WASocket | null = null;
   private botJid = '';
+  private botLid: string | null = null; // learned from proper mentions
   private reconnector = new Reconnector();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private authDir = '';
@@ -36,8 +37,9 @@ export class WhatsAppAdapter extends BaseChannelAdapter {
   constructor(
     instanceId: string,
     deps: AdapterDeps,
+    allowFrom?: string[],
   ) {
-    super(instanceId, 'whatsapp', deps);
+    super(instanceId, 'whatsapp', deps, allowFrom);
   }
 
   async start(): Promise<void> {
@@ -120,15 +122,16 @@ export class WhatsAppAdapter extends BaseChannelAdapter {
 
   async send(sessionKey: string, text: string): Promise<void> {
     if (!this.sock) throw new Error('WhatsApp not connected');
-    const userId = this.extractUserId(sessionKey);
-    await this.sock.sendMessage(this.toJid(userId), { text });
+    const targetJid = this.toJid(this.extractUserId(sessionKey));
+    this.log.info(`send: sessionKey=${sessionKey} targetJid=${targetJid} text=${text.slice(0, 80)}`);
+    await this.sock.sendMessage(targetJid, { text });
+    this.log.info(`send: delivered to ${targetJid}`);
   }
 
   async sendMedia(sessionKey: string, filePath: string, mimeType: string, caption?: string): Promise<void> {
     if (!this.sock) throw new Error('WhatsApp not connected');
-    const userId = this.extractUserId(sessionKey);
+    const jid = this.toJid(this.extractUserId(sessionKey));
     const buffer = readFileSync(filePath);
-    const jid = this.toJid(userId);
     const fileName = path.basename(filePath);
     const [mediaType] = mimeType.split('/');
 
@@ -145,13 +148,12 @@ export class WhatsAppAdapter extends BaseChannelAdapter {
   }
 
   protected async sendTypingIndicator(sessionKey: string): Promise<void> {
-    const userId = this.extractUserId(sessionKey);
-    await this.sock?.sendPresenceUpdate('composing', this.toJid(userId));
+    await this.sock?.sendPresenceUpdate('composing', this.toJid(this.extractUserId(sessionKey)));
   }
 
   async react(sessionKey: string, messageId: string, emoji: string): Promise<void> {
-    const userId = this.extractUserId(sessionKey);
-    const jid = this.toJid(userId);
+    const jid = this.toJid(this.extractUserId(sessionKey));
+    this.log.info(`react: sessionKey=${sessionKey} jid=${jid} messageId=${messageId} emoji=${emoji}`);
     await this.sock?.sendMessage(jid, {
       react: { text: emoji, key: { remoteJid: jid, id: messageId } },
     });
@@ -172,9 +174,23 @@ export class WhatsAppAdapter extends BaseChannelAdapter {
 
     if (!this.dedupe.add(msg.messageId)) return;
 
-    const chatId = msg.jid;
+    // Learn bot's LID from proper mentions (mentionedJids populated by WhatsApp).
+    // When user mentions bot via the menu, WhatsApp includes the bot's LID in mentionedJids.
+    // We cache it so text fallback (@number typing) can match it later.
+    if (msg.mentionedJids) {
+      for (const jid of msg.mentionedJids) {
+        if (areJidsSameUser(jid, this.botJid) && jid !== this.botJid) {
+          this.botLid = jid;
+          this.log.debug(`learned bot LID: ${jid} (from ${this.botJid})`);
+          break;
+        }
+      }
+    }
+
+    const chatId = msg.sessionJid; // group JID for groups, user JID for private
     const normalizedMsg = normalizeWhatsAppMessage(msg, {
       botJid: this.botJid,
+      botLid: this.botLid,
       botName: this.sock?.user?.name,
     });
 
@@ -231,9 +247,9 @@ export class WhatsAppAdapter extends BaseChannelAdapter {
 
     const { caption, savedPath, mimeType } = await this.processInboundMedia(
       msg,
-      sessionKey,
-      normalizedMsg,
       (text) => this.onInboundMessage!(sessionKey, { ...normalizedMsg, text }),
+      sessionKey,
+      normalizedMsg.chatType !== 'group',
     );
     this.log.debug(`received ${msg.mediaType} from ${userId}: ${caption} (${mimeType}) - ${savedPath}`);
   }

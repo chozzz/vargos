@@ -10,8 +10,8 @@ import { resetDataPaths } from '../../../lib/paths.js';
 // ── System prompt merging ────────────────────────────────────────────────────
 
 class TestableRuntime extends AgentService {
-  async testGetSystemPrompt(sessionKey: string, cwd?: string) {
-    return this.getSystemPrompt(sessionKey, cwd ? { cwd } : undefined);
+  async testGetSystemPrompt(sessionKey: string) {
+    return this.getSystemPrompt(sessionKey);
   }
 }
 
@@ -86,39 +86,6 @@ describe('getSystemPrompt merging', () => {
     expect(prompt).toBeUndefined();
   });
 
-  it('merges bootstrap files from workspace + cwd', async () => {
-    writeFileSync(path.join(workspaceDir, 'AGENTS.md'), '# Workspace Agent');
-    writeFileSync(path.join(cwdDir, 'AGENTS.md'), '# Project Context');
-
-    const runtime = createTestRuntime(tmpDir);
-    const prompt = await runtime.testGetSystemPrompt('test-session', cwdDir);
-
-    expect(prompt).toContain('# Workspace Agent');
-    expect(prompt).toContain('# Project Context');
-  });
-
-  it('workspace files appear before cwd files', async () => {
-    writeFileSync(path.join(workspaceDir, 'AGENTS.md'), 'WORKSPACE_MARKER');
-    writeFileSync(path.join(cwdDir, 'AGENTS.md'), 'CWD_MARKER');
-
-    const runtime = createTestRuntime(tmpDir);
-    const prompt = await runtime.testGetSystemPrompt('test-session', cwdDir)!;
-
-    const wsIdx = prompt!.indexOf('WORKSPACE_MARKER');
-    const cwdIdx = prompt!.indexOf('CWD_MARKER');
-    expect(wsIdx).toBeLessThan(cwdIdx);
-  });
-
-  it('does not duplicate when cwd equals workspace', async () => {
-    writeFileSync(path.join(workspaceDir, 'AGENTS.md'), '# Agent');
-
-    const runtime = createTestRuntime(tmpDir);
-    const prompt = await runtime.testGetSystemPrompt('test-session', workspaceDir);
-
-    const matches = prompt!.match(/# Agent/g);
-    expect(matches).toHaveLength(1);
-  });
-
   it('truncates large files with head/tail strategy', async () => {
     const largeContent = 'X'.repeat(10_000);
     writeFileSync(path.join(workspaceDir, 'AGENTS.md'), largeContent);
@@ -130,15 +97,6 @@ describe('getSystemPrompt merging', () => {
     expect(prompt!.length).toBeLessThan(largeContent.length);
   });
 
-  it('loads AGENTS.md from cwd', async () => {
-    writeFileSync(path.join(cwdDir, 'AGENTS.md'), '# My Project\nBuild instructions here');
-
-    const runtime = createTestRuntime(tmpDir);
-    const prompt = await runtime.testGetSystemPrompt('test-session', cwdDir);
-
-    expect(prompt).toContain('# My Project');
-    expect(prompt).toContain('Build instructions here');
-  });
 });
 
 // ── Image handling ────────────────────────────────────────────────────────────

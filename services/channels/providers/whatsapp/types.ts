@@ -2,7 +2,8 @@
 
 export interface WhatsAppInboundMessage {
   messageId: string;
-  jid: string;
+  jid: string;                // sender's JID (for whitelist checks)
+  sessionJid: string;         // chat/group JID (for session key + routing)
   text: string;
   fromMe: boolean;
   isGroup: boolean;

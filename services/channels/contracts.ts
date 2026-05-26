@@ -25,6 +25,9 @@ export interface ChannelAdapter {
   resumeTyping(sessionKey: string): void;
   extractLatestMessageId(userId: string): string | null | undefined;
 
+  // Execution decision — used by pipeline and media processing
+  shouldExecute(userId: string, chatType: string, isMentioned: boolean): boolean;
+
   // Optional capabilities — check before calling
   sendMedia?: (sessionKey: string, filePath: string, mimeType: string, caption?: string) => Promise<void>;
   react?: (sessionKey: string, messageId: string, emoji: string) => Promise<void>;
@@ -65,7 +68,6 @@ export interface NormalizedInboundMessage {
   botUserId?: string;              // Bot's platform ID
   botName?: string;                // Bot's display/first name
   botHandle?: string;              // Bot's @handle
-  skipAgent: boolean;              // Pre-calculated: should agent act?
   text?: string;
   media?: InboundMediaSource;
 }

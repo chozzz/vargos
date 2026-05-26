@@ -25,8 +25,8 @@ class MockTelegramAdapter extends BaseChannelAdapter {
   readonly type = 'telegram' as const;
   sentMessages: Array<{ sessionKey: string; text: string }> = [];
 
-  constructor(instanceId: string, deps: AdapterDeps) {
-    super(instanceId, 'telegram', deps);
+  constructor(instanceId: string, deps: AdapterDeps, allowFrom?: string[]) {
+    super(instanceId, 'telegram', deps, allowFrom);
   }
 
   async start(): Promise<void> {
@@ -61,7 +61,6 @@ describe('Telegram E2E — Whitelist Enforcement & Reply Delivery', () => {
   let agentExecuteCalls: Array<{
     sessionKey: string;
     task: string;
-    metadata?: { fromUserId?: string; fromUser?: string; chatType?: string };
   }> = [];
   let channelSendCalls: Array<{ sessionKey: string; text: string }> = [];
 
@@ -114,7 +113,7 @@ describe('Telegram E2E — Whitelist Enforcement & Reply Delivery', () => {
     // The pipeline will enforce whitelist checks
     adapter = new MockTelegramAdapter('telegram-test', {
       onInbound: channelService['onInboundMessage'].bind(channelService),
-    });
+    }, mockConfig.channels[0].allowFrom);
 
     await adapter.start();
     (channelService as any).adapters.set('telegram-test', adapter);
@@ -128,9 +127,7 @@ describe('Telegram E2E — Whitelist Enforcement & Reply Delivery', () => {
         fromUser: TELEGRAM_USERS.OWNER.first_name,
         chatType: 'private',
         isMentioned: true,
-        channelType: 'telegram',
-        skipAgent: false,
-        text: 'test command',
+        channelType: 'telegram',        text: 'test command',
       };
 
       const sessionKey = `telegram-test:${TELEGRAM_USERS.OWNER.id}`;
@@ -139,7 +136,7 @@ describe('Telegram E2E — Whitelist Enforcement & Reply Delivery', () => {
       // Verify agent.execute was called
       expect(agentExecuteCalls).toHaveLength(1);
       expect(agentExecuteCalls[0].task).toBe('test command');
-      expect(agentExecuteCalls[0].metadata?.fromUser).toBe(TELEGRAM_USERS.OWNER.first_name);
+
     });
 
     it('whitelisted user (ALICE) triggers agent.execute', async () => {
@@ -149,16 +146,14 @@ describe('Telegram E2E — Whitelist Enforcement & Reply Delivery', () => {
         fromUser: TELEGRAM_USERS.ALICE.first_name,
         chatType: 'private',
         isMentioned: true,
-        channelType: 'telegram',
-        skipAgent: false,
-        text: 'hello',
+        channelType: 'telegram',        text: 'hello',
       };
 
       const sessionKey = `telegram-test:${TELEGRAM_USERS.ALICE.id}`;
       await adapter.simulateInboundMessage(sessionKey, aliceMsg);
 
       expect(agentExecuteCalls).toHaveLength(1);
-      expect(agentExecuteCalls[0].metadata?.fromUser).toBe(TELEGRAM_USERS.ALICE.first_name);
+
     });
 
     it('non-whitelisted user (BOB) does NOT trigger agent.execute', async () => {
@@ -168,9 +163,7 @@ describe('Telegram E2E — Whitelist Enforcement & Reply Delivery', () => {
         fromUser: TELEGRAM_USERS.BOB.first_name,
         chatType: 'private',
         isMentioned: true,
-        channelType: 'telegram',
-        skipAgent: false,
-        text: 'hello',
+        channelType: 'telegram',        text: 'hello',
       };
 
       const sessionKey = `telegram-test:${TELEGRAM_USERS.BOB.id}`;
@@ -187,9 +180,7 @@ describe('Telegram E2E — Whitelist Enforcement & Reply Delivery', () => {
         fromUser: TELEGRAM_USERS.CHARLIE.first_name,
         chatType: 'private',
         isMentioned: true,
-        channelType: 'telegram',
-        skipAgent: false,
-        text: 'help',
+        channelType: 'telegram',        text: 'help',
       };
 
       const sessionKey = `telegram-test:${TELEGRAM_USERS.CHARLIE.id}`;
@@ -205,16 +196,14 @@ describe('Telegram E2E — Whitelist Enforcement & Reply Delivery', () => {
         fromUser: TELEGRAM_USERS.OWNER.first_name,
         chatType: 'group',
         isMentioned: true,
-        channelType: 'telegram',
-        skipAgent: false,
-        text: '@AgentBotTest what time is it?',
+        channelType: 'telegram',        text: '@AgentBotTest what time is it?',
       };
 
       const sessionKey = `telegram-test:${TELEGRAM_CHATS.GROUP_TEST.id}`;
       await adapter.simulateInboundMessage(sessionKey, groupMsg);
 
       expect(agentExecuteCalls).toHaveLength(1);
-      expect(agentExecuteCalls[0].metadata?.chatType).toBe('group');
+
     });
 
     it('group message from non-whitelisted user does NOT trigger agent.execute', async () => {
@@ -224,9 +213,7 @@ describe('Telegram E2E — Whitelist Enforcement & Reply Delivery', () => {
         fromUser: TELEGRAM_USERS.BOB.first_name,
         chatType: 'group',
         isMentioned: true,
-        channelType: 'telegram',
-        skipAgent: false,
-        text: '@AgentBotTest help please',
+        channelType: 'telegram',        text: '@AgentBotTest help please',
       };
 
       const sessionKey = `telegram-test:${TELEGRAM_CHATS.GROUP_TEST.id}`;
@@ -247,9 +234,7 @@ describe('Telegram E2E — Whitelist Enforcement & Reply Delivery', () => {
         fromUser: TELEGRAM_USERS.OWNER.first_name,
         chatType: 'private',
         isMentioned: true,
-        channelType: 'telegram',
-        skipAgent: false,
-        text: 'calculate 2+2',
+        channelType: 'telegram',        text: 'calculate 2+2',
       };
 
       // Simulate message arrival and agent execution
@@ -278,9 +263,7 @@ describe('Telegram E2E — Whitelist Enforcement & Reply Delivery', () => {
         fromUser: TELEGRAM_USERS.OWNER.first_name,
         chatType: 'group',
         isMentioned: true,
-        channelType: 'telegram',
-        skipAgent: false,
-        text: '@AgentBotTest list todos',
+        channelType: 'telegram',        text: '@AgentBotTest list todos',
       };
 
       await adapter.simulateInboundMessage(sessionKey, msg);
@@ -307,9 +290,7 @@ describe('Telegram E2E — Whitelist Enforcement & Reply Delivery', () => {
         fromUser: TELEGRAM_USERS.OWNER.first_name,
         chatType: 'private',
         isMentioned: true,
-        channelType: 'telegram',
-        skipAgent: false,
-        text: 'test',
+        channelType: 'telegram',        text: 'test',
       };
 
       await adapter.simulateInboundMessage(sessionKey, msg);
@@ -330,9 +311,7 @@ describe('Telegram E2E — Whitelist Enforcement & Reply Delivery', () => {
         fromUser: TELEGRAM_USERS.OWNER.first_name,
         chatType: 'private',
         isMentioned: true,
-        channelType: 'telegram',
-        skipAgent: false,
-        text: 'my secret',
+        channelType: 'telegram',        text: 'my secret',
       };
       await adapter.simulateInboundMessage(`telegram-test:${TELEGRAM_USERS.OWNER.id}`, ownerMsg);
 
@@ -343,9 +322,7 @@ describe('Telegram E2E — Whitelist Enforcement & Reply Delivery', () => {
         fromUser: TELEGRAM_USERS.ALICE.first_name,
         chatType: 'private',
         isMentioned: true,
-        channelType: 'telegram',
-        skipAgent: false,
-        text: 'her question',
+        channelType: 'telegram',        text: 'her question',
       };
       await adapter.simulateInboundMessage(`telegram-test:${TELEGRAM_USERS.ALICE.id}`, aliceMsg);
 
@@ -393,9 +370,7 @@ describe('Telegram E2E — Whitelist Enforcement & Reply Delivery', () => {
         fromUser: TELEGRAM_USERS.BOB.first_name,
         chatType: 'group',
         isMentioned: true,
-        channelType: 'telegram',
-        skipAgent: false,
-        text: 'good point',
+        channelType: 'telegram',        text: 'good point',
       };
       await adapter.simulateInboundMessage(`telegram-test:${TELEGRAM_CHATS.GROUP_TEST.id}`, msg);
 
@@ -410,9 +385,7 @@ describe('Telegram E2E — Whitelist Enforcement & Reply Delivery', () => {
         fromUser: TELEGRAM_USERS.OWNER.first_name,
         chatType: 'private',
         isMentioned: true,
-        channelType: 'telegram',
-        skipAgent: false,
-        text: '[photo sent]',
+        channelType: 'telegram',        text: '[photo sent]',
         media: {
           type: 'image',
           mimeType: 'image/jpeg',
@@ -432,9 +405,7 @@ describe('Telegram E2E — Whitelist Enforcement & Reply Delivery', () => {
         fromUser: TELEGRAM_USERS.BOB.first_name,
         chatType: 'private',
         isMentioned: true,
-        channelType: 'telegram',
-        skipAgent: false,
-        text: '[photo sent]',
+        channelType: 'telegram',        text: '[photo sent]',
         media: {
           type: 'image',
           mimeType: 'image/jpeg',
@@ -456,9 +427,7 @@ describe('Telegram E2E — Whitelist Enforcement & Reply Delivery', () => {
         fromUser: TELEGRAM_USERS.OWNER.first_name,
         chatType: 'private',
         isMentioned: true,
-        channelType: 'telegram',
-        skipAgent: false,
-        text: 'first',
+        channelType: 'telegram',        text: 'first',
       };
 
       const msg2: NormalizedInboundMessage = {
@@ -467,9 +436,7 @@ describe('Telegram E2E — Whitelist Enforcement & Reply Delivery', () => {
         fromUser: TELEGRAM_USERS.OWNER.first_name,
         chatType: 'private',
         isMentioned: true,
-        channelType: 'telegram',
-        skipAgent: false,
-        text: 'second',
+        channelType: 'telegram',        text: 'second',
       };
 
       const sessionKey = `telegram-test:${TELEGRAM_USERS.OWNER.id}`;
@@ -488,9 +455,7 @@ describe('Telegram E2E — Whitelist Enforcement & Reply Delivery', () => {
         fromUser: TELEGRAM_USERS.OWNER.first_name,
         chatType: 'private',
         isMentioned: true,
-        channelType: 'telegram',
-        skipAgent: false,
-        text: 'owner msg',
+        channelType: 'telegram',        text: 'owner msg',
       };
 
       const bobMsg: NormalizedInboundMessage = {
@@ -499,9 +464,7 @@ describe('Telegram E2E — Whitelist Enforcement & Reply Delivery', () => {
         fromUser: TELEGRAM_USERS.BOB.first_name,
         chatType: 'private',
         isMentioned: true,
-        channelType: 'telegram',
-        skipAgent: false,
-        text: 'bob msg',
+        channelType: 'telegram',        text: 'bob msg',
       };
 
       const aliceMsg: NormalizedInboundMessage = {
@@ -510,9 +473,7 @@ describe('Telegram E2E — Whitelist Enforcement & Reply Delivery', () => {
         fromUser: TELEGRAM_USERS.ALICE.first_name,
         chatType: 'private',
         isMentioned: true,
-        channelType: 'telegram',
-        skipAgent: false,
-        text: 'alice msg',
+        channelType: 'telegram',        text: 'alice msg',
       };
 
       await adapter.simulateInboundMessage(`telegram-test:${TELEGRAM_USERS.OWNER.id}`, ownerMsg);

@@ -121,9 +121,15 @@ export class ChannelService {
     const adapter = this.adapters.get(target.channel);
     if (!adapter) throw new Error(`No adapter for channel: ${target.channel}`);
 
-    log.debug(`send: ${sessionKey} (${text.length} chars)`);
+    log.info(`send: ${sessionKey} (${text.length} chars) channel=${target.channel}`);
     const cleaned = stripMarkdown(text);
     await deliverReply((chunk) => adapter.send(sessionKey, chunk), cleaned);
+
+    // Mark session as replied so onAgentCompleted knows agent sent its own reply
+    const session = (this as any).activeSessions?.get(sessionKey);
+    if (session) session.replied = true;
+
+    log.info(`send: completed ${sessionKey}`);
 
     if (adapter.sendMedia) {
       const files = extractMediaPaths(text);
@@ -293,24 +299,49 @@ export class ChannelService {
       session.adapter.stopTyping(targetSessionKey, true);
     };
 
-    // Don't send empty responses on success
+    // Don't send empty responses on success.
+    // Agent controls reply via channel-send tool — onAgentCompleted is cleanup-only.
     if (payload.success && !payload.response) {
       log.debug(`  → skipping send: empty response on success`);
       cleanup();
       return;
     }
 
-    this.bus.call('channel.send', { sessionKey: targetSessionKey, text: responseText })
-      .then(({ sent }) => {
-      log.debug(`→ ${targetSessionKey} sent=${sent}`);
-      })
-      .catch(err => log.error(`failed to send reply: ${toMessage(err)}`))
-      .finally(() => {
-        if (session) {
-          log.debug(`  → stopping typing (session stays alive for idle cleanup)`);
-          cleanup();
-        }
-      });
+    // Agent sends its own reply via channel-send tool.
+    // Fallback: if response is non-empty but agent didn't call channel-send, send here.
+    if (payload.success === false) {
+      // Always send errors
+      this.bus.call('channel.send', { sessionKey: targetSessionKey, text: responseText })
+        .then(({ sent }) => {
+          log.debug(`→ ${targetSessionKey} sent=${sent}`);
+        })
+        .catch(err => log.error(`failed to send reply: ${toMessage(err)}`))
+        .finally(() => {
+          if (session) {
+            log.debug(`  → stopping typing (session stays alive for idle cleanup)`);
+            cleanup();
+          }
+        });
+    } else if (session && !session.replied && payload.response) {
+      // Agent returned a response but didn't call channel-send — auto-send as fallback
+      log.debug(`  → agent didn't call channel-send, auto-sending response (${payload.response.length} chars)`);
+      this.bus.call('channel.send', { sessionKey: targetSessionKey, text: responseText })
+        .then(({ sent }) => {
+          log.debug(`→ ${targetSessionKey} sent=${sent}`);
+        })
+        .catch(err => log.error(`failed to send reply: ${toMessage(err)}`))
+        .finally(() => {
+          if (session) {
+            log.debug(`  → stopping typing (session stays alive for idle cleanup)`);
+            cleanup();
+          }
+        });
+    } else {
+      // Success with response — agent should have sent via channel-send.
+      // Just cleanup here.
+      log.debug(`  → agent response delivered via channel-send (cleanup only)`);
+      cleanup();
+    }
   }
 
   // ── Inbound message handling ─────────────────────────────────────────────────
@@ -336,7 +367,7 @@ export class ChannelService {
     }
 
     // Delegate to pipeline for policy orchestration
-    log.debug(`onInboundMessage: processing message for ${sessionKey}`);
+    log.debug(`onInboundMessage: Running pipeline process for ${sessionKey}`);
     await this.pipeline.process(sessionKey, message, adapter, this.activeSessions);
   }
 

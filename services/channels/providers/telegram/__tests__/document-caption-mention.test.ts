@@ -7,7 +7,7 @@
  *
  * Fixed behavior:
  * - User sends PDF with caption "@botname read this" → bot IS mentioned
- * - skipAgent = false → agent processes the document
+ * - isMentioned = true → agent processes the document
  * - Document content is extracted and available to the agent
  */
 import { describe, it, expect } from 'vitest';
@@ -49,7 +49,7 @@ describe('normalizeTelegramMessage — document caption mentions', () => {
 
     expect(result).not.toBeNull();
     expect(result!.isMentioned).toBe(true);
-    expect(result!.skipAgent).toBe(false);
+    expect(result!.isMentioned).toBe(true);
   });
 
   it('document caption text is passed through as message text', () => {
@@ -62,7 +62,7 @@ describe('normalizeTelegramMessage — document caption mentions', () => {
     expect(result).not.toBeNull();
     expect(result!.text).toBe('@AgentBotTest read this PDF');
     expect(result!.isMentioned).toBe(true);
-    expect(result!.skipAgent).toBe(false);
+    expect(result!.isMentioned).toBe(true);
   });
 
   it('reply to bot with document still works (reply check unaffected)', () => {
@@ -82,7 +82,7 @@ describe('normalizeTelegramMessage — document caption mentions', () => {
     expect(result).not.toBeNull();
     // Reply check should still work — bot IS considered mentioned
     expect(result!.isMentioned).toBe(true);
-    expect(result!.skipAgent).toBe(false);
+    expect(result!.isMentioned).toBe(true);
   });
 
   it('document without mention or reply in group is correctly skipped', () => {
@@ -95,7 +95,7 @@ describe('normalizeTelegramMessage — document caption mentions', () => {
 
     expect(result).not.toBeNull();
     expect(result!.isMentioned).toBe(false);
-    expect(result!.skipAgent).toBe(true);
+    expect(result!.isMentioned).toBe(false);
   });
 
   it('private chat document is always treated as mentioned', () => {
@@ -109,7 +109,7 @@ describe('normalizeTelegramMessage — document caption mentions', () => {
 
     expect(result).not.toBeNull();
     expect(result!.isMentioned).toBe(true);
-    expect(result!.skipAgent).toBe(false);
+    expect(result!.isMentioned).toBe(true);
     expect(result!.text).toBe('Read this PDF');
   });
 });
@@ -138,7 +138,7 @@ describe('normalizeTelegramMessage — photo caption mentions', () => {
 
     expect(result).not.toBeNull();
     expect(result!.isMentioned).toBe(true);
-    expect(result!.skipAgent).toBe(false);
+    expect(result!.isMentioned).toBe(true);
     expect(result!.text).toBe('@AgentBotTest what is this?');
   });
 
@@ -151,7 +151,7 @@ describe('normalizeTelegramMessage — photo caption mentions', () => {
 
     expect(result).not.toBeNull();
     expect(result!.isMentioned).toBe(false);
-    expect(result!.skipAgent).toBe(true);
+    expect(result!.isMentioned).toBe(false);
     expect(result!.text).toBe('Look at this sunset!');
   });
 
@@ -170,7 +170,7 @@ describe('normalizeTelegramMessage — photo caption mentions', () => {
 
     expect(result).not.toBeNull();
     expect(result!.isMentioned).toBe(true);
-    expect(result!.skipAgent).toBe(false);
+    expect(result!.isMentioned).toBe(true);
   });
 });
 
@@ -205,7 +205,7 @@ describe('normalizeTelegramMessage — voice/audio caption mentions', () => {
 
     expect(result).not.toBeNull();
     expect(result!.isMentioned).toBe(true);
-    expect(result!.skipAgent).toBe(false);
+    expect(result!.isMentioned).toBe(true);
   });
 
   it('voice message without mention in group is correctly skipped', () => {
@@ -215,6 +215,6 @@ describe('normalizeTelegramMessage — voice/audio caption mentions', () => {
 
     expect(result).not.toBeNull();
     expect(result!.isMentioned).toBe(false);
-    expect(result!.skipAgent).toBe(true);
+    expect(result!.isMentioned).toBe(false);
   });
 });

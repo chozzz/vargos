@@ -37,15 +37,18 @@ export abstract class BaseChannelAdapter implements ChannelAdapter {
   protected transcribeFn?: (filePath: string) => Promise<string>;
   protected describeFn?: (filePath: string) => Promise<string>;
   protected extractFn?: (filePath: string, mimeType: string) => Promise<{ text: string }>;
+  protected allowFrom?: string[];
 
   constructor(
     instanceId: string,
     _channelType: ChannelType,
     deps: AdapterDeps,
+    allowFrom?: string[],
     debounceMs?: number,
   ) {
     this.instanceId = instanceId;
     this.onInboundMessage = deps.onInbound;
+    this.allowFrom = allowFrom;
     this.transcribeFn = deps.transcribe;
     this.describeFn = deps.describe;
     this.extractFn = deps.extract;
@@ -135,95 +138,76 @@ export abstract class BaseChannelAdapter implements ChannelAdapter {
    * @param normalizedMsg - Normalized message with flags (skipAgent, etc)
    * @param route - Function to route processed text to onInboundMessage
    */
+  /**
+   * Check if the agent should execute for this message.
+   * Used by both media processing and agent execution decisions.
+   *
+   * Rules:
+   * - Private chat: whitelisted user → execute
+   * - Group chat: mentioned + whitelisted → execute
+   * - No allowFrom configured: always execute (permissive)
+   */
+  shouldExecute(userId: string, chatType: string, isMentioned: boolean): boolean {
+    // undefined = not configured (allow all), [] = configured but empty (block all)
+    if (this.allowFrom === undefined) return true;
+
+    const normalizedUser = userId.replace(/^\+/, '').replace(/@[^@]+$/, '');
+    const fullJidNoPlus = userId.replace(/^\+/, '');
+    const isWhitelisted = this.allowFrom.some(entry => {
+      const normalizedEntry = entry.replace(/^\+/, '');
+      // Match: full JID (no +) OR normalized numeric (no +, no @...)
+      return fullJidNoPlus === normalizedEntry || normalizedUser === normalizedEntry;
+    });
+
+    if (!isWhitelisted) return false;
+    if (chatType === 'private') return true;
+
+    // Group chat: require mention. For practical purposes, any @number pattern
+    // in the message counts (covers both proper mentions and manual @typing).
+    return isMentioned;
+  }
+
+  /**
+   * Process inbound media: save file, optionally transcribe/describe.
+   * Returns caption text + saved path for routing to onInboundMessage.
+   */
   protected async processInboundMedia(
     msg: unknown,
-    sessionKey: string,
-    normalizedMsg: NormalizedInboundMessage,
     route: (text: string) => Promise<void>,
+    sessionKey: string,
+    shouldProcessMedia = true,
   ): Promise<{ caption: string; savedPath: string; mimeType: string }> {
-    // Skip all media processing in watch mode — no download, no save, no API cost.
-    // Just route a placeholder so the session history records that media arrived.
-    if (normalizedMsg.skipAgent) {
-      const source = await this.resolveMedia(msg);
-      const defaultReturn = { caption: '', savedPath: '', mimeType: '' };
-      if (!source) return defaultReturn;
-
-      const { mediaType, caption, duration } = source;
-      const label = MEDIA_TYPE_LABELS[mediaType] ?? 'Media';
-      const durationSuffix = duration != null ? `, ${duration}s` : '';
-      const fallbackCaption = caption || `[${label}${durationSuffix}]`;
-      await route(`${fallbackCaption}\n\n[${label} received]`);
-      return { caption: fallbackCaption, savedPath: '', mimeType: '' };
-    }
-
     const source = await this.resolveMedia(msg);
-    const defaultReturn = { caption: '', savedPath: '', mimeType: '' };
-    if (!source) return defaultReturn;
+    if (!source) return { caption: '', savedPath: '', mimeType: '' };
 
     const { buffer, mimeType, mediaType, caption, duration } = source;
     const mediaDir = path.join(getDataPaths().dataDir, 'media');
     const savedPath = await saveMedia({ buffer, sessionKey, mimeType, mediaDir });
 
-    if (mediaType === 'image') {
-      if (this.describeFn) {
-        try {
-          const description = await this.describeFn(savedPath);
-          await route(`${description}\n\n[Image described from: ${savedPath}]`);
-          return {
-            caption: description,
-            savedPath,
-            mimeType
-          }
-        } catch (err) {
-          this.log.warn(`Image description failed: ${err}. Falling back to caption.`);
-        }
-      }
-      const text = caption || 'User sent an image.';
-      await route(`${text}\n\n[Image saved: ${savedPath}]`);
-      return {
-        caption: text,
-        savedPath,
-        mimeType
-      }
-    }
+    // Process map: media type → [process function, fallback text, label]
+    const processMap: Record<string, [fn?: (p: string, mt: string) => Promise<string | { text: string }>, fb?: string, lb?: string]> = {
+      image:    [this.describeFn?.bind(this), caption || 'User sent an image.', 'Image'],
+      audio:    [this.transcribeFn?.bind(this), caption || 'User sent an audio file.', 'Audio'],
+      document: [this.extractFn?.bind(this), caption || 'User sent a document.', 'Document'],
+    };
 
-    if (mediaType === 'audio' && this.transcribeFn) {
+    const [processFn, _fb, label] = processMap[mediaType] ?? [undefined, caption || 'Media', MEDIA_TYPE_LABELS[mediaType] ?? 'Media'];
+
+    if (shouldProcessMedia && processFn) {
       try {
-        const transcription = await this.transcribeFn(savedPath);
-        await route(`${transcription}\n\n[Audio transcribed from: ${savedPath}]`);
-        return {
-          caption: transcription,
-          savedPath,
-          mimeType
-        }
+        const result = await processFn(savedPath, mimeType);
+        const text = typeof result === 'string' ? result : result.text;
+        await route(`${text}\n\n[${label}: ${savedPath}]`);
+        return { caption: text, savedPath, mimeType };
       } catch (err) {
-        this.log.warn(`Audio transcription failed: ${err}. Falling back to file path.`);
+        this.log.warn(`${label} processing failed: ${err}. Falling back to path.`);
       }
     }
 
-    if (mediaType === 'document' && this.extractFn) {
-      try {
-        const { text } = await this.extractFn(savedPath, mimeType);
-        await route(`${text}\n\n[Document extracted from: ${savedPath}]`);
-        return {
-          caption: text,
-          savedPath,
-          mimeType
-        }
-      } catch (err) {
-        this.log.warn(`Document extraction failed: ${err}. Falling back to file path.`);
-      }
-    }
-
-    // Default handling for audio (no transcription), documents (no extraction), or other media types
-    const label = MEDIA_TYPE_LABELS[mediaType] ?? 'Media';
+    // Fallback: just include path
     const durationSuffix = duration != null ? `, ${duration}s` : '';
     const fallbackCaption = caption || `[${label}${durationSuffix}]`;
-    await route(`${fallbackCaption}\n\n[${label} saved: ${savedPath}]`);
-    return {
-      caption: fallbackCaption,
-      savedPath,
-      mimeType,
-    }
+    await route(`${fallbackCaption}\n\n[${label}: ${savedPath}]`);
+    return { caption: fallbackCaption, savedPath, mimeType };
   }
 }

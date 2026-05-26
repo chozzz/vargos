@@ -32,7 +32,7 @@ Look for the `model_change` entry.
 
 ## Whitelist / channel rejection
 
-If an inbound message doesn't trigger an agent run, check `allowFrom` on the channel entry. Non-whitelisted senders' messages are appended to history (`skipAgent` path) but the agent isn't invoked. See [`services/channels/pipeline.ts`](../../services/channels/pipeline.ts).
+If an inbound message doesn't trigger an agent run, check `allowFrom` on the channel entry. Non-whitelisted senders' messages are appended to history (observe-only path via `shouldExecute()`) but the agent isn't invoked. See [`services/channels/pipeline.ts`](../../services/channels/pipeline.ts).
 
 Group chats: bot only runs when @-mentioned or replied-to.
 
