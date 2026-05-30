@@ -15,7 +15,7 @@ export interface DebounceConfig {
 
 export interface MessageDebouncer {
   /** Add a message for a given key. Resets the flush timer. */
-  push(key: string, message: string, metadata?: NormalizedInboundMessage): void;
+  push(key: string, message: string, normalized?: NormalizedInboundMessage): void;
   /** Immediately flush pending messages for a key */
   flush(key: string): void;
   /** Immediately flush all pending keys */
@@ -23,13 +23,13 @@ export interface MessageDebouncer {
 }
 
 export function createMessageDebouncer(
-  onFlush: (key: string, messages: string[], metadata?: NormalizedInboundMessage) => void,
+  onFlush: (key: string, messages: string[], normalized?: NormalizedInboundMessage) => void,
   opts: DebounceConfig = {},
 ): MessageDebouncer {
   const delayMs = opts.delayMs ?? 1500;
   const maxBatch = opts.maxBatch ?? 20;
 
-  const pending = new Map<string, { messages: string[]; metadata?: NormalizedInboundMessage; timer: ReturnType<typeof setTimeout> }>();
+  const pending = new Map<string, { messages: string[]; normalized?: NormalizedInboundMessage; timer: ReturnType<typeof setTimeout> }>();
 
   function flush(key: string): void {
     const entry = pending.get(key);
@@ -37,7 +37,7 @@ export function createMessageDebouncer(
     pending.delete(key);
     clearTimeout(entry.timer);
     if (entry.messages.length > 0) {
-      onFlush(key, entry.messages, entry.metadata);
+      onFlush(key, entry.messages, entry.normalized);
     }
   }
 
@@ -49,13 +49,13 @@ export function createMessageDebouncer(
       for (const key of keys) flush(key);
     },
 
-    push(key: string, message: string, metadata?: NormalizedInboundMessage): void {
+    push(key: string, message: string, normalized?: NormalizedInboundMessage): void {
       let entry = pending.get(key);
 
       if (!entry) {
         entry = {
           messages: [],
-          metadata,
+          normalized,
           timer: setTimeout(() => flush(key), delayMs),
         };
         pending.set(key, entry);
@@ -63,8 +63,8 @@ export function createMessageDebouncer(
         // Reset timer on each new message
         clearTimeout(entry.timer);
         entry.timer = setTimeout(() => flush(key), delayMs);
-        // Update metadata if provided (latest metadata wins)
-        if (metadata) entry.metadata = metadata;
+        // Update normalized if provided (latest normalized wins)
+        if (normalized) entry.normalized = normalized;
       }
 
       entry.messages.push(message);

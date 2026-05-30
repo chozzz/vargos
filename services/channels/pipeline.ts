@@ -17,14 +17,25 @@ const log = createLogger('channels-pipeline');
 export interface PipelineSession {
   adapter: ChannelAdapter;
   reactionController?: StatusReactionController;
-  replied: boolean; // true if agent called channel.send
+  replied: boolean;   // true if agent called channel.send
+  completed?: boolean; // true once agent.onCompleted handled it — guards against double-send
 }
 
 export class InboundMessagePipeline {
   constructor(
     private readonly bus: Bus,
     private readonly config: AppConfig,
-  ) {}
+  ) { }
+
+  /** Seal the reaction (done/error) and stop the typing indicator. Shared with onAgentCompleted. */
+  finalize(session: PipelineSession, sessionKey: string, success: boolean): void {
+    if (session.reactionController) {
+      if (success) session.reactionController.setDone();
+      else session.reactionController.setError();
+      session.reactionController.dispose();
+    }
+    session.adapter.stopTyping(sessionKey, true);
+  }
 
   /**
    * Process a normalized inbound message through the policy pipeline.
@@ -86,48 +97,38 @@ export class InboundMessagePipeline {
       reactionController.setThinking();
     }
 
-    activeSessions.set(sessionKey, { adapter, reactionController, replied: false });
+    const session: PipelineSession = { adapter, reactionController, replied: false };
+    activeSessions.set(sessionKey, session);
 
     log.info(`← ${sessionKey} "${enrichedContent.slice(0, 80)}"`);
 
-    // Set timeout for hung agents (2 minutes)
-    const AGENT_TIMEOUT_MS = 120_000;
-    const timeoutId = setTimeout(() => {
-      const session = activeSessions.get(sessionKey);
-      if (!session) return;
-
-      log.warn(`agent timeout: ${sessionKey} (${AGENT_TIMEOUT_MS / 1000}s) — cleaning up`);
-      if (session.reactionController) {
-        session.reactionController.setError();
-        session.reactionController.dispose();
-      }
-      session.adapter.stopTyping(sessionKey);
-      activeSessions.delete(sessionKey);
-    }, AGENT_TIMEOUT_MS);
-
-    // Execute agent
+    // Cleanup is anchored to the agent.execute promise, not a timer — and it cannot race
+    // onAgentCompleted. pi awaits every `agent_end` listener before prompt() resolves
+    // (@earendil-works/pi-agent-core agent.js), and our listener synchronously emits
+    // agent.onCompleted — so onAgentCompleted has already looked up this session before
+    // execute settles and `finally` runs (its reply send holds the session by closure, so the
+    // delete can't affect it). Completion (success and error) is handled by onAgentCompleted;
+    // this catch only covers a rejection that arrives WITHOUT a completion event (a
+    // pre-execution failure), guarded by `completed` against double-send. bus.call always
+    // settles (the agent caps itself at 30 min), so no timer is needed and the session can't leak.
+    // NOTE: depends on pi awaiting agent_end listeners before resolving prompt(); revisit on pi bumps.
     this.bus.call('agent.execute', {
       sessionKey,
       task: enrichedContent,
       ...(cwd && { cwd }),
       ...(model && { model }),
     }).catch(err => {
-      clearTimeout(timeoutId);
-      const session = activeSessions.get(sessionKey);
-      if (!session) return;
-
+      if (session.completed) return;
       const errorMsg = toMessage(err);
-      log.error(`agent execution failed: ${errorMsg}`);
-
-      activeSessions.delete(sessionKey);
-      session.adapter.stopTyping(sessionKey);
-
+      log.error(`agent execution failed before completion: ${errorMsg}`);
+      this.finalize(session, sessionKey, false);
       this.bus.call('channel.send', { sessionKey, text: `System error: ${errorMsg}` })
         .catch(sendErr => log.error(`failed to send error message: ${toMessage(sendErr)}`));
-
-      if (session.reactionController) {
-        session.reactionController.setError();
-        session.reactionController.dispose();
+    }).finally(() => {
+      // Only remove our own entry — a newer run for the same key may have replaced it.
+      if (activeSessions.get(sessionKey) === session) {
+        log.debug(`session ended, cleaning up: ${sessionKey}`);
+        activeSessions.delete(sessionKey);
       }
     });
   }

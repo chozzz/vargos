@@ -113,7 +113,7 @@ export interface EventMap {
   'channel.register': { params: ChannelEntry & { persist?: boolean }; result: void };
 
   // Cron
-  'cron.search': { params: { query?: string; page: number; limit?: number }; result: Pagination<CronTask> };
+  'cron.search': { params: { query?: string; page?: number; limit?: number }; result: Pagination<CronTask> };
   'cron.add': { params: CronAddParams; result: void };
   'cron.remove': { params: { id: string }; result: void };
   'cron.update': { params: CronUpdateParams; result: void };

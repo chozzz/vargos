@@ -1,6 +1,6 @@
 {
   "name": "@chozzz/vargos",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "packageManager": "pnpm@10.33.2",
   "description": "Self-hosted agent OS with persistent memory, multi-channel presence, tools, scheduling, and sub-agent orchestration",
   "license": "Apache-2.0",
@@ -45,7 +45,7 @@
     "prepare": "husky && tsc",
     "test": "vitest",
     "test:run": "vitest run",
-    "lint": "eslint 'gateway/**/*.ts' 'services/**/*.ts' 'lib/**/*.ts' '.migrations/**/*.ts' 'scripts/**/*.ts' 'index.ts' 'boot.ts' 'vitest.config.ts' '**/__tests__/**/*.ts' && tsc --noEmit",
+    "lint": "eslint --no-error-on-unmatched-pattern 'gateway/**/*.ts' 'services/**/*.ts' 'lib/**/*.ts' '.migrations/**/*.ts' 'scripts/**/*.ts' 'index.ts' 'boot.ts' 'vitest.config.ts' '**/__tests__/**/*.ts' && tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "precommit": "pnpm exec lint-staged && pnpm run typecheck && pnpm run test:run",
     "postinstall": "pnpm rebuild better-sqlite3"

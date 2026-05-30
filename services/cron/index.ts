@@ -25,6 +25,7 @@ import { createLogger } from '../../lib/logger.js';
 import { toMessage } from '../../lib/error.js';
 import { getDataPaths } from '../../lib/paths.js';
 import { generateId } from '../../lib/id.js';
+import { paginate } from '../../lib/paginate.js';
 import { cronSessionKey, parseSessionKey } from '../../lib/session-key.js';
 import { parseFrontmatter, serializeFrontmatter } from '../../lib/frontmatter.js';
 import {
@@ -82,18 +83,18 @@ export class CronService {
 
   @register('cron.search', {
     description: 'Search scheduled cron tasks.',
-    schema: z.object({ query: z.string().optional(), page: z.number(), limit: z.number().optional() }),
+    schema: z.object({ query: z.string().optional(), page: z.number().default(1), limit: z.number().default(20) }),
   })
   async search(params: EventMap['cron.search']['params']): Promise<EventMap['cron.search']['result']> {
-    const { query, page, limit = 20 } = params;
+    const { query } = params;
     const all = Array.from(this.jobs.values())
       .filter(e => !this.ephemeralIds.has(e.task.id))
       .map(e => e.task);
     const filtered = query
       ? all.filter(t => t.name.includes(query) || t.id.includes(query) || t.task.includes(query))
       : all;
-    const offset = (page - 1) * limit;
-    return { items: filtered.slice(offset, offset + limit), page, limit };
+    // page/limit are omitted by untyped JSON-RPC callers — paginate() defaults them to 1/20.
+    return paginate(filtered, params.page, params.limit);
   }
 
   @register('cron.add', {
