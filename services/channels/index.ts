@@ -279,82 +279,34 @@ export class ChannelService {
   }
 
   @on('agent.onCompleted')
-  private onAgentCompleted(payload: EventMap['agent.onCompleted']): void | Promise<void> {
-    // Skip if it's a subagent session
-    if (!payload.sessionKey || payload.sessionKey.includes(':subagent')) {
-      return;
-    }
+  private onAgentCompleted(payload: EventMap['agent.onCompleted']): void {
+    if (!payload.sessionKey || payload.sessionKey.includes(':subagent')) return;
 
     const session = this.activeSessions.get(payload.sessionKey);
     if (!session) {
-      // Non-channel session (cron, webhook, etc.) with no active session — expected, ignore
-      log.debug(`onAgentCompleted: session not found in activeSessions: ${payload.sessionKey}`);
+      // Non-channel session (cron, webhook, etc.) — expected, ignore.
+      log.debug(`onAgentCompleted: session not found: ${payload.sessionKey}`);
       return;
     }
 
-    const targetSessionKey = payload.sessionKey;
-    const responseLength = payload.success && payload.response ? payload.response.length : 0;
-    const responseText = payload.success
-      ? payload.response || ''
-      : `Error: ${payload.error || 'Unknown error'}`;
+    // Claim the session synchronously so the pipeline's catch won't also send (double-send).
+    session.completed = true;
 
-    log.info(`→ ${targetSessionKey} ${payload.success ? '✓' : '✗'} (${responseLength} chars)`);
+    const sessionKey = payload.sessionKey;
+    const text = payload.success ? (payload.response ?? '') : `Error: ${payload.error || 'Unknown error'}`;
+    log.info(`→ ${sessionKey} ${payload.success ? '✓' : '✗'} (${text.length} chars)`);
 
-    const cleanup = () => {
-      if (session?.reactionController) {
-        if (payload.success === false) {
-          session.reactionController.setError();
-        } else {
-          session.reactionController.setDone();
-        }
-        session.reactionController.dispose();
-      }
-      session.adapter.stopTyping(targetSessionKey, true);
-    };
+    // Send on error (always), or on a successful response the agent didn't already deliver
+    // via the channel-send tool. The session stays alive for any follow-up completion events.
+    const shouldSend = !payload.success || (!session.replied && !!payload.response);
+    const finalize = () => this.pipeline.finalize(session, sessionKey, payload.success !== false);
 
-    // Don't send empty responses on success.
-    // Agent controls reply via channel-send tool — onAgentCompleted is cleanup-only.
-    if (payload.success && !payload.response) {
-      log.debug(`  → skipping send: empty response on success`);
-      cleanup();
-      return;
-    }
+    if (!shouldSend) { finalize(); return; }
 
-    // Agent sends its own reply via channel-send tool.
-    // Fallback: if response is non-empty but agent didn't call channel-send, send here.
-    if (payload.success === false) {
-      // Always send errors
-      this.bus.call('channel.send', { sessionKey: targetSessionKey, text: responseText })
-        .then(({ sent }) => {
-          log.debug(`→ ${targetSessionKey} sent=${sent}`);
-        })
-        .catch(err => log.error(`failed to send reply: ${toMessage(err)}`))
-        .finally(() => {
-          if (session) {
-            log.debug(`  → stopping typing (session stays alive for idle cleanup)`);
-            cleanup();
-          }
-        });
-    } else if (session && !session.replied && payload.response) {
-      // Agent returned a response but didn't call channel-send — auto-send as fallback
-      log.debug(`  → agent didn't call channel-send, auto-sending response (${payload.response.length} chars)`);
-      this.bus.call('channel.send', { sessionKey: targetSessionKey, text: responseText })
-        .then(({ sent }) => {
-          log.debug(`→ ${targetSessionKey} sent=${sent}`);
-        })
-        .catch(err => log.error(`failed to send reply: ${toMessage(err)}`))
-        .finally(() => {
-          if (session) {
-            log.debug(`  → stopping typing (session stays alive for idle cleanup)`);
-            cleanup();
-          }
-        });
-    } else {
-      // Success with response — agent should have sent via channel-send.
-      // Just cleanup here.
-      log.debug(`  → agent response delivered via channel-send (cleanup only)`);
-      cleanup();
-    }
+    this.bus.call('channel.send', { sessionKey, text })
+      .then(({ sent }) => log.debug(`→ ${sessionKey} sent=${sent}`))
+      .catch(err => log.error(`failed to send reply: ${toMessage(err)}`))
+      .finally(finalize);
   }
 
   // ── Inbound message handling ─────────────────────────────────────────────────

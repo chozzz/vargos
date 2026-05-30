@@ -35,7 +35,6 @@ function createTestMessage(text: string, overrides?: Partial<NormalizedInboundMe
     chatType: 'private',
     isMentioned: true,
     channelType: 'test',
-    skipAgent: false,
     text,
     ...overrides,
   };
@@ -647,8 +646,6 @@ describe('onInboundMessage firing agent.execute', () => {
     // Normal path — onInboundMessage returns without throwing even if agent later fails
     await expect(svc.onInboundMessage(sessionKey, createTestMessage('trigger'))).resolves.toBeUndefined();
 
-    // Session was registered
-    expect((svc as any).activeSessions.has(sessionKey)).toBe(true);
     // agent.execute was called (fire-and-forget, still in-flight)
     expect(spy).toHaveBeenCalledOnce();
   });
@@ -786,14 +783,13 @@ describe('Integration: full inbound → agent → reply flow', () => {
         schema: z.object({ sessionKey: z.string(), task: z.string() }).passthrough(),
       })
       async execute(params: EventMap['agent.execute']['params']) {
-        // Simulate async agent completing: sends reply via channel-send, then emits onCompleted
-        setImmediate(async () => {
-          await bus.call('channel.send', { sessionKey: params.sessionKey, text: 'Done! Here is the result.' });
-          bus.emit('agent.onCompleted', {
-            sessionKey: params.sessionKey,
-            success: true,
-            response: 'Done! Here is the result.',
-          });
+        // Model the real agent: emit completion while the run is still open, then resolve.
+        await new Promise(r => setImmediate(r));
+        await bus.call('channel.send', { sessionKey: params.sessionKey, text: 'Done! Here is the result.' });
+        bus.emit('agent.onCompleted', {
+          sessionKey: params.sessionKey,
+          success: true,
+          response: 'Done! Here is the result.',
         });
         return { response: '' };
       }
@@ -802,14 +798,14 @@ describe('Integration: full inbound → agent → reply flow', () => {
 
     await svc.onInboundMessage(sessionKey, createTestMessage('do a task'));
 
-    // Session registered
+    // Session registered while the run is in flight
     expect((svc as any).activeSessions.has(sessionKey)).toBe(true);
 
     // Let agent complete
     await new Promise(r => setTimeout(r, 20));
 
-    // Session stays alive for idle cleanup
-    expect((svc as any).activeSessions.has(sessionKey)).toBe(true);
+    // Session is cleaned up once agent.execute settles
+    expect((svc as any).activeSessions.has(sessionKey)).toBe(false);
     // Reply sent by agent via channel-send (onCompleted is cleanup-only on success)
     expect(sent).toHaveLength(1);
     expect(sent[0].text).toBe('Done! Here is the result.');
@@ -851,13 +847,13 @@ describe('Integration: full inbound → agent → reply flow', () => {
         schema: z.object({ sessionKey: z.string(), task: z.string() }).passthrough(),
       })
       async execute(params: EventMap['agent.execute']['params']) {
-        setImmediate(async () => {
-          bus.emit('agent.onTool', { sessionKey: params.sessionKey, toolName: 'fs.read', phase: 'start' });
-          bus.emit('agent.onTool', { sessionKey: params.sessionKey, toolName: 'fs.read', phase: 'end' });
-          // Agent sends reply via channel-send, then emits onCompleted (cleanup-only)
-          await bus.call('channel.send', { sessionKey: params.sessionKey, text: 'ok' });
-          bus.emit('agent.onCompleted', { sessionKey: params.sessionKey, success: true, response: 'ok' });
-        });
+        // Yield so the test can inject its spy reaction controller before events fire,
+        // then emit tool + completion events while the run is still open.
+        await new Promise(r => setImmediate(r));
+        bus.emit('agent.onTool', { sessionKey: params.sessionKey, toolName: 'fs.read', phase: 'start' });
+        bus.emit('agent.onTool', { sessionKey: params.sessionKey, toolName: 'fs.read', phase: 'end' });
+        await bus.call('channel.send', { sessionKey: params.sessionKey, text: 'ok' });
+        bus.emit('agent.onCompleted', { sessionKey: params.sessionKey, success: true, response: 'ok' });
         return { response: '' };
       }
     }
@@ -909,15 +905,14 @@ describe('Integration: full inbound → agent → reply flow', () => {
       })
       async execute(params: EventMap['agent.execute']['params']) {
         const delay = params.sessionKey === key1 ? 30 : 10;
-        setTimeout(async () => {
-          // Agent sends reply via channel-send, then emits onCompleted (cleanup-only)
-          await bus.call('channel.send', { sessionKey: params.sessionKey, text: `reply for ${params.sessionKey}` });
-          bus.emit('agent.onCompleted', {
-            sessionKey: params.sessionKey,
-            success: true,
-            response: `reply for ${params.sessionKey}`,
-          });
-        }, delay);
+        // Keep the run open for `delay`, then send + complete before resolving.
+        await new Promise(r => setTimeout(r, delay));
+        await bus.call('channel.send', { sessionKey: params.sessionKey, text: `reply for ${params.sessionKey}` });
+        bus.emit('agent.onCompleted', {
+          sessionKey: params.sessionKey,
+          success: true,
+          response: `reply for ${params.sessionKey}`,
+        });
         return { response: '' };
       }
     }
@@ -931,13 +926,103 @@ describe('Integration: full inbound → agent → reply flow', () => {
 
     await new Promise(r => setTimeout(r, 60));
 
-    // Sessions stay alive for idle cleanup
-    expect((svc as any).activeSessions.has(key1)).toBe(true);
-    expect((svc as any).activeSessions.has(key2)).toBe(true);
+    // Both sessions cleaned up once their runs settled
+    expect((svc as any).activeSessions.has(key1)).toBe(false);
+    expect((svc as any).activeSessions.has(key2)).toBe(false);
 
     const reply1 = sent.find(s => s.sessionKey === key1);
     const reply2 = sent.find(s => s.sessionKey === key2);
     expect(reply1?.text).toBe(`reply for ${key1}`);
     expect(reply2?.text).toBe(`reply for ${key2}`);
+  });
+});
+
+// ── Single completion path (no double-send) ──────────────────────────────────
+
+describe('completion: agent errors deliver exactly one reply', () => {
+  const flush = () => new Promise(r => setTimeout(r, 30));
+
+  it('agent error emits onCompleted AND rejects, but sends only one reply', async () => {
+    // Mirrors a real provider error: the agent emits agent.onCompleted{success:false}
+    // (via its event stream) and agent.execute also rejects. Before the fix, the
+    // onCompleted handler AND the pipeline catch each sent a reply (double-send).
+    const { bus, svc, adapter } = setup();
+    const sessionKey = 'stub-ch:userERR';
+
+    class AgentStub {
+      constructor(b: EventEmitterBus) { b.bootstrap(this); }
+      @register('agent.execute', {
+        description: 'stub',
+        schema: z.object({ sessionKey: z.string(), task: z.string() }).passthrough(),
+      })
+      async execute(p: any) {
+        bus.emit('agent.onCompleted', { sessionKey: p.sessionKey, success: false, error: 'provider boom' });
+        throw new Error('provider boom');
+      }
+    }
+    new AgentStub(bus);
+
+    await svc.onInboundMessage(sessionKey, createTestMessage('hi'));
+    await flush();
+
+    expect(adapter.sent).toHaveLength(1);
+    expect(adapter.sent[0].text).toContain('provider boom');
+  });
+
+  it('session lives for the whole run and is cleaned up when execute settles (no timer)', async () => {
+    // A late onCompleted (e.g. a steered second turn) must still find the session — it is
+    // only removed when agent.execute settles, not on a wall-clock timer.
+    const { bus, svc, adapter } = setup();
+    const sessionKey = 'stub-ch:userRUN';
+    let release!: () => void;
+    const gate = new Promise<void>(r => { release = r; });
+
+    class AgentStub {
+      constructor(b: EventEmitterBus) { b.bootstrap(this); }
+      @register('agent.execute', {
+        description: 'stub',
+        schema: z.object({ sessionKey: z.string(), task: z.string() }).passthrough(),
+      })
+      async execute(p: any) {
+        bus.emit('agent.onCompleted', { sessionKey: p.sessionKey, success: true, response: 'done' });
+        await gate; // hold the run open after the completion event
+        return { response: 'done' };
+      }
+    }
+    new AgentStub(bus);
+
+    await svc.onInboundMessage(sessionKey, createTestMessage('hi'));
+    await flush();
+
+    // Run still open → session present (no timer tore it down), reply delivered
+    expect((svc as any).activeSessions.has(sessionKey)).toBe(true);
+    expect(adapter.sent.some(s => s.text === 'done')).toBe(true);
+
+    release();
+    await flush();
+
+    // execute settled → session removed
+    expect((svc as any).activeSessions.has(sessionKey)).toBe(false);
+  });
+
+  it('pre-execution failure (no onCompleted) still delivers one error via the pipeline', async () => {
+    const { bus, svc, adapter } = setup();
+    const sessionKey = 'stub-ch:userPRE';
+
+    class AgentStub {
+      constructor(b: EventEmitterBus) { b.bootstrap(this); }
+      @register('agent.execute', {
+        description: 'stub',
+        schema: z.object({ sessionKey: z.string(), task: z.string() }).passthrough(),
+      })
+      async execute() { throw new Error('bad model config'); } // rejects without emitting onCompleted
+    }
+    new AgentStub(bus);
+
+    await svc.onInboundMessage(sessionKey, createTestMessage('hi'));
+    await flush();
+
+    expect(adapter.sent).toHaveLength(1);
+    expect(adapter.sent[0].text).toContain('bad model config');
   });
 });

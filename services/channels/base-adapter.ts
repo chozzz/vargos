@@ -131,13 +131,6 @@ export abstract class BaseChannelAdapter<TRaw = never> implements ChannelAdapter
   }
 
   /**
-   * Process inbound media message.
-   * @param msg - Raw message from channel
-   * @param sessionKey - Session key (channel:userId)
-   * @param normalizedMsg - Normalized message with flags (skipAgent, etc)
-   * @param route - Function to route processed text to onInboundMessage
-   */
-  /**
    * Check if the agent should execute for this message.
    * Used by both media processing and agent execution decisions.
    *
