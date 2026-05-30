@@ -341,7 +341,7 @@ export async function onboard(): Promise<void> {
         const piPath = path.join(
           searchDir,
           'node_modules',
-          '@mariozechner',
+          '@earendil-works',
           'pi-coding-agent',
           'dist',
           'cli.js',

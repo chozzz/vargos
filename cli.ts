@@ -19,11 +19,13 @@ import { getDataPaths } from './lib/paths.js';
 
 // ── Runtime guard ────────────────────────────────────────────────────────────
 
-const MIN_NODE = 20;
+// Node >= 22.19.0 — required by @earendil-works/pi-coding-agent (undici 8.x uses
+// worker_threads.markAsUncloneable, absent before Node 22).
+const MIN_NODE: [number, number, number] = [22, 19, 0];
 const v = process.versions.node.split('.').map(Number);
-if (v[0] < MIN_NODE) {
+if (v[0] < MIN_NODE[0] || (v[0] === MIN_NODE[0] && v[1] < MIN_NODE[1])) {
   process.stderr.write(
-    `Vargos requires Node.js >= ${MIN_NODE}. You are running ${process.versions.node}.\n`,
+    `Vargos requires Node.js >= ${MIN_NODE.join('.')}. You are running ${process.versions.node}.\n`,
   );
   process.exit(1);
 }
@@ -135,6 +137,37 @@ if (cmd === 'start') {
   }
 }
 
+// migrate subcommand — run pending data migrations (also runs automatically on boot)
+if (cmd === 'migrate') {
+  const { runMigrations } = await import('./lib/migrate.js');
+  await runMigrations(console, { dryRun: process.argv.includes('--dry-run') });
+  process.exit(0);
+}
+
+// sync subcommand — interactively update overridable templates (AGENTS.md) from the bundle
+if (cmd === 'sync') {
+  const p = await import('@clack/prompts');
+  const { collectTemplateConflicts, overrideTemplates } = await import('./lib/templates.js');
+
+  const conflicts = await collectTemplateConflicts();
+  if (conflicts.length === 0) {
+    p.log.success('Templates are up to date — nothing to override.');
+    process.exit(0);
+  }
+
+  const selected = await p.multiselect({
+    message: 'These bundled templates have changed. Select which to overwrite (your local copy will be replaced):',
+    options: conflicts.map(c => ({ value: c.rel, label: c.rel })),
+    required: false,
+  });
+  if (p.isCancel(selected)) { p.cancel('Cancelled — nothing changed.'); process.exit(0); }
+
+  const chosen = conflicts.filter(c => (selected as string[]).includes(c.rel));
+  await overrideTemplates(chosen);
+  p.log.success(chosen.length ? `Updated ${chosen.length} file(s).` : 'Nothing selected.');
+  process.exit(0);
+}
+
 // chat subcommand
 if (cmd === 'chat') {
   // Seed data dir first (replaces tsx scripts/seed.ts)
@@ -154,7 +187,7 @@ if (cmd === 'chat') {
     // Search for pi package in node_modules up the tree
     let searchDir = __dirname;
     while (searchDir !== '/') {
-      const piPath = path.join(searchDir, 'node_modules', '@mariozechner', 'pi-coding-agent', 'dist', 'cli.js');
+      const piPath = path.join(searchDir, 'node_modules', '@earendil-works', 'pi-coding-agent', 'dist', 'cli.js');
       if (existsSync(piPath)) {
         piCliPath = piPath;
         break;

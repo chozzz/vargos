@@ -3,7 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { resetDataPaths } from '../paths.js';
-import { seedDataDir } from '../templates.js';
+import { seedDataDir, collectTemplateConflicts } from '../templates.js';
 
 describe('seedDataDir', () => {
   let tmpDir: string;
@@ -38,17 +38,32 @@ describe('seedDataDir', () => {
 
     await seedDataDir(logger);
 
-    // User edits are preserved (copy-missing only)
+    // Seeding never overwrites — even AGENTS.md (updates are opt-in via `vargos sync`)
     expect(readFileSync(workspaceAgents, 'utf-8')).toBe('local workspace edit');
     expect(readFileSync(cronHeartbeat, 'utf-8')).toBe('local cron edit');
   });
 
   it('seeds files that do not exist in data dir', async () => {
-    const workspaceAgents = path.join(tmpDir, 'workspace', 'AGENTS.md');
+    const workspaceSoul = path.join(tmpDir, 'workspace', 'SOUL.md');
 
     await seedDataDir(logger);
 
     // New file should be seeded
-    expect(readFileSync(workspaceAgents, 'utf-8')).toContain('## Self-Awareness');
+    expect(readFileSync(workspaceSoul, 'utf-8')).toContain('# SOUL.md');
+  });
+
+  it('reports overridable conflicts for AGENTS.md only, not user-owned files', async () => {
+    await seedDataDir(logger); // seed defaults first
+    const workspaceDir = path.join(tmpDir, 'workspace');
+
+    // Diverge both AGENTS.md (overridable) and SOUL.md (user-owned)
+    writeFileSync(path.join(workspaceDir, 'AGENTS.md'), 'edited agents', 'utf-8');
+    writeFileSync(path.join(workspaceDir, 'SOUL.md'), 'edited soul', 'utf-8');
+
+    const conflicts = await collectTemplateConflicts();
+    const rels = conflicts.map(c => c.rel);
+
+    expect(rels).toContain('workspace/AGENTS.md');
+    expect(rels).not.toContain('workspace/SOUL.md');
   });
 });

@@ -5,7 +5,7 @@
  * not inside URLs or as partial word matches.
  */
 
-import type { ThinkingLevel } from '@mariozechner/pi-agent-core';
+import type { ThinkingLevel } from '@earendil-works/pi-agent-core';
 
 export interface ParsedDirectives {
   /** Message with all recognized directives stripped */

@@ -2,6 +2,7 @@ import { EventEmitterBus } from './gateway/emitter.js';
 import { startTCPServer } from './gateway/tcp-server.js';
 import { createLogger } from './lib/logger.js';
 import { seedDataDir } from './lib/templates.js';
+import { runMigrations } from './lib/migrate.js';
 import { z } from 'zod';
 
 // ── Boot order ────────────────────────────────────────────────────────────────
@@ -43,6 +44,9 @@ bus.bootstrap();
 
 // Seed bundled templates into the VARGOS data dir before services boot.
 await seedDataDir(log);
+
+// Apply pending one-time data migrations (run-once, tracked in ~/.vargos/.migrations.json).
+await runMigrations(log);
 
 for (const [label, load] of SERVICES) {
   try {

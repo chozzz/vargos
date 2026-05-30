@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, writeFileSync, rmSync, utimesSync } from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import { SessionManager } from '@mariozechner/pi-coding-agent';
+import { SessionManager } from '@earendil-works/pi-coding-agent';
 
 // ── SessionManager.continueRecent — session file discovery ────────────────────
 

@@ -2,7 +2,7 @@
  * Agent configuration schemas
  *
  * Combines Vargos-specific fields with PiAgent's Settings from ~/.vargos/agent/settings.json
- * See @mariozechner/pi-coding-agent SettingsManager for full field list.
+ * See @earendil-works/pi-coding-agent SettingsManager for full field list.
  */
 
 import { z } from 'zod';

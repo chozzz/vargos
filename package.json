@@ -1,6 +1,6 @@
 {
   "name": "@chozzz/vargos",
-  "version": "2.2.0",
+  "version": "3.0.0",
   "packageManager": "pnpm@10.33.2",
   "description": "Self-hosted agent OS with persistent memory, multi-channel presence, tools, scheduling, and sub-agent orchestration",
   "license": "Apache-2.0",
@@ -38,37 +38,35 @@
   "scripts": {
     "start": "tsx index.ts",
     "seed": "tsx scripts/seed.ts",
+    "migrate": "tsx scripts/migrate.ts",
     "cli": "tsx cli.ts",
     "chat": "tsx scripts/seed.ts && PI_CODING_AGENT_DIR=\"${VARGOS_DATA_DIR:-$HOME/.vargos}/agent\" pi --session-dir \"${VARGOS_DATA_DIR:-$HOME/.vargos}/sessions/cli\"",
     "build": "rm -rf dist && tsc && cp -r .templates dist/.templates",
     "prepare": "husky && tsc",
     "test": "vitest",
     "test:run": "vitest run",
-    "lint": "eslint 'gateway/**/*.ts' 'services/**/*.ts' 'lib/**/*.ts' 'index.ts' 'boot.ts' 'vitest.config.ts' '**/__tests__/**/*.ts' && tsc --noEmit",
+    "lint": "eslint 'gateway/**/*.ts' 'services/**/*.ts' 'lib/**/*.ts' '.migrations/**/*.ts' 'scripts/**/*.ts' 'index.ts' 'boot.ts' 'vitest.config.ts' '**/__tests__/**/*.ts' && tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "precommit": "pnpm exec lint-staged && pnpm run typecheck && pnpm run test:run",
     "postinstall": "pnpm rebuild better-sqlite3"
   },
   "dependencies": {
-    "@clack/prompts": "^1.2.0",
-    "@mariozechner/pi-agent-core": "^0.73.1",
-    "@mariozechner/pi-coding-agent": "^0.73.1",
-    "pi-mcp-adapter": "^2.6.1",
+    "@clack/prompts": "^1.5.0",
+    "@earendil-works/pi-agent-core": "0.78.0",
+    "@earendil-works/pi-coding-agent": "0.78.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@whiskeysockets/baileys": "7.0.0-rc13",
     "better-sqlite3": "^12.10.0",
-    "chalk": "^5.6.2",
     "cron": "^4.4.0",
     "mammoth": "^1.12.0",
     "pdf-parse": "^2.4.5",
     "pg": "^8.21.0",
     "pgvector": "^0.2.1",
+    "pi-mcp-adapter": "^2.8.0",
     "pino": "^10.3.1",
-    "playwright": "^1.60.0",
     "qrcode-terminal": "^0.12.0",
     "tinyglobby": "^0.2.16",
     "turndown": "^7.2.4",
-    "ws": "^8.20.1",
     "xlsx": "^0.18.5",
     "zod": "^3.23.8",
     "zod-to-json-schema": "^3.25.2"
@@ -76,21 +74,19 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/better-sqlite3": "^7.6.13",
-    "@types/cron": "^2.4.3",
     "@types/node": "^25.9.1",
     "@types/pdf-parse": "^1.1.5",
     "@types/pg": "^8.20.0",
     "@types/qrcode-terminal": "^0.12.2",
     "@types/turndown": "^5.0.6",
-    "@types/ws": "^8.18.1",
-    "@typescript-eslint/eslint-plugin": "^8.59.4",
-    "@typescript-eslint/parser": "^8.59.4",
-    "eslint": "^10.4.0",
+    "@typescript-eslint/eslint-plugin": "^8.60.0",
+    "@typescript-eslint/parser": "^8.60.0",
+    "eslint": "^10.4.1",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
     "tsx": "^4.22.3",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.59.4",
+    "typescript-eslint": "^8.60.0",
     "vitest": "^4.1.7"
   },
   "lint-staged": {
@@ -99,7 +95,7 @@
     ]
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.19.0"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
