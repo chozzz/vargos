@@ -25,13 +25,13 @@ import { createLogger } from '../../lib/logger.js';
 import { toMessage } from '../../lib/error.js';
 import { getDataPaths } from '../../lib/paths.js';
 import { generateId } from '../../lib/id.js';
-import { cronSessionKey, parseSessionKey } from '../../lib/subagent.js';
+import { cronSessionKey, parseSessionKey } from '../../lib/session-key.js';
 import { parseFrontmatter, serializeFrontmatter } from '../../lib/frontmatter.js';
 import {
   isWithinActiveHours,
   isHeartbeatContentEffectivelyEmpty,
   stripHeartbeatToken,
-} from '../../lib/heartbeat.js';
+} from './heartbeat.js';
 
 const log = createLogger('cron');
 

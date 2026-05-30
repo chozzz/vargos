@@ -5,11 +5,10 @@
 
 import type { Bus } from '../../gateway/bus.js';
 import type { AppConfig } from '../../services/config/index.js';
-import type { NormalizedInboundMessage } from './contracts.js';
-import type { ChannelAdapter } from './contracts.js';
+import type { NormalizedInboundMessage, ChannelAdapter } from './types.js';
 import { createLogger } from '../../lib/logger.js';
 import { toMessage } from '../../lib/error.js';
-import { parseChannelTarget } from '../../lib/subagent.js';
+import { parseChannelTarget } from '../../lib/session-key.js';
 import { expandLinks } from './link-expand.js';
 import { StatusReactionController } from './status-reactions.js';
 

@@ -2,7 +2,7 @@
  * WhatsApp provider — loads and manages WhatsApp channel adapters.
  */
 
-import type { ChannelProvider, ChannelAdapter, AdapterDeps } from '../../contracts.js';
+import type { ChannelProvider, ChannelAdapter, AdapterDeps } from '../../types.js';
 import type { WhatsAppChannel } from '../../../config/schemas/channels.js';
 import { WhatsAppAdapter } from './adapter.js';
 

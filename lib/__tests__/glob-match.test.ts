@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { matchesGlob } from '../glob.js';
+import { matchesGlob } from '../glob-match.js';
 
 describe('matchesGlob', () => {
   it('exact-matches when no wildcard', () => {

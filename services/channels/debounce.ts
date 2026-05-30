@@ -4,7 +4,7 @@
  * Prevents partial messages from triggering separate agent runs
  */
 
-import type { NormalizedInboundMessage } from './contracts.js';
+import type { NormalizedInboundMessage } from './types.js';
 
 export interface DebounceConfig {
   /** Delay in ms before flushing accumulated messages (default: 1500) */

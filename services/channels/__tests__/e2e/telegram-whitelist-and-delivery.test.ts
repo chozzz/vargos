@@ -16,7 +16,7 @@ import { ChannelService } from '../../index.js';
 import { BaseChannelAdapter } from '../../base-adapter.js';
 import { TELEGRAM_USERS, TELEGRAM_CHATS } from '../../providers/telegram/__tests__/fixtures.js';
 import type { AppConfig } from '../../../config/index.js';
-import type { AdapterDeps, NormalizedInboundMessage } from '../../contracts.js';
+import type { AdapterDeps, NormalizedInboundMessage } from '../../types.js';
 
 /**
  * Mock Telegram adapter that simulates real adapter behavior

@@ -20,7 +20,7 @@ import { ChannelService } from '../../index.js';
 import { BaseChannelAdapter } from '../../base-adapter.js';
 import { normalizeTelegramMessage } from '../../providers/telegram/normalizer.js';
 import type { AppConfig } from '../../../config/index.js';
-import type { AdapterDeps } from '../../contracts.js';
+import type { AdapterDeps } from '../../types.js';
 import type { TelegramMessage } from '../../providers/telegram/types.js';
 import type { EventMap } from '../../../../gateway/event-map.js';
 

@@ -25,11 +25,11 @@ import type { AppConfig, ChannelEntry } from '../../services/config/index.js';
 import { createLogger } from '../../lib/logger.js';
 import { toMessage } from '../../lib/error.js';
 import { stripMarkdown } from '../../lib/strip-markdown.js';
-import { parseChannelTarget } from '../../lib/subagent.js';
+import { parseChannelTarget } from '../../lib/session-key.js';
 import { paginate } from '../../lib/paginate.js';
-import type { ChannelAdapter, ChannelProvider, NormalizedInboundMessage, AdapterDeps } from './contracts.js';
+import type { ChannelAdapter, ChannelProvider, NormalizedInboundMessage, AdapterDeps } from './types.js';
 import { deliverReply } from './delivery.js';
-import { extractMediaPaths } from './media-extract.js';
+import { extractMediaPaths } from './media-paths.js';
 import { InboundMessagePipeline, type PipelineSession } from './pipeline.js';
 import { loadProviders } from './provider-loader.js';
 

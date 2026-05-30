@@ -19,10 +19,10 @@ import { parseDirectives } from './directives.js';
 import { withTimeout } from '../../lib/timeout.js';
 import { interpolatePrompt } from './prompt-interpolate.js';
 import { truncate } from '../../lib/truncate.js';
-import type { AgentDeps } from './schema.js';
+import type { AgentDeps } from './types.js';
 import { existsSync, promises as fs } from 'node:fs';
 import { getDataPaths } from '../../lib/paths.js';
-import { parseSessionKey, isSubagentSession } from '../../lib/subagent.js';
+import { parseSessionKey, isSubagentSession } from '../../lib/session-key.js';
 
 // Pi SDK imports
 import {
@@ -41,8 +41,8 @@ import type { AgentSessionEvent } from '@mariozechner/pi-coding-agent';
 
 import { createCustomTools } from './tools.js';
 import { loadChannelPersona, loadSubagentPersona } from './persona.js';
-import { resolveSkillPaths } from '../../lib/skills.js';
-import { matchesGlob } from '../../lib/glob.js';
+import { resolveSkillPaths } from './skills.js';
+import { matchesGlob } from '../../lib/glob-match.js';
 
 const log = createLogger('agent');
 

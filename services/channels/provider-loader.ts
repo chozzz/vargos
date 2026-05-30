@@ -4,7 +4,7 @@
  */
 
 import { loadProviders as loadProviderRegistry } from '../../lib/provider-loader.js';
-import type { ChannelProvider } from './contracts.js';
+import type { ChannelProvider } from './types.js';
 
 const providers: Record<string, () => Promise<ChannelProvider>> = {
   telegram: () => import('./providers/telegram/index.js').then(m => m.default),

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { EventEmitterBus } from '../../../../gateway/emitter.js';
 import { ChannelService } from '../../index.js';
 import { BaseChannelAdapter } from '../../base-adapter.js';
-import type { InboundMediaSource } from '../../contracts.js';
+import type { InboundMediaSource } from '../../types.js';
 import type { AppConfig } from '../../../config/index.js';
 
 /**

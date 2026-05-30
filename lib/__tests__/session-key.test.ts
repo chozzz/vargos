@@ -7,7 +7,7 @@ import {
   cronSessionKey,
   webhookSessionKey,
   parseChannelTarget,
-} from '../subagent.js';
+} from '../session-key.js';
 
 describe('subagentSessionKey', () => {
   it('produces a key with :subagent: segment', () => {

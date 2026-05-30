@@ -3,7 +3,7 @@
  */
 
 import { jidDecode, areJidsSameUser } from '@whiskeysockets/baileys';
-import type { NormalizedInboundMessage } from '../../contracts.js';
+import type { NormalizedInboundMessage } from '../../types.js';
 import type { WhatsAppInboundMessage } from './types.js';
 
 export interface WhatsAppNormalizerContext {

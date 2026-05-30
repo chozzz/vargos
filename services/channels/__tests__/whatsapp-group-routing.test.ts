@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type { NormalizedInboundMessage } from '../contracts.js';
+import type { NormalizedInboundMessage } from '../types.js';
 import type { WhatsAppInboundMessage } from '../providers/whatsapp/types.js';
 import { normalizeWhatsAppMessage } from '../providers/whatsapp/normalizer.js';
 

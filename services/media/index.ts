@@ -11,7 +11,7 @@ import type { EventMap } from '../../gateway/events.js';
 import type { AppConfig } from '../../services/config/index.js';
 import { createLogger } from '../../lib/logger.js';
 import { createProvider } from './providers/index.js';
-import { extractDocument } from './extract-document.js';
+import { extractDocument } from './providers/document.js';
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 

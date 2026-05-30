@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import type { NormalizedInboundMessage, AdapterDeps } from '../../contracts.js';
+import type { NormalizedInboundMessage, AdapterDeps } from '../../types.js';
 import { BaseChannelAdapter } from '../../base-adapter.js';
 import { createMessageDebouncer } from '../../debounce.js';
 

@@ -15,7 +15,7 @@ import os from 'node:os';
 import { EventEmitterBus } from '../../../gateway/emitter.js';
 import { CronService } from '../index.js';
 import type { AppConfig } from '../../config/index.js';
-import { isWithinActiveHours } from '../../../lib/heartbeat.js';
+import { isWithinActiveHours } from '../heartbeat.js';
 
 function getBeforeFireHooks(service: CronService): Map<string, unknown> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

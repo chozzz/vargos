@@ -8,9 +8,9 @@ import path from 'node:path';
 import { PDFParse } from 'pdf-parse';
 import * as mammoth from 'mammoth';
 import XLSX from 'xlsx';
-import { createLogger } from '../../lib/logger.js';
-import { toMessage } from '../../lib/error.js';
-import { getDataPaths } from '../../lib/paths.js';
+import { createLogger } from '../../../lib/logger.js';
+import { toMessage } from '../../../lib/error.js';
+import { getDataPaths } from '../../../lib/paths.js';
 
 const log = createLogger('media');
 

@@ -27,8 +27,8 @@ import type { Bus } from '../../gateway/bus.js';
 import { createLogger } from '../../lib/logger.js';
 import { isToolEvent } from '../../gateway/emitter.js';
 import { toMessage } from '../../lib/error.js';
-import { appendError } from '../../lib/error-store.js';
-import { subagentSessionKey } from '../../lib/subagent.js';
+import { appendError } from './error-store.js';
+import { subagentSessionKey } from '../../lib/session-key.js';
 
 const log = createLogger('agent-tools');
 

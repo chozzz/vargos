@@ -5,8 +5,7 @@
 import https from 'node:https';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import type { InboundMediaSource } from '../../types.js';
-import type { NormalizedInboundMessage, AdapterDeps } from '../../contracts.js';
+import type { InboundMediaSource, NormalizedInboundMessage, AdapterDeps } from '../../types.js';
 import type {
   TelegramUpdate,
   TelegramResponse,

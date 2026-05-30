@@ -2,7 +2,7 @@
  * Telegram provider — loads and manages Telegram channel adapters.
  */
 
-import type { ChannelProvider, ChannelAdapter, AdapterDeps } from '../../contracts.js';
+import type { ChannelProvider, ChannelAdapter, AdapterDeps } from '../../types.js';
 import type { TelegramChannel } from '../../../config/schemas/channels.js';
 import { TelegramAdapter } from './adapter.js';
 

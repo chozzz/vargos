@@ -3,14 +3,13 @@
  */
 
 import path from 'node:path';
-import type { ChannelType, OnInboundMessageFn, InboundMediaSource } from './types.js';
-import type { ChannelAdapter, NormalizedInboundMessage, AdapterDeps } from './contracts.js';
+import type { ChannelType, OnInboundMessageFn, InboundMediaSource, ChannelAdapter, NormalizedInboundMessage, AdapterDeps } from './types.js';
 import type { ChannelStatus } from '../../gateway/events.js';
 import { createDedupeCache } from './dedupe.js';
 import { createMessageDebouncer } from './debounce.js';
 import { createLogger } from '../../lib/logger.js';
 import { toMessage } from '../../lib/error.js';
-import { parseSessionKey } from '../../lib/subagent.js';
+import { parseSessionKey } from '../../lib/session-key.js';
 import { TypingStateManager } from './typing-state.js';
 import { saveMedia } from '../../lib/media.js';
 import { getDataPaths } from '../../lib/paths.js';

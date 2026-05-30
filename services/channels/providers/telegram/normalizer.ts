@@ -2,7 +2,7 @@
  * Telegram message normalizer — converts Telegram adapter output to canonical form.
  */
 
-import type { NormalizedInboundMessage } from '../../contracts.js';
+import type { NormalizedInboundMessage } from '../../types.js';
 import type { TelegramMessage } from './types.js';
 
 export interface TelegramNormalizerContext {
