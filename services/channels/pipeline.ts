@@ -83,8 +83,18 @@ export class InboundMessagePipeline {
       return;
     }
 
-    // Start typing and setup reaction controller
     adapter.startTyping(sessionKey, true);
+
+    // If a run is already in flight for this chat, steer the new message into it: pi injects it
+    // into the active session. Don't create a competing session/completion handler — a single
+    // sessionKey has one activeSessions slot, and a second run racing cleanup is what dropped
+    // replies (its agent.execute can settle early under steering while the real run continues).
+    if (activeSessions.has(sessionKey)) {
+      log.info(`← ${sessionKey} (steer) "${enrichedContent.slice(0, 80)}"`);
+      this.bus.call('agent.execute', { sessionKey, task: enrichedContent, ...(cwd && { cwd }), ...(model && { model }) })
+        .catch(err => log.error(`steered agent.execute failed: ${toMessage(err)}`));
+      return;
+    }
 
     const messageId = adapter.extractLatestMessageId(target.userId);
     let reactionController: StatusReactionController | undefined;
@@ -102,16 +112,10 @@ export class InboundMessagePipeline {
 
     log.info(`← ${sessionKey} "${enrichedContent.slice(0, 80)}"`);
 
-    // Cleanup is anchored to the agent.execute promise, not a timer — and it cannot race
-    // onAgentCompleted. pi awaits every `agent_end` listener before prompt() resolves
-    // (@earendil-works/pi-agent-core agent.js), and our listener synchronously emits
-    // agent.onCompleted — so onAgentCompleted has already looked up this session before
-    // execute settles and `finally` runs (its reply send holds the session by closure, so the
-    // delete can't affect it). Completion (success and error) is handled by onAgentCompleted;
-    // this catch only covers a rejection that arrives WITHOUT a completion event (a
-    // pre-execution failure), guarded by `completed` against double-send. bus.call always
-    // settles (the agent caps itself at 30 min), so no timer is needed and the session can't leak.
-    // NOTE: depends on pi awaiting agent_end listeners before resolving prompt(); revisit on pi bumps.
+    // Cleanup is owned by onAgentCompleted (pi's agent_end fires once at the true end of the
+    // run, even under steering where a second message's agent.execute settles early). This catch
+    // only covers a rejection that arrives WITHOUT a completion event (a pre-execution failure),
+    // guarded by `completed` so it never double-sends or fights onAgentCompleted's cleanup.
     this.bus.call('agent.execute', {
       sessionKey,
       task: enrichedContent,
@@ -122,14 +126,9 @@ export class InboundMessagePipeline {
       const errorMsg = toMessage(err);
       log.error(`agent execution failed before completion: ${errorMsg}`);
       this.finalize(session, sessionKey, false);
+      if (activeSessions.get(sessionKey) === session) activeSessions.delete(sessionKey);
       this.bus.call('channel.send', { sessionKey, text: `System error: ${errorMsg}` })
         .catch(sendErr => log.error(`failed to send error message: ${toMessage(sendErr)}`));
-    }).finally(() => {
-      // Only remove our own entry — a newer run for the same key may have replaced it.
-      if (activeSessions.get(sessionKey) === session) {
-        log.debug(`session ended, cleaning up: ${sessionKey}`);
-        activeSessions.delete(sessionKey);
-      }
     });
   }
 

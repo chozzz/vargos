@@ -31,8 +31,8 @@ In order:
 
 1. **Pi SDK base prompt** — built-in agent instructions.
 2. **Pi SDK skills metadata** — `<available_skills>` block (name + description + location only). Skill bodies are read on demand via the `read` tool (Anthropic's progressive-disclosure pattern). Discovery roots: see [Skills](../extending/skills.md).
-3. **Pi SDK context files** — auto-walked from `cwd`: `AGENTS.md` or `CLAUDE.md` per ancestor directory. Rendered as `# Project Context`.
-4. **Vargos bootstrap files** — `AGENTS.md`, `SOUL.md`, `TOOLS.md` from `<workspaceDir>` and `<cwd>`. Each head/tail-truncated at 6K chars. `CLAUDE.md` is intentionally **not** in this list — Pi SDK handles it via step 3.
+3. **Pi SDK context files** — auto-walked from `cwd`: `AGENTS.md` per ancestor directory. Rendered as `# Project Context`.
+4. **Vargos bootstrap files** — `AGENTS.md`, `SOUL.md`, `TOOLS.md` from `<workspaceDir>` and `<cwd>`. Each head/tail-truncated at 6K chars.
 5. **Channel persona body** — content of `~/.vargos/agents/<channelId>.md` (see [Personas](./personas.md)).
 6. **Interpolation** — every `${VAR}` and `${VAR:-default}` replaced. Available variables: paths (`WORKSPACE_DIR`, `DATA_DIR`, etc.), time (`CURRENT_DATE`, `CURRENT_TIMEZONE`), session (`SESSION_KEY`), and documentation placeholders (`PROVIDER`, `VAR`). See [Configuration](../configuration.md#interpolation-variables).
 

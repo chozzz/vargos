@@ -10,6 +10,5 @@
 /agent/ @chozzz
 
 # Critical configuration
-CLAUDE.md @chozzz
 package.json @chozzz
 .github/ @chozzz
