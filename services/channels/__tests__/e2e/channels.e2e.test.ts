@@ -96,12 +96,9 @@ class StubAdapter implements ChannelAdapter {
   }
 
   startTyping(sessionKey: string, _withToolFlag: boolean): void  { this.typingStarted.push(sessionKey); }
-  stopTyping(sessionKey: string, _final?: boolean): void { this.typingStopped.push({ sessionKey, final: !!_final }); }
+  stopTyping(sessionKey: string, final = true): void { this.typingStopped.push({ sessionKey, final }); }
   resumeTyping(sessionKey: string): void { this.typingResumed.push(sessionKey); }
   shouldExecute(_userId: string, _chatType: string, _isMentioned: boolean): boolean { return true; }
-  stopTyping(sessionKey: string, final = true): void {
-    this.typingStopped.push({ sessionKey, final });
-  }
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
