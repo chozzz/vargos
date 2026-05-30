@@ -44,7 +44,7 @@
     "prepare": "husky && tsc",
     "test": "vitest",
     "test:run": "vitest run",
-    "lint": "eslint 'gateway/**/*.ts' 'services/**/*.ts' 'lib/**/*.ts' 'index.ts' 'vitest.config.ts' '**/__tests__/**/*.ts' && tsc --noEmit",
+    "lint": "eslint 'gateway/**/*.ts' 'services/**/*.ts' 'lib/**/*.ts' 'index.ts' 'boot.ts' 'vitest.config.ts' '**/__tests__/**/*.ts' && tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "precommit": "pnpm exec lint-staged && pnpm run typecheck && pnpm run test:run",
     "postinstall": "pnpm rebuild better-sqlite3"

@@ -36,6 +36,7 @@ Every `@register`-ed callable is auto-exposed as an agent tool by `services/agen
 | `memory.search` / `memory.read` / `memory.write` / `memory.stats` | Memory operations |
 | `log.search` | Query persisted error log |
 | `bus.search` / `bus.inspect` | Discover registered events |
+| `bus.restart` | Exit the boot child with code 42; the supervisor ([`index.ts`](../../index.ts)) respawns it with fresh code from disk. Registered at runtime in [`boot.ts`](../../boot.ts), so it's not in `EventMap`. |
 
 ## Calling from outside
 
@@ -45,7 +46,7 @@ The TCP server listens on `127.0.0.1:9000` (configurable via `gateway.host` / `g
 echo '{"jsonrpc":"2.0","id":1,"method":"bus.search","params":{}}' | nc -q 1 127.0.0.1 9000
 ```
 
-The MCP bridge at `edge/mcp/` exposes the same surface over HTTP, but is currently commented out in `index.ts`.
+The MCP bridge at `edge/mcp/` exposes the same surface over HTTP, but is currently commented out in `boot.ts`.
 
 ## See also
 

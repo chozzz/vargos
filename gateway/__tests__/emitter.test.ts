@@ -150,6 +150,37 @@ describe('EventEmitterBus', () => {
       expect(result.type).toBe('whatsapp');
     });
 
+    it('re-bootstrapping a service replaces its wiring instead of stacking it', async () => {
+      // Mirrors a per-service bus.restart: the old instance must be un-wired so
+      // @on handlers fire once and @register handlers run once (not per restart).
+      const bus = new EventEmitterBus();
+      const seen: string[] = [];
+
+      class ChannelService {
+        constructor(private readonly tag: string, b: EventEmitterBus) { b.bootstrap(this); }
+
+        @on('agent.onCompleted')
+        onCompleted(_p: EventMap['agent.onCompleted']): void { seen.push(this.tag); }
+
+        @register('channel.get', {
+          description: 'Get channel',
+          schema: z.object({ instanceId: z.string() }),
+        })
+        async get(params: EventMap['channel.get']['params']): Promise<EventMap['channel.get']['result']> {
+          seen.push(`get:${this.tag}`);
+          return { instanceId: params.instanceId, type: 'telegram', status: 'connected' };
+        }
+      }
+
+      new ChannelService('old', bus);
+      new ChannelService('new', bus); // restart: re-bootstrap same class
+
+      bus.emit('agent.onCompleted', { sessionKey: 's', success: true });
+      await bus.call('channel.get', { instanceId: 'x' });
+
+      expect(seen).toEqual(['new', 'get:new']); // old instance no longer fires
+    });
+
     it('multiple @on handlers on one service all wire up', () => {
       const bus = new EventEmitterBus();
       const log: string[] = [];

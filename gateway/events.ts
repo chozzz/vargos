@@ -77,6 +77,7 @@ export interface EventMap {
 
   // ── Callable events ────────────────────────────────────────────────────────
 
+
   // Config
   'config.get': { params: Record<string, never>; result: AppConfig };
   'config.set': { params: AppConfig; result: AppConfig };
@@ -133,4 +134,10 @@ export interface EventMap {
   // Bus introspection
   'bus.search': { params: { query?: string }; result: EventMetadata[] };
   'bus.inspect': { params: { event: string }; result: EventMetadata | null };
+
+  /** Restart a named service (calls stop + re-boot). */
+  'bus.restart': { params: { service: string }; result: { ok: boolean } };
+
+  /** List all registered services and their status. */
+  'bus.status': { params: Record<string, never>; result: { services: Array<{ name: string; status: string }> } };
 }

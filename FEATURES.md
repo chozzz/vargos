@@ -1,6 +1,6 @@
 # Feature Inventory
 
-Source-of-truth status for every Vargos feature. Cross-reference with `gateway/events.ts` (the bus EventMap) and `index.ts` (boot order).
+Source-of-truth status for every Vargos feature. Cross-reference with `gateway/events.ts` (the bus EventMap) and `boot.ts` (boot order — `index.ts` is the supervisor that spawns it).
 
 Legend: ✅ shipped · 🟧 partial / disabled at boot · 📋 planned
 
@@ -168,13 +168,13 @@ Pi-SDK-powered runtime (`@mariozechner/pi-coding-agent`) with Vargos-managed con
 | Feature | Status |
 |---------|--------|
 | MCP **client** (external MCP servers loaded as bus tools) | ✅ `services/mcp-client/` |
-| MCP **server** (HTTP, port 9001, expose Vargos as MCP) | 🟧 commented out in `index.ts:21` |
+| MCP **server** (HTTP, port 9001, expose Vargos as MCP) | 🟧 commented out in `boot.ts` |
 
 ## Webhooks
 
 | Feature | Status |
 |---------|--------|
-| HTTP webhook receiver (port 9002) | 🟧 commented out in `index.ts:22` |
+| HTTP webhook receiver (port 9002) | 🟧 commented out in `boot.ts` |
 | HMAC token auth | 🟧 |
 | Custom JS/TS transforms | 🟧 |
 | `notify` delivery via `channel.send` with `fromSessionKey` | ✅ when re-enabled |

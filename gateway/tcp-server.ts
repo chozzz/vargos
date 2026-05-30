@@ -131,6 +131,7 @@ async function handleRequest(
         id,
       }) + '\n',
     );
+    socket.end();
     return;
   }
 
@@ -143,6 +144,7 @@ async function handleRequest(
         id,
       }) + '\n',
     );
+    socket.end();
   } catch (err) {
     socket.write(
       JSON.stringify({
@@ -154,5 +156,6 @@ async function handleRequest(
         id,
       }) + '\n',
     );
+    socket.end();
   }
 }

@@ -17,7 +17,7 @@ Pattern in short:
 - The `description` and `schema` (Zod) become the agent's tool definition. Write them like documentation for the agent — clear "what it does" and "when to use it".
 - Each service exports a `boot(bus)` function that calls `bus.bootstrap(this)`.
 - Add a typed entry in [`gateway/events.ts`](../../gateway/events.ts) `EventMap` for params + result.
-- Register the boot in [`index.ts`](../../index.ts) `SERVICES` array.
+- Register the boot in [`boot.ts`](../../boot.ts) `SERVICES` array.
 
 ## Conventions
 

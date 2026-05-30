@@ -122,8 +122,8 @@ if (cmd === 'onboard') {
 // start subcommand
 if (cmd === 'start') {
   try {
-    // Boot the gateway + all services (index.ts)
-    // The TCP server will keep the event loop alive indefinitely
+    // Run the supervisor (index.js), which spawns boot.js as a child.
+    // The supervisor keeps the event loop alive while the child runs.
     await import('./index.js');
     // Once services are booted, wait forever (TCP server keeps event loop alive)
     await new Promise(() => { });

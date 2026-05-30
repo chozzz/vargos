@@ -38,7 +38,7 @@ pnpm lint             # eslint + typecheck
 config → log → web → memory → media → agent → channels → cron → mcp-client → tcp server → bus.onReady
 ```
 
-`edge/mcp/` and `edge/webhooks/` exist in code but are commented out in `index.ts` (currently disabled at boot).
+`edge/mcp/` and `edge/webhooks/` exist in code but are commented out in `boot.ts` (currently disabled at boot). `index.ts` is a tiny supervisor that spawns `boot.ts` as a child and respawns it on exit code 42 — that's how `bus.restart` picks up fresh code from disk without needing systemd.
 
 ## Key Patterns
 

@@ -58,4 +58,7 @@ export interface Bus {
 
   /** Unregister a callable tool that was previously registered at runtime. */
   unregisterTool(event: string): boolean;
+
+  /** Register a restart factory for a named service (called by boot.ts at boot). Internal — not exposed via JSON-RPC. */
+  onRestart(serviceName: string, factory: () => Promise<void>): void;
 }
