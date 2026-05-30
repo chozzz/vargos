@@ -22,7 +22,7 @@ pnpm lint             # eslint + typecheck
 - **Config**: `~/.vargos/config.json` + `~/.vargos/agent/{mcp,models,settings,auth}.json`. MCP servers configured in `agent/mcp.json` (shared with Pi SDK); others consolidated by `services/config`.
 - **API keys**: provider entries in `agent/models.json`; env `${PROVIDER}_API_KEY` overrides.
 - **Skills**: auto-loaded from `~/.vargos/agent/skills/`, `~/.vargos/workspace/skills/`, `<cwd>/skills/`, `<cwd>/.pi/skills/`. Pi SDK injects `name` + `description`; body is read on demand. Bundled: `skill-creator`.
-- **Bootstrap files**: only `AGENTS.md`, `SOUL.md`, `TOOLS.md` from workspace + cwd are merged into the system prompt (`services/agent/index.ts:365`). `CLAUDE.md` is **not** in this list — Pi SDK auto-discovers it from cwd separately as `# Project Context`.
+- **Bootstrap files**: only `AGENTS.md`, `SOUL.md`, `TOOLS.md` from workspace + cwd are merged into the system prompt (`services/agent/index.ts:365`). Pi SDK auto-discovers `AGENTS.md` from cwd separately as `# Project Context`.
 - **Channel personas**: per-channel system-prompt overrides at `~/.vargos/agents/<channelId>.md`. Frontmatter `allowedTools?: string[]` (glob whitelist applied to bus tools); body appended after bootstrap. `default.md` seeds new channels at boot.
 - **Reply or Cross-channel forwarding**: `channel.send` with `fromSessionKey` injects `[fromSessionKey] text` into target session history via `agent.appendMessage` (no agent run on receiver).
 - **Directives**: `/think:<level>`, `/verbose` parsed by `services/agent/directives.ts` before agent runs.

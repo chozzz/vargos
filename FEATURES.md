@@ -26,7 +26,7 @@ Pi-SDK-powered runtime (`@mariozechner/pi-coding-agent`) with Vargos-managed con
 |---------|--------|
 | Bootstrap files merged from workspace + cwd: `AGENTS.md`, `SOUL.md`, `TOOLS.md` | ✅ |
 | 6K char head/tail truncation per file | ✅ |
-| Pi SDK auto-discovers cwd-tree `CLAUDE.md`/`AGENTS.md` separately as `# Project Context` | ✅ |
+| Pi SDK auto-discovers cwd-tree `AGENTS.md` separately as `# Project Context` | ✅ |
 | Skills metadata block (Pi SDK injects name + description + location) | ✅ |
 | Channel persona body appended after bootstrap | ✅ |
 | Interpolation: `${WORKSPACE_DIR}`, `${DATA_DIR}`, `${SESSION_KEY}`, `${CHANNEL_ID}`, `${CHAT_ID}`, `${USER_ID/NAME/HANDLE}`, `${BOT_ID/NAME/HANDLE}`, `${CURRENT_DATE}`, `${CURRENT_TIMEZONE}`, `${VAR:-default}` | ✅ |
