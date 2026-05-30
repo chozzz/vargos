@@ -27,8 +27,8 @@ import type { Bus } from '../../gateway/bus.js';
 import { createLogger } from '../../lib/logger.js';
 import { isToolEvent } from '../../gateway/emitter.js';
 import { toMessage } from '../../lib/error.js';
-import { appendError } from '../../lib/error-store.js';
-import { subagentSessionKey } from '../../lib/subagent.js';
+import { appendError } from './error-store.js';
+import { subagentSessionKey } from '../../lib/session-key.js';
 
 const log = createLogger('agent-tools');
 
@@ -68,6 +68,12 @@ function wrapEventAsToolDefinition(
         // Each delegation gets a unique session key to support parallel subagents.
         if (eventName === 'agent.execute') {
           paramsObj.sessionKey = subagentSessionKey(sessionKey);
+        }
+
+        // Auto-inject sessionKey for channel.send if not provided.
+        // Allows the agent to call channel-send without knowing its own sessionKey.
+        if (eventName === 'channel.send' && !paramsObj.sessionKey) {
+          paramsObj.sessionKey = sessionKey;
         }
 
         const result = await bus.call(eventName as never, paramsObj);

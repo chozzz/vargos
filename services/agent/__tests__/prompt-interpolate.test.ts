@@ -53,9 +53,9 @@ describe('interpolatePrompt', () => {
       expect(result).toBe('Hello Alice');
     });
 
-    it('falls back to "unknown" when channel context not provided', () => {
-      const result = interpolatePrompt('Bot: ${BOT_NAME}');
-      expect(result).toBe('Bot: unknown');
+    it('falls back to "unknown" when session context not provided', () => {
+      const result = interpolatePrompt('Session: ${SESSION_KEY}');
+      expect(result).toBe('Session: unknown');
     });
 
     it('allows context to add custom variables', () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import type { AdapterDeps } from '../../contracts.js';
+import type { AdapterDeps } from '../../types.js';
 import { BaseChannelAdapter } from '../../base-adapter.js';
 
 // Mock implementation of BaseChannelAdapter for testing

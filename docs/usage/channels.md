@@ -35,9 +35,9 @@ Non-mentioned group messages are appended to history (so the agent has context i
 
 Each channel has its own system-prompt overrides at `~/.vargos/agents/<channelId>.md`, auto-seeded at boot. See [Personas](./personas.md).
 
-## Inbound metadata
+## Inbound message fields
 
-Channel adapters populate rich metadata on each inbound message: sender identity (`fromUser*`), bot identity (`botName`/`botUserId`/`botHandle`), `chatType`, `isMentioned`, `messageId` (for reactions), `media`. Schema in [`gateway/events.ts`](../../gateway/events.ts) `InboundMessageMetadata`. These flow through into the system prompt as `${USER_NAME}`, `${BOT_NAME}`, etc.
+Channel adapters normalize each inbound message into `NormalizedInboundMessage` ([`contracts.ts`](../../services/channels/contracts.ts)): `fromUserId`, `fromUser`, `chatType` (`private` | `group`), `isMentioned`, `messageId` (for reactions), `media`, and `text`. The pipeline uses `fromUserId` + `isMentioned` for execution decisions via `adapter.shouldExecute()`.
 
 ## Documents and media
 
@@ -64,9 +64,29 @@ Inline directives the user can prefix to a message:
 
 Parser: [`services/agent/directives.ts`](../../services/agent/directives.ts).
 
+## Execution decisions
+
+`adapter.shouldExecute(userId, chatType, isMentioned)` decides whether the agent runs or the message is recorded to history only. Called by [`pipeline.ts`](../../services/channels/pipeline.ts) for every inbound message.
+
+| `allowFrom` | Chat type | Mentioned? | Result |
+|---|---|---|---|
+| omitted / `undefined` | any | any | **Execute** (permissive default) |
+| `[]` (empty) | any | any | **Observe** (block all) |
+| user whitelisted | private | — | **Execute** |
+| user whitelisted | group | yes | **Execute** |
+| user whitelisted | group | no | **Observe** |
+| user not whitelisted | any | any | **Observe** |
+
+"Observe" means the message is appended to session history via `agent.appendMessage` (so the agent has context later) but no LLM call is made. This applies to both text and media:
+
+- **Text** — appended as-is to history
+- **Media** — file is saved to disk, appended to history as a file path only. Vision/transcription/extraction are **skipped** (no API calls). The `shouldProcessMedia` flag in [`base-adapter.ts`](../../services/channels/base-adapter.ts) is tied directly to `shouldExecute()`.
+
 ## Whitelist enforcement
 
-`allowFrom` is checked **before** the agent runs. Non-whitelisted senders' messages are appended to history but the agent isn't invoked. Always set `allowFrom` for production channels — see [`SECURITY.md`](../../SECURITY.md).
+`allowFrom` is checked **before** the agent runs via `adapter.shouldExecute()`. See the [execution decisions table](#execution-decisions) above.
+
+Always set `allowFrom` for production channels — see [`SECURITY.md`](../../SECURITY.md).
 
 ## Cross-channel forwarding
 

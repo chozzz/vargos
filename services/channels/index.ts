@@ -25,11 +25,11 @@ import type { AppConfig, ChannelEntry } from '../../services/config/index.js';
 import { createLogger } from '../../lib/logger.js';
 import { toMessage } from '../../lib/error.js';
 import { stripMarkdown } from '../../lib/strip-markdown.js';
-import { parseChannelTarget } from '../../lib/subagent.js';
+import { parseChannelTarget } from '../../lib/session-key.js';
 import { paginate } from '../../lib/paginate.js';
-import type { ChannelAdapter, ChannelProvider, NormalizedInboundMessage, AdapterDeps } from './contracts.js';
+import type { ChannelAdapter, ChannelProvider, NormalizedInboundMessage, AdapterDeps } from './types.js';
 import { deliverReply } from './delivery.js';
-import { extractMediaPaths } from './media-extract.js';
+import { extractMediaPaths } from './media-paths.js';
 import { InboundMessagePipeline, type PipelineSession } from './pipeline.js';
 import { loadProviders } from './provider-loader.js';
 
@@ -57,6 +57,14 @@ class ChannelRegistry {
 
   register(provider: ChannelProvider): void {
     this.providers.set(provider.type, provider);
+  }
+
+  has(type: string): boolean {
+    return this.providers.has(type);
+  }
+
+  types(): string[] {
+    return [...this.providers.keys()];
   }
 
   async createAdapter(entry: ChannelEntry, deps: AdapterDeps): Promise<ChannelAdapter | null> {
@@ -121,9 +129,15 @@ export class ChannelService {
     const adapter = this.adapters.get(target.channel);
     if (!adapter) throw new Error(`No adapter for channel: ${target.channel}`);
 
-    log.debug(`send: ${sessionKey} (${text.length} chars)`);
+    log.info(`send: ${sessionKey} (${text.length} chars) channel=${target.channel}`);
     const cleaned = stripMarkdown(text);
     await deliverReply((chunk) => adapter.send(sessionKey, chunk), cleaned);
+
+    // Mark session as replied so onAgentCompleted knows agent sent its own reply
+    const session = this.activeSessions.get(sessionKey);
+    if (session) session.replied = true;
+
+    log.info(`send: completed ${sessionKey}`);
 
     if (adapter.sendMedia) {
       const files = extractMediaPaths(text);
@@ -198,11 +212,13 @@ export class ChannelService {
   }
 
   @register('channel.register', {
-    description: 'Dynamically register a new channel adapter.',
+    description: 'Dynamically register a new channel adapter. `type` must match a loaded provider (e.g. telegram, whatsapp).',
     // Flat object required: discriminatedUnion produces type:null in JSON Schema, rejected by Anthropic API.
+    // `type` is a free string validated at runtime against loaded providers — keeps this open to new
+    // providers without re-listing them here (the config union remains the authority for persistence).
     schema: z.object({
       id: z.string(),
-      type: z.enum(['telegram', 'whatsapp']),
+      type: z.string(),
       enabled: z.boolean().optional(),
       model: z.string().optional(),
       debounceMs: z.number().int().min(0).optional(),
@@ -213,6 +229,9 @@ export class ChannelService {
     }),
   })
   async register(params: EventMap['channel.register']['params']): Promise<void> {
+    if (!this.registry.has(params.type)) {
+      throw new Error(`Unknown channel type: ${params.type}. Loaded providers: ${this.registry.types().join(', ')}`);
+    }
     if (this.adapters.has(params.id)) {
       log.info(`channel already registered: ${params.id}`);
       return;
@@ -293,24 +312,49 @@ export class ChannelService {
       session.adapter.stopTyping(targetSessionKey, true);
     };
 
-    // Don't send empty responses on success
+    // Don't send empty responses on success.
+    // Agent controls reply via channel-send tool — onAgentCompleted is cleanup-only.
     if (payload.success && !payload.response) {
       log.debug(`  → skipping send: empty response on success`);
       cleanup();
       return;
     }
 
-    this.bus.call('channel.send', { sessionKey: targetSessionKey, text: responseText })
-      .then(({ sent }) => {
-      log.debug(`→ ${targetSessionKey} sent=${sent}`);
-      })
-      .catch(err => log.error(`failed to send reply: ${toMessage(err)}`))
-      .finally(() => {
-        if (session) {
-          log.debug(`  → stopping typing (session stays alive for idle cleanup)`);
-          cleanup();
-        }
-      });
+    // Agent sends its own reply via channel-send tool.
+    // Fallback: if response is non-empty but agent didn't call channel-send, send here.
+    if (payload.success === false) {
+      // Always send errors
+      this.bus.call('channel.send', { sessionKey: targetSessionKey, text: responseText })
+        .then(({ sent }) => {
+          log.debug(`→ ${targetSessionKey} sent=${sent}`);
+        })
+        .catch(err => log.error(`failed to send reply: ${toMessage(err)}`))
+        .finally(() => {
+          if (session) {
+            log.debug(`  → stopping typing (session stays alive for idle cleanup)`);
+            cleanup();
+          }
+        });
+    } else if (session && !session.replied && payload.response) {
+      // Agent returned a response but didn't call channel-send — auto-send as fallback
+      log.debug(`  → agent didn't call channel-send, auto-sending response (${payload.response.length} chars)`);
+      this.bus.call('channel.send', { sessionKey: targetSessionKey, text: responseText })
+        .then(({ sent }) => {
+          log.debug(`→ ${targetSessionKey} sent=${sent}`);
+        })
+        .catch(err => log.error(`failed to send reply: ${toMessage(err)}`))
+        .finally(() => {
+          if (session) {
+            log.debug(`  → stopping typing (session stays alive for idle cleanup)`);
+            cleanup();
+          }
+        });
+    } else {
+      // Success with response — agent should have sent via channel-send.
+      // Just cleanup here.
+      log.debug(`  → agent response delivered via channel-send (cleanup only)`);
+      cleanup();
+    }
   }
 
   // ── Inbound message handling ─────────────────────────────────────────────────
@@ -336,7 +380,7 @@ export class ChannelService {
     }
 
     // Delegate to pipeline for policy orchestration
-    log.debug(`onInboundMessage: processing message for ${sessionKey}`);
+    log.debug(`onInboundMessage: Running pipeline process for ${sessionKey}`);
     await this.pipeline.process(sessionKey, message, adapter, this.activeSessions);
   }
 

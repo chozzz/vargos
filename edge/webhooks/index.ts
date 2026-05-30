@@ -18,7 +18,7 @@ import type { AppConfig, WebhookEntry } from '../../services/config/index.js';
 import { createLogger } from '../../lib/logger.js';
 import { toMessage } from '../../lib/error.js';
 import { getDataPaths } from '../../lib/paths.js';
-import { webhookSessionKey, parseSessionKey } from '../../lib/subagent.js';
+import { webhookSessionKey, parseSessionKey } from '../../lib/session-key.js';
 import { paginate } from '../../lib/paginate.js';
 import { passthroughTransform, loadTransform } from './transform.js';
 

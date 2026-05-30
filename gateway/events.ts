@@ -6,8 +6,6 @@
 
 export type { ThinkingLevel, ChannelEntry, CronTask, CronAddParams, CronUpdateParams, WebhookEntry, Json, AppConfig } from '../services/config/index.js';
 import type { ChannelEntry, CronTask, CronAddParams, CronUpdateParams, WebhookEntry, Json, AppConfig } from '../services/config/index.js';
-export type { ImageMimeType, AudioMimeType, VideoMimeType, DocumentMimeType } from '../lib/media-transcribe.js';
-import type { ImageMimeType, AudioMimeType, VideoMimeType, DocumentMimeType } from '../lib/media-transcribe.js';
 
 // ─── Domain types ─────────────────────────────────────────────────────────────
 
@@ -29,56 +27,22 @@ export interface EventMetadata {
 
 // ─── Param types ──────────────────────────────────────────────────────────────
 
-export interface InboundMessageMetadata {
-  /** Unique message identifier for reactions (e.g., Telegram message_id) */
-  messageId?: string;
-  /** When set to true, do not prompt agent. But still append the message to the agent's history. */
-  skipAgent?: boolean;
-  /** Working directory for the agent — defaults to vargos workspace. When set,
-   *  bootstrap files (AGENTS.md, SOUL.md, TOOLS.md) from both cwd and workspace are merged. */
-  cwd?: string;
-  /** Username/display name of the message sender (for group chat attribution) */
-  fromUser?: string;
-  /** Sender's user ID (for whitelist enforcement). Platform-specific: Telegram user ID, WhatsApp JID, etc. */
-  fromUserId?: string;
-  /** Sender's @handle on the platform (e.g. Telegram username). Optional — not all platforms have one. */
-  fromUserHandle?: string;
-  /** Chat type — 'private' for 1:1, 'group' for group chats. Helps determine if bot was explicitly addressed. */
-  chatType?: 'private' | 'group';
-  /** True if bot was explicitly mentioned or replied to in a group chat. */
-  isMentioned?: boolean;
-  /** Platform/adapter type (e.g., 'telegram', 'whatsapp') */
-  channelType?: string;
-  /** Bot's user ID on the platform (numeric for Telegram, JID for WhatsApp). */
-  botUserId?: string;
-  /** Bot's display/first name. */
-  botName?: string;
-  /** Bot's @handle on the platform (e.g. Telegram bot username). */
-  botHandle?: string;
-  /** Model override for this message (e.g., "claude-opus-4"). If not set, uses agent.model from config. */
-  model?: string;
-  /** Media attachment metadata with content reference — discriminated by type */
-  media?:
-  | { type: 'image'; mimeType?: ImageMimeType; path?: string; description?: string }
-  | { type: 'audio'; mimeType?: AudioMimeType; path?: string; transcription?: string }
-  | { type: 'video'; mimeType?: VideoMimeType; path?: string }
-  | { type: 'document'; mimeType?: DocumentMimeType; path?: string };
-}
-
 export interface AgentExecuteParams {
   /** Session key — required for direct callers (channels, cron, webhooks, TCP).
    *  When the agent calls agent.execute as a tool, wrapEventAsToolDefinition injects this automatically. */
   sessionKey: string;
   /** The task to execute or delegate to the agent. */
   task: string;
-  /** The current working directory to use for the agent. Fallbacks to channel's cwd config, then lastly vargos workspace dir. */
+  /** Working directory for the agent — defaults to workspace dir.
+   * When set, bootstrap files from both cwd and workspace are merged. */
   cwd?: string;
-
-  /** Metadata for the inbound message */
-  metadata?: InboundMessageMetadata;
+  /** Model override in format `provider:modelId` (e.g., "claude-opus-4").
+   * Overrides the channel's model config and the agent's default model. */
+  model?: string;
 }
 
-export interface AgentAppendMessageParams extends Pick<AgentExecuteParams, 'sessionKey' | 'metadata'> {
+export interface AgentAppendMessageParams {
+  sessionKey: string;
   content: string;
 }
 
@@ -112,6 +76,7 @@ export interface EventMap {
   'bus.onReady': Record<string, never>;
 
   // ── Callable events ────────────────────────────────────────────────────────
+
 
   // Config
   'config.get': { params: Record<string, never>; result: AppConfig };
@@ -169,4 +134,10 @@ export interface EventMap {
   // Bus introspection
   'bus.search': { params: { query?: string }; result: EventMetadata[] };
   'bus.inspect': { params: { event: string }; result: EventMetadata | null };
+
+  /** Restart a named service (calls stop + re-boot). */
+  'bus.restart': { params: { service: string }; result: { ok: boolean } };
+
+  /** List all registered services and their status. */
+  'bus.status': { params: Record<string, never>; result: { services: Array<{ name: string; status: string }> } };
 }

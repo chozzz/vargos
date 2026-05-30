@@ -15,9 +15,9 @@ adapter (telegram/whatsapp)
   → debouncer (configurable per channel)
   → pipeline.process()
        ├─ link expansion
-       ├─ whitelist check (allowFrom)
-       ├─ if skipAgent: agent.appendMessage (record only)
-       └─ else: agent.execute → reply via channel.send
+       ├─ adapter.shouldExecute(userId, chatType, isMentioned)
+       ├─ if false: agent.appendMessage (record only, observe mode)
+       └─ if true: agent.execute → reply via channel.send
 ```
 
 `NormalizedInboundMessage` shape: [`services/channels/contracts.ts`](../../services/channels/contracts.ts).

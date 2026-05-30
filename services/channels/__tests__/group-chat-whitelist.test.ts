@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseSessionKey } from '../../../lib/subagent.js';
+import { parseSessionKey } from '../../../lib/session-key.js';
 import type { InboundMessageMetadata } from '../../../gateway/events.js';
 
 describe('Group chat whitelist enforcement', () => {

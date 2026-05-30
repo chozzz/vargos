@@ -25,13 +25,13 @@ import { createLogger } from '../../lib/logger.js';
 import { toMessage } from '../../lib/error.js';
 import { getDataPaths } from '../../lib/paths.js';
 import { generateId } from '../../lib/id.js';
-import { cronSessionKey, parseSessionKey } from '../../lib/subagent.js';
+import { cronSessionKey, parseSessionKey } from '../../lib/session-key.js';
 import { parseFrontmatter, serializeFrontmatter } from '../../lib/frontmatter.js';
 import {
   isWithinActiveHours,
   isHeartbeatContentEffectivelyEmpty,
   stripHeartbeatToken,
-} from '../../lib/heartbeat.js';
+} from './heartbeat.js';
 
 const log = createLogger('cron');
 
@@ -222,7 +222,7 @@ export class CronService {
         log.debug(`skipping disabled job: ${task.id}`);
       }
     }
-      log.info(`${count} jobs started`);
+    log.info(`${count} jobs started`);
   }
 
   private stopAll(): void {
@@ -246,7 +246,7 @@ export class CronService {
 
     // Check activeHours for all tasks (not just heartbeat)
     if (entry.task.activeHours &&
-        !isWithinActiveHours(entry.task.activeHours as [number, number], entry.task.activeHoursTimezone)) {
+      !isWithinActiveHours(entry.task.activeHours as [number, number], entry.task.activeHoursTimezone)) {
       log.debug(`task outside active hours, not firing: ${id}`);
       return;
     }
@@ -284,12 +284,10 @@ export class CronService {
     const sessionKey = cronSessionKey(task.id);
     log.info(`⏰ ${task.name} (${task.id})`);
 
-    const metadata = task.model ? { model: task.model } : undefined;
-
     const result = await this.bus.call('agent.execute', {
       sessionKey,
       task: task.task,
-      ...(metadata && { metadata }),
+      ...(task.model && { model: task.model }),
     });
 
     if (!result.response) return;

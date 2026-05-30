@@ -12,8 +12,8 @@ import { resetDataPaths } from '../../../lib/paths.js';
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 class TestableRuntime extends AgentService {
-  async testGetSystemPrompt(sessionKey: string, metadata?: Parameters<AgentService['getSystemPrompt']>[1], personaBody?: string) {
-    return this.getSystemPrompt(sessionKey, metadata, personaBody);
+  async testGetSystemPrompt(sessionKey: string, personaBody?: string) {
+    return this.getSystemPrompt(sessionKey, personaBody);
   }
 
   async testLoadPersonaIfChannel(sessionKey: string) {
@@ -164,7 +164,6 @@ describe('subagent system prompt routing', () => {
 
     const prompt = await runtime.testGetSystemPrompt(
       'telegram:user123:subagent:abc12345',
-      undefined,
       'You are a subagent.',
     );
 
@@ -180,7 +179,7 @@ describe('subagent system prompt routing', () => {
 
   it('subagent session returns undefined for empty personaBody', async () => {
     const runtime = createTestRuntime(tmpDir);
-    const prompt = await runtime.testGetSystemPrompt('telegram:user123:subagent:abc12345', undefined, '   ');
+    const prompt = await runtime.testGetSystemPrompt('telegram:user123:subagent:abc12345', '   ');
     expect(prompt).toBeUndefined();
   });
 

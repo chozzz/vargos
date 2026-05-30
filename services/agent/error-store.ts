@@ -5,8 +5,8 @@
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { getDataPaths } from './paths.js';
-import { sanitizeError, classifyError, type ErrorClass } from './error.js';
+import { getDataPaths } from '../../lib/paths.js';
+import { sanitizeError, classifyError, type ErrorClass } from '../../lib/error.js';
 
 export interface ErrorRecord {
   ts: string;

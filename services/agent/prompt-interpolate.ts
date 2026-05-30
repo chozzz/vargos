@@ -10,9 +10,9 @@
  * - ${CHANNELS_DIR} → ~/.vargos/channels
  * - ${HOME} → user's home directory
  * - ${PWD} → current working directory
- * - ${SESSION_KEY}, ${CHANNEL_ID}, ${CHANNEL_TYPE}, ${CHAT_ID} → session identity
- * - ${USER_ID}, ${USER_NAME}, ${USER_HANDLE} → message sender (from agent metadata)
- * - ${BOT_ID}, ${BOT_NAME}, ${BOT_HANDLE} → bot identity (from agent metadata)
+ * - ${SESSION_KEY} → session identity
+ * - ${PROVIDER} → provider name (empty — used in docs for ${PROVIDER}_API_KEY pattern)
+ * - ${VAR} → generic placeholder (empty — used in docs for ${VAR:-default} pattern)
  *
  * Default values use bash-style syntax: ${VAR:-default}
  *   - Used when VAR is missing OR an empty string.
@@ -80,19 +80,15 @@ function interpolatePromptWithMissing(prompt: string, context?: Record<string, s
     }),
     CURRENT_TIMEZONE: currentTimezone,
 
-    // Channel context variables — fall back to 'unknown' when not provided.
-    // Handles default to '' so templates can override with ${VAR:-fallback}.
-    CHANNEL_TYPE:  context?.CHANNEL_TYPE  || 'unknown',
-    CHANNEL_ID:    context?.CHANNEL_ID    || 'unknown',
-    CHAT_ID:       context?.CHAT_ID       || 'unknown',
-    USER_ID:       context?.USER_ID       || 'unknown',
-    USER_NAME:     context?.USER_NAME     || 'unknown',
-    USER_HANDLE:   context?.USER_HANDLE   || '',
-    BOT_ID:        context?.BOT_ID        || 'unknown',
-    BOT_NAME:      context?.BOT_NAME      || 'unknown',
-    BOT_HANDLE:    context?.BOT_HANDLE    || '',
+    // Session identity.
+    SESSION_KEY:   context?.SESSION_KEY   || 'unknown',
 
-    // Just in case context is provided, but not all variables are present.
+    // Known documentation variables — referenced in bootstrap docs but not runtime values.
+    // These prevent spurious "Missing interpolation keys" warnings.
+    PROVIDER: '',
+    VAR: '',
+
+    // Merge any additional context variables (e.g., custom vars from tests or callers).
     ...context,
   };
 

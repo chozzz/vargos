@@ -95,11 +95,10 @@ class StubAdapter implements ChannelAdapter {
     return undefined; // Stub doesn't track message IDs
   }
 
-  startTyping(sessionKey: string): void  { this.typingStarted.push(sessionKey); }
+  startTyping(sessionKey: string, _withToolFlag: boolean): void  { this.typingStarted.push(sessionKey); }
+  stopTyping(sessionKey: string, final = true): void { this.typingStopped.push({ sessionKey, final }); }
   resumeTyping(sessionKey: string): void { this.typingResumed.push(sessionKey); }
-  stopTyping(sessionKey: string, final = true): void {
-    this.typingStopped.push({ sessionKey, final });
-  }
+  shouldExecute(_userId: string, _chatType: string, _isMentioned: boolean): boolean { return true; }
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -148,7 +147,8 @@ function stubAgentExecute(
       schema: z.object({
         sessionKey: z.string(),
         task: z.string(),
-        metadata: z.object({}).passthrough().optional(),
+        cwd: z.string().optional(),
+        model: z.string().optional(),
       }),
     })
     async execute(params: EventMap['agent.execute']['params']): Promise<{ response: string }> {
@@ -366,12 +366,12 @@ describe('subscribeToSessionEvents', () => {
 // ── onAgentCompleted reply logic ─────────────────────────────────────────────
 
 describe('onAgentCompleted reply logic', () => {
-  it('sends response text via channel.send on success', async () => {
+  it('auto-sends response when agent did not call channel-send', async () => {
     const { bus, svc, adapter } = setup();
     const sessionKey = 'stub-ch:user1';
 
-    // Seed activeSessions as onInboundMessage would
-    (svc as any).activeSessions.set(sessionKey, { adapter });
+    // Seed activeSessions with replied=false (agent didn't call channel-send)
+    (svc as any).activeSessions.set(sessionKey, { adapter, replied: false });
 
     // Register channel.send stub to avoid "no handler" timeout
     const sent: Array<{ sessionKey: string; text: string }> = [];
@@ -392,8 +392,10 @@ describe('onAgentCompleted reply logic', () => {
 
     await tick();
 
+    // Fallback: agent didn't call channel-send, so onCompleted auto-sends
     expect(sent).toHaveLength(1);
     expect(sent[0]).toEqual({ sessionKey, text: 'Here is your answer.' });
+    expect(adapter.typingStopped).toHaveLength(1);
   });
 
   it('sends Error: prefix on failure via channel.send', async () => {
@@ -626,48 +628,6 @@ describe('onInboundMessage firing agent.execute', () => {
     expect(params.task).toBe('What is the weather?');
   });
 
-  it('includes message metadata from normalized inbound message', async () => {
-    const { bus, svc } = setup();
-    const sessionKey = 'stub-ch:user15';
-    const spy = stubAgentExecute(bus);
-
-    await svc.onInboundMessage(sessionKey, createTestMessage('describe this'));
-    await tick();
-
-    expect(spy).toHaveBeenCalledOnce();
-    const params = spy.mock.calls[0][0] as EventMap['agent.execute']['params'];
-    // Metadata includes normalized message fields (no model/cwd since stub config has none)
-    expect(params.metadata?.messageId).toBe('test-msg-1');
-    expect(params.metadata?.fromUser).toBe('Test User');
-    expect(params.metadata?.chatType).toBe('private');
-    expect(params.metadata?.isMentioned).toBe(true);
-  });
-
-  it('omits media when not in metadata', async () => {
-    const { bus, svc } = setup();
-    const sessionKey = 'stub-ch:user16';
-    const spy = stubAgentExecute(bus);
-
-    await svc.onInboundMessage(sessionKey, createTestMessage('plain message'));
-    await tick();
-
-    const params = spy.mock.calls[0][0] as EventMap['agent.execute']['params'];
-    expect(params.metadata?.media).toBeUndefined();
-  });
-
-  it('strips media.data from inboundMeta before storing (does not forward raw buffer)', async () => {
-    const { bus, svc } = setup();
-    const sessionKey = 'stub-ch:user17';
-    const spy = stubAgentExecute(bus);
-
-    await svc.onInboundMessage(sessionKey, createTestMessage('voice msg'));
-    await tick();
-
-    // We care that agent.execute was called and agent task passed through
-    expect(spy).toHaveBeenCalledOnce();
-    // activeSessions was cleaned up or set correctly
-  });
-
   it('onInboundMessage try/catch only catches synchronous throw from bus.call itself', async () => {
     // The try/catch in onInboundMessage wraps bus.call('agent.execute', ...).
     // bus.call() always returns a Promise — it never throws synchronously.
@@ -808,11 +768,17 @@ describe('Integration: full inbound → agent → reply flow', () => {
         description: 'stub send',
         schema: z.object({ sessionKey: z.string(), text: z.string() }),
       })
-      async send(p: EventMap['channel.send']['params']) { sent.push(p); return { sent: true }; }
+      async send(p: EventMap['channel.send']['params']) {
+        sent.push(p);
+        // Mark session as replied (mimics real channel.send behavior)
+        const session = (svc as any).activeSessions?.get(p.sessionKey);
+        if (session) session.replied = true;
+        return { sent: true };
+      }
     }
     new SendStub(bus);
 
-    // Agent that fires onCompleted after returning
+    // Agent that fires onCompleted after returning, and sends reply via channel-send
     class RealishAgent {
       constructor(b: EventEmitterBus) { b.bootstrap(this); }
       @register('agent.execute', {
@@ -820,8 +786,9 @@ describe('Integration: full inbound → agent → reply flow', () => {
         schema: z.object({ sessionKey: z.string(), task: z.string() }).passthrough(),
       })
       async execute(params: EventMap['agent.execute']['params']) {
-        // Simulate async agent completing and emitting onCompleted
-        setImmediate(() => {
+        // Simulate async agent completing: sends reply via channel-send, then emits onCompleted
+        setImmediate(async () => {
+          await bus.call('channel.send', { sessionKey: params.sessionKey, text: 'Done! Here is the result.' });
           bus.emit('agent.onCompleted', {
             sessionKey: params.sessionKey,
             success: true,
@@ -843,7 +810,7 @@ describe('Integration: full inbound → agent → reply flow', () => {
 
     // Session stays alive for idle cleanup
     expect((svc as any).activeSessions.has(sessionKey)).toBe(true);
-    // Reply sent
+    // Reply sent by agent via channel-send (onCompleted is cleanup-only on success)
     expect(sent).toHaveLength(1);
     expect(sent[0].text).toBe('Done! Here is the result.');
     // Typing stopped
@@ -868,7 +835,12 @@ describe('Integration: full inbound → agent → reply flow', () => {
         description: 'stub',
         schema: z.object({ sessionKey: z.string(), text: z.string() }),
       })
-      async send(p: EventMap['channel.send']['params']) { sent.push(p); return { sent: true }; }
+      async send(p: EventMap['channel.send']['params']) {
+        sent.push(p);
+        const session = (svc as any).activeSessions?.get(p.sessionKey);
+        if (session) session.replied = true;
+        return { sent: true };
+      }
     }
     new SendStub(bus);
 
@@ -879,9 +851,11 @@ describe('Integration: full inbound → agent → reply flow', () => {
         schema: z.object({ sessionKey: z.string(), task: z.string() }).passthrough(),
       })
       async execute(params: EventMap['agent.execute']['params']) {
-        setImmediate(() => {
+        setImmediate(async () => {
           bus.emit('agent.onTool', { sessionKey: params.sessionKey, toolName: 'fs.read', phase: 'start' });
           bus.emit('agent.onTool', { sessionKey: params.sessionKey, toolName: 'fs.read', phase: 'end' });
+          // Agent sends reply via channel-send, then emits onCompleted (cleanup-only)
+          await bus.call('channel.send', { sessionKey: params.sessionKey, text: 'ok' });
           bus.emit('agent.onCompleted', { sessionKey: params.sessionKey, success: true, response: 'ok' });
         });
         return { response: '' };
@@ -918,7 +892,12 @@ describe('Integration: full inbound → agent → reply flow', () => {
         description: 'stub',
         schema: z.object({ sessionKey: z.string(), text: z.string() }),
       })
-      async send(p: EventMap['channel.send']['params']) { sent.push(p); return { sent: true }; }
+      async send(p: EventMap['channel.send']['params']) {
+        sent.push(p);
+        const session = (svc as any).activeSessions?.get(p.sessionKey);
+        if (session) session.replied = true;
+        return { sent: true };
+      }
     }
     new SendStub(bus);
 
@@ -930,7 +909,9 @@ describe('Integration: full inbound → agent → reply flow', () => {
       })
       async execute(params: EventMap['agent.execute']['params']) {
         const delay = params.sessionKey === key1 ? 30 : 10;
-        setTimeout(() => {
+        setTimeout(async () => {
+          // Agent sends reply via channel-send, then emits onCompleted (cleanup-only)
+          await bus.call('channel.send', { sessionKey: params.sessionKey, text: `reply for ${params.sessionKey}` });
           bus.emit('agent.onCompleted', {
             sessionKey: params.sessionKey,
             success: true,

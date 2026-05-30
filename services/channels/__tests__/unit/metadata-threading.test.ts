@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import type { NormalizedInboundMessage, AdapterDeps } from '../../contracts.js';
+import type { NormalizedInboundMessage, AdapterDeps } from '../../types.js';
 import { BaseChannelAdapter } from '../../base-adapter.js';
 import { createMessageDebouncer } from '../../debounce.js';
 
@@ -45,7 +45,6 @@ describe('Metadata Threading', () => {
         chatType: 'group',
         isMentioned: true,
         channelType: 'test',
-        skipAgent: false,
       };
 
       debouncer.push('user-1', 'hello', message);
@@ -71,7 +70,6 @@ describe('Metadata Threading', () => {
         fromUserId: '1',
         fromUser: 'alice',
         channelType: 'test',
-        skipAgent: false,
         chatType: 'private',
         isMentioned: true,
       };
@@ -82,7 +80,6 @@ describe('Metadata Threading', () => {
         chatType: 'group',
         isMentioned: true,
         channelType: 'test',
-        skipAgent: false,
       };
 
       debouncer.push('user-1', 'first', msg1);
@@ -115,7 +112,6 @@ describe('Metadata Threading', () => {
         chatType: 'private',
         isMentioned: true,
         channelType: 'test',
-        skipAgent: false,
       };
 
       // Call handleBatch directly to test it forwards message
@@ -137,13 +133,13 @@ describe('Metadata Threading', () => {
         chatType: 'group',
         isMentioned: true,
         channelType: 'test',
-        skipAgent: false,
       };
 
       adapter['debouncer'].push('user-2', 'test message', message);
 
-      // Wait for debouncer to flush
-      await new Promise(r => setTimeout(r, 100));
+      // Flush debouncer and wait for handleBatch
+      adapter['debouncer'].flushAll();
+      await new Promise(r => setTimeout(r, 50));
 
       expect(adapter.capturedCalls).toHaveLength(1);
       expect(adapter.capturedCalls[0].message.messageId).toBe('msg-789');
@@ -153,7 +149,9 @@ describe('Metadata Threading', () => {
     it('normalized message is required for batch processing', async () => {
       adapter['debouncer'].push('user-3', 'no message');
 
-      await new Promise(r => setTimeout(r, 100));
+      // Flush debouncer and wait
+      adapter['debouncer'].flushAll();
+      await new Promise(r => setTimeout(r, 50));
 
       // Without a message, handleBatch should not call onInboundMessage
       expect(adapter.capturedCalls).toHaveLength(0);
@@ -167,7 +165,6 @@ describe('Metadata Threading', () => {
         chatType: 'private',
         isMentioned: false,
         channelType: 'test',
-        skipAgent: false,
       };
       const msg2: NormalizedInboundMessage = {
         messageId: 'msg-b',
@@ -176,13 +173,14 @@ describe('Metadata Threading', () => {
         chatType: 'private',
         isMentioned: false,
         channelType: 'test',
-        skipAgent: false,
       };
 
       adapter['debouncer'].push('user-4', 'msg1', msg1);
       adapter['debouncer'].push('user-4', 'msg2', msg2); // Latest wins
 
-      await new Promise(r => setTimeout(r, 100));
+      // Flush debouncer and wait for handleBatch
+      adapter['debouncer'].flushAll();
+      await new Promise(r => setTimeout(r, 50));
 
       expect(adapter.capturedCalls).toHaveLength(1);
       expect(adapter.capturedCalls[0].message.text).toBe('msg1\nmsg2');
@@ -200,7 +198,6 @@ describe('Metadata Threading', () => {
         chatType: 'group',
         isMentioned: true,
         channelType: 'test',
-        skipAgent: false,
       };
 
       await adapter['handleBatch']('user-5', ['full message'], message);
@@ -220,7 +217,6 @@ describe('Metadata Threading', () => {
         chatType: 'private',
         isMentioned: false,
         channelType: 'test',
-        skipAgent: false,
       };
 
       await adapter['handleBatch']('user-6', ['partial'], message);

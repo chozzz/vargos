@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { EventEmitterBus } from '../../../../gateway/emitter.js';
 import { ChannelService } from '../../index.js';
 import { BaseChannelAdapter } from '../../base-adapter.js';
-import type { InboundMediaSource } from '../../contracts.js';
+import type { InboundMediaSource } from '../../types.js';
 import type { AppConfig } from '../../../config/index.js';
 
 /**
@@ -106,9 +106,8 @@ describe('Channels E2E — Media/Audio Flow', () => {
           mediaType: 'audio',
           caption: 'Voice memo',
         },
-        '12345',
+        async (text) => adapter['onInboundMessage']?.(sessionKey, text),
         sessionKey,
-        (text) => adapter['onInboundMessage']?.(sessionKey, text),
       );
 
       // Wait for async processing
@@ -118,8 +117,8 @@ describe('Channels E2E — Media/Audio Flow', () => {
       expect(inboundMessages).toHaveLength(1);
       const msg = inboundMessages[0];
       expect(msg.sessionKey).toBe(sessionKey);
-      expect(msg.content).toContain('Voice message');
-      expect(msg.content).toContain('saved:');
+      expect(msg.content).toContain('Voice memo');
+      expect(msg.content).toMatch(/\[Audio: /);
     });
 
     it('does not duplicate messages on media processing', async () => {
@@ -135,9 +134,8 @@ describe('Channels E2E — Media/Audio Flow', () => {
             mediaType: 'image',
             caption: 'Test image',
           },
-          '12345',
+          async (text) => adapter['onInboundMessage']?.(sessionKey, text),
           sessionKey,
-          (text) => adapter['onInboundMessage']?.(sessionKey, text),
         );
       }
 
@@ -164,9 +162,8 @@ describe('Channels E2E — Media/Audio Flow', () => {
           mediaType: 'image',
           caption: 'Photo',
         },
-        '12345',
+        async (text) => adapter['onInboundMessage']?.(sessionKey, text),
         sessionKey,
-        (text) => adapter['onInboundMessage']?.(sessionKey, text),
       );
 
       await new Promise(r => setTimeout(r, 50));
@@ -189,9 +186,8 @@ describe('Channels E2E — Media/Audio Flow', () => {
           mimeType: 'audio/wav',
           mediaType: 'audio',
         },
-        'user-456',
+        async (text) => adapter['onInboundMessage']?.(sessionKey, text),
         sessionKey,
-        (text) => adapter['onInboundMessage']?.(sessionKey, text),
       );
 
       await new Promise(r => setTimeout(r, 50));
@@ -209,17 +205,15 @@ describe('Channels E2E — Media/Audio Flow', () => {
       // Route from user 1
       await adapter['processInboundMedia'](
         { buffer, mimeType: 'audio/wav', mediaType: 'audio' },
-        'user-1',
+        async (text) => adapter['onInboundMessage']?.(user1Session, text),
         user1Session,
-        (text) => adapter['onInboundMessage']?.(user1Session, text),
       );
 
       // Route from user 2
       await adapter['processInboundMedia'](
         { buffer, mimeType: 'audio/wav', mediaType: 'audio' },
-        'user-2',
+        async (text) => adapter['onInboundMessage']?.(user2Session, text),
         user2Session,
-        (text) => adapter['onInboundMessage']?.(user2Session, text),
       );
 
       await new Promise(r => setTimeout(r, 50));
@@ -242,9 +236,8 @@ describe('Channels E2E — Media/Audio Flow', () => {
           mediaType: 'document',
           caption: 'Invoice',
         },
-        '12345',
+        async (text) => adapter['onInboundMessage']?.(sessionKey, text),
         sessionKey,
-        (text) => adapter['onInboundMessage']?.(sessionKey, text),
       );
 
       await new Promise(r => setTimeout(r, 50));
@@ -263,16 +256,15 @@ describe('Channels E2E — Media/Audio Flow', () => {
           mimeType: 'audio/ogg',
           mediaType: 'audio',
         },
-        '12345',
+        async (text) => adapter['onInboundMessage']?.(sessionKey, text),
         sessionKey,
-        (text) => adapter['onInboundMessage']?.(sessionKey, text),
       );
 
       await new Promise(r => setTimeout(r, 50));
 
       const msg = inboundMessages[0];
       // Verify path is included in content text
-      expect(msg.content).toMatch(/saved:/);
+      expect(msg.content).toMatch(/\[Audio: /);
       // Verify base64 data is not included in content
       expect(msg.content).not.toContain(buffer.toString('base64'));
     });

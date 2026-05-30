@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { ChannelAdapter, AdapterDeps } from '../../contracts.js';
+import type { ChannelAdapter, AdapterDeps } from '../../types.js';
 import { BaseChannelAdapter } from '../../base-adapter.js';
 
 const noDeps: AdapterDeps = { onInbound: async () => {} };

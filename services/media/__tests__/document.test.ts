@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import path from 'node:path';
 import os from 'node:os';
 import { writeFileSync, mkdirSync, symlinkSync, rmSync } from 'node:fs';
-import { extractDocument } from '../extract-document.js';
+import { extractDocument } from '../providers/document.js';
 import { resetDataPaths } from '../../../lib/paths.js';
 
 describe('extractDocument', () => {

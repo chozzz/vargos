@@ -1,86 +1,53 @@
-import { EventEmitterBus } from './gateway/emitter.js';
-import { startTCPServer } from './gateway/tcp-server.js';
+// Vargos entrypoint — a tiny supervisor.
+// Spawns boot.ts (or boot.js in prod) as a child process and respawns it when
+// it exits with RESTART_EXIT_CODE (42). bus.restart triggers that exit code
+// after draining stoppers; other exit codes pass through.
+//
+// Why a separate process: a fresh Node process re-reads all code from disk,
+// so `git pull && bus.restart` reliably picks up source AND transitive deps.
+// In-process restart can't do that (ESM module cache + shared lib state).
+
+import { spawn, type ChildProcess } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { createLogger } from './lib/logger.js';
-import { seedDataDir } from './lib/templates.js';
 
-// ── Boot order ────────────────────────────────────────────────────────────────
-// Each entry: [label, () => import(module)]
-// Comment out services not yet built — add them back as they land.
+const RESTART_EXIT_CODE = 42;
+const RESPAWN_DELAY_MS = 500;
+const log = createLogger('supervisor');
 
-const SERVICES: Array<[string, () => Promise<{ boot(bus: EventEmitterBus): Promise<{ stop?(): unknown }> }>]> = [
-  ['config', () => import('./services/config/index.js')],
-  ['log', () => import('./services/log/index.js')],
-  ['web', () => import('./services/web/index.js')],
-  ['memory', () => import('./services/memory/index.js')],
-  ['media', () => import('./services/media/index.js')],
-  ['agent', () => import('./services/agent/index.js')],
-  ['channels', () => import('./services/channels/index.js')],
-  ['cron', () => import('./services/cron/index.js')],
-  ['mcp-client', () => import('./services/mcp-client/index.js')],
-  // ['webhooks', () => import('./edge/webhooks/index.js')],
-  // ['mcp',      () => import('./edge/mcp/index.js')],
-];
+const here = dirname(fileURLToPath(import.meta.url));
+const isDev = import.meta.url.endsWith('.ts');
+const command = isDev ? 'tsx' : process.execPath;
+const args = isDev
+  ? [join(here, 'boot.ts')]
+  : ['--enable-source-maps', join(here, 'boot.js')];
 
-// ── Boot ──────────────────────────────────────────────────────────────────────
+let child: ChildProcess | null = null;
+let shuttingDown = false;
 
-const bus = new EventEmitterBus();
-const log = createLogger('boot');
-const stoppers: Array<() => unknown> = [];
-
-// Bootstrap the bus itself (registers bus.search and bus.inspect)
-bus.bootstrap();
-
-// Seed bundled templates into the VARGOS data dir before services boot.
-await seedDataDir(log);
-
-for (const [label, load] of SERVICES) {
-  try {
-    const { boot } = await load();
-    const { stop } = await boot(bus);
-    log.info(` ✅ "${label}" service booted`);
-    if (stop) stoppers.push(stop);
-  } catch (err) {
-    log.error(`❌ failed to boot ${label}: ${err instanceof Error ? err.message : String(err)}`);
-    process.exit(1);
-  }
+function spawnBoot(): void {
+  child = spawn(command, args, { stdio: 'inherit', cwd: here });
+  child.on('exit', (code, signal) => {
+    if (shuttingDown) {
+      process.exit(code ?? (signal ? 1 : 0));
+      return;
+    }
+    if (code === RESTART_EXIT_CODE) {
+      log.info('restart requested; respawning boot');
+      setTimeout(spawnBoot, RESPAWN_DELAY_MS);
+    } else {
+      process.exit(code ?? (signal ? 1 : 0));
+    }
+  });
 }
 
-// Start TCP server for CLI access
-const config = await bus.call('config.get', {});
-const tcpHost = config.gateway.host ?? (process.env.BUS_HOST || '127.0.0.1');
-const tcpPort = parseInt(config.gateway.port ? String(config.gateway.port) : (process.env.BUS_PORT || '9000'), 10);
-try {
-  const socketTimeoutMs = config.gateway.requestTimeout ?? 30_000;
-  const tcpStopper = await startTCPServer(bus, tcpHost, tcpPort, socketTimeoutMs);
-  stoppers.push(tcpStopper);
-} catch (err) {
-  log.error(`failed to start TCP server: ${err instanceof Error ? err.message : String(err)}`);
-  process.exit(1);
+function forward(sig: NodeJS.Signals): void {
+  shuttingDown = true;
+  if (child && !child.killed) child.kill(sig);
 }
 
-// Signal that boot is complete — deferred startup can proceed
-bus.emit('bus.onReady', {});
+process.on('SIGTERM', () => forward('SIGTERM'));
+process.on('SIGINT', () => forward('SIGINT'));
 
-// Boot summary
-const svcList = SERVICES.map(([label]) => label);
-log.info(`✅ ${svcList.length} services booted: ${svcList.join(', ')}`);
-
-// ── Global error handlers ────────────────────────────────────────────────────
-// Prevent undici socket errors (UND_ERR_SOCKET "other side closed") from
-// crashing the process when LLM providers close connections after streaming.
-
-process.on('uncaughtException', (err) => {
-  log.error(`uncaughtException: ${err.stack ?? err.message ?? err}`);
-  // Do NOT exit — most undici/stream errors are non-fatal teardown noise.
-});
-
-// ── Shutdown ──────────────────────────────────────────────────────────────────
-
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);
-
-async function shutdown() {
-  log.info('shutting down');
-  await Promise.allSettled(stoppers.map(s => s()));
-  process.exit(0);
-}
+spawnBoot();

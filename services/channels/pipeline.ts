@@ -4,13 +4,11 @@
  */
 
 import type { Bus } from '../../gateway/bus.js';
-import type { EventMap } from '../../gateway/events.js';
 import type { AppConfig } from '../../services/config/index.js';
-import type { NormalizedInboundMessage } from './contracts.js';
-import type { ChannelAdapter } from './contracts.js';
+import type { NormalizedInboundMessage, ChannelAdapter } from './types.js';
 import { createLogger } from '../../lib/logger.js';
 import { toMessage } from '../../lib/error.js';
-import { parseChannelTarget } from '../../lib/subagent.js';
+import { parseChannelTarget } from '../../lib/session-key.js';
 import { expandLinks } from './link-expand.js';
 import { StatusReactionController } from './status-reactions.js';
 
@@ -19,6 +17,7 @@ const log = createLogger('channels-pipeline');
 export interface PipelineSession {
   adapter: ChannelAdapter;
   reactionController?: StatusReactionController;
+  replied: boolean; // true if agent called channel.send
 }
 
 export class InboundMessagePipeline {
@@ -55,41 +54,20 @@ export class InboundMessagePipeline {
       enrichedContent = await expandLinks(enrichedContent, this.config.linkExpand).catch(() => enrichedContent);
     }
 
-    // Check whitelist if agent would execute
-    let shouldSkipAgent = message.skipAgent;
-    if (!shouldSkipAgent && channelEntry.allowFrom?.length) {
-      const isWhitelisted = this.checkWhitelist(message.fromUserId, channelEntry.allowFrom);
-      if (!isWhitelisted) {
-        log.debug(`user ${message.fromUserId} not whitelisted - skipping agent`);
-        shouldSkipAgent = true;
-      }
-    }
+    // Extract execution-relevant fields from channel config
+    const cwd = channelEntry.cwd;
+    const model = channelEntry.model;
 
-    // Build metadata once — used for both skipAgent (appendMessage) and active (execute) paths.
-    // Sessions are cached on first creation, so dropping fields here bakes them as 'unknown'
-    // into the systemPrompt for the lifetime of the session.
-    const metadata: EventMap['agent.execute']['params']['metadata'] = {
-      ...(message.messageId && { messageId: message.messageId }),
-      ...(message.fromUserId && { fromUserId: message.fromUserId }),
-      ...(message.fromUser && { fromUser: message.fromUser }),
-      ...(message.fromUserHandle && { fromUserHandle: message.fromUserHandle }),
-      ...(message.chatType && { chatType: message.chatType }),
-      ...(message.isMentioned !== undefined && { isMentioned: message.isMentioned }),
-      ...(message.channelType && { channelType: message.channelType }),
-      ...(message.botUserId && { botUserId: message.botUserId }),
-      ...(message.botName && { botName: message.botName }),
-      ...(message.botHandle && { botHandle: message.botHandle }),
-      ...(channelEntry.cwd && { cwd: channelEntry.cwd }),
-      ...(channelEntry.model && { model: channelEntry.model }),
-    };
+    // Delegate execution decision to adapter (handles whitelist + mention logic)
+    const shouldExecute = adapter.shouldExecute(message.fromUserId, message.chatType, message.isMentioned);
 
-    // If agent is skipped, just append to history
-    if (shouldSkipAgent) {
-      log.info(`← ${sessionKey} (skipAgent) "${enrichedContent.slice(0, 80)}"`);
+    if (!shouldExecute) {
+      const reason = message.chatType === 'private' ? 'not whitelisted' : (message.isMentioned ? 'not whitelisted' : 'not mentioned');
+      log.debug(`shouldExecute=false: userId=${message.fromUserId} chatType=${message.chatType} isMentioned=${message.isMentioned}`);
+      log.info(`← ${sessionKey} (skip: ${reason}) "${enrichedContent.slice(0, 80)}"`);
       this.bus.call('agent.appendMessage', {
         sessionKey,
         content: enrichedContent,
-        metadata,
       }).catch(err => log.error(`failed to append message: ${toMessage(err)}`));
       return;
     }
@@ -108,16 +86,33 @@ export class InboundMessagePipeline {
       reactionController.setThinking();
     }
 
-    activeSessions.set(sessionKey, { adapter, reactionController });
+    activeSessions.set(sessionKey, { adapter, reactionController, replied: false });
 
     log.info(`← ${sessionKey} "${enrichedContent.slice(0, 80)}"`);
+
+    // Set timeout for hung agents (2 minutes)
+    const AGENT_TIMEOUT_MS = 120_000;
+    const timeoutId = setTimeout(() => {
+      const session = activeSessions.get(sessionKey);
+      if (!session) return;
+
+      log.warn(`agent timeout: ${sessionKey} (${AGENT_TIMEOUT_MS / 1000}s) — cleaning up`);
+      if (session.reactionController) {
+        session.reactionController.setError();
+        session.reactionController.dispose();
+      }
+      session.adapter.stopTyping(sessionKey);
+      activeSessions.delete(sessionKey);
+    }, AGENT_TIMEOUT_MS);
 
     // Execute agent
     this.bus.call('agent.execute', {
       sessionKey,
       task: enrichedContent,
-      ...(Object.keys(metadata).length > 0 && { metadata }),
+      ...(cwd && { cwd }),
+      ...(model && { model }),
     }).catch(err => {
+      clearTimeout(timeoutId);
       const session = activeSessions.get(sessionKey);
       if (!session) return;
 
@@ -137,21 +132,4 @@ export class InboundMessagePipeline {
     });
   }
 
-  /**
-   * Check if a user is on the whitelist.
-   * Normalizes both whitelist entries and the user ID for comparison.
-   */
-  private checkWhitelist(fromUserId: string, allowFrom: string[]): boolean {
-    // Normalize whitelist entries: remove + prefix
-    const normalizedAllowList = new Set(allowFrom.map(p => p.replace(/^\+/, '')));
-
-    // Normalize user ID: remove + prefix and JID suffix
-    const normalizedFromUser = fromUserId.replace(/^\+/, '').replace(/@[^@]+$/, '');
-
-    // Check: full JID match OR normalized numeric match
-    const isFullJidWhitelisted = normalizedAllowList.has(fromUserId.replace(/^\+/, ''));
-    const isNormalizedWhitelisted = normalizedAllowList.has(normalizedFromUser);
-
-    return isFullJidWhitelisted || isNormalizedWhitelisted;
-  }
 }

@@ -1,80 +1,58 @@
 /**
- * MIME type detection from file buffer
- * Simple implementation based on magic numbers
+ * MIME ↔ file-extension maps and helpers. Pure data — no I/O, no domain imports.
  */
-export async function detectMimeType(buffer: Buffer): Promise<string> {
-  // Check magic numbers
-  if (buffer.length < 4) {
-    return 'application/octet-stream';
-  }
 
-  const hex = buffer.toString('hex', 0, 4);
+// Supported audio extensions for Whisper API
+export const WHISPER_EXTS = new Set(['.flac', '.m4a', '.mp3', '.mp4', '.mpeg', '.mpga', '.oga', '.ogg', '.wav', '.webm']);
 
-  // PNG
-  if (hex.startsWith('89504e47')) {
-    return 'image/png';
-  }
+// MIME type to audio extension mapping
+export const MIME_TO_AUDIO_EXT: Record<string, string> = {
+  'audio/ogg': '.ogg', 'audio/mpeg': '.mp3', 'audio/mp4': '.m4a',
+  'audio/wav': '.wav', 'audio/webm': '.webm', 'audio/flac': '.flac',
+  'audio/x-m4a': '.m4a', 'audio/mp3': '.mp3',
+};
 
-  // JPEG
-  if (hex.startsWith('ffd8ff')) {
-    return 'image/jpeg';
-  }
+// MIME type to file extension mapping (includes images and video)
+export const MIME_EXT: Record<string, string> = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/gif': '.gif',
+  'image/webp': '.webp',
+  'image/bmp': '.bmp',
+  'image/svg+xml': '.svg',
+  'audio/ogg': '.ogg',
+  'audio/mpeg': '.mp3',
+  'audio/mp4': '.m4a',
+  'video/mp4': '.mp4',
+  'application/pdf': '.pdf',
+};
 
-  // GIF
-  if (hex.startsWith('47494638')) {
-    return 'image/gif';
-  }
+// Media type to default MIME type mapping (for fallback when MIME is unknown)
+export const MEDIA_TYPE_MIME_DEFAULTS: Record<string, string> = {
+  image: 'image/jpeg',
+  audio: 'audio/ogg',
+  video: 'video/mp4',
+  document: 'application/pdf',
+};
 
-  // WebP
-  if (hex.startsWith('52494646') && buffer.length >= 12) {
-    const webpHex = buffer.toString('hex', 8, 12);
-    if (webpHex.startsWith('57454250')) {
-      return 'image/webp';
-    }
-  }
+// Extension to MIME type mapping (inverse of MIME_EXT, includes common variations)
+export const EXT_TO_MIME: Record<string, string> = {
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+  '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp',
+  '.mp4': 'video/mp4', '.mp3': 'audio/mpeg',
+  '.ogg': 'audio/ogg', '.m4a': 'audio/mp4',
+  '.pdf': 'application/pdf',
+  '.txt': 'text/plain', '.md': 'text/markdown',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+};
 
-  // BMP
-  if (hex.startsWith('424d')) {
-    return 'image/bmp';
-  }
+/** Get file extension for a MIME type. */
+export function extFromMime(mimeType: string): string {
+  return MIME_EXT[mimeType] || '.bin';
+}
 
-  // SVG (check content)
-  const contentStart = buffer.toString('utf-8', 0, Math.min(100, buffer.length));
-  if (contentStart.includes('<?xml') && contentStart.includes('<svg')) {
-    return 'image/svg+xml';
-  }
-  if (contentStart.includes('<svg')) {
-    return 'image/svg+xml';
-  }
-
-  // Text files
-  const textContent = buffer.toString('utf-8', 0, Math.min(100, buffer.length));
-  if (textContent.includes('<?xml')) {
-    return 'application/xml';
-  }
-  if (textContent.includes('<!DOCTYPE html') || textContent.includes('<html')) {
-    return 'text/html';
-  }
-  if (textContent.includes('{') || textContent.includes('[')) {
-    // Might be JSON
-    try {
-      JSON.parse(textContent.slice(0, textContent.indexOf('\n')) || textContent);
-      return 'application/json';
-    } catch {
-      // Not valid JSON
-    }
-  }
-
-  // Check if mostly printable (text)
-  const printable = buffer.slice(0, Math.min(100, buffer.length)).toString('utf-8');
-  const nonPrintable = [...printable].filter(c => {
-    const code = c.charCodeAt(0);
-    return code < 32 && code !== 9 && code !== 10 && code !== 13;
-  }).length;
-  
-  if (nonPrintable === 0) {
-    return 'text/plain';
-  }
-
-  return 'application/octet-stream';
+/** Get MIME type from a file extension. */
+export function getMimeTypeFromExt(ext: string): string {
+  return EXT_TO_MIME[ext.toLowerCase()] || 'image/jpeg';
 }

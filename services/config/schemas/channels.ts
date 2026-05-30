@@ -27,3 +27,6 @@ export const ChannelEntrySchema = z.discriminatedUnion('type', [
 export type ChannelEntry   = z.infer<typeof ChannelEntrySchema>;
 export type TelegramChannel = z.infer<typeof TelegramChannelSchema>;
 export type WhatsAppChannel = z.infer<typeof WhatsAppChannelSchema>;
+
+/** Built-in channel type names — single source of truth, derived from the union above. */
+export const CHANNEL_TYPES = ChannelEntrySchema.options.map(o => o.shape.type.value) as [ChannelEntry['type'], ...ChannelEntry['type'][]];

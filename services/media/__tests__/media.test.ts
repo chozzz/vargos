@@ -165,7 +165,7 @@ describe('MediaService', () => {
     it('resolves provider config from agent/models.json', async () => {
       // Mock the transcribeAudio function to avoid actual API calls
       const mockTranscribe = vi.fn(async () => 'mocked transcription');
-      vi.doMock('../../../lib/media-transcribe.js', () => ({
+      vi.doMock('../../../lib/mime.js', () => ({
         transcribeAudio: mockTranscribe,
       }));
 

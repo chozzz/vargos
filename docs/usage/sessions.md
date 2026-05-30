@@ -31,9 +31,9 @@ Examples:
 3. **`agent_end`** — `agent.onCompleted` emits with the final response. **The session stays in memory** for follow-ups.
 4. **Restart** — in-memory cache is empty after `pnpm start`. Next call for that sessionKey loads from disk.
 
-## skipAgent path
+## Observe-only path
 
-For inbound messages where the agent shouldn't run (whitelist rejection, group chat without bot mention), the channel pipeline records the message into history without firing the LLM via `agent.appendMessage`. No LLM call, no streaming, no `agent.onCompleted`.
+For inbound messages where the agent shouldn't run (whitelist rejection, group chat without bot mention), the channel pipeline delegates to `adapter.shouldExecute()`. When it returns `false`, the message is recorded into history via `agent.appendMessage` without firing the LLM. No LLM call, no streaming, no `agent.onCompleted`.
 
 ## Cross-session injection
 

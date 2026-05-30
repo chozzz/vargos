@@ -29,7 +29,7 @@ describe('WhatsApp normalizer — metadata building', () => {
       expect(result).not.toBeNull();
       expect(result!.isMentioned).toBe(true);
       expect(result!.chatType).toBe('private');
-      expect(result!.skipAgent).toBe(false);
+      expect(result!.isMentioned).toBe(true);
     });
   });
 
@@ -47,7 +47,7 @@ describe('WhatsApp normalizer — metadata building', () => {
 
       const result = normalizeWhatsAppMessage(msg, { botJid });
       expect(result!.isMentioned).toBe(true);
-      expect(result!.skipAgent).toBe(false);
+      expect(result!.isMentioned).toBe(true);
     });
 
     it('skips group messages without bot mention', () => {
@@ -62,7 +62,7 @@ describe('WhatsApp normalizer — metadata building', () => {
       };
 
       const result = normalizeWhatsAppMessage(msg, { botJid });
-      expect(result!.skipAgent).toBe(true);
+      expect(result!.isMentioned).toBe(false);
     });
 
     it('detects reply to bot message', () => {
@@ -91,7 +91,7 @@ describe('WhatsApp normalizer — metadata building', () => {
       };
 
       const result = normalizeWhatsAppMessage(msg, { botJid });
-      expect(result!.skipAgent).toBe(true);
+      expect(result!.isMentioned).toBe(false);
     });
 
     it('requires bot mention even when mentions list exists', () => {
@@ -106,7 +106,7 @@ describe('WhatsApp normalizer — metadata building', () => {
       };
 
       const result = normalizeWhatsAppMessage(msg, { botJid });
-      expect(result!.skipAgent).toBe(true);
+      expect(result!.isMentioned).toBe(false);
     });
 
     it('detects bot mention across JID formats (areJidsSameUser)', () => {
@@ -155,7 +155,7 @@ describe('WhatsApp normalizer — metadata building', () => {
       };
 
       const result = normalizeWhatsAppMessage(msg, { botJid });
-      expect(result!.skipAgent).toBe(true);
+      expect(result!.isMentioned).toBe(false);
     });
 
     it('handles message with undefined mentionedJids', () => {
@@ -169,7 +169,7 @@ describe('WhatsApp normalizer — metadata building', () => {
       };
 
       const result = normalizeWhatsAppMessage(msg, { botJid });
-      expect(result!.skipAgent).toBe(true);
+      expect(result!.isMentioned).toBe(false);
     });
 
     it('handles mention without botJid set', () => {
@@ -184,7 +184,7 @@ describe('WhatsApp normalizer — metadata building', () => {
       };
 
       const result = normalizeWhatsAppMessage(msg, { botJid: '' });
-      expect(result!.skipAgent).toBe(true);
+      expect(result!.isMentioned).toBe(false);
     });
 
     it('skips own messages (fromMe)', () => {

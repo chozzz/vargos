@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { mkdirSync, rmSync } from 'node:fs';
 import { AgentService } from '../index.js';
 import { AppConfigSchema } from '../../config/index.js';
 import type { Bus } from '../../../gateway/bus.js';
@@ -13,19 +12,6 @@ import { truncate } from '../../../lib/truncate.js';
 class TestableRuntime extends AgentService {
   testValidateModel(modelSpec: string): void {
     return this['validateModel'](modelSpec);
-  }
-
-  testBuildPromptContext(
-    sessionKey: string,
-    metadata?: Parameters<AgentService['getSystemPrompt']>[1],
-  ): Record<string, string> {
-    return this['buildPromptContext'](sessionKey, metadata);
-  }
-
-  testCollectBootstrapDirs(
-    metadata?: Parameters<AgentService['getSystemPrompt']>[1],
-  ): string[] {
-    return this['collectBootstrapDirs'](metadata);
   }
 }
 
@@ -94,149 +80,6 @@ describe('validateModel', () => {
     expect(() => {
       runtime.testValidateModel('test:invalid');
     }).toThrow('Expected format: provider:modelId');
-  });
-});
-
-describe('buildPromptContext', () => {
-  let tmpDir: string;
-  let runtime: TestableRuntime;
-  let originalEnv: string | undefined;
-
-  beforeEach(() => {
-    originalEnv = process.env.VARGOS_DATA_DIR;
-    tmpDir = path.join(os.tmpdir(), `agent-test-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    runtime = createTestRuntime(tmpDir);
-  });
-
-  afterEach(() => {
-    process.env.VARGOS_DATA_DIR = originalEnv;
-    resetDataPaths();
-  });
-
-  it('extracts channel and chat from sessionKey', () => {
-    const context = runtime.testBuildPromptContext('telegram:user123');
-    expect(context.CHANNEL_ID).toBe('telegram');
-    expect(context.CHAT_ID).toBe('user123');
-  });
-
-  it('includes metadata channel type', () => {
-    const context = runtime.testBuildPromptContext('telegram:user123', {
-      channelType: 'telegram',
-    });
-    expect(context.CHANNEL_TYPE).toBe('telegram');
-  });
-
-  it('includes sender identity', () => {
-    const context = runtime.testBuildPromptContext('telegram:user123', {
-      fromUserId: '42',
-      fromUser: 'Alice',
-      fromUserHandle: 'alice_handle',
-    });
-    expect(context.USER_ID).toBe('42');
-    expect(context.USER_NAME).toBe('Alice');
-    expect(context.USER_HANDLE).toBe('alice_handle');
-  });
-
-  it('includes bot identity', () => {
-    const context = runtime.testBuildPromptContext('telegram:user123', {
-      botUserId: '99',
-      botName: 'MyBot',
-      botHandle: 'mybot_handle',
-    });
-    expect(context.BOT_ID).toBe('99');
-    expect(context.BOT_NAME).toBe('MyBot');
-    expect(context.BOT_HANDLE).toBe('mybot_handle');
-  });
-
-  it('includes all metadata fields together', () => {
-    const context = runtime.testBuildPromptContext('telegram:user123', {
-      channelType: 'telegram',
-      fromUserId: '42',
-      fromUser: 'Alice',
-      botUserId: '99',
-      botName: 'MyBot',
-    });
-    expect(context.CHANNEL_ID).toBe('telegram');
-    expect(context.CHAT_ID).toBe('user123');
-    expect(context.CHANNEL_TYPE).toBe('telegram');
-    expect(context.USER_ID).toBe('42');
-    expect(context.USER_NAME).toBe('Alice');
-    expect(context.BOT_ID).toBe('99');
-    expect(context.BOT_NAME).toBe('MyBot');
-  });
-
-  it('omits undefined metadata fields', () => {
-    const context = runtime.testBuildPromptContext('telegram:user123', {
-      channelType: 'telegram',
-    });
-    expect(context).not.toHaveProperty('USER_NAME');
-    expect(context).not.toHaveProperty('USER_HANDLE');
-    expect(context).not.toHaveProperty('BOT_NAME');
-    expect(context).not.toHaveProperty('BOT_HANDLE');
-  });
-
-  it('handles missing metadata gracefully', () => {
-    const context = runtime.testBuildPromptContext('telegram:user123');
-    expect(context.SESSION_KEY).toBe('telegram:user123');
-    expect(context.CHANNEL_ID).toBe('telegram');
-    expect(context.CHAT_ID).toBe('user123');
-    expect(Object.keys(context)).toHaveLength(3);
-  });
-});
-
-describe('collectBootstrapDirs', () => {
-  let tmpDir: string;
-  let runtime: TestableRuntime;
-  let originalEnv: string | undefined;
-
-  beforeEach(() => {
-    originalEnv = process.env.VARGOS_DATA_DIR;
-    tmpDir = path.join(os.tmpdir(), `agent-test-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    mkdirSync(path.join(tmpDir, 'workspace'), { recursive: true });
-    runtime = createTestRuntime(tmpDir);
-  });
-
-  afterEach(() => {
-    process.env.VARGOS_DATA_DIR = originalEnv;
-    resetDataPaths();
-    rmSync(tmpDir, { recursive: true, force: true });
-  });
-
-  it('includes workspace dir', () => {
-    const dirs = runtime.testCollectBootstrapDirs();
-    expect(dirs.length).toBeGreaterThan(0);
-    expect(dirs[0]).toContain('workspace');
-  });
-
-  it('adds cwd if different from workspace', () => {
-    const customCwd = path.join(tmpDir, 'custom-dir');
-    mkdirSync(customCwd, { recursive: true });
-    const dirs = runtime.testCollectBootstrapDirs({ cwd: customCwd });
-    expect(dirs.length).toBe(2);
-    expect(dirs[1]).toBe(customCwd);
-  });
-
-  it('skips cwd if same as workspace', () => {
-    const workspaceDir = path.join(tmpDir, 'workspace');
-    const dirs = runtime.testCollectBootstrapDirs({ cwd: workspaceDir });
-    expect(dirs.length).toBe(1);
-  });
-
-  it('normalizes paths before comparing', () => {
-    const normalizedPath = path.join(tmpDir, 'workspace', '..', 'workspace');
-    const dirs = runtime.testCollectBootstrapDirs({ cwd: normalizedPath });
-    expect(dirs.length).toBe(1);
-  });
-
-  it('handles no cwd provided', () => {
-    const dirs = runtime.testCollectBootstrapDirs();
-    expect(dirs.length).toBe(1);
-  });
-
-  it('filters out non-existent dirs', () => {
-    const missingCwd = path.join(tmpDir, 'does-not-exist');
-    const dirs = runtime.testCollectBootstrapDirs({ cwd: missingCwd });
-    expect(dirs).not.toContain(missingCwd);
   });
 });
 

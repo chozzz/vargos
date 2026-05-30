@@ -2,7 +2,7 @@
  * Telegram message normalizer — converts Telegram adapter output to canonical form.
  */
 
-import type { NormalizedInboundMessage } from '../../contracts.js';
+import type { NormalizedInboundMessage } from '../../types.js';
 import type { TelegramMessage } from './types.js';
 
 export interface TelegramNormalizerContext {
@@ -26,7 +26,6 @@ export function normalizeTelegramMessage(
 
   const chatType = msg.chat.type;
   const isPrivateChat = chatType === 'private';
-  const isGroupChat = chatType === 'group' || chatType === 'supergroup';
 
   const isMentioned = isPrivateChat || isMentionedInMessage(msg, context.botUserId, context.botUsername);
 
@@ -44,7 +43,6 @@ export function normalizeTelegramMessage(
     botUserId: context.botUserId != null ? String(context.botUserId) : undefined,
     botName: context.botName,
     botHandle: context.botUsername,
-    skipAgent: isGroupChat && !isMentioned ? true : false,
     text: textContent,
     media: undefined, // Media handling done separately
   };

@@ -19,10 +19,10 @@ import { parseDirectives } from './directives.js';
 import { withTimeout } from '../../lib/timeout.js';
 import { interpolatePrompt } from './prompt-interpolate.js';
 import { truncate } from '../../lib/truncate.js';
-import type { AgentDeps } from './schema.js';
+import type { AgentDeps } from './types.js';
 import { existsSync, promises as fs } from 'node:fs';
 import { getDataPaths } from '../../lib/paths.js';
-import { parseSessionKey, isSubagentSession } from '../../lib/subagent.js';
+import { parseSessionKey, isSubagentSession } from '../../lib/session-key.js';
 
 // Pi SDK imports
 import {
@@ -41,8 +41,8 @@ import type { AgentSessionEvent } from '@mariozechner/pi-coding-agent';
 
 import { createCustomTools } from './tools.js';
 import { loadChannelPersona, loadSubagentPersona } from './persona.js';
-import { resolveSkillPaths } from '../../lib/skills.js';
-import { matchesGlob } from '../../lib/glob.js';
+import { resolveSkillPaths } from './skills.js';
+import { matchesGlob } from '../../lib/glob-match.js';
 
 const log = createLogger('agent');
 
@@ -135,9 +135,6 @@ export class AgentService {
    * Note: sessionKey is declared optional here because it's auto-injected by
    * wrapEventAsToolDefinition() when the agent calls this as a tool. Direct callers
    * (channels, cron, webhooks, TCP) still provide sessionKey via EventMap.
-   * 
-   * Schema for bus event is different than runtime types AgentExecuteParams.
-   * e.g. metadata is not injected here on purpose.
    */
   @register('agent.execute', {
     description: 'Executes a task with the agent, optionally delegating to a subagent.',
@@ -147,15 +144,9 @@ export class AgentService {
        * @see wrapEventAsToolDefinition in tools.ts for how `sessionKey` is injected when called as a tool.
        */
       task: z.string().describe('The task to execute.'),
-      metadata: z.object({
-        cwd: z.string().optional().describe('The current working directory to use for the agent.'),
-        model: z.string().optional().describe('Model override in format provider:modelId.'),
-        /**
-         * Not all metadata fields need to be registered into MCP schemas, since they're primarily for internal use.
-         * If one needs to see what else is in metadata, @see AgentExecuteParams in schema.ts and the debug metadata.json file stored in session's debug directory.
-         */
-      }).optional().describe('Optional metadata for the execution context.'),
-    }).passthrough(),
+      cwd: z.string().optional().describe('Working directory for the agent — defaults to workspace dir.'),
+      model: z.string().optional().describe('Model override in format provider:modelId (e.g., "claude-opus-4").'),
+    }),
   })
   async execute(params: EventMap['agent.execute']['params']): Promise<EventMap['agent.execute']['result']> {
     if (!params.sessionKey) {
@@ -163,16 +154,15 @@ export class AgentService {
     }
 
     log.debug(`execute: START ${params.sessionKey}`);
-    const metadata = params.metadata ?? {};
 
-    if (metadata?.model) {
-      this.validateModel(metadata.model);
+    if (params.model) {
+      this.validateModel(params.model);
     }
 
     const directives = parseDirectives(params.task);
     const task = interpolatePrompt(directives.cleaned || params.task);
 
-    const session = await this.getOrCreateSession(params.sessionKey, params.metadata);
+    const session = await this.getOrCreateSession(params.sessionKey, { cwd: params.cwd, model: params.model });
 
     if (directives.thinkingLevel) {
       session.setThinkingLevel(directives.thinkingLevel);
@@ -189,7 +179,7 @@ export class AgentService {
 
     const { content, error } = this.extractFinalAssistant(session);
     if (error) {
-      log.error(`execute: ${params.sessionKey} ended with error: ${error}`);
+      log.error(`execute: ${params.sessionKey} ended with error [model=${modelTag}]: ${error}`);
       throw new Error(error);
     }
     const elapsed = Date.now() - startTime;
@@ -199,12 +189,12 @@ export class AgentService {
 
   /**
    * agent.appendMessage — Append message to session JSONL without executing agent.
-   * Used for non-whitelisted messages (skipAgent=true) to record in history silently.
+   * Records inbound messages in session history (observe-only for non-whitelisted).
    * Internal only — not exposed as an agent tool.
    */
   @register('agent.appendMessage')
   async appendMessage(params: EventMap['agent.appendMessage']['params']): Promise<void> {
-    const session = await this.getOrCreateSession(params.sessionKey, params.metadata);
+    const session = await this.getOrCreateSession(params.sessionKey);
     const sessionFile = session.sessionManager.getSessionFile();
 
     if (!sessionFile) {
@@ -235,18 +225,21 @@ export class AgentService {
 
   /**
    * Get or create AgentSession for sessionKey.
+   * Uses SessionManager.continueRecent() to load the latest session file,
+   * preserving conversation history across restarts.
    */
-  protected async getOrCreateSession(sessionKey: string, metadata?: EventMap['agent.execute']['params']['metadata']): Promise<AgentSession> {
+  protected async getOrCreateSession(sessionKey: string, options?: { cwd?: string; model?: string }): Promise<AgentSession> {
     const cached = this.sessions.get(sessionKey);
     if (cached) {
       return cached;
     }
 
     const paths = getDataPaths();
-
-    const effectiveCwd = metadata?.cwd ?? paths.dataDir;
+    const effectiveCwd = options?.cwd ?? paths.dataDir;
 
     const sessionDir = path.join(paths.sessionsDir, sessionKey.replace(/:/g, path.sep));
+    // Use continueRecent to find and load the latest session file (preserves history).
+    // Falls back to create() if no existing session file is found.
     const sessionManager = SessionManager.create(effectiveCwd, sessionDir);
 
     await fs.mkdir(sessionDir, { recursive: true });
@@ -254,7 +247,7 @@ export class AgentService {
 
     const persona = await this.loadPersonaIfChannel(sessionKey);
     const customTools = await this.getCustomTools(sessionKey, persona?.meta.allowedTools);
-    const rawSystemPrompt = await this.getSystemPrompt(sessionKey, metadata, persona?.body);
+    const rawSystemPrompt = await this.getSystemPrompt(sessionKey, persona?.body);
     const resourceLoader = await this.createResourceLoader(rawSystemPrompt, effectiveCwd);
 
     log.debug(`session: ${sessionKey} created (${customTools.length} tools, ${rawSystemPrompt?.length ?? 0} chars prompt)`);
@@ -277,10 +270,7 @@ export class AgentService {
       }
 
       log.debug(`Storing debug files in session's debug directory: ${debugDir}`);
-      await Promise.all([
-        fs.writeFile(path.join(debugDir, `systemPrompt.md`), session.systemPrompt ?? '', 'utf-8'),
-        fs.writeFile(path.join(debugDir, `metadata.json`), JSON.stringify(metadata ?? {}, null, 2), 'utf-8'),
-      ]);
+      await fs.writeFile(path.join(debugDir, `systemPrompt.md`), session.systemPrompt ?? '', 'utf-8');
     }
 
     this.subscribeToSessionEvents(session, sessionKey);
@@ -292,7 +282,7 @@ export class AgentService {
   /**
    * Subscribe to PiAgent sessionsubscription - emit to bus for streaming + debug logging.
    */
-  protected subscribeToSessionEvents(session: AgentSession, sessionKey: string, _metadata?: EventMap['agent.execute']['params']['metadata']): void {
+  protected subscribeToSessionEvents(session: AgentSession, sessionKey: string): void {
     session.subscribe((event: AgentSessionEvent) => {
       const eventType = event.type;
 
@@ -345,7 +335,9 @@ export class AgentService {
         case 'agent_end': {
           const { content, error } = this.extractFinalAssistant(session);
           if (error) {
-            log.error(`agent_end with error for ${sessionKey}: ${error}`);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const model = (session as any).model ?? 'unknown';
+            log.error(`agent_end with error for ${sessionKey} [model=${model}]: ${error}`);
             this.bus.emit('agent.onCompleted', { sessionKey, success: false, error });
           } else {
             log.debug(`  emitting agent.onCompleted with ${content.length} chars`);
@@ -408,7 +400,7 @@ export class AgentService {
    * - Parent/other sessions: merge AGENTS.md + SOUL.md + TOOLS.md from workspace/cwd,
    *   then append channel persona body if provided.
    */
-  private async getSystemPrompt(sessionKey: string, metadata?: EventMap['agent.execute']['params']['metadata'], personaBody?: string): Promise<string | undefined> {
+  private async getSystemPrompt(sessionKey: string, personaBody?: string): Promise<string | undefined> {
     if (isSubagentSession(sessionKey)) {
       return personaBody?.trim() || undefined;
     }
@@ -416,7 +408,7 @@ export class AgentService {
     const bootstrapFiles = ['AGENTS.md', 'SOUL.md', 'TOOLS.md'];
     const maxCharsPerFile = 6000;
 
-    const dirs = this.collectBootstrapDirs(metadata);
+    const dirs = [getDataPaths().workspaceDir];
 
     const filePathsToLoad: Array<{ dir: string; filename: string; path: string }> = [];
     for (const dir of dirs) {
@@ -459,8 +451,7 @@ export class AgentService {
     }
 
     const prompt = sections.join('\n');
-    const context = this.buildPromptContext(sessionKey, metadata);
-    return interpolatePrompt(prompt, context);
+    return interpolatePrompt(prompt, { SESSION_KEY: sessionKey });
   }
 
   /**
@@ -488,44 +479,6 @@ export class AgentService {
     }
   }
 
-  /**
-   * Build context variables for prompt interpolation from sessionKey and metadata.
-   */
-  private buildPromptContext(
-    sessionKey: string,
-    metadata?: EventMap['agent.execute']['params']['metadata'],
-  ): Record<string, string> {
-    const { type: channelId, id: chatId } = parseSessionKey(sessionKey);
-    return {
-      SESSION_KEY: sessionKey,
-      CHANNEL_ID: channelId,
-      CHAT_ID: chatId,
-      ...(metadata?.channelType && { CHANNEL_TYPE: metadata.channelType }),
-      ...(metadata?.fromUserId && { USER_ID: metadata.fromUserId }),
-      ...(metadata?.fromUser && { USER_NAME: metadata.fromUser }),
-      ...(metadata?.fromUserHandle && { USER_HANDLE: metadata.fromUserHandle }),
-      ...(metadata?.botUserId && { BOT_ID: metadata.botUserId }),
-      ...(metadata?.botName && { BOT_NAME: metadata.botName }),
-      ...(metadata?.botHandle && { BOT_HANDLE: metadata.botHandle }),
-    };
-  }
-
-  /**
-   * Collect directory paths in order: workspace first, then cwd if different.
-   */
-  private collectBootstrapDirs(metadata?: EventMap['agent.execute']['params']['metadata']): string[] {
-    const paths = getDataPaths();
-    const workspaceDir = paths.workspaceDir;
-    const dirs = [workspaceDir];
-
-    if (metadata?.cwd && path.resolve(metadata.cwd) !== path.resolve(workspaceDir)) {
-      dirs.push(metadata.cwd);
-    }
-
-    // Filter dirs that do not exist
-    return dirs.filter(dir => existsSync(dir));
-  }
-
   // ── Private Helpers ────────────────────────────────────────────────────────
 
   /**
@@ -542,9 +495,17 @@ export class AgentService {
       const msg = messages[i];
       if (msg?.role !== 'assistant') continue;
 
-      const error = msg.stopReason === 'error'
-        ? (msg.errorMessage ?? 'unknown inference error')
-        : undefined;
+      let error: string | undefined;
+      if (msg.stopReason === 'error') {
+        error = msg.errorMessage ?? 'unknown inference error';
+        // Log full message details for debugging connection/auth issues
+        log.debug('agent error details:', {
+          stopReason: msg.stopReason,
+          errorMessage: msg.errorMessage,
+          model: (session as any).model,
+          messageCount: messages.length,
+        });
+      }
 
       let content = '';
       if (typeof msg.content === 'string') {

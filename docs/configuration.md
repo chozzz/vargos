@@ -32,13 +32,10 @@ Available in any prompt string (cron task body, persona body, system-prompt frag
 |---|---|
 | **Paths** | `${WORKSPACE_DIR}`, `${DATA_DIR}`, `${SESSIONS_DIR}`, `${CRON_DIR}`, `${CACHE_DIR}`, `${LOGS_DIR}`, `${CHANNELS_DIR}`, `${HOME}`, `${PWD}` |
 | **Time** | `${CURRENT_DATE}`, `${CURRENT_TIMEZONE}` |
-| **Session** | `${SESSION_KEY}`, `${CHANNEL_ID}`, `${CHANNEL_TYPE}`, `${CHAT_ID}` |
-| **Sender** | `${USER_ID}`, `${USER_NAME}`, `${USER_HANDLE}` |
-| **Bot** | `${BOT_ID}`, `${BOT_NAME}`, `${BOT_HANDLE}` |
+| **Session** | `${SESSION_KEY}` |
+| **Documentation placeholders** | `${PROVIDER}`, `${VAR}` (empty — for referencing patterns like `${PROVIDER}_API_KEY`) |
 
 Default-value syntax: `${VAR:-fallback}`. Used when `VAR` is missing or empty.
-
-`USER_ID` is the **sender's platform ID**; `CHAT_ID` is the **session's chat id** parsed from sessionKey. For private chats they're the same value; for groups they differ.
 
 ## Models, providers, auth
 

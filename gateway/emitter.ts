@@ -34,6 +34,8 @@ export class EventEmitterBus implements Bus {
   private readonly timeoutMs: number;
   private readonly callableRegistry = new Map<string, ToolSchema>(); // Callable events from @register + schemas
   private readonly handlersRegistry = new Set<string>(); // Handler events from @on
+  private readonly restartFactories = new Map<string, () => Promise<void>>(); // Service restart callbacks
+  private readonly teardowns = new Map<string, () => void>(); // Bus wiring per service, so restart can un-wire the old instance
 
   constructor(timeoutMs = DEFAULT_CALL_TIMEOUT_MS) {
     this.timeoutMs = timeoutMs;
@@ -80,7 +82,7 @@ export class EventEmitterBus implements Bus {
     });
   }
 
-  // ── Service registration (called from index.ts after instantiation) ─────────
+  // ── Service registration (called from boot.ts after instantiation) ─────────
 
   /**
    * Reads @on and @register decorator metadata from a service instance (or the bus itself
@@ -91,6 +93,12 @@ export class EventEmitterBus implements Bus {
     const handlers = (svc as HasHandlers)[HANDLERS] ?? [];
     const tools = (svc as HasHandlers)[TOOLS] ?? [];
 
+    // Re-bootstrap (service restart): drop the previous instance's listeners first,
+    // otherwise @on/@register handlers stack and fire twice. Keyed by class name,
+    // which assumes one service per class (true today — all *Service names are unique).
+    this.teardowns.get(svc.constructor.name)?.();
+    const offs: Array<() => void> = [];
+
     const allEvents = [...handlers.map(e => e.event), ...tools.map(e => e.event)];
     log.info(`bootstrap: ${svc.constructor.name} → [${allEvents.join(', ')}]`);
 
@@ -99,7 +107,7 @@ export class EventEmitterBus implements Bus {
       const fn = (svc as Record<string, unknown>)[method];
       if (typeof fn !== 'function') continue;
       this.handlersRegistry.add(event as string);
-      this.registerHandlers(event as PureEventKey, fn.bind(svc) as AnyHandler);
+      offs.push(this.registerHandlers(event as PureEventKey, fn.bind(svc) as AnyHandler));
     }
 
     // Pre-populate callable registry with tools that have schema (agent-callable)
@@ -112,8 +120,10 @@ export class EventEmitterBus implements Bus {
     for (const { event, method } of tools) {
       const fn = (svc as Record<string, unknown>)[method];
       if (typeof fn !== 'function') continue;
-      this.registerTools(event as CallableEventKey, fn.bind(svc) as AnyHandler);
+      offs.push(this.registerTools(event as CallableEventKey, fn.bind(svc) as AnyHandler));
     }
+
+    this.teardowns.set(svc.constructor.name, () => offs.forEach(off => off()));
   }
 
   // ── Runtime tool registration ─────────────────────────────────────────────────
@@ -139,6 +149,42 @@ export class EventEmitterBus implements Bus {
     const existed = this.callableRegistry.has(event);
     this.callableRegistry.delete(event);
     return existed;
+  }
+
+  // ── Service lifecycle ─────────────────────────────────────────────────────────
+
+  /**
+   * Register a restart factory for a named service.
+   * Called by boot.ts at boot — internal, not exposed via JSON-RPC.
+   * Overwrites any existing factory for the same name (supports restart).
+   */
+  onRestart(serviceName: string, factory: () => Promise<void>): void {
+    this.restartFactories.set(serviceName, factory);
+  }
+
+  @register('bus.restart', {
+    description: 'Restart a named service: stop it and re-instantiate from the cached module. Resets in-memory state (e.g. a wedged channel) but does NOT reload code from disk — use bus.restartProcess after a git pull for that.',
+    schema: z.object({
+      service: z.string().describe('Service name to restart (e.g., "config", "agent", "channels")'),
+    }),
+  })
+  async restart(params: EventMap['bus.restart']['params']): Promise<EventMap['bus.restart']['result']> {
+    const factory = this.restartFactories.get(params.service);
+    if (!factory) throw new Error(`No restart handler registered for service: ${params.service}`);
+    await factory();
+    return { ok: true };
+  }
+
+  @register('bus.status', {
+    description: 'List all registered services and their current status.',
+    schema: z.object({}).optional(),
+  })
+  async status(_params?: EventMap['bus.status']['params']): Promise<EventMap['bus.status']['result']> {
+    const services = Array.from(this.restartFactories.keys()).map(name => ({
+      name,
+      status: 'running' as const,
+    }));
+    return { services };
   }
 
   // ── Bus introspection ─────────────────────────────────────────────────────────
