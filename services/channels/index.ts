@@ -59,6 +59,14 @@ class ChannelRegistry {
     this.providers.set(provider.type, provider);
   }
 
+  has(type: string): boolean {
+    return this.providers.has(type);
+  }
+
+  types(): string[] {
+    return [...this.providers.keys()];
+  }
+
   async createAdapter(entry: ChannelEntry, deps: AdapterDeps): Promise<ChannelAdapter | null> {
     const provider = this.providers.get(entry.type);
     if (!provider) {
@@ -126,7 +134,7 @@ export class ChannelService {
     await deliverReply((chunk) => adapter.send(sessionKey, chunk), cleaned);
 
     // Mark session as replied so onAgentCompleted knows agent sent its own reply
-    const session = (this as any).activeSessions?.get(sessionKey);
+    const session = this.activeSessions.get(sessionKey);
     if (session) session.replied = true;
 
     log.info(`send: completed ${sessionKey}`);
@@ -204,11 +212,13 @@ export class ChannelService {
   }
 
   @register('channel.register', {
-    description: 'Dynamically register a new channel adapter.',
+    description: 'Dynamically register a new channel adapter. `type` must match a loaded provider (e.g. telegram, whatsapp).',
     // Flat object required: discriminatedUnion produces type:null in JSON Schema, rejected by Anthropic API.
+    // `type` is a free string validated at runtime against loaded providers — keeps this open to new
+    // providers without re-listing them here (the config union remains the authority for persistence).
     schema: z.object({
       id: z.string(),
-      type: z.enum(['telegram', 'whatsapp']),
+      type: z.string(),
       enabled: z.boolean().optional(),
       model: z.string().optional(),
       debounceMs: z.number().int().min(0).optional(),
@@ -219,6 +229,9 @@ export class ChannelService {
     }),
   })
   async register(params: EventMap['channel.register']['params']): Promise<void> {
+    if (!this.registry.has(params.type)) {
+      throw new Error(`Unknown channel type: ${params.type}. Loaded providers: ${this.registry.types().join(', ')}`);
+    }
     if (this.adapters.has(params.id)) {
       log.info(`channel already registered: ${params.id}`);
       return;
