@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { extFromMime } from './media-transcribe.js';
+import { extFromMime } from './mime.js';
 
 export async function saveMedia(params: {
   buffer: Buffer;

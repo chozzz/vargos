@@ -15,7 +15,7 @@ import { TypingStateManager } from './typing-state.js';
 import { saveMedia } from '../../lib/media.js';
 import { getDataPaths } from '../../lib/paths.js';
 
-const MEDIA_TYPE_LABELS: Record<string, string> = {
+export const MEDIA_TYPE_LABELS: Record<string, string> = {
   audio: 'Voice message',
   video: 'Video message',
   document: 'Document',

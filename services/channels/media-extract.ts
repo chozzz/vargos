@@ -6,7 +6,7 @@
 import { accessSync } from 'node:fs';
 import path from 'node:path';
 import type { ExtractedMedia } from './types.js';
-import { EXT_TO_MIME } from '../../lib/media-transcribe.js';
+import { EXT_TO_MIME } from '../../lib/mime.js';
 
 const MEDIA_EXTS = new Set(Object.keys(EXT_TO_MIME));
 

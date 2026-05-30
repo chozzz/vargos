@@ -1,8 +1,13 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { WHISPER_EXTS, MIME_TO_AUDIO_EXT, normalizeApiBaseUrl, getMimeTypeFromExt } from '../../../lib/media-transcribe.js';
+import { WHISPER_EXTS, MIME_TO_AUDIO_EXT, getMimeTypeFromExt } from '../../../lib/mime.js';
 import { validateHttpResponse } from '../../../lib/http-validate.js';
 import type { MediaProvider } from './provider.js';
+
+/** Normalize an OpenAI-compatible base URL by stripping a trailing /v1 (we append it per-endpoint). */
+function normalizeApiBaseUrl(baseUrl?: string): string {
+  return (baseUrl ?? 'https://api.openai.com').replace(/\/v1\/?$/, '');
+}
 
 export class OpenAIProvider implements MediaProvider {
   async transcribeAudio(filePath: string, model: string, apiKey: string, baseUrl?: string): Promise<string> {

@@ -8,21 +8,14 @@ import { jidDecode, jidNormalizedUser, areJidsSameUser } from '@whiskeysockets/b
 import type { WASocket } from '@whiskeysockets/baileys';
 import type { InboundMediaSource } from '../../types.js';
 import type { NormalizedInboundMessage, AdapterDeps } from '../../contracts.js';
-import { BaseChannelAdapter } from '../../base-adapter.js';
+import { BaseChannelAdapter, MEDIA_TYPE_LABELS } from '../../base-adapter.js';
 import { createWhatsAppSocket } from './session.js';
 import type { WhatsAppInboundMessage } from './types.js';
 import { normalizeWhatsAppMessage } from './normalizer.js';
 import { getDataPaths } from '../../../../lib/paths.js';
 import { toMessage } from '../../../../lib/error.js';
 import { Reconnector } from '../../reconnect.js';
-import { MEDIA_TYPE_MIME_DEFAULTS } from '../../../../lib/media-transcribe.js';
-
-const MEDIA_TYPE_LABELS: Record<string, string> = {
-  audio: 'Voice message',
-  video: 'Video message',
-  document: 'Document',
-  sticker: 'Sticker',
-};
+import { MEDIA_TYPE_MIME_DEFAULTS } from '../../../../lib/mime.js';
 
 export class WhatsAppAdapter extends BaseChannelAdapter<WhatsAppInboundMessage> {
   readonly type = 'whatsapp' as const;
