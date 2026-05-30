@@ -21,8 +21,8 @@
  *   view (no sessionKey) and the service's view (sessionKey required).
  */
 
-import type { ToolDefinition } from '@mariozechner/pi-coding-agent';
-import type { AgentToolResult, AgentToolUpdateCallback } from '@mariozechner/pi-agent-core';
+import type { ToolDefinition } from '@earendil-works/pi-coding-agent';
+import type { AgentToolResult, AgentToolUpdateCallback } from '@earendil-works/pi-agent-core';
 import type { Bus } from '../../gateway/bus.js';
 import { createLogger } from '../../lib/logger.js';
 import { isToolEvent } from '../../gateway/emitter.js';

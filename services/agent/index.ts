@@ -34,10 +34,10 @@ import {
   DefaultResourceLoader,
   type AgentSession,
   type ToolDefinition,
-} from '@mariozechner/pi-coding-agent';
+} from '@earendil-works/pi-coding-agent';
 
 // PiAgent event types for type-safe event mapping
-import type { AgentSessionEvent } from '@mariozechner/pi-coding-agent';
+import type { AgentSessionEvent } from '@earendil-works/pi-coding-agent';
 
 import { createCustomTools } from './tools.js';
 import { loadChannelPersona, loadSubagentPersona } from './persona.js';
