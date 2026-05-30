@@ -32,7 +32,7 @@ interface FetchLike {
   buffer(): Promise<Buffer>;
 }
 
-export class TelegramAdapter extends BaseChannelAdapter {
+export class TelegramAdapter extends BaseChannelAdapter<TelegramMessage> {
   readonly type = 'telegram' as const;
 
   private botUser: TelegramUser | null = null;
@@ -228,10 +228,7 @@ export class TelegramAdapter extends BaseChannelAdapter {
     return res.buffer();
   }
 
-  protected async resolveMedia(msg: unknown): Promise<InboundMediaSource | null> {
-    const m = msg as { tgMsg: TelegramMessage; chatId: string };
-    const { tgMsg } = m;
-
+  protected async resolveMedia(tgMsg: TelegramMessage): Promise<InboundMediaSource | null> {
     if (tgMsg.photo?.length) {
       const largest = tgMsg.photo[tgMsg.photo.length - 1];
       const buffer = await this.downloadFile(largest.file_id);
@@ -268,7 +265,7 @@ export class TelegramAdapter extends BaseChannelAdapter {
 
     try {
       const { caption, savedPath, mimeType } = await this.processInboundMedia(
-        { tgMsg: msg, chatId },
+        msg,
         (text) => this.onInboundMessage!(sessionKey, { ...normalizedMsg, text }),
         sessionKey,
         this.shouldExecute(chatId, normalizedMsg.chatType, normalizedMsg.isMentioned),

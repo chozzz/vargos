@@ -80,12 +80,3 @@ export type OnInboundMessageFn = (
   sessionKey: string,
   normalizedMessage: NormalizedInboundMessage,
 ) => Promise<void>;
-
-/**
- * Normalizer function: adapter-specific message → canonical NormalizedInboundMessage.
- * Each adapter has a normalizer that handles its raw message type.
- */
-export type MessageNormalizer<T> = (
-  msg: T,
-  botId: string,
-) => NormalizedInboundMessage | null;

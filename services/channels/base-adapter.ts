@@ -22,7 +22,7 @@ const MEDIA_TYPE_LABELS: Record<string, string> = {
   sticker: 'Sticker',
 };
 
-export abstract class BaseChannelAdapter implements ChannelAdapter {
+export abstract class BaseChannelAdapter<TRaw = never> implements ChannelAdapter {
   abstract readonly type: ChannelType;
   readonly instanceId: string;
   status: ChannelStatus = 'disconnected';
@@ -126,8 +126,8 @@ export abstract class BaseChannelAdapter implements ChannelAdapter {
     this.typingState.cleanup();
   }
 
-  /** Override to handle media resolution for your channel. */
-  protected async resolveMedia(_msg: unknown): Promise<InboundMediaSource | null> {
+  /** Override to handle media resolution for your channel. Typed via the adapter's TRaw param. */
+  protected async resolveMedia(_msg: TRaw): Promise<InboundMediaSource | null> {
     return null;
   }
 
@@ -172,7 +172,7 @@ export abstract class BaseChannelAdapter implements ChannelAdapter {
    * Returns caption text + saved path for routing to onInboundMessage.
    */
   protected async processInboundMedia(
-    msg: unknown,
+    msg: TRaw,
     route: (text: string) => Promise<void>,
     sessionKey: string,
     shouldProcessMedia = true,

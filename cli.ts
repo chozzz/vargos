@@ -13,6 +13,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { CHANNEL_TYPES } from './services/config/schemas/channels.js';
+import type { ChannelEntry } from './services/config/schemas/channels.js';
 import { getDataPaths } from './lib/paths.js';
 
 // ── Runtime guard ────────────────────────────────────────────────────────────
@@ -225,11 +227,11 @@ if (cmd === 'channels') {
   }
 
   if (sub === 'register') {
-    const type = process.argv[4] as 'telegram' | 'whatsapp' | undefined;
+    const type = process.argv[4] as ChannelEntry['type'] | undefined;
     const id = process.argv[5];
 
-    if (!type || !id || !['telegram', 'whatsapp'].includes(type)) {
-      console.log('Usage: vargos channels register <telegram|whatsapp> <id> [--bot-token <token>]');
+    if (!type || !id || !(CHANNEL_TYPES as readonly string[]).includes(type)) {
+      console.log(`Usage: vargos channels register <${CHANNEL_TYPES.join('|')}> <id> [--bot-token <token>]`);
       process.exit(1);
     }
 

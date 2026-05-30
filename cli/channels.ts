@@ -11,12 +11,13 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { getDataPaths } from '../lib/paths.js';
+import type { ChannelEntry } from '../services/config/schemas/channels.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface ChannelInfo {
   id: string;
-  type: 'telegram' | 'whatsapp';
+  type: ChannelEntry['type'];
   botToken?: string;
   enabled?: boolean;
   registered?: boolean; // WhatsApp: has creds.json (paired)
@@ -24,7 +25,7 @@ export interface ChannelInfo {
 
 export interface RegisterChannelParams {
   id: string;
-  type: 'telegram' | 'whatsapp';
+  type: ChannelEntry['type'];
   botToken?: string; // Telegram only
 }
 
@@ -141,7 +142,7 @@ export async function pairWhatsApp(id: string): Promise<void> {
       onMessage: () => {
         // Ignore messages during pairing
       },
-    }).then((sock) => {
+    }).then(() => {
       // Socket created, wait for onConnected to resolve
       // If the process exits before onConnected, the promise rejects via onDisconnected
     }).catch(reject);

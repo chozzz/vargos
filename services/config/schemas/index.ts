@@ -3,8 +3,8 @@
  */
 
 // Primitives
-export { JsonSchema, ThinkingLevelSchema, ChannelTypeSchema } from './primitives.js';
-export type { Json, ThinkingLevel, ChannelType } from './primitives.js';
+export { JsonSchema, ThinkingLevelSchema } from './primitives.js';
+export type { Json, ThinkingLevel } from './primitives.js';
 
 // Auth
 export { AuthEntrySchema, AuthSchema } from './auth.js';
@@ -15,7 +15,7 @@ export { ProviderConfigSchema, ProvidersSchema } from './providers.js';
 export type { ProviderConfig, Providers } from './providers.js';
 
 // Channels
-export { TelegramChannelSchema, WhatsAppChannelSchema, ChannelEntrySchema } from './channels.js';
+export { TelegramChannelSchema, WhatsAppChannelSchema, ChannelEntrySchema, CHANNEL_TYPES } from './channels.js';
 export type { ChannelEntry, TelegramChannel, WhatsAppChannel } from './channels.js';
 
 // Cron

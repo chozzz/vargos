@@ -24,7 +24,7 @@ const MEDIA_TYPE_LABELS: Record<string, string> = {
   sticker: 'Sticker',
 };
 
-export class WhatsAppAdapter extends BaseChannelAdapter {
+export class WhatsAppAdapter extends BaseChannelAdapter<WhatsAppInboundMessage> {
   readonly type = 'whatsapp' as const;
 
   private sock: WASocket | null = null;
@@ -213,17 +213,16 @@ export class WhatsAppAdapter extends BaseChannelAdapter {
     this.debouncer.push(chatId, msg.text, normalizedMsg);
   }
 
-  protected async resolveMedia(msg: unknown): Promise<InboundMediaSource | null> {
-    const m = msg as WhatsAppInboundMessage;
-    if (!m.mediaBuffer) return null;
+  protected async resolveMedia(msg: WhatsAppInboundMessage): Promise<InboundMediaSource | null> {
+    if (!msg.mediaBuffer) return null;
 
-    const rawMime = m.mimeType?.split(';')[0].trim();
-    const mimeType = rawMime || MEDIA_TYPE_MIME_DEFAULTS[m.mediaType!] || 'application/octet-stream';
+    const rawMime = msg.mimeType?.split(';')[0].trim();
+    const mimeType = rawMime || MEDIA_TYPE_MIME_DEFAULTS[msg.mediaType!] || 'application/octet-stream';
     return {
-      buffer: m.mediaBuffer,
+      buffer: msg.mediaBuffer,
       mimeType,
-      mediaType: (m.mediaType as InboundMediaSource['mediaType']) ?? 'document',
-      caption: m.caption,
+      mediaType: msg.mediaType === 'sticker' ? 'image' : (msg.mediaType ?? 'document'),
+      caption: msg.caption,
     };
   }
 
