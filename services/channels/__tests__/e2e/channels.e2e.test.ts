@@ -458,7 +458,7 @@ describe('onAgentCompleted reply logic', () => {
     expect(adapter.typingStopped).toContainEqual({ sessionKey, final: true });
   });
 
-  it('keeps session alive after completion (for multiple turn_end events)', async () => {
+  it('removes the session on completion (agent_end fires once per run)', async () => {
     const { bus, svc, adapter } = setup();
     const sessionKey = 'stub-ch:user5';
 
@@ -467,8 +467,8 @@ describe('onAgentCompleted reply logic', () => {
     bus.emit('agent.onCompleted', { sessionKey, success: true, response: '' });
     await tick();
 
-    // Session stays alive to handle multiple agent.onCompleted events
-    expect((svc as any).activeSessions.has(sessionKey)).toBe(true);
+    // Completion is the cleanup anchor — the session is removed.
+    expect((svc as any).activeSessions.has(sessionKey)).toBe(false);
   });
 
   it('calls reactionController.setDone and dispose on success', async () => {
@@ -513,7 +513,7 @@ describe('onAgentCompleted reply logic', () => {
     expect(adapter.sent).toHaveLength(0);
   });
 
-  it('second onAgentCompleted for same sessionKey processes both (session stays alive)', async () => {
+  it('a duplicate/late onAgentCompleted after cleanup is a safe no-op', async () => {
     const { bus, svc, adapter } = setup();
     const sessionKey = 'stub-ch:user8';
 
@@ -521,12 +521,12 @@ describe('onAgentCompleted reply logic', () => {
 
     bus.emit('agent.onCompleted', { sessionKey, success: true, response: '' });
     await tick();
-    // Fire again — session is still alive, so it processes
+    // First completion removed the session; a second event finds nothing and is ignored.
     bus.emit('agent.onCompleted', { sessionKey, success: true, response: '' });
     await tick();
 
-    // stopTyping called twice (once for each completion)
-    expect(adapter.typingStopped.filter(t => t.sessionKey === sessionKey)).toHaveLength(2);
+    expect((svc as any).activeSessions.has(sessionKey)).toBe(false);
+    expect(adapter.typingStopped.filter(t => t.sessionKey === sessionKey)).toHaveLength(1);
   });
 
   it('uses Unknown error message when error field is absent on failure', async () => {
@@ -969,9 +969,7 @@ describe('completion: agent errors deliver exactly one reply', () => {
     expect(adapter.sent[0].text).toContain('provider boom');
   });
 
-  it('session lives for the whole run and is cleaned up when execute settles (no timer)', async () => {
-    // A late onCompleted (e.g. a steered second turn) must still find the session — it is
-    // only removed when agent.execute settles, not on a wall-clock timer.
+  it('session is cleaned up on completion, not on a timer', async () => {
     const { bus, svc, adapter } = setup();
     const sessionKey = 'stub-ch:userRUN';
     let release!: () => void;
@@ -984,8 +982,8 @@ describe('completion: agent errors deliver exactly one reply', () => {
         schema: z.object({ sessionKey: z.string(), task: z.string() }).passthrough(),
       })
       async execute(p: any) {
+        await gate;                  // hold the run open
         bus.emit('agent.onCompleted', { sessionKey: p.sessionKey, success: true, response: 'done' });
-        await gate; // hold the run open after the completion event
         return { response: 'done' };
       }
     }
@@ -993,15 +991,53 @@ describe('completion: agent errors deliver exactly one reply', () => {
 
     await svc.onInboundMessage(sessionKey, createTestMessage('hi'));
     await flush();
-
-    // Run still open → session present (no timer tore it down), reply delivered
-    expect((svc as any).activeSessions.has(sessionKey)).toBe(true);
-    expect(adapter.sent.some(s => s.text === 'done')).toBe(true);
+    expect((svc as any).activeSessions.has(sessionKey)).toBe(true);  // run open, not torn down
 
     release();
     await flush();
+    expect(adapter.sent.some(s => s.text === 'done')).toBe(true);
+    expect((svc as any).activeSessions.has(sessionKey)).toBe(false); // removed on completion
+  });
 
-    // execute settled → session removed
+  it('a second message during an active run steers in without dropping the first run reply', async () => {
+    // Reproduces the production race: a steered message's agent.execute settles early; it must
+    // not delete the session out from under the still-running first run.
+    const { bus, svc, adapter } = setup();
+    const sessionKey = 'stub-ch:userSTEER';
+    let release!: () => void;
+    const gate = new Promise<void>(r => { release = r; });
+    let calls = 0;
+
+    class AgentStub {
+      constructor(b: EventEmitterBus) { b.bootstrap(this); }
+      @register('agent.execute', {
+        description: 'stub',
+        schema: z.object({ sessionKey: z.string(), task: z.string() }).passthrough(),
+      })
+      async execute(p: any) {
+        calls++;
+        if (calls === 1) {
+          await gate; // first run owns the session; completes only when released
+          bus.emit('agent.onCompleted', { sessionKey: p.sessionKey, success: true, response: 'final answer' });
+          return { response: 'final answer' };
+        }
+        return { response: '' }; // steered message: settles early
+      }
+    }
+    new AgentStub(bus);
+
+    await svc.onInboundMessage(sessionKey, createTestMessage('first'));
+    await flush();
+    expect((svc as any).activeSessions.has(sessionKey)).toBe(true);
+
+    await svc.onInboundMessage(sessionKey, createTestMessage('second')); // steers into active run
+    await flush();
+    expect(calls).toBe(2);
+    expect((svc as any).activeSessions.has(sessionKey)).toBe(true);      // not dropped by the early-settled steer
+
+    release();
+    await flush();
+    expect(adapter.sent.some(s => s.text === 'final answer')).toBe(true); // reply delivered, not lost
     expect((svc as any).activeSessions.has(sessionKey)).toBe(false);
   });
 

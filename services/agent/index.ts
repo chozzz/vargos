@@ -145,7 +145,7 @@ export class AgentService {
        */
       task: z.string().describe('The task to execute.'),
       cwd: z.string().optional().describe('Working directory for the agent — defaults to workspace dir.'),
-      model: z.string().optional().describe('Model override in format provider:modelId (e.g., "claude-opus-4").'),
+      model: z.string().optional().describe('Optional model override as "provider:modelId" (e.g. "anthropic:claude-opus-4"). Omit to use the agent default — an unknown value falls back to the default.'),
     }),
   })
   async execute(params: EventMap['agent.execute']['params']): Promise<EventMap['agent.execute']['result']> {
@@ -155,14 +155,18 @@ export class AgentService {
 
     log.debug(`execute: START ${params.sessionKey}`);
 
-    if (params.model) {
-      this.validateModel(params.model);
+    // Fall back to the session's default model when the override is missing or unknown,
+    // instead of failing the run (agents sometimes pass an ill-formed or stale model id).
+    let model = params.model;
+    if (model && !this.isValidModel(model)) {
+      log.warn(`agent.execute: ignoring invalid model "${model}" (expected provider:modelId) — using default`);
+      model = undefined;
     }
 
     const directives = parseDirectives(params.task);
     const task = interpolatePrompt(directives.cleaned || params.task);
 
-    const session = await this.getOrCreateSession(params.sessionKey, { cwd: params.cwd, model: params.model });
+    const session = await this.getOrCreateSession(params.sessionKey, { cwd: params.cwd, model });
 
     if (directives.thinkingLevel) {
       session.setThinkingLevel(directives.thinkingLevel);
@@ -471,12 +475,9 @@ export class AgentService {
   /**
    * Validate model override if provided.
    */
-  private validateModel(modelSpec: string): void {
+  private isValidModel(modelSpec: string): boolean {
     const [provider, modelId] = modelSpec.split(':');
-    const model = this.modelRegistry.find(provider, modelId);
-    if (!model) {
-      throw new Error(`Model not found: ${modelSpec}. Expected format: provider:modelId`);
-    }
+    return !!this.modelRegistry.find(provider, modelId);
   }
 
   // ── Private Helpers ────────────────────────────────────────────────────────

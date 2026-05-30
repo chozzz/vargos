@@ -289,15 +289,20 @@ export class ChannelService {
       return;
     }
 
-    // Claim the session synchronously so the pipeline's catch won't also send (double-send).
+    // agent.onCompleted (pi's agent_end) fires once at the true end of the run — even with
+    // steering, where a second message's agent.execute settles early. So THIS is the cleanup
+    // anchor, not the execute promise: claim + remove the session now. The captured `session`
+    // object still serves the async reply send + reaction seal below. `completed` guards the
+    // pipeline catch against a double-send.
     session.completed = true;
+    this.activeSessions.delete(payload.sessionKey);
 
     const sessionKey = payload.sessionKey;
     const text = payload.success ? (payload.response ?? '') : `Error: ${payload.error || 'Unknown error'}`;
     log.info(`→ ${sessionKey} ${payload.success ? '✓' : '✗'} (${text.length} chars)`);
 
     // Send on error (always), or on a successful response the agent didn't already deliver
-    // via the channel-send tool. The session stays alive for any follow-up completion events.
+    // via the channel-send tool.
     const shouldSend = !payload.success || (!session.replied && !!payload.response);
     const finalize = () => this.pipeline.finalize(session, sessionKey, payload.success !== false);
 

@@ -10,8 +10,8 @@ import { truncate } from '../../../lib/truncate.js';
 // ── Helper methods testing ───────────────────────────────────────────────────
 
 class TestableRuntime extends AgentService {
-  testValidateModel(modelSpec: string): void {
-    return this['validateModel'](modelSpec);
+  testIsValidModel(modelSpec: string): boolean {
+    return this['isValidModel'](modelSpec);
   }
 }
 
@@ -42,7 +42,7 @@ function createTestRuntime(dataDir: string): TestableRuntime {
   return runtime;
 }
 
-describe('validateModel', () => {
+describe('isValidModel', () => {
   let tmpDir: string;
   let runtime: TestableRuntime;
   let originalEnv: string | undefined;
@@ -58,28 +58,17 @@ describe('validateModel', () => {
     resetDataPaths();
   });
 
-  it('throws on invalid provider', () => {
-    expect(() => {
-      runtime.testValidateModel('nonexistent:model');
-    }).toThrow('Model not found: nonexistent:model');
+  // Invalid model ids return false (the caller falls back to the default instead of throwing).
+  it('returns false for an unknown provider', () => {
+    expect(runtime.testIsValidModel('nonexistent:model')).toBe(false);
   });
 
-  it('throws on invalid model id', () => {
-    expect(() => {
-      runtime.testValidateModel('test:nonexistent');
-    }).toThrow('Model not found: test:nonexistent');
+  it('returns false for an unknown model id', () => {
+    expect(runtime.testIsValidModel('test:nonexistent')).toBe(false);
   });
 
-  it('throws on malformed spec (missing colon)', () => {
-    expect(() => {
-      runtime.testValidateModel('invalid-spec');
-    }).toThrow();
-  });
-
-  it('error message includes format hint', () => {
-    expect(() => {
-      runtime.testValidateModel('test:invalid');
-    }).toThrow('Expected format: provider:modelId');
+  it('returns false for a malformed spec (missing colon)', () => {
+    expect(runtime.testIsValidModel('invalid-spec')).toBe(false);
   });
 });
 
