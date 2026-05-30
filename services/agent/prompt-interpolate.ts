@@ -61,6 +61,10 @@ function interpolatePromptWithMissing(prompt: string, context?: Record<string, s
   const paths = getDataPaths();
   const currentTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
+  // process.cwd() throws if the working directory was removed; fall back to the data dir.
+  let pwd: string;
+  try { pwd = process.cwd(); } catch { pwd = paths.dataDir; }
+
   const variables: Record<string, string> = {
     DATA_DIR: paths.dataDir,
     WORKSPACE_DIR: paths.workspaceDir,
@@ -70,7 +74,7 @@ function interpolatePromptWithMissing(prompt: string, context?: Record<string, s
     LOGS_DIR: paths.logsDir,
     CHANNELS_DIR: paths.channelsDir,
     HOME: os.homedir(),
-    PWD: process.cwd(),
+    PWD: pwd,
     CURRENT_DATE: new Date().toLocaleString(undefined, {
       timeZone: currentTimezone,
       year: 'numeric', month: 'long', day: '2-digit',

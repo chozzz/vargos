@@ -1,6 +1,8 @@
+import { mkdirSync } from 'node:fs';
 import { EventEmitterBus } from './gateway/emitter.js';
 import { startTCPServer } from './gateway/tcp-server.js';
 import { createLogger } from './lib/logger.js';
+import { getDataPaths } from './lib/paths.js';
 import { seedDataDir } from './lib/templates.js';
 import { runMigrations } from './lib/migrate.js';
 import { z } from 'zod';
@@ -34,6 +36,14 @@ if (new Set(labels).size !== labels.length) {
 const RESTART_EXIT_CODE = 42;
 const bus = new EventEmitterBus();
 const log = createLogger('boot');
+
+// Run from a stable, vargos-owned cwd. A long-running agent can delete or relocate the
+// directory vargos was launched from (e.g. a project tree it's auditing). If that's our
+// process cwd, process.cwd() throws ENOENT and crashes child spawns (the MCP `npm install`)
+// and ${PWD} interpolation. ~/.vargos always exists and the agent never touches it.
+const dataDir = getDataPaths().dataDir;
+mkdirSync(dataDir, { recursive: true });
+process.chdir(dataDir);
 const serviceStops = new Map<string, () => unknown>(); // label → stop(); kept current across restarts
 let tcpStop: (() => unknown) | undefined;
 
