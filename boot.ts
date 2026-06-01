@@ -107,7 +107,7 @@ bus.registerTool(
   },
   {
     description: 'Restart the entire vargos process. The supervisor respawns boot.ts so new code from disk (e.g. after git pull or npm update) takes effect. Returns immediately; teardown runs after the response is sent.',
-    schema: z.object({}).optional(),
+    schema: z.object({}).default({}),
   },
 );
 

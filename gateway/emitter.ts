@@ -177,7 +177,7 @@ export class EventEmitterBus implements Bus {
 
   @register('bus.status', {
     description: 'List all registered services and their current status.',
-    schema: z.object({}).optional(),
+    schema: z.object({}).default({}),
   })
   async status(_params?: EventMap['bus.status']['params']): Promise<EventMap['bus.status']['result']> {
     const services = Array.from(this.restartFactories.keys()).map(name => ({
