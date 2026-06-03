@@ -244,7 +244,19 @@ export class AgentService {
     const sessionDir = path.join(paths.sessionsDir, sessionKey.replace(/:/g, path.sep));
     // Use continueRecent to find and load the latest session file (preserves history).
     // Falls back to create() if no existing session file is found.
-    const sessionManager = SessionManager.create(effectiveCwd, sessionDir);
+    let sessionManager: ReturnType<typeof SessionManager.create>;
+    try {
+      sessionManager = SessionManager.create(effectiveCwd, sessionDir);
+    } catch (err: unknown) {
+      if (err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'EEXIST') {
+        // File was created by another code path (e.g. concurrent message for same session).
+        // Fall back to continueRecent which opens existing files gracefully.
+        log.debug(`session ${sessionKey}: create() hit EEXIST, falling back to continueRecent()`);
+        sessionManager = SessionManager.continueRecent(effectiveCwd, sessionDir);
+      } else {
+        throw err;
+      }
+    }
 
     await fs.mkdir(sessionDir, { recursive: true });
     await fs.mkdir(this.agentDir, { recursive: true });
