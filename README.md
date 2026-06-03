@@ -114,4 +114,4 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for architecture details, event referen
 
 ## License
 
-[Apache-2.0](./LICENSE)
+[MIT](./LICENSE)
