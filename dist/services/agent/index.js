@@ -221,7 +221,9 @@ let AgentService = (() => {
                 role: 'user',
                 content: params.content,
             });
-            session.exportToJsonl(sessionFile);
+            // exportToJsonl truncates and overrides the file, if it was used concurrently it crashes node (EEXIST but uncaught since it's writeFileSync)
+            // Actually exportToJsonl isn't needed here, sessionManager.appendMessage() already appends to the file internally via fs.appendFileSync
+            // session.exportToJsonl(sessionFile);
         }
         /**
          * agent.status — Return currently active agent session keys.
