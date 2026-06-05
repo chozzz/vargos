@@ -1,0 +1,1 @@
+{"version":3,"file":"tcp-server.d.ts","sourceRoot":"","sources":["../../gateway/tcp-server.ts"],"names":[],"mappings":"AAAA;;;GAGG;AAGH,OAAO,KAAK,EAAE,GAAG,EAAoB,MAAM,UAAU,CAAC;AAiBtD,wBAAgB,cAAc,CAC5B,GAAG,EAAE,GAAG,EACR,IAAI,EAAE,MAAM,EACZ,IAAI,EAAE,MAAM,EACZ,eAAe,GAAE,MAAe,GAC/B,OAAO,CAAC,MAAM,OAAO,CAAC,IAAI,CAAC,CAAC,CA2C9B"}

@@ -1,0 +1,10 @@
+/**
+ * Agent — Type schemas
+ */
+import type { Bus } from '../../gateway/bus.js';
+import type { AppConfig } from '../../services/config/index.js';
+export interface AgentDeps {
+    bus: Bus;
+    config: AppConfig;
+}
+//# sourceMappingURL=types.d.ts.map

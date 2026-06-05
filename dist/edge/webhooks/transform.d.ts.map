@@ -1,0 +1,1 @@
+{"version":3,"file":"transform.d.ts","sourceRoot":"","sources":["../../../edge/webhooks/transform.ts"],"names":[],"mappings":"AAEA,MAAM,MAAM,WAAW,GAAG,CAAC,OAAO,EAAE,OAAO,KAAK,MAAM,CAAC;AAIvD,wBAAgB,oBAAoB,CAAC,OAAO,EAAE,OAAO,GAAG,MAAM,CAE7D;AAED;;;GAGG;AACH,wBAAsB,aAAa,CAAC,UAAU,EAAE,MAAM,EAAE,OAAO,CAAC,EAAE,MAAM,GAAG,OAAO,CAAC,WAAW,CAAC,CAmB9F"}
