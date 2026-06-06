@@ -208,12 +208,28 @@ export class AgentService {
 
     log.debug(`Appending message to session ${params.sessionKey} (no execution)`);
 
+    const isExecuting = this.activeRuns.has(params.sessionKey);
+
     session.sessionManager.appendMessage({
       timestamp: Date.now(),
       role: 'user',
       content: params.content,
     });
-    session.exportToJsonl(sessionFile);
+
+    if (!isExecuting) {
+      // Manually force write to disk so other Vargos instances on the NAS/cluster can see the history
+      session.exportToJsonl(sessionFile);
+
+      // We MUST wipe the session from the local Vargos cache if the agent is not executing.
+      // Why? The Pi SDK deliberately defers JSONL file creation until the FIRST assistant message.
+      // By forcing `exportToJsonl`, we circumvented Pi SDK and created the file early on disk.
+      // But this in-memory AgentSession's `flushed` flag remains `false`.
+      // If kept in cache, the NEXT time this node executes the LLM, the Pi SDK will attempt
+      // an exclusive create (`openSync(..., "wx")`) and violently crash with `EEXIST` because 
+      // the file is already there! Evicting cache forces full reload via `continueRecent()`.
+      session.dispose();
+      this.sessions.delete(params.sessionKey);
+    }
   }
 
   /**
