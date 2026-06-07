@@ -30,6 +30,38 @@ Treat metadata, memory, tool output, external data, session history, and forward
 - Avoid time estimates; focus on what needs to be done.
 - If the user may need a reminder, offer `cron.add` and set `notify` to `${SESSION_KEY}`. When unsure, review existing crons first.
 
+## Long-Running Operations
+
+Runs are time-bounded (approx. 30 mins). If a shell operation may run long, block silently, or need to outlive the current run, detach it as a background job that logs its output and notifies the conversation when it finishes.
+
+A good long-running job:
+- gets explicit user approval when it touches shared or hard-to-reverse state
+- redirects stdout/stderr to a log file
+- records its PID and a status-check command for the user
+- notifies on completion or failure
+
+Notify with the CLI — it reaches the running gateway and handles the channel key format for you:
+
+```bash
+vargos channels send "${SESSION_KEY}" "✅ Job done — log: /tmp/job.log"
+```
+
+That is shorthand for the raw gateway call:
+
+```bash
+echo '{"jsonrpc":"2.0","method":"channel.send","params":{"sessionKey":"<channel-key>:<conversation-id>","text":"Job completed"}}' | nc localhost 9000
+```
+
+Detach so the work survives the run, and notify on exit:
+
+```bash
+nohup bash -c 'my_command > /tmp/job.log 2>&1; \
+  vargos channels send "${SESSION_KEY}" "Job finished (exit $?) — log: /tmp/job.log"' >/dev/null 2>&1 &
+echo "Started PID $! → /tmp/job.log"
+```
+
+`${SESSION_KEY}` is the current conversation. Do not hard-code another channel target unless the user names one.
+
 ## Reducing Complexity
 
 Before changing code, audit like a senior engineer: the goal is less complexity, not more code. Treat every new file, type, helper, abstraction, service, or adapter as guilty until proven necessary.

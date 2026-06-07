@@ -3,12 +3,14 @@
  *
  * Exports:
  *   listChannels()        → array of { id, type, botToken? }
- *   registerChannel()     → add to config.json
+ *   registerChannel()     → upsert into config.json (returns whether it was newly created)
  *   deregisterChannel()   → remove from config.json
  *   pairWhatsApp()        → standalone QR pairing (stops after connected)
+ *   sendChannelMessage()  → deliver a message via the running gateway (channel.send)
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createConnection } from 'node:net';
 import path from 'node:path';
 import { getDataPaths } from '../lib/paths.js';
 import type { ChannelEntry } from '../services/config/schemas/channels.js';
@@ -77,13 +79,22 @@ export function listChannels(): ChannelInfo[] {
   });
 }
 
-export function registerChannel(params: RegisterChannelParams): void {
+/**
+ * Upsert a channel into config.json. Idempotent: re-registering an existing id
+ * leaves it in place (refreshing the bot token if a new one is supplied) so that
+ * `register whatsapp <id>` can mean "ensure set up, then (re)pair".
+ * Returns whether the entry was newly created.
+ */
+export function registerChannel(params: RegisterChannelParams): { created: boolean } {
   const config = readConfig();
   const channels = (config.channels ?? []) as Array<Record<string, unknown>>;
 
-  // Check for duplicate id
-  if (channels.some((c) => c.id === params.id)) {
-    throw new Error(`Channel "${params.id}" already exists. Use deregister first.`);
+  const existing = channels.find((c) => c.id === params.id);
+  if (existing) {
+    if (params.botToken) existing['botToken'] = params.botToken;
+    config.channels = channels;
+    writeConfig(config);
+    return { created: false };
   }
 
   const entry: Record<string, unknown> = {
@@ -96,6 +107,7 @@ export function registerChannel(params: RegisterChannelParams): void {
   channels.push(entry);
   config.channels = channels;
   writeConfig(config);
+  return { created: true };
 }
 
 export function deregisterChannel(id: string): void {
@@ -147,4 +159,53 @@ export async function pairWhatsApp(id: string): Promise<void> {
       // If the process exits before onConnected, the promise rejects via onDisconnected
     }).catch(reject);
   });
+}
+
+// ── Gateway client (talks to a running `vargos start`) ─────────────────────────
+
+/** Resolve the gateway address from config.json, mirroring boot.ts defaults. */
+function gatewayAddress(): { host: string; port: number } {
+  const gw = (readConfig().gateway ?? {}) as { host?: string; port?: number };
+  const host = gw.host ?? process.env.BUS_HOST ?? '127.0.0.1';
+  const port = gw.port ?? (process.env.BUS_PORT ? parseInt(process.env.BUS_PORT, 10) : 9000);
+  return { host, port };
+}
+
+/** Send one JSON-RPC request to the gateway and resolve with its result. */
+function gatewayCall<T>(method: string, params: unknown): Promise<T> {
+  const { host, port } = gatewayAddress();
+  return new Promise<T>((resolve, reject) => {
+    const socket = createConnection({ host, port }, () => {
+      socket.write(JSON.stringify({ jsonrpc: '2.0', method, params, id: 1 }) + '\n');
+    });
+
+    let buffer = '';
+    socket.on('data', (chunk) => {
+      buffer += chunk.toString();
+      const nl = buffer.indexOf('\n');
+      if (nl === -1) return; // wait for the full line
+      socket.end();
+      try {
+        const res = JSON.parse(buffer.slice(0, nl)) as { result?: T; error?: { message?: string } };
+        if (res.error) reject(new Error(res.error.message ?? 'gateway error'));
+        else resolve(res.result as T);
+      } catch (err) {
+        reject(err instanceof Error ? err : new Error(String(err)));
+      }
+    });
+
+    socket.setTimeout(10_000, () => {
+      socket.destroy();
+      reject(new Error(`gateway not reachable at ${host}:${port} — is "vargos start" running?`));
+    });
+    socket.on('error', (err) => reject(
+      new Error(`gateway not reachable at ${host}:${port} — is "vargos start" running? (${err.message})`),
+    ));
+  });
+}
+
+/** Deliver a message to a channel session via the running gateway. */
+export async function sendChannelMessage(sessionKey: string, text: string): Promise<boolean> {
+  const result = await gatewayCall<{ sent?: boolean }>('channel.send', { sessionKey, text });
+  return result?.sent === true;
 }

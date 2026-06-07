@@ -75,7 +75,7 @@ The gateway speaks JSON-RPC 2.0 over TCP — not HTTP. Useful direct calls:
 
 - `bus.search` — list all events
 - `bus.inspect { event: "agent.execute" }` — schema for one event
-- `agent.status` — currently active runs
+- `agent.status` — session inventory (state, parent links, model) + active runs
 - `memory.stats` — index size
 
 ## See also

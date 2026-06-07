@@ -26,7 +26,7 @@ Every `@register`-ed callable is auto-exposed as an agent tool by `services/agen
 | `config.get` / `config.set` | Read/write the merged `AppConfig` |
 | `agent.execute` | Run a turn. Throws on Pi SDK `stopReason === 'error'`. |
 | `agent.appendMessage` | Append text to a session JSONL without running the agent |
-| `agent.status` | Currently active runs |
+| `agent.status` | Session inventory (state, parent links, model) + active runs. Optional `sessionKey` scopes to one session and its subagents. |
 | `media.transcribeAudio` / `describeImage` / `extractDocument` | Whisper / vision / PDF-DOCX-XLSX-TXT-MD extraction |
 | `web.fetch` | HTTP → markdown extraction |
 | `channel.send` | Send to a channel. With `fromSessionKey`, also injects `[fromSessionKey] text` into target session history. |

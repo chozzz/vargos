@@ -48,12 +48,33 @@ function usage(): void {
     vargos start           Boot the agent server (gateway + all services)
     vargos onboard         Interactive setup wizard (provider, model, API key, channels)
     vargos config          Show current configuration
-    vargos channels        Manage messaging channels (list, register, deregister, pair)
+    vargos channels        Manage messaging channels (list, register, deregister, send)
     vargos chat            Start an interactive chat session with the agent
 
   Options:
     --version, -v          Show version
     --help, -h             Show this help
+`);
+}
+
+function channelsUsage(): void {
+  console.log(`
+  Manage messaging channels.
+
+  Usage:
+    vargos channels                                      List channels (default)
+    vargos channels list                                 List channels
+    vargos channels register telegram <id> --bot-token <token>
+                                                         Add a Telegram channel
+    vargos channels register whatsapp <id>               Add a WhatsApp channel, then pair via QR
+                                                         (re-run to re-pair an existing channel)
+    vargos channels deregister <id>                      Remove a channel
+    vargos channels send <sessionKey> <text...>          Send a message via the running gateway
+
+  Examples:
+    vargos channels register telegram my-bot --bot-token 123:ABC
+    vargos channels register whatsapp my-wa
+    vargos channels send telegram-my-bot:-5004637094 "Deploy finished ✅"
 `);
 }
 
@@ -234,10 +255,16 @@ if (cmd === 'chat') {
   });
 }
 
-// channels subcommand
-if (cmd === 'channels') {
+// channels subcommand (`channel` accepted as a singular alias)
+if (cmd === 'channels' || cmd === 'channel') {
   const sub = process.argv[3];
-  const { listChannels, registerChannel, deregisterChannel, pairWhatsApp } = await import('./cli/channels.js');
+  const { listChannels, registerChannel, deregisterChannel, pairWhatsApp, sendChannelMessage } =
+    await import('./cli/channels.js');
+
+  if (sub === '--help' || sub === '-h') {
+    channelsUsage();
+    process.exit(0);
+  }
 
   if (sub === 'list' || !sub) {
     const channels = listChannels();
@@ -269,20 +296,21 @@ if (cmd === 'channels') {
     }
 
     try {
-      const tgBotKey = type === 'telegram'
-        ? process.argv[process.argv.indexOf('--bot-token') + 1]
-        : undefined;
+      const tokenIdx = process.argv.indexOf('--bot-token');
+      const tgBotKey = type === 'telegram' && tokenIdx !== -1 ? process.argv[tokenIdx + 1] : undefined;
 
       if (type === 'telegram' && !tgBotKey) {
         console.log('Telegram requires --bot-token <token>');
         process.exit(1);
       }
 
-      registerChannel({ id, type, botToken: tgBotKey });
-      console.log(`✅ Channel "${id}" registered.`);
+      const { created } = registerChannel({ id, type, botToken: tgBotKey });
+      console.log(created ? `✅ Channel "${id}" registered.` : `ℹ Channel "${id}" already registered.`);
 
+      // WhatsApp registration is pairing: write config, then run the QR flow.
       if (type === 'whatsapp') {
-        console.log(`   Run "vargos channels pair whatsapp ${id}" to scan the QR code.`);
+        console.log('   Scan the QR code with WhatsApp → Linked Devices\n');
+        await pairWhatsApp(id);
       }
     } catch (err) {
       console.error(`❌ ${err instanceof Error ? err.message : err}`);
@@ -307,24 +335,24 @@ if (cmd === 'channels') {
     process.exit(0);
   }
 
-  if (sub === 'pair') {
-    const type = process.argv[4];
-    const id = process.argv[5];
-    if (type !== 'whatsapp' || !id) {
-      console.log('Usage: vargos channels pair whatsapp <id>');
+  if (sub === 'send') {
+    const sessionKey = process.argv[4];
+    const text = process.argv.slice(5).join(' ').trim();
+    if (!sessionKey || !text) {
+      console.log('Usage: vargos channels send <sessionKey> <text...>');
       process.exit(1);
     }
-    console.log('Scan the QR code with WhatsApp → Linked Devices\n');
     try {
-      await pairWhatsApp(id);
+      const sent = await sendChannelMessage(sessionKey, text);
+      console.log(sent ? `✅ Sent to ${sessionKey}` : `⚠ Not delivered — no active channel for "${sessionKey}".`);
+      process.exit(sent ? 0 : 1);
     } catch (err) {
       console.error(`❌ ${err instanceof Error ? err.message : err}`);
       process.exit(1);
     }
-    process.exit(0);
   }
 
-  console.log('Usage: vargos channels [list|register|deregister|pair]');
+  channelsUsage();
   process.exit(1);
 }
 

@@ -13,7 +13,7 @@ Pi-SDK-powered runtime (`@mariozechner/pi-coding-agent`) with Vargos-managed con
 | `agent.execute` RPC with Zod-validated metadata | ✅ | `services/agent/index.ts` |
 | Session cache (in-memory `Map<sessionKey, AgentSession>`) | ✅ | `services/agent/index.ts` |
 | `agent.appendMessage` for skipAgent / cross-session injection | ✅ | `services/agent/index.ts` |
-| `agent.status` — currently active runs | ✅ | `services/agent/index.ts` |
+| `agent.status` — session inventory (state, parent links, model) + active runs | ✅ | `services/agent/index.ts` |
 | Inference error surfacing — `success: false` on `stopReason === 'error'` | ✅ | `services/agent/index.ts` |
 | Custom tools from bus events (auto-wrapped) | ✅ | `services/agent/tools.ts` |
 | Streaming events to bus (`agent.onDelta`, `agent.onTool`, `agent.onCompleted`) | ✅ | `services/agent/index.ts` |

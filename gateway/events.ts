@@ -46,6 +46,25 @@ export interface AgentAppendMessageParams {
   content: string;
 }
 
+/** A single cached agent session, including subagent relationships. */
+export interface SessionInfo {
+  sessionKey: string;
+  /** `running` = currently inside session.prompt(); `idle` = cached but not executing. */
+  state: 'running' | 'idle';
+  /** Parent session key, parsed from `<parent>:subagent:<hex>` keys (subagents only). */
+  parentKey?: string;
+  /** Active model as `provider:modelId`, when known. */
+  model?: string;
+  /** Epoch ms when the session entered the cache. */
+  startedAt?: number;
+}
+
+export interface AgentStatusResult {
+  sessions: SessionInfo[];
+  /** Session keys currently executing — kept for backwards compatibility. */
+  activeRuns: string[];
+}
+
 // ─── Event map ────────────────────────────────────────────────────────────────
 
 export interface EventMap {
@@ -85,7 +104,7 @@ export interface EventMap {
   // Agent
   'agent.execute': { params: AgentExecuteParams; result: { response: string } };
   'agent.appendMessage': { params: AgentAppendMessageParams; result: void };
-  'agent.status': { params: { sessionKey?: string }; result: { activeRuns: string[] } };
+  'agent.status': { params: { sessionKey?: string }; result: AgentStatusResult };
 
   // Media
   'media.transcribeAudio': { params: { filePath: string }; result: { text: string } };

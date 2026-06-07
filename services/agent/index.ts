@@ -22,7 +22,7 @@ import { truncate } from '../../lib/truncate.js';
 import type { AgentDeps } from './types.js';
 import { existsSync, promises as fs } from 'node:fs';
 import { getDataPaths } from '../../lib/paths.js';
-import { parseSessionKey, isSubagentSession } from '../../lib/session-key.js';
+import { parseSessionKey, isSubagentSession, rootSessionKey } from '../../lib/session-key.js';
 
 // Pi SDK imports
 import {
@@ -34,7 +34,12 @@ import {
   DefaultResourceLoader,
   type AgentSession,
   type ToolDefinition,
+  type CreateAgentSessionOptions,
+  type CreateAgentSessionResult,
 } from '@earendil-works/pi-coding-agent';
+
+/** A resolved Pi SDK model (the type carried by `AgentSession.model`). */
+type ResolvedModel = NonNullable<AgentSession['model']>;
 
 // PiAgent event types for type-safe event mapping
 import type { AgentSessionEvent } from '@earendil-works/pi-coding-agent';
@@ -55,7 +60,9 @@ export class AgentService {
   protected bus: Bus;
   protected config: AppConfig;
   protected sessions = new Map<string, AgentSession>();
-  private activeRuns = new Set<string>();
+  /** sessionKey → epoch ms when the session entered the cache (for agent.status). */
+  protected sessionMeta = new Map<string, number>();
+  protected activeRuns = new Set<string>();
 
   protected agentDir: string;
   protected authStorage: AuthStorage;
@@ -229,18 +236,36 @@ export class AgentService {
       // the file is already there! Evicting cache forces full reload via `continueRecent()`.
       session.dispose();
       this.sessions.delete(params.sessionKey);
+      this.sessionMeta.delete(params.sessionKey);
     }
   }
 
   /**
-   * agent.status — Return currently active agent session keys.
+   * agent.status — Inventory cached sessions (parents, subagents, idle) with their
+   * run state, parent relationship, and model. When `sessionKey` is given, the result
+   * is scoped to that session and its subagents — letting a parent observe its own
+   * subtree. `activeRuns` is kept for callers that only need the executing keys.
    */
   @register('agent.status', {
-    description: 'Return currently active agent session keys.',
+    description: 'Return the agent session inventory (state, parent links, model). Pass sessionKey to scope to one session and its subagents.',
     schema: z.object({ sessionKey: z.string().optional() }),
   })
-  async status(_params: EventMap['agent.status']['params']): Promise<EventMap['agent.status']['result']> {
-    return { activeRuns: Array.from(this.activeRuns) };
+  async status(params: EventMap['agent.status']['params']): Promise<EventMap['agent.status']['result']> {
+    const scope = params.sessionKey;
+    const inScope = (key: string) => !scope || key === scope || key.startsWith(`${scope}:subagent:`);
+
+    const sessions = Array.from(this.sessions.entries())
+      .filter(([key]) => inScope(key))
+      .map(([sessionKey, session]) => ({
+        sessionKey,
+        state: this.activeRuns.has(sessionKey) ? 'running' as const : 'idle' as const,
+        parentKey: isSubagentSession(sessionKey) ? rootSessionKey(sessionKey) : undefined,
+        model: session.model ? `${session.model.provider}:${session.model.id}` : undefined,
+        startedAt: this.sessionMeta.get(sessionKey),
+      }));
+
+    const activeRuns = Array.from(this.activeRuns).filter(inScope);
+    return { sessions, activeRuns };
   }
 
   /**
@@ -251,6 +276,7 @@ export class AgentService {
   protected async getOrCreateSession(sessionKey: string, options?: { cwd?: string; model?: string }): Promise<AgentSession> {
     const cached = this.sessions.get(sessionKey);
     if (cached) {
+      await this.applyModelOverride(cached, sessionKey, options?.model);
       return cached;
     }
 
@@ -284,7 +310,10 @@ export class AgentService {
 
     log.debug(`session: ${sessionKey} created (${customTools.length} tools, ${rawSystemPrompt?.length ?? 0} chars prompt)`);
 
-    const { session } = await createAgentSession({
+    // Apply the per-call/channel model override at creation time, when provided and known.
+    const model = this.resolveModel(options?.model);
+
+    const { session } = await this.createPiSession({
       cwd: effectiveCwd,
       agentDir: this.agentDir,
       sessionManager,
@@ -293,6 +322,7 @@ export class AgentService {
       modelRegistry: this.modelRegistry,
       customTools,
       resourceLoader,
+      ...(model && { model }),
     });
 
     if (process.env.LOG_LEVEL === 'debug') {
@@ -308,7 +338,35 @@ export class AgentService {
     this.subscribeToSessionEvents(session, sessionKey);
 
     this.sessions.set(sessionKey, session);
+    this.sessionMeta.set(sessionKey, Date.now());
     return session;
+  }
+
+  /**
+   * Create the underlying Pi SDK session. Isolated as a seam so tests can
+   * substitute a fake session without the SDK's model/auth machinery.
+   */
+  protected createPiSession(options: CreateAgentSessionOptions): Promise<CreateAgentSessionResult> {
+    return createAgentSession(options);
+  }
+
+  /**
+   * Switch a cached session's model when an override differs from the current one.
+   * Unknown/missing overrides are a no-op — the session keeps its existing model.
+   */
+  private async applyModelOverride(session: AgentSession, sessionKey: string, modelSpec?: string): Promise<void> {
+    const resolved = this.resolveModel(modelSpec);
+    if (!resolved) return;
+    if (session.model?.provider === resolved.provider && session.model?.id === resolved.id) return;
+    await session.setModel(resolved);
+    log.info(`session ${sessionKey}: model → ${resolved.provider}:${resolved.id}`);
+  }
+
+  /** Resolve a `provider:modelId` override to a Pi SDK model, or undefined if unknown. */
+  private resolveModel(modelSpec?: string): ResolvedModel | undefined {
+    if (!modelSpec) return undefined;
+    const [provider, modelId] = modelSpec.split(':');
+    return this.modelRegistry.find(provider, modelId);
   }
 
   /**
@@ -504,8 +562,7 @@ export class AgentService {
    * Validate model override if provided.
    */
   private isValidModel(modelSpec: string): boolean {
-    const [provider, modelId] = modelSpec.split(':');
-    return !!this.modelRegistry.find(provider, modelId);
+    return !!this.resolveModel(modelSpec);
   }
 
   // ── Private Helpers ────────────────────────────────────────────────────────
@@ -560,6 +617,7 @@ export class AgentService {
       _session.dispose();
     });
     this.sessions.clear();
+    this.sessionMeta.clear();
   }
 }
 
