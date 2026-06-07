@@ -1,0 +1,49 @@
+export async function generateEmbedding(text, config) {
+    if (config.provider === 'none')
+        return undefined;
+    if (config.provider === 'openai' && config.openaiApiKey) {
+        try {
+            const response = await fetch('https://api.openai.com/v1/embeddings', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${config.openaiApiKey}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    input: text.slice(0, 8000),
+                    model: config.model ?? 'text-embedding-3-small',
+                }),
+            });
+            if (!response.ok)
+                return undefined;
+            const data = await response.json();
+            return data.data[0].embedding;
+        }
+        catch {
+            return undefined;
+        }
+    }
+    return undefined;
+}
+export function cosineSimilarity(a, b) {
+    let dot = 0, normA = 0, normB = 0;
+    for (let i = 0; i < a.length; i++) {
+        dot += a[i] * b[i];
+        normA += a[i] * a[i];
+        normB += b[i] * b[i];
+    }
+    return dot / (Math.sqrt(normA) * Math.sqrt(normB) + 1e-8);
+}
+export function textScore(query, content) {
+    const queryTerms = query.toLowerCase().split(/\W+/).filter(t => t.length > 2);
+    const contentLower = content.toLowerCase();
+    if (queryTerms.length === 0)
+        return 0;
+    let matches = 0;
+    for (const term of queryTerms) {
+        if (contentLower.includes(term))
+            matches++;
+    }
+    return matches / queryTerms.length;
+}
+//# sourceMappingURL=embedding.js.map

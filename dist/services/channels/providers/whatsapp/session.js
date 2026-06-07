@@ -1,0 +1,126 @@
+/**
+ * WhatsApp socket creation via Baileys
+ * Handles QR code auth and multi-file auth state persistence
+ */
+import makeWASocket, { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, makeCacheableSignalKeyStore, downloadMediaMessage, jidNormalizedUser, } from '@whiskeysockets/baileys';
+import qrcode from 'qrcode-terminal';
+import pino from 'pino';
+import { promises as fs } from 'node:fs';
+import { createLogger } from '../../../../lib/logger.js';
+const log = createLogger('whatsapp');
+// libsignal-node session_record.js dumps Signal protocol state via console.info — silence it.
+console.info = () => { };
+export async function createWhatsAppSocket(authDir, events) {
+    await fs.mkdir(authDir, { recursive: true });
+    const { state, saveCreds } = await useMultiFileAuthState(authDir);
+    const { version } = await fetchLatestBaileysVersion();
+    const logger = pino({ level: 'silent' });
+    const sock = makeWASocket({
+        version,
+        logger,
+        auth: {
+            creds: state.creds,
+            keys: makeCacheableSignalKeyStore(state.keys, logger),
+        },
+        printQRInTerminal: false,
+        generateHighQualityLinkPreview: false,
+    });
+    sock.ev.on('connection.update', (update) => {
+        const { connection, lastDisconnect, qr } = update;
+        if (qr) {
+            qrcode.generate(qr, { small: true });
+            events.onQR(qr);
+        }
+        if (connection === 'close') {
+            const err = lastDisconnect?.error;
+            const code = err?.output?.statusCode;
+            if (code === DisconnectReason.loggedOut
+                || code === DisconnectReason.connectionReplaced
+                || code === DisconnectReason.forbidden) {
+                const label = code === DisconnectReason.loggedOut ? 'logged_out'
+                    : code === DisconnectReason.connectionReplaced ? 'connection_replaced'
+                        : 'forbidden';
+                events.onDisconnected(label);
+            }
+            else if (code === DisconnectReason.restartRequired) {
+                events.onDisconnected('restart_required');
+            }
+            else {
+                events.onDisconnected(`closed:${code}`);
+            }
+        }
+        if (connection === 'open') {
+            const name = sock.user?.name || sock.user?.id || 'unknown';
+            events.onConnected(name);
+        }
+    });
+    sock.ev.on('creds.update', saveCreds);
+    sock.ev.on('messages.upsert', ({ messages, type }) => {
+        if (type !== 'notify')
+            return;
+        for (const msg of messages) {
+            if (!msg.message)
+                continue;
+            processInboundMessage(msg, events);
+        }
+    });
+    return sock;
+}
+export async function processInboundMessage(msg, events) {
+    const m = msg.message;
+    // Baileys normalizes JID structure in cleanMessage() (strips device/agent suffixes,
+    // converts @c.us→@s.whatsapp.net) but does NOT resolve LID→PN. We apply
+    // jidNormalizedUser here as a defense-in-depth to ensure consistent JID format.
+    const remoteJid = jidNormalizedUser(msg.key.remoteJid || '');
+    const isGroup = remoteJid.endsWith('@g.us');
+    // Session key uses remoteJid (group JID for groups, user JID for private).
+    // This ensures replies and reactions route to the correct destination.
+    // Whitelist checks use participant (sender) separately.
+    const jid = jidNormalizedUser(isGroup ? (msg.key.participant || remoteJid) : remoteJid);
+    const sessionJid = remoteJid; // always the chat/group for session key routing
+    const mentionedJids = (m.extendedTextMessage?.contextInfo?.mentionedJid ?? []).map((j) => jidNormalizedUser(j));
+    const quotedSenderJid = m.extendedTextMessage?.contextInfo?.participant
+        ? jidNormalizedUser(m.extendedTextMessage.contextInfo.participant)
+        : undefined;
+    const base = {
+        messageId: msg.key.id || '',
+        jid,
+        sessionJid, // group JID for groups, user JID for private — used for session key + routing
+        fromMe: msg.key.fromMe || false,
+        isGroup,
+        timestamp: typeof msg.messageTimestamp === 'number'
+            ? msg.messageTimestamp * 1000
+            : Date.now(),
+        pushName: msg.pushName || undefined,
+        mentionedJids: mentionedJids.length > 0 ? mentionedJids : undefined,
+        quotedSenderJid,
+    };
+    const mediaMsg = m.imageMessage ? { type: 'image', msg: m.imageMessage } :
+        m.audioMessage ? { type: 'audio', msg: m.audioMessage } :
+            m.videoMessage ? { type: 'video', msg: m.videoMessage } :
+                m.documentMessage ? { type: 'document', msg: m.documentMessage } :
+                    m.stickerMessage ? { type: 'sticker', msg: m.stickerMessage } :
+                        null;
+    if (mediaMsg) {
+        let mediaBuffer;
+        try {
+            const downloaded = await downloadMediaMessage(msg, 'buffer', {});
+            mediaBuffer = Buffer.isBuffer(downloaded) ? downloaded : Buffer.from(downloaded);
+            if (!mediaBuffer || mediaBuffer.length === 0) {
+                log.warn(`Media download returned empty buffer for ${base.messageId} (${mediaMsg.type})`);
+            }
+        }
+        catch (err) {
+            log.error(`Media download failed for ${base.messageId} (${mediaMsg.type}): ${err}`);
+        }
+        const caption = mediaMsg.msg.caption || '';
+        const mimeType = mediaMsg.msg.mimetype || undefined;
+        events.onMessage({ ...base, text: caption, mediaType: mediaMsg.type, mediaBuffer, mimeType, caption });
+        return;
+    }
+    const text = m.conversation || m.extendedTextMessage?.text || '';
+    if (!text)
+        return;
+    events.onMessage({ ...base, text });
+}
+//# sourceMappingURL=session.js.map

@@ -1,0 +1,1 @@
+{"version":3,"file":"http-validate.d.ts","sourceRoot":"","sources":["../../lib/http-validate.ts"],"names":[],"mappings":"AAAA,yCAAyC;AAEzC,MAAM,WAAW,YAAY;IAC3B,EAAE,EAAE,OAAO,CAAC;IACZ,MAAM,EAAE,MAAM,CAAC;IACf,UAAU,CAAC,EAAE,MAAM,CAAC;CACrB;AAED;;;GAGG;AACH,wBAAgB,oBAAoB,CAClC,GAAG,EAAE,YAAY,EACjB,OAAO,EAAE,MAAM,GACd,IAAI,CAIN"}

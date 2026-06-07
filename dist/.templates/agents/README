@@ -1,0 +1,5 @@
+# VARGOS Note
+Don't name this as an .md file.
+
+This directory is reserved for appending custom System Prompt per channel based.
+Useful if we want to filter out the output based on different channels.

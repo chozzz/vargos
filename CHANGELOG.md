@@ -2,6 +2,16 @@
 
 All notable changes to Vargos will be documented in this file.
 
+## [3.1.4] - 2026-06-06
+
+### Changed
+- Switched license from Apache-2.0 to MIT.
+
+### Fixed
+- Handled `EEXIST` error in session creation by gracefully falling back to `continueRecent()`.
+
+[3.1.4]: https://github.com/chozzz/vargos/releases/tag/v3.1.4
+
 ## [2.0.3] — 2026-05-08
 
 ### Added
