@@ -1,132 +1,104 @@
-import { EventEmitterBus } from './gateway/emitter.js';
-import { startTCPServer } from './gateway/tcp-server.js';
+/**
+ * Daemon entry. Builds the bus, loads services from disk via the loader (so reload
+ * picks up new code), registers lifecycle methods, starts the JSON-RPC surface, and
+ * signals readiness. The supervisor (index.ts) respawns this on RESTART_EXIT_CODE.
+ */
+
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { z } from 'zod';
+import { EmitterBus } from './core/bus.js';
+import { ServiceLoader } from './core/loader.js';
+import { discoverServices } from './core/services.js';
+import { startRpcServer } from './core/rpc-server.js';
 import { createLogger } from './lib/logger.js';
 import { seedDataDir } from './lib/templates.js';
 import { runMigrations } from './lib/migrate.js';
-import { z } from 'zod';
-
-// ── Boot order ────────────────────────────────────────────────────────────────
-// Each entry: [label, () => import(module)]
-// Comment out services not yet built — add them back as they land.
-
-const SERVICES: Array<[string, () => Promise<{ boot(bus: EventEmitterBus): Promise<{ stop?(): unknown }> }>]> = [
-  ['config', () => import('./services/config/index.js')],
-  ['log', () => import('./services/log/index.js')],
-  ['web', () => import('./services/web/index.js')],
-  ['memory', () => import('./services/memory/index.js')],
-  ['media', () => import('./services/media/index.js')],
-  ['agent', () => import('./services/agent/index.js')],
-  ['channels', () => import('./services/channels/index.js')],
-  ['cron', () => import('./services/cron/index.js')],
-  ['mcp-client', () => import('./services/mcp-client/index.js')],
-  // ['webhooks', () => import('./edge/webhooks/index.js')],
-  // ['mcp',      () => import('./edge/mcp/index.js')],
-];
-
-// Fail fast on a duplicated label — each service boots exactly once.
-const labels = SERVICES.map(([label]) => label);
-if (new Set(labels).size !== labels.length) {
-  throw new Error(`duplicate service label in SERVICES: ${labels.join(', ')}`);
-}
-
-// ── Boot ──────────────────────────────────────────────────────────────────────
+import type { AppConfig } from './services/config/index.js';
 
 const RESTART_EXIT_CODE = 42;
-const bus = new EventEmitterBus();
 const log = createLogger('boot');
-const serviceStops = new Map<string, () => unknown>(); // label → stop(); kept current across restarts
-let tcpStop: (() => unknown) | undefined;
 
-const drain = () => Promise.allSettled([...serviceStops.values(), ...(tcpStop ? [tcpStop] : [])].map(s => s()));
+const here = path.dirname(fileURLToPath(import.meta.url));
+const ext = import.meta.url.endsWith('.ts') ? 'ts' : 'js';
+const specs = discoverServices(here, ext);
 
-// Bootstrap the bus itself (registers bus.search and bus.inspect)
-bus.bootstrap();
+const bus = new EmitterBus();
+const loader = new ServiceLoader(bus);
+let rpcStop: (() => Promise<void>) | undefined;
 
-// Seed bundled templates into the VARGOS data dir before services boot.
+const drain = async () => {
+  await loader.disposeAll();
+  if (rpcStop) await rpcStop();
+};
+
+// ── Lifecycle methods (need the loader) ─────────────────────────────────────────
+
+bus.register('bus.restart', {
+  description: 'Reload one service from disk in-process (same PID). Picks up new code after a git pull without killing the process; other services keep running.',
+  schema: z.object({ service: z.string().describe('Service name, e.g. "channel", "memory", "agent"') }),
+  cli: { positional: ['service'] },
+}, async (p: { service: string }) => {
+  await loader.restart(p.service);
+  return { ok: true };
+});
+
+bus.register('bus.status', {
+  description: 'List loaded services.',
+  schema: z.object({}),
+}, () => ({ services: loader.names().map(name => ({ name, status: 'running' as const })) }));
+
+bus.register('bus.restartProcess', {
+  description: 'Restart the whole process via the supervisor — reloads all services and transitive deps from disk. Returns immediately; teardown runs after the response is sent.',
+  schema: z.object({}),
+}, () => {
+  setImmediate(async () => {
+    log.info('process restart requested — draining and exiting');
+    await drain();
+    process.exit(RESTART_EXIT_CODE);
+  });
+  return { ok: true };
+});
+
+// ── Boot sequence ───────────────────────────────────────────────────────────────
+
 await seedDataDir(log);
-
-// Apply pending one-time data migrations (run-once, tracked in ~/.vargos/.migrations.json).
 await runMigrations(log);
 
-for (const [label, load] of SERVICES) {
+for (const spec of specs) {
   try {
-    const { boot } = await load();
-    const { stop } = await boot(bus);
-    if (stop) serviceStops.set(label, stop);
-    // Per-service restart via bus.restart({ service }). The cached module is reused,
-    // so this resets in-memory state but does NOT reload code — bus.bootstrap()
-    // un-wires the old instance's listeners, restartProcess reloads code from disk.
-    bus.onRestart(label, async () => {
-      log.info(`restarting "${label}" — re-instantiating from cached module`);
-      await serviceStops.get(label)?.();
-      const { boot: reBoot } = await load();
-      const { stop: newStop } = await reBoot(bus);
-      if (newStop) serviceStops.set(label, newStop);
-      else serviceStops.delete(label);
-      log.info(` ✅ "${label}" restarted`);
-    });
-    log.info(` ✅ "${label}" service booted`);
+    await loader.load(spec);
   } catch (err) {
-    log.error(`❌ failed to boot ${label}: ${err instanceof Error ? err.message : String(err)}`);
+    log.error(`❌ failed to load ${spec.name}: ${err instanceof Error ? err.message : String(err)}`);
     process.exit(1);
   }
 }
 
-// Start TCP server for CLI access
-const config = await bus.call('config.get', {});
-const tcpHost = config.gateway.host ?? (process.env.BUS_HOST || '127.0.0.1');
-const tcpPort = parseInt(config.gateway.port ? String(config.gateway.port) : (process.env.BUS_PORT || '9000'), 10);
+const config = await bus.call<AppConfig>('config.get', {});
+const host = config.gateway.host ?? process.env.BUS_HOST ?? '127.0.0.1';
+const port = parseInt(config.gateway.port ? String(config.gateway.port) : (process.env.BUS_PORT || '9000'), 10);
+
 try {
-  const socketTimeoutMs = config.gateway.requestTimeout ?? 30_000;
-  tcpStop = await startTCPServer(bus, tcpHost, tcpPort, socketTimeoutMs);
+  rpcStop = await startRpcServer(bus, host, port, config.gateway.requestTimeout ?? 35 * 60 * 1000);
 } catch (err) {
-  log.error(`failed to start TCP server: ${err instanceof Error ? err.message : String(err)}`);
+  log.error(`failed to start RPC server: ${err instanceof Error ? err.message : String(err)}`);
   process.exit(1);
 }
 
-// Signal that boot is complete — deferred startup can proceed
 bus.emit('bus.onReady', {});
+log.info(`✅ ${specs.length} services ready: ${specs.map(s => s.name).join(', ')}`);
 
-// Boot summary
-log.info(`✅ ${labels.length} services booted: ${labels.join(', ')}`);
-
-// ── Process restart (registered as a runtime tool) ──────────────────────────
-// Returns ok immediately; cleanup + exit happen on the next tick so the caller
-// (e.g. an agent) receives the response before the process exits. The supervisor
-// (index.ts) respawns this process on RESTART_EXIT_CODE.
-
-bus.registerTool(
-  'bus.restartProcess',
-  async () => {
-    setImmediate(async () => {
-      log.info('process restart requested — draining and exiting');
-      await drain();
-      process.exit(RESTART_EXIT_CODE);
-    });
-    return { ok: true };
-  },
-  {
-    description: 'Restart the entire vargos process. The supervisor respawns boot.ts so new code from disk (e.g. after git pull or npm update) takes effect. Returns immediately; teardown runs after the response is sent.',
-    schema: z.object({}).default({}),
-  },
-);
-
-// ── Global error handlers ────────────────────────────────────────────────────
-// Prevent undici socket errors (UND_ERR_SOCKET "other side closed") from
-// crashing the process when LLM providers close connections after streaming.
+// ── Process-level handlers ──────────────────────────────────────────────────────
 
 process.on('uncaughtException', (err) => {
+  // undici "other side closed" and similar stream teardown noise must not crash the daemon.
   log.error(`uncaughtException: ${err.stack ?? err.message ?? err}`);
-  // Do NOT exit — most undici/stream errors are non-fatal teardown noise.
 });
 
-// ── Shutdown ──────────────────────────────────────────────────────────────────
-
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);
-
-async function shutdown() {
+const shutdown = async () => {
   log.info('shutting down');
   await drain();
   process.exit(0);
-}
+};
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);

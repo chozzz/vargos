@@ -24,10 +24,10 @@ Inbound and outbound voice support.
 
 ## Re-enable disabled edge services
 
-Both currently commented out in [`boot.ts`](../../boot.ts):
+Both currently commented out in [`boot.ts`](../boot.ts):
 
-- [`edge/mcp/`](../../edge/mcp/) — MCP server (HTTP, port 9001)
-- [`edge/webhooks/`](../../edge/webhooks/) — webhook receiver (HTTP, port 9002)
+- [`edge/mcp/`](../edge/mcp/) — MCP server (HTTP, port 9001)
+- [`edge/webhooks/`](../edge/webhooks/) — webhook receiver (HTTP, port 9002)
 
 Bring them back when the surface stabilizes.
 

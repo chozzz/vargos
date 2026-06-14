@@ -1,369 +1,247 @@
 #!/usr/bin/env node
 /**
- * Vargos CLI — single entrypoint for npx @chozzz/vargos
+ * Vargos CLI — surface 1, a thin projection of the bus registry.
  *
- *   vargos                first-run → onboard wizard, else → help
- *   vargos start          boot the gateway + all services
- *   vargos onboard        interactive setup (provider, model, API key, channels)
- *   vargos config         print current configuration
- *   vargos --version      print version
- *   vargos --help         print usage
+ *   vargos <service>                  list that service's methods
+ *   vargos <service> --help           descriptions + arg shapes (from the registry)
+ *   vargos <service> <method> [args]  invoke service.method
+ *
+ * Connects to a running daemon on :9000 first and proxies over JSON-RPC; if the port
+ * is refused, boots a local stack with only the needed service(s), runs, and disposes.
+ *
+ * Built-in commands (not registry methods): start, onboard, chat, sync, migrate.
  */
 
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CHANNEL_TYPES } from './services/config/schemas/channels.js';
-import type { ChannelEntry } from './services/config/schemas/channels.js';
 import { getDataPaths } from './lib/paths.js';
+import { parseCli, buildParams, renderList, renderHelp, RpcClient, type ParsedCli } from './core/cli.js';
+import { bootLocal } from './core/local.js';
+import { discoverServiceNames } from './core/services.js';
+import type { MethodInfo } from './core/types.js';
 
-// ── Runtime guard ────────────────────────────────────────────────────────────
+// ── Runtime guard (undici 8.x needs Node >= 22.19) ───────────────────────────────
 
-// Node >= 22.19.0 — required by @earendil-works/pi-coding-agent (undici 8.x uses
-// worker_threads.markAsUncloneable, absent before Node 22).
-const MIN_NODE: [number, number, number] = [22, 19, 0];
+const MIN_NODE: [number, number] = [22, 19];
 const v = process.versions.node.split('.').map(Number);
 if (v[0] < MIN_NODE[0] || (v[0] === MIN_NODE[0] && v[1] < MIN_NODE[1])) {
-  process.stderr.write(
-    `Vargos requires Node.js >= ${MIN_NODE.join('.')}. You are running ${process.versions.node}.\n`,
-  );
+  process.stderr.write(`Vargos requires Node.js >= ${MIN_NODE.join('.')}. You are running ${process.versions.node}.\n`);
   process.exit(1);
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const pkgPath = existsSync(path.join(__dirname, 'package.json'))
-  ? path.join(__dirname, 'package.json')
-  : path.join(__dirname, '..', 'package.json');
+const here = path.dirname(fileURLToPath(import.meta.url));
+const ext = import.meta.url.endsWith('.ts') ? 'ts' : 'js';
+const pkgPath = existsSync(path.join(here, 'package.json'))
+  ? path.join(here, 'package.json')
+  : path.join(here, '..', 'package.json');
 const VERSION = JSON.parse(readFileSync(pkgPath, 'utf8')).version;
 
-function usage(): void {
+async function usage(): Promise<void> {
   console.log(`
-  ⚡ Vargos — Self-hosted agent OS
+  ⚡ Vargos — Self-hosted agent OS  (v${VERSION})
 
   Usage:
-    vargos                 First-run setup or show this help
-    vargos start           Boot the agent server (gateway + all services)
-    vargos onboard         Interactive setup wizard (provider, model, API key, channels)
-    vargos config          Show current configuration
-    vargos channels        Manage messaging channels (list, register, deregister, send)
-    vargos chat            Start an interactive chat session with the agent
+    vargos start                 Boot the daemon (bus + all services + JSON-RPC :9000)
+    vargos <service>             List a service's methods
+    vargos <service> --help      Show methods, descriptions, and arg shapes
+    vargos <service> <method> …  Invoke a method            (e.g. vargos channel send <to> "<msg>")
 
-  Options:
-    --version, -v          Show version
-    --help, -h             Show this help
-`);
+  Built-ins:
+    onboard                      Interactive setup wizard
+    chat                         Interactive chat session with the agent
+    sync                         Update bundled templates
+    migrate                      Run pending data migrations
+    --version, -v                Show version
+    --help, -h                   Show this help`);
+
+  console.log(await renderServices());
+  console.log();
 }
 
-function channelsUsage(): void {
-  console.log(`
-  Manage messaging channels.
+/**
+ * Services section, derived from what's registered. With a daemon up, lists every
+ * service and its method names live from the registry; otherwise lists the known
+ * services from the static map (booting them all just to print help is too costly).
+ */
+const OVERVIEW_METHOD_CAP = 6; // above this, summarize as a count to keep the overview scannable
 
-  Usage:
-    vargos channels                                      List channels (default)
-    vargos channels list                                 List channels
-    vargos channels register telegram <id> --bot-token <token>
-                                                         Add a Telegram channel
-    vargos channels register whatsapp <id>               Add a WhatsApp channel, then pair via QR
-                                                         (re-run to re-pair an existing channel)
-    vargos channels deregister <id>                      Remove a channel
-    vargos channels send <sessionKey> <text...>          Send a message via the running gateway
+async function renderServices(): Promise<string> {
+  const { host, port } = gatewayAddress();
+  const client = new RpcClient(host, port);
 
-  Examples:
-    vargos channels register telegram my-bot --bot-token 123:ABC
-    vargos channels register whatsapp my-wa
-    vargos channels send telegram-my-bot:-5004637094 "Deploy finished ✅"
-`);
-}
-
-function showConfig(): void {
-  const { configFile, dataDir } = getDataPaths();
-  const agentDir = `${dataDir}/agent`;
-
-  console.log(`Configuration directory: ${dataDir}\n`);
-
-  const files: Array<{ label: string; path: string }> = [
-    { label: 'App config', path: configFile },
-    { label: 'Agent models', path: `${agentDir}/models.json` },
-    { label: 'Agent auth', path: `${agentDir}/auth.json` },
-    { label: 'Agent settings', path: `${agentDir}/settings.json` },
-  ];
-
-  for (const { label, path: fp } of files) {
-    const exists = existsSync(fp);
-    console.log(`  ${exists ? '✓' : '✗'} ${label}: ${fp}`);
-    if (exists) {
-      try {
-        const content = readFileSync(fp, 'utf8');
-        const truncated =
-          content.length > 500
-            ? content.slice(0, 500).replace(/"key":\s*"[^"]{4,}"/g, '"key": "***"') + '\n  … (truncated)'
-            : content.replace(/"key":\s*"[^"]{4,}"/g, '"key": "***"');
-        console.log(`    ${truncated.split('\n').join('\n    ')}`);
-      } catch {
-        console.log('    (unable to read)');
+  if (await client.isUp()) {
+    const all = await client.call<MethodInfo[]>('bus.list', {});
+    const byService = new Map<string, string[]>();
+    for (const m of all) {
+      if (m.internal) continue; // hide plumbing (bus.list/has, agent.appendMessage)
+      const short = m.name.includes('.') ? m.name.slice(m.name.indexOf('.') + 1) : m.name;
+      (byService.get(m.service) ?? byService.set(m.service, []).get(m.service)!).push(short);
+    }
+    const pad = Math.max(7, ...[...byService.keys()].map(s => s.length)) + 1;
+    const lines: string[] = [];
+    for (const [svc, methods] of byService) {
+      // Sub-namespaced methods (e.g. mcp.<server>.<tool>) → break down by server with counts.
+      if (methods.some(m => m.includes('.'))) {
+        const sub = new Map<string, number>();
+        for (const m of methods) {
+          const server = m.includes('.') ? m.slice(0, m.indexOf('.')) : m;
+          sub.set(server, (sub.get(server) ?? 0) + 1);
+        }
+        const subpad = Math.max(...[...sub.keys()].map(s => s.length)) + 2;
+        lines.push(`    ${svc}`);
+        for (const [server, n] of sub) lines.push(`        ${server.padEnd(subpad)}${n} tool${n === 1 ? '' : 's'}`);
+      } else if (methods.length > OVERVIEW_METHOD_CAP) {
+        lines.push(`    ${svc.padEnd(pad)}${methods.length} methods — run "vargos ${svc}"`);
+      } else {
+        lines.push(`    ${svc.padEnd(pad)}${methods.join(', ')}`);
       }
     }
-    console.log();
+    return `\n  Services (live — run "vargos <service> --help" for arg shapes):\n${lines.join('\n')}`;
+  }
+
+  const names = discoverServiceNames(here, ext).join(', ');
+  return `\n  Services (discovered in services/):\n    ${names}\n\n  Daemon not running — "vargos <service>" lists a service's methods; "vargos start" then "vargos --help" shows them all.`;
+}
+
+/** Gateway address from config.json, mirroring boot defaults. */
+function gatewayAddress(): { host: string; port: number } {
+  let gw: { host?: string; port?: number } = {};
+  try {
+    const cfg = JSON.parse(readFileSync(getDataPaths().configFile, 'utf8'));
+    gw = cfg.gateway ?? {};
+  } catch { /* no config yet */ }
+  return {
+    host: gw.host ?? process.env.BUS_HOST ?? '127.0.0.1',
+    port: gw.port ?? (process.env.BUS_PORT ? parseInt(process.env.BUS_PORT, 10) : 9000),
+  };
+}
+
+function print(result: unknown): void {
+  if (result === null || result === undefined) console.log('(no result)');
+  else if (typeof result === 'string') console.log(result);
+  else console.log(JSON.stringify(result, null, 2));
+}
+
+// ── Built-in commands ────────────────────────────────────────────────────────────
+
+async function runBuiltin(cmd: string): Promise<boolean> {
+  switch (cmd) {
+    case '--version': case '-v': console.log(VERSION); return true;
+    case '--help': case '-h': usage(); return true;
+    case 'start':
+      await import('./index.js');
+      await new Promise(() => {}); // TCP server keeps the loop alive
+      return true;
+    case 'onboard': {
+      const { onboard } = await import('./cli/onboard.js');
+      await onboard();
+      return true;
+    }
+    case 'migrate': {
+      const { runMigrations } = await import('./lib/migrate.js');
+      await runMigrations(console, { dryRun: process.argv.includes('--dry-run') });
+      return true;
+    }
+    case 'sync': {
+      const p = await import('@clack/prompts');
+      const { collectTemplateConflicts, overrideTemplates } = await import('./lib/templates.js');
+      const conflicts = await collectTemplateConflicts();
+      if (conflicts.length === 0) { p.log.success('Templates are up to date.'); return true; }
+      const selected = await p.multiselect({
+        message: 'These bundled templates changed. Select which to overwrite:',
+        options: conflicts.map(c => ({ value: c.rel, label: c.rel })),
+        required: false,
+      });
+      if (p.isCancel(selected)) { p.cancel('Cancelled.'); return true; }
+      const chosen = conflicts.filter(c => (selected as string[]).includes(c.rel));
+      await overrideTemplates(chosen);
+      p.log.success(chosen.length ? `Updated ${chosen.length} file(s).` : 'Nothing selected.');
+      return true;
+    }
+    case 'chat': {
+      await import('./cli/chat.js').then(m => m.chat());
+      return true;
+    }
+    default:
+      return false;
   }
 }
 
-function isFirstRun(): boolean {
-  const { configFile } = getDataPaths();
-  return !existsSync(configFile);
-}
+// ── Registry-driven dispatch (the three-surface projection) ───────────────────────
 
-// ── Arg dispatch ─────────────────────────────────────────────────────────────
+async function dispatch(parsed: ParsedCli): Promise<number> {
+  const service = parsed.service === 'channels' ? 'channel' : parsed.service!; // friendly alias
+  const { host, port } = gatewayAddress();
+  const client = new RpcClient(host, port);
+  const daemonUp = await client.isUp();
 
-const cmd = process.argv[2];
+  let infos: MethodInfo[];
+  let invoke: (method: string, params: unknown) => Promise<unknown>;
+  let cleanup = async () => {};
 
-// --version / -v
-if (cmd === '--version' || cmd === '-v') {
-  console.log(VERSION);
-  process.exit(0);
-}
+  if (daemonUp) {
+    infos = await client.call<MethodInfo[]>('bus.list', { service });
+    invoke = (m, p) => client.call(m, p);
+  } else {
+    const stack = await bootLocal([service], here, ext);
+    infos = stack.bus.list(service);
+    invoke = (m, p) => stack.bus.call(m, p);
+    cleanup = stack.dispose;
+  }
 
-// --help / -h
-if (cmd === '--help' || cmd === '-h') {
-  usage();
-  process.exit(0);
-}
-
-// config subcommand
-if (cmd === 'config') {
-  showConfig();
-  process.exit(0);
-}
-
-// onboard subcommand
-if (cmd === 'onboard') {
-  const { onboard } = await import('./cli/onboard.js');
-  await onboard();
-  process.exit(0);
-}
-
-// start subcommand
-if (cmd === 'start') {
   try {
-    // Run the supervisor (index.js), which spawns boot.js as a child.
-    // The supervisor keeps the event loop alive while the child runs.
-    await import('./index.js');
-    // Once services are booted, wait forever (TCP server keeps event loop alive)
-    await new Promise(() => { });
+    if (infos.length === 0) {
+      console.error(`Unknown service "${service}". Run "vargos --help".`);
+      return 1;
+    }
+    // Listings hide internal plumbing; an explicitly-named internal method still runs.
+    const visible = infos.filter(i => !i.internal);
+    if (!parsed.method) {
+      console.log(parsed.help ? renderHelp(service, visible) : renderList(service, visible));
+      return 0;
+    }
+
+    const fullName = `${service}.${parsed.method}`;
+    const info = infos.find(i => i.name === fullName);
+    if (!info) {
+      console.error(`Unknown method "${parsed.method}".\n\n${renderList(service, visible)}`);
+      return 1;
+    }
+    if (parsed.help) { console.log(renderHelp(service, [info])); return 0; }
+
+    const params = buildParams(info, parsed.args);
+    print(await invoke(fullName, params));
+    return 0;
   } catch (err) {
-    console.error('Failed to start Vargos:', err);
-    process.exit(1);
+    console.error(`❌ ${err instanceof Error ? err.message : String(err)}`);
+    return 1;
+  } finally {
+    await cleanup();
   }
 }
 
-// migrate subcommand — run pending data migrations (also runs automatically on boot)
-if (cmd === 'migrate') {
-  const { runMigrations } = await import('./lib/migrate.js');
-  await runMigrations(console, { dryRun: process.argv.includes('--dry-run') });
+// ── Entry ─────────────────────────────────────────────────────────────────────────
+
+const argv = process.argv.slice(2);
+const parsed = parseCli(argv);
+
+if (!parsed.service) {
+  if (parsed.help || argv.includes('--help') || argv.includes('-h')) { await usage(); process.exit(0); }
+  if (!existsSync(getDataPaths().configFile)) {
+    console.log(`  ⚡ Vargos v${VERSION} — first run.\n`);
+    const { onboard } = await import('./cli/onboard.js');
+    await onboard();
+    console.log('\n  Next: run "vargos start" to boot the daemon.\n');
+  } else {
+    await usage();
+  }
   process.exit(0);
 }
 
-// sync subcommand — interactively update overridable templates (AGENTS.md) from the bundle
-if (cmd === 'sync') {
-  const p = await import('@clack/prompts');
-  const { collectTemplateConflicts, overrideTemplates } = await import('./lib/templates.js');
-
-  const conflicts = await collectTemplateConflicts();
-  if (conflicts.length === 0) {
-    p.log.success('Templates are up to date — nothing to override.');
-    process.exit(0);
-  }
-
-  const selected = await p.multiselect({
-    message: 'These bundled templates have changed. Select which to overwrite (your local copy will be replaced):',
-    options: conflicts.map(c => ({ value: c.rel, label: c.rel })),
-    required: false,
-  });
-  if (p.isCancel(selected)) { p.cancel('Cancelled — nothing changed.'); process.exit(0); }
-
-  const chosen = conflicts.filter(c => (selected as string[]).includes(c.rel));
-  await overrideTemplates(chosen);
-  p.log.success(chosen.length ? `Updated ${chosen.length} file(s).` : 'Nothing selected.');
-  process.exit(0);
+if (parsed.reserved) {
+  const handled = await runBuiltin(parsed.service);
+  process.exit(handled ? 0 : 1);
 }
 
-// chat subcommand
-if (cmd === 'chat') {
-  // Seed data dir first (replaces tsx scripts/seed.ts)
-  const paths = getDataPaths();
-  const { createLogger } = await import('./lib/logger.js');
-  const log = createLogger('seed');
-  await (await import('./lib/templates.js')).seedDataDir(log);
-
-  // Then run pi CLI with environment variables
-  const { execSync } = await import('node:child_process');
-  const dataDir = paths.dataDir;
-  const agentDir = `${dataDir}/agent`;
-
-  // Find pi CLI via node_modules (required for global npm installs)
-  let piCliPath = 'pi';
-  try {
-    // Search for pi package in node_modules up the tree
-    let searchDir = __dirname;
-    while (searchDir !== '/') {
-      const piPath = path.join(searchDir, 'node_modules', '@earendil-works', 'pi-coding-agent', 'dist', 'cli.js');
-      if (existsSync(piPath)) {
-        piCliPath = piPath;
-        break;
-      }
-      searchDir = path.dirname(searchDir);
-    }
-  } catch {
-    // fallback to 'pi' command
-  }
-
-  // Ensure pi-mcp-adapter is installed to the Vargos agent directory
-  try {
-    const settingsPath = path.join(agentDir, 'settings.json');
-    const settingsContent = existsSync(settingsPath)
-      ? JSON.parse(readFileSync(settingsPath, 'utf8'))
-      : {};
-    const packages = settingsContent.packages ?? [];
-
-    if (!packages.includes('npm:pi-mcp-adapter')) {
-      // Auto-install pi-mcp-adapter silently
-      try {
-        execSync(`node "${piCliPath}" install npm:pi-mcp-adapter`, {
-          stdio: 'pipe',
-          env: {
-            ...process.env,
-            PI_CODING_AGENT_DIR: agentDir,
-          },
-        });
-      } catch {
-        // Silently ignore MCP setup failure — chat still works without it
-      }
-    }
-  } catch {
-    // Skip MCP setup if there's any issue
-  }
-
-  execSync(`node "${piCliPath}" --session-dir "${dataDir}/sessions/cli"`, {
-    stdio: 'inherit',
-    env: {
-      ...process.env,
-      PI_CODING_AGENT_DIR: agentDir,
-      VARGOS_DATA_DIR: dataDir,
-    },
-  });
-}
-
-// channels subcommand (`channel` accepted as a singular alias)
-if (cmd === 'channels' || cmd === 'channel') {
-  const sub = process.argv[3];
-  const { listChannels, registerChannel, deregisterChannel, pairWhatsApp, sendChannelMessage } =
-    await import('./cli/channels.js');
-
-  if (sub === '--help' || sub === '-h') {
-    channelsUsage();
-    process.exit(0);
-  }
-
-  if (sub === 'list' || !sub) {
-    const channels = listChannels();
-    if (channels.length === 0) {
-      console.log('No channels configured.\n');
-      console.log('  vargos channels register whatsapp <id>');
-      console.log('  vargos channels register telegram <id> --bot-token <token>');
-    } else {
-      console.log('Channels:\n');
-      for (const ch of channels) {
-        const status = ch.type === 'whatsapp'
-          ? (ch.registered ? '✅ paired' : '⚠ not paired')
-          : '✅ configured';
-        const tokenHint = ch.botToken ? ` (key: ${ch.botToken.slice(0, 8)}…)` : '';
-        console.log(`  ${ch.id}  [${ch.type}]  ${status}${tokenHint}`);
-      }
-      console.log('');
-    }
-    process.exit(0);
-  }
-
-  if (sub === 'register') {
-    const type = process.argv[4] as ChannelEntry['type'] | undefined;
-    const id = process.argv[5];
-
-    if (!type || !id || !(CHANNEL_TYPES as readonly string[]).includes(type)) {
-      console.log(`Usage: vargos channels register <${CHANNEL_TYPES.join('|')}> <id> [--bot-token <token>]`);
-      process.exit(1);
-    }
-
-    try {
-      const tokenIdx = process.argv.indexOf('--bot-token');
-      const tgBotKey = type === 'telegram' && tokenIdx !== -1 ? process.argv[tokenIdx + 1] : undefined;
-
-      if (type === 'telegram' && !tgBotKey) {
-        console.log('Telegram requires --bot-token <token>');
-        process.exit(1);
-      }
-
-      const { created } = registerChannel({ id, type, botToken: tgBotKey });
-      console.log(created ? `✅ Channel "${id}" registered.` : `ℹ Channel "${id}" already registered.`);
-
-      // WhatsApp registration is pairing: write config, then run the QR flow.
-      if (type === 'whatsapp') {
-        console.log('   Scan the QR code with WhatsApp → Linked Devices\n');
-        await pairWhatsApp(id);
-      }
-    } catch (err) {
-      console.error(`❌ ${err instanceof Error ? err.message : err}`);
-      process.exit(1);
-    }
-    process.exit(0);
-  }
-
-  if (sub === 'deregister') {
-    const id = process.argv[4];
-    if (!id) {
-      console.log('Usage: vargos channels deregister <id>');
-      process.exit(1);
-    }
-    try {
-      deregisterChannel(id);
-      console.log(`✅ Channel "${id}" removed.`);
-    } catch (err) {
-      console.error(`❌ ${err instanceof Error ? err.message : err}`);
-      process.exit(1);
-    }
-    process.exit(0);
-  }
-
-  if (sub === 'send') {
-    const sessionKey = process.argv[4];
-    const text = process.argv.slice(5).join(' ').trim();
-    if (!sessionKey || !text) {
-      console.log('Usage: vargos channels send <sessionKey> <text...>');
-      process.exit(1);
-    }
-    try {
-      const sent = await sendChannelMessage(sessionKey, text);
-      console.log(sent ? `✅ Sent to ${sessionKey}` : `⚠ Not delivered — no active channel for "${sessionKey}".`);
-      process.exit(sent ? 0 : 1);
-    } catch (err) {
-      console.error(`❌ ${err instanceof Error ? err.message : err}`);
-      process.exit(1);
-    }
-  }
-
-  channelsUsage();
-  process.exit(1);
-}
-
-// No command — first-run or help
-if (isFirstRun()) {
-  console.log('  ⚡ Vargos v' + VERSION + ' — First run detected.\n');
-  const { onboard } = await import('./cli/onboard.js');
-  await onboard();
-  console.log('\n  Next: run vargos start to boot the server.\n');
-} else {
-  usage();
-}
-
-process.exit(0);
+process.exit(await dispatch(parsed));

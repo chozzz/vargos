@@ -1,20 +1,28 @@
 import { z } from 'zod';
-import { register } from '../../gateway/decorators.js';
-import type { Bus } from '../../gateway/bus.js';
-import type { EventMap } from '../../gateway/events.js';
+import type { Bus, Service } from '../../core/types.js';
 import { htmlToMarkdown } from '../../lib/html.js';
 import { validateHttpResponse } from '../../lib/http-validate.js';
 
-export class WebService {
-  @register('web.fetch', {
-    description: 'Fetch a URL and return readable content (HTML → markdown).',
-    schema: z.object({
-      url:         z.string().describe('HTTP or HTTPS URL'),
-      extractMode: z.enum(['markdown', 'text']).optional().describe('Output format (default: markdown)'),
-      maxChars:    z.number().optional().describe('Max characters to return (default: 50000)'),
-    }),
-  })
-  async fetch(params: EventMap['web.fetch']['params']): Promise<EventMap['web.fetch']['result']> {
+const FetchSchema = z.object({
+  url:         z.string().describe('HTTP or HTTPS URL'),
+  extractMode: z.enum(['markdown', 'text']).optional().describe('Output format (default: markdown)'),
+  maxChars:    z.number().optional().describe('Max characters to return (default: 50000)'),
+});
+
+export class WebService implements Service {
+  readonly name = 'web';
+
+  init(bus: Bus): void {
+    bus.register('web.fetch', {
+      description: 'Fetch a URL and return readable content (HTML → markdown).',
+      schema: FetchSchema,
+      cli: { positional: ['url'] },
+    }, (p) => this.fetch(p));
+  }
+
+  dispose(): void {}
+
+  private async fetch(params: z.infer<typeof FetchSchema>): Promise<{ text: string }> {
     let url: URL;
     try { url = new URL(params.url); }
     catch { throw new Error('Invalid URL'); }
@@ -36,9 +44,7 @@ export class WebService {
     let text = contentType.includes('text/html') ? htmlToMarkdown(html) : html;
     if (params.extractMode === 'text') text = stripMarkdownLinks(text);
 
-    const truncated = text.length > maxChars;
-    if (truncated) text = text.slice(0, maxChars) + '\n… (truncated)';
-
+    if (text.length > maxChars) text = text.slice(0, maxChars) + '\n… (truncated)';
     return { text };
   }
 }
@@ -52,9 +58,6 @@ function stripMarkdownLinks(md: string): string {
     .replace(/\n{3,}/g, '\n\n').trim();
 }
 
-// ── Boot ─────────────────────────────────────────────────────────────────────
-
-export async function boot(bus: Bus): Promise<{ stop?(): void }> {
-  bus.bootstrap(new WebService());
-  return {};
+export function createService(): Service {
+  return new WebService();
 }

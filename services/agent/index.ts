@@ -10,16 +10,13 @@
 
 import { z } from 'zod';
 import path from 'node:path';
-import { register } from '../../gateway/decorators.js';
-import type { Bus } from '../../gateway/bus.js';
-import type { EventMap, Json } from '../../gateway/events.js';
+import type { Bus, Service, Json } from '../../core/types.js';
 import type { AppConfig } from '../../services/config/index.js';
 import { createLogger } from '../../lib/logger.js';
 import { parseDirectives } from './directives.js';
-import { withTimeout } from '../../lib/timeout.js';
+import { withTimeout } from '../../lib/util.js';
 import { interpolatePrompt } from './prompt-interpolate.js';
-import { truncate } from '../../lib/truncate.js';
-import type { AgentDeps } from './types.js';
+import { truncate } from '../../lib/util.js';
 import { existsSync, promises as fs } from 'node:fs';
 import { getDataPaths } from '../../lib/paths.js';
 import { parseSessionKey, isSubagentSession, rootSessionKey } from '../../lib/session-key.js';
@@ -54,24 +51,33 @@ const log = createLogger('agent');
 // Hardcoded agent execution constants
 const EXECUTION_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 
+/** Narrow read-only view of a Pi SDK assistant message (see extractFinalAssistant). */
+interface AssistantMessageView {
+  role: string;
+  stopReason?: string;
+  errorMessage?: string;
+  content?: string | Array<{ type: string; text?: string }>;
+}
+
 // ── AgentService ─────────────────────────────────────────────────────────────
 
-export class AgentService {
-  protected bus: Bus;
-  protected config: AppConfig;
+export class AgentService implements Service {
+  readonly name = 'agent';
+  protected bus!: Bus;
+  protected config!: AppConfig;
   protected sessions = new Map<string, AgentSession>();
   /** sessionKey → epoch ms when the session entered the cache (for agent.status). */
   protected sessionMeta = new Map<string, number>();
   protected activeRuns = new Set<string>();
 
-  protected agentDir: string;
-  protected authStorage: AuthStorage;
-  protected modelRegistry: ModelRegistry;
-  protected settings: SettingsManager;
+  protected agentDir!: string;
+  protected authStorage!: AuthStorage;
+  protected modelRegistry!: ModelRegistry;
+  protected settings!: SettingsManager;
 
-  constructor(deps: AgentDeps) {
-    this.bus = deps.bus;
-    this.config = deps.config;
+  async init(bus: Bus): Promise<void> {
+    this.bus = bus;
+    this.config = await bus.call<AppConfig>('config.get', {});
 
     const paths = getDataPaths();
     this.agentDir = path.join(paths.dataDir, 'agent');
@@ -83,35 +89,61 @@ export class AgentService {
     this.authStorage = AuthStorage.create(authJsonPath);
     this.modelRegistry = ModelRegistry.create(this.authStorage, modelsJsonPath);
 
-    // Report model loading errors instead of silently falling back
     const modelError = this.modelRegistry.getError();
     if (modelError) {
       throw new Error(`Failed to load models from ${modelsJsonPath}: ${modelError}`);
     }
 
     this.settings = SettingsManager.create(paths.dataDir, this.agentDir);
-    // NOTE: SettingsManager loads ~/.vargos/agent/models.json which has the
-    // authoritative provider + model definitions. Pi Agent is the source of truth.
-
-    // Apply retry settings for transient error recovery
     this.settings.applyOverrides({
       retry: {
         enabled: true,
         maxRetries: 3,
         baseDelayMs: 1000,
-        provider: {
-          timeoutMs: 120000, // 2 min per API call
-          maxRetries: 3,
-          maxRetryDelayMs: 30000, // exponential backoff up to 30s
-        },
+        provider: { timeoutMs: 120000, maxRetries: 3, maxRetryDelayMs: 30000 },
       },
     });
+
+    this.registerMethods(bus);
+    await this.persistRetrySettings();
+  }
+
+  private registerMethods(bus: Bus): void {
+    bus.register('agent.execute', {
+      description: 'Executes a task with the agent, optionally delegating to a subagent.',
+      // passthrough keeps `sessionKey` (auto-injected by the tool wrapper, supplied by
+      // direct callers) alive through validation without advertising it as a tool param.
+      schema: z.object({
+        task: z.string().describe('The task to execute.'),
+        cwd: z.string().optional().describe('Working directory for the agent — defaults to workspace dir.'),
+        model: z.string().optional().describe('Optional model override as "provider:modelId" (e.g. "anthropic:claude-opus-4"). Omit to use the agent default.'),
+      }).passthrough(),
+      cli: { positional: ['task'] },
+    }, (p) => this.execute(p));
+
+    bus.register('agent.appendMessage', {
+      description: 'Append a message to a session\'s history without executing the agent.',
+      schema: z.object({ sessionKey: z.string(), content: z.string() }),
+      internal: true,
+    }, (p) => this.appendMessage(p));
+
+    bus.register('agent.status', {
+      description: 'Return the agent session inventory (state, parent links, model). Pass sessionKey to scope to one session and its subagents.',
+      schema: z.object({ sessionKey: z.string().optional() }),
+      cli: { positional: ['sessionKey'] },
+    }, (p) => this.status(p));
+  }
+
+  dispose(): void {
+    this.sessions.forEach((session) => session.dispose());
+    this.sessions.clear();
+    this.sessionMeta.clear();
   }
 
   /**
    * Persist retry settings to disk during boot
    */
-  async start() {
+  private async persistRetrySettings() {
     try {
       const settingsPath = path.join(this.agentDir, 'settings.json');
       const currentData = await fs.readFile(settingsPath, 'utf-8');
@@ -137,25 +169,11 @@ export class AgentService {
   }
 
   /**
-   * agent.execute — Run a task
-   *
-   * Note: sessionKey is declared optional here because it's auto-injected by
-   * wrapEventAsToolDefinition() when the agent calls this as a tool. Direct callers
-   * (channels, cron, webhooks, TCP) still provide sessionKey via EventMap.
+   * agent.execute — Run a task. `sessionKey` is auto-injected by the tool wrapper when
+   * the agent calls this as a tool; direct callers (channels, cron, webhooks, RPC)
+   * supply it. It survives validation via the schema's .passthrough().
    */
-  @register('agent.execute', {
-    description: 'Executes a task with the agent, optionally delegating to a subagent.',
-    schema: z.object({
-      /**
-       * `sessionKey` is intentionally not registered as schema here because when agent.execute is called as a tool from within an agent session, the `sessionKey` is auto-injected by wrapEventAsToolDefinition(). For direct calls from channels, cron, webhooks, TCP, the `sessionKey` is provided in the EventMap and is required for execution.
-       * @see wrapEventAsToolDefinition in tools.ts for how `sessionKey` is injected when called as a tool.
-       */
-      task: z.string().describe('The task to execute.'),
-      cwd: z.string().optional().describe('Working directory for the agent — defaults to workspace dir.'),
-      model: z.string().optional().describe('Optional model override as "provider:modelId" (e.g. "anthropic:claude-opus-4"). Omit to use the agent default — an unknown value falls back to the default.'),
-    }),
-  })
-  async execute(params: EventMap['agent.execute']['params']): Promise<EventMap['agent.execute']['result']> {
+  private async execute(params: { sessionKey?: string; task: string; cwd?: string; model?: string }): Promise<{ response: string }> {
     if (!params.sessionKey) {
       throw new Error('sessionKey is required for agent.execute');
     }
@@ -203,8 +221,7 @@ export class AgentService {
    * Records inbound messages in session history (observe-only for non-whitelisted).
    * Internal only — not exposed as an agent tool.
    */
-  @register('agent.appendMessage')
-  async appendMessage(params: EventMap['agent.appendMessage']['params']): Promise<void> {
+  private async appendMessage(params: { sessionKey: string; content: string }): Promise<void> {
     const session = await this.getOrCreateSession(params.sessionKey);
     const sessionFile = session.sessionManager.getSessionFile();
 
@@ -246,11 +263,7 @@ export class AgentService {
    * is scoped to that session and its subagents — letting a parent observe its own
    * subtree. `activeRuns` is kept for callers that only need the executing keys.
    */
-  @register('agent.status', {
-    description: 'Return the agent session inventory (state, parent links, model). Pass sessionKey to scope to one session and its subagents.',
-    schema: z.object({ sessionKey: z.string().optional() }),
-  })
-  async status(params: EventMap['agent.status']['params']): Promise<EventMap['agent.status']['result']> {
+  private async status(params: { sessionKey?: string }) {
     const scope = params.sessionKey;
     const inScope = (key: string) => !scope || key === scope || key.startsWith(`${scope}:subagent:`);
 
@@ -425,8 +438,7 @@ export class AgentService {
         case 'agent_end': {
           const { content, error } = this.extractFinalAssistant(session);
           if (error) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const model = (session as any).model ?? 'unknown';
+            const model = session.model?.id ?? 'unknown';
             log.error(`agent_end with error for ${sessionKey} [model=${model}]: ${error}`);
             this.bus.emit('agent.onCompleted', { sessionKey, success: false, error });
           } else {
@@ -550,7 +562,7 @@ export class AgentService {
    * one glob pattern. Empty/undefined patterns = all tools allowed.
    */
   protected async getCustomTools(sessionKey: string, allowedPatterns?: string[]): Promise<ToolDefinition[]> {
-    const tools = await createCustomTools(sessionKey, this.bus);
+    const tools = createCustomTools(sessionKey, this.bus);
     if (!allowedPatterns?.length) return tools;
     // Match on `label` (original event name with dots, e.g. "memory.search")
     // rather than `name` (sanitized with dashes, e.g. "memory-search"),
@@ -574,8 +586,7 @@ export class AgentService {
    * `stopReason`/`errorMessage` here, those would surface as silent empty completions.
    */
   private extractFinalAssistant(session: AgentSession): { content: string; error?: string } {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const messages = (session as any).state?.messages || [];
+    const messages = session.state.messages as AssistantMessageView[];
 
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i];
@@ -588,7 +599,7 @@ export class AgentService {
         log.debug('agent error details:', {
           stopReason: msg.stopReason,
           errorMessage: msg.errorMessage,
-          model: (session as any).model,
+          model: session.model?.id,
           messageCount: messages.length,
         });
       }
@@ -598,10 +609,8 @@ export class AgentService {
         content = msg.content;
       } else if (Array.isArray(msg.content)) {
         content = msg.content
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          .filter((block: any) => block.type === 'text')
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          .map((block: any) => block.text || '')
+          .filter(block => block.type === 'text')
+          .map(block => block.text || '')
           .filter(Boolean)
           .join('\n');
       }
@@ -612,21 +621,8 @@ export class AgentService {
     return { content: '' };
   }
 
-  stop(): void {
-    this.sessions.forEach((_session) => {
-      _session.dispose();
-    });
-    this.sessions.clear();
-    this.sessionMeta.clear();
-  }
 }
 
-// ── Boot ─────────────────────────────────────────────────────────────────────
-
-export async function boot(bus: Bus): Promise<{ stop(): void }> {
-  const config = await bus.call('config.get', {});
-  const runtime = new AgentService({ bus, config });
-  bus.bootstrap(runtime);
-  await runtime.start(); // Persist retry settings
-  return { stop: () => runtime.stop() };
+export function createService(): Service {
+  return new AgentService();
 }

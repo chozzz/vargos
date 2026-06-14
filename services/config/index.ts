@@ -1,9 +1,8 @@
 import { z } from 'zod';
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { register } from '../../gateway/decorators.js';
-import type { Bus } from '../../gateway/bus.js';
-import type { EventMap } from '../../gateway/events.js';
+import type { Bus, Service } from '../../core/types.js';
+import { formatZodIssues } from '../../core/errors.js';
 import {
   AgentConfigSchema,
   AuthSchema,
@@ -35,6 +34,7 @@ import {
 } from './schemas/index.js';
 import { getDataPaths } from '../../lib/paths.js';
 import { createLogger } from '../../lib/logger.js';
+import { readJson, writeJson } from '../../lib/util.js';
 
 // ─── App config ───────────────────────────────────────────────────────────────
 
@@ -92,13 +92,14 @@ export type {
 
 // ─── Load / save ──────────────────────────────────────────────────────────────
 
-export function saveConfig(path: string, config: AppConfig): void {
-  writeFileSync(path, JSON.stringify(config, null, 2), { mode: 0o600 });
+export function saveConfig(path: string, config: Partial<AppConfig>): void {
+  writeJson(path, config);
 }
 
 // ─── ConfigService ───────────────────────────────────────────────────────────
 
-export class ConfigService {
+export class ConfigService implements Service {
+  readonly name = 'config';
   private readonly log = createLogger('config');
   private readonly configFile: string;
   private readonly agentDir: string;
@@ -106,9 +107,7 @@ export class ConfigService {
   private readonly agentSettingsFile: string;
   private readonly agentAuthFile: string;
 
-  constructor(
-    private readonly bus: Bus
-  ) {
+  constructor() {
     const { configFile, dataDir } = getDataPaths();
     this.configFile = configFile;
     this.agentDir = path.join(dataDir, 'agent');
@@ -117,121 +116,82 @@ export class ConfigService {
     this.agentAuthFile = path.join(this.agentDir, 'auth.json');
   }
 
+  init(bus: Bus): void {
+    bus.register('config.get', {
+      description: 'Get the current application configuration (merged from config.json, agent/models.json, agent/settings.json).',
+      schema: z.object({}),
+    }, () => this.get());
+
+    bus.register('config.set', {
+      description: 'Update the application config. Routes to the correct file (config.json, agent/models.json, or agent/settings.json).',
+      schema: z.object({}).passthrough(),
+    }, (p: AppConfig) => this.set(p));
+  }
+
+  dispose(): void {}
+
   private loadConfig(): AppConfig {
-    const raw = JSON.parse(readFileSync(this.configFile, 'utf8'));
+    const raw = JSON.parse(readFileSync(this.configFile, 'utf8')) as Record<string, unknown>;
 
-    // Load agent/settings.json and merge with existing agent config (settings takes precedence)
-    try {
-      const settingsContent = readFileSync(this.agentSettingsFile, 'utf8');
-      const settings = JSON.parse(settingsContent);
-      if (settings && typeof settings === 'object') {
-        raw.agent = { ...(raw.agent as Record<string, unknown>), ...settings };
-      }
-    } catch {
-      // File may not exist yet — validation will catch if required
+    // Agent settings, providers, and auth live in separate files (settings take precedence).
+    const settings = readJson<Record<string, unknown>>(this.agentSettingsFile);
+    if (settings && typeof settings === 'object') {
+      raw.agent = { ...(raw.agent as Record<string, unknown>), ...settings };
     }
 
-    // Load agent/models.json and merge providers
-    try {
-      const modelsContent = readFileSync(this.agentModelsFile, 'utf8');
-      const models = JSON.parse(modelsContent);
-      if (models.providers) {
-        raw.providers = models.providers;
-      }
-    } catch {
-      // File may not exist yet, that's okay
-    }
+    const models = readJson<{ providers?: unknown }>(this.agentModelsFile);
+    if (models?.providers) raw.providers = models.providers;
 
-    // Load auth.json
-    try {
-      const authContent = readFileSync(this.agentAuthFile, 'utf8');
-      const auth = JSON.parse(authContent ?? '{}');
-      raw.auth = auth;
-    } catch {
-      // File may not exist yet, that's okay
-    }
+    const auth = readJson(this.agentAuthFile);
+    if (auth !== undefined) raw.auth = auth;
 
     // Validate merged config
     const result = AppConfigSchema.safeParse(raw);
     if (!result.success) {
-      const issues = result.error.issues
-        .map(i => `  ${i.path.join('.')}: ${i.message}`)
-        .join('\n');
-      throw new Error(`Invalid config at ${this.configFile}:\n${issues}`);
+      throw new Error(`Invalid config at ${this.configFile}: ${formatZodIssues(result.error)}`);
     }
     return result.data;
   }
 
-  @register('config.get', {
-    description: 'Get the current application configuration (merged from config.json, agent/models.json, agent/settings.json).',
-    schema: z.object({}),
-  })
-  async get(_params: EventMap['config.get']['params']): Promise<AppConfig> {
+  async get(): Promise<AppConfig> {
     return this.loadConfig();
   }
 
-  @register('config.set', {
-    description: 'Update the application config. Intelligently routes to correct file (config.json, agent/models.json, or agent/settings.json).',
-    schema: z.object({}).passthrough(),
-  })
   async set(params: AppConfig): Promise<AppConfig> {
     const parsed = AppConfigSchema.parse(params);
 
     // Split config into components by ownership
-    const configForFile: AppConfig = { ...parsed };
+    const configForFile: Partial<AppConfig> = { ...parsed };
     const agentModels: Record<string, unknown> = {};
     let agentSettings: Record<string, unknown> = {};
     let authData: Record<string, unknown> = {};
 
-    // Load existing agent/settings.json to preserve other fields
-    try {
-      agentSettings = JSON.parse(readFileSync(this.agentSettingsFile, 'utf8'));
-    } catch {
-      // File doesn't exist yet
-    }
-
-    // Extract agent config to agent/settings.json
+    // Extract agent config to agent/settings.json (preserving existing fields).
     if (configForFile.agent) {
-      agentSettings = { ...agentSettings, ...configForFile.agent };
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      delete (configForFile as any).agent;
+      agentSettings = { ...readJson<Record<string, unknown>>(this.agentSettingsFile), ...configForFile.agent };
+      delete configForFile.agent;
     }
 
-    // Load existing auth.json to preserve other credentials
-    try {
-      authData = JSON.parse(readFileSync(this.agentAuthFile, 'utf8'));
-    } catch {
-      // File doesn't exist yet
-    }
-
-    // Extract auth credentials to agent/auth.json
+    // Extract auth credentials to agent/auth.json (preserving existing credentials).
     if (configForFile.auth) {
-      authData = { ...authData, ...configForFile.auth };
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      delete (configForFile as any).auth;
+      authData = { ...readJson<Record<string, unknown>>(this.agentAuthFile), ...configForFile.auth };
+      delete configForFile.auth;
     }
 
-    // Extract providers to agent/models.json
+    // Extract providers to agent/models.json (preserving other fields).
     if (configForFile.providers) {
       agentModels.providers = configForFile.providers;
       delete configForFile.providers;
     }
-
-    // Load existing agent/models.json to preserve other fields
-    try {
-      const existing = JSON.parse(readFileSync(this.agentModelsFile, 'utf8'));
-      Object.assign(agentModels, existing, agentModels); // Preserve existing, override with new
-    } catch {
-      // File doesn't exist yet
+    if (Object.keys(agentModels).length > 0) {
+      Object.assign(agentModels, readJson<Record<string, unknown>>(this.agentModelsFile), agentModels);
     }
 
     // Persist to appropriate files
     saveConfig(this.configFile, configForFile);
 
     const writeAgentFile = (file: string, data: Record<string, unknown>) => {
-      if (Object.keys(data).length === 0) return;
-      if (!existsSync(this.agentDir)) mkdirSync(this.agentDir, { recursive: true });
-      writeFileSync(file, JSON.stringify(data, null, 2), { mode: 0o600 });
+      if (Object.keys(data).length > 0) writeJson(file, data);
     };
 
     writeAgentFile(this.agentModelsFile, agentModels);
@@ -243,12 +203,8 @@ export class ConfigService {
   }
 }
 
-// ── Boot ─────────────────────────────────────────────────────────────────────
-
-export async function boot(bus: Bus): Promise<{ stop?(): void }> {
-  const svc = new ConfigService(bus);
-  bus.bootstrap(svc);
-  return {};
+export function createService(): Service {
+  return new ConfigService();
 }
 
 // ── Re-exports ────────────────────────────────────────────────────────────────

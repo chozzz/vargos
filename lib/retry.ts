@@ -3,7 +3,7 @@
  * Pure utility — no domain imports, no side effects beyond timing.
  */
 
-import { sleep } from './sleep.js';
+import { sleep } from './util.js';
 
 export interface RetryConfig {
   /** Max number of retry attempts after initial failure. Default: 3 */

@@ -5,9 +5,7 @@
  */
 
 import { z } from 'zod';
-import { register } from '../../gateway/decorators.js';
-import type { Bus } from '../../gateway/bus.js';
-import type { EventMap } from '../../gateway/events.js';
+import type { Bus, Service } from '../../core/types.js';
 import type { AppConfig } from '../../services/config/index.js';
 import { createLogger } from '../../lib/logger.js';
 import { createProvider } from './providers/index.js';
@@ -90,14 +88,36 @@ class MediaCache {
   }
 }
 
-export class MediaService {
+export class MediaService implements Service {
+  readonly name = 'media';
   private cache = new MediaCache();
+  private config!: AppConfig;
 
-  constructor(
-    private readonly bus: Bus,
-    private readonly config: AppConfig,
-  ) {}
+  async init(bus: Bus): Promise<void> {
+    this.config = await bus.call<AppConfig>('config.get', {});
 
+    bus.register('media.transcribeAudio', {
+      description: 'Transcribe an audio file to text using configured audio model. Results are cached.',
+      schema: z.object({ filePath: z.string() }),
+      cli: { positional: ['filePath'] },
+    }, (p) => this.transcribeAudio(p));
+
+    bus.register('media.describeImage', {
+      description: 'Describe an image using configured vision model. Results are cached.',
+      schema: z.object({ filePath: z.string() }),
+      cli: { positional: ['filePath'] },
+    }, (p) => this.describeImage(p));
+
+    bus.register('media.extractDocument', {
+      description: 'Extract text from documents (PDF, DOCX, XLSX, TXT, MD).',
+      schema: z.object({ filePath: z.string(), mimeType: z.string() }),
+      cli: { positional: ['filePath', 'mimeType'] },
+    }, (p) => extractDocument(p.filePath, p.mimeType));
+
+    log.debug('media service initialized');
+  }
+
+  dispose(): void {}
 
   private resolveProviderConfig(ref: string): { provider: string; model: string; apiKey: string; baseUrl?: string } {
     const [provider, model] = ref.split(':');
@@ -108,11 +128,7 @@ export class MediaService {
     return { provider, model, apiKey, baseUrl: this.config.providers?.[provider]?.baseUrl };
   }
 
-  @register('media.transcribeAudio', {
-    description: 'Transcribe an audio file to text using configured audio model. Results are cached for 24h.',
-    schema: z.object({ filePath: z.string() }),
-  })
-  async transcribeAudio(params: EventMap['media.transcribeAudio']['params']): Promise<EventMap['media.transcribeAudio']['result']> {
+  private async transcribeAudio(params: { filePath: string }): Promise<{ text: string }> {
     const audioRef = this.config.agent?.media?.audio;
     if (!audioRef) throw new Error('No audio model configured (agent.media.audio)');
 
@@ -123,11 +139,7 @@ export class MediaService {
     return { text };
   }
 
-  @register('media.describeImage', {
-    description: 'Describe an image using configured vision model. Results are cached for 24h.',
-    schema: z.object({ filePath: z.string() }),
-  })
-  async describeImage(params: EventMap['media.describeImage']['params']): Promise<EventMap['media.describeImage']['result']> {
+  private async describeImage(params: { filePath: string }): Promise<{ description: string }> {
     const imgRef = this.config.agent?.media?.image;
     if (!imgRef) throw new Error('No image model configured (agent.media.image)');
 
@@ -138,19 +150,8 @@ export class MediaService {
     return { description };
   }
 
-  @register('media.extractDocument', {
-    description: 'Extract text from documents (PDF, DOCX, XLSX, TXT, MD).',
-    schema: z.object({ filePath: z.string(), mimeType: z.string() }),
-  })
-  async extractDocument(params: EventMap['media.extractDocument']['params']): Promise<EventMap['media.extractDocument']['result']> {
-    return extractDocument(params.filePath, params.mimeType);
-  }
 }
 
-export async function boot(bus: Bus): Promise<{ stop?(): void }> {
-  const config = await bus.call('config.get', {});
-  const svc = new MediaService(bus, config);
-  bus.bootstrap(svc);
-  log.debug('media service initialized');
-  return {};
+export function createService(): Service {
+  return new MediaService();
 }

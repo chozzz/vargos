@@ -1,6 +1,6 @@
 # Feature Inventory
 
-Source-of-truth status for every Vargos feature. Cross-reference with `gateway/events.ts` (the bus EventMap) and `boot.ts` (boot order — `index.ts` is the supervisor that spawns it).
+Source-of-truth status for every Vargos feature. Cross-reference with `core/` (the bus + registry) and `boot.ts` (service discovery — `index.ts` is the supervisor that spawns it).
 
 Legend: ✅ shipped · 🟧 partial / disabled at boot · 📋 planned
 
@@ -137,7 +137,7 @@ Pi-SDK-powered runtime (`@mariozechner/pi-coding-agent`) with Vargos-managed con
 
 | Feature | Status |
 |---------|--------|
-| Bus tools auto-discovered from `@register` decorators | ✅ |
+| Bus tools auto-discovered from `bus.register` (every non-internal method) | ✅ |
 | Pi SDK tool wrapping via `createCustomTools` | ✅ |
 | Pi SDK built-ins: `read`, `bash`, `edit`, `write`, `grep`, `find`, `ls` | ✅ |
 | Persona `allowedTools` glob filter applied to custom tools | ✅ |
@@ -147,10 +147,11 @@ Pi-SDK-powered runtime (`@mariozechner/pi-coding-agent`) with Vargos-managed con
 
 | Feature | Status |
 |---------|--------|
-| Typed `EventEmitterBus` (RPC + pub/sub) | ✅ |
-| `@on` (listener) + `@register` (RPC tool) decorators | ✅ |
-| Auto-bootstrap on service `bus.bootstrap(this)` | ✅ |
-| `bus.search`, `bus.inspect` introspection | ✅ |
+| Bus owns one method registry (call + pub/sub) | ✅ |
+| `bus.register` (method) + `bus.on` (listener) | ✅ |
+| Filesystem service discovery (`services/*/`) + `init`/`dispose` lifecycle | ✅ |
+| In-process hot reload (`bus.restart <service>`) + supervisor respawn (`bus.restartProcess`) | ✅ |
+| `bus.list` introspection (feeds CLI + agent tools) | ✅ |
 | TCP/JSON-RPC server on port 9000 (NOT HTTP) | ✅ |
 | Domain boundaries enforced via ESLint `no-restricted-imports` | ✅ |
 
@@ -158,16 +159,16 @@ Pi-SDK-powered runtime (`@mariozechner/pi-coding-agent`) with Vargos-managed con
 
 | Feature | Status |
 |---------|--------|
-| `pnpm start` — boot gateway + all services | ✅ |
+| `pnpm start` — boot the daemon (bus + all services) | ✅ |
+| `vargos <service> [method]` — registry-driven dispatch (daemon proxy or local stack) | ✅ |
 | `pnpm chat` — Pi SDK CLI bound to `~/.vargos/agent` and sessions in `sessions/cli/` | ✅ |
-| `pnpm cli` — Vargos management CLI (start, onboard, config) | ✅ |
-| `pnpm seed` — manual `seedDataDir()` invocation | ✅ |
+| `pnpm verify` — core acceptance checks | ✅ |
 
 ## MCP Bridge
 
 | Feature | Status |
 |---------|--------|
-| MCP **client** (external MCP servers loaded as bus tools) | ✅ `services/mcp-client/` |
+| MCP **client** (external MCP servers loaded as bus tools) | ✅ `services/mcp/` |
 | MCP **server** (HTTP, port 9001, expose Vargos as MCP) | 🟧 commented out in `boot.ts` |
 
 ## Webhooks

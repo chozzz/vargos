@@ -33,22 +33,20 @@ After setup: `vargos start` boots the server, `vargos onboard` re-runs the wizar
 
 ## Architecture
 
+One **bus** owns one **registry** of methods. The CLI, the agent's tools, and the JSON-RPC
+server are all projections of that registry — register a method once, it appears everywhere.
+
 ```
-                    ┌──────────────────────────────────────┐
-                    │  Gateway  (EventEmitterBus + TCP)    │
-                    └────────────┬─────────────────────────┘
-                                 │
-         ┌───────────────────────┼────────────────────────┐
-         │                       │                        │
-         ↓                       ↓                        ↓
-    ┌─────────┐           ┌──────────┐            ┌────────────┐
-    │ Config  │           │ Agent    │            │   CLI      │
-    │ Log     │           │ Channels │            │  External  │
-    │ Memory  │           │ Cron     │            │  Clients   │
-    └─────────┘           └──────────┘            └────────────┘
+        CLI            Agent tools        JSON-RPC :9000
+          \                 |                   /
+           └──────────  Bus (registry)  ───────┘
+                              │
+   config · log · web · memory · media · agent · channel · cron · mcp
+       (services/<name>/ — discovered from disk, loaded by the bus)
 ```
 
-Services are isolated — no shared state, communication only through internal APIs. This makes Vargos reliable and easy to extend.
+Services are isolated — no shared state, no cross-imports; they talk only via `bus.call` /
+`bus.emit`. See [Architecture](./docs/architecture.md).
 
 ## Key Concepts
 
@@ -61,7 +59,7 @@ Services are isolated — no shared state, communication only through internal A
 
 ### Message Handling
 
-Messages go through a simple pipeline: **receive → process → execute → respond**. The agent has access to all Vargos tools and your workspace context. See [Channels](./docs/usage/channels.md) for details.
+Messages go through a simple pipeline: **receive → process → execute → respond**. The agent has access to all Vargos tools and your workspace context. See [Usage](./docs/usage.md) for details.
 
 ## Documentation
 
@@ -69,48 +67,41 @@ Messages go through a simple pipeline: **receive → process → execute → res
 |-----|-------------|
 | [Getting Started](./docs/getting-started.md) | Install, first run, config wizard |
 | [Configuration](./docs/configuration.md) | Full config reference |
-| [Channels](./docs/usage/channels.md) | WhatsApp and Telegram setup |
-| [MCP](./docs/usage/mcp.md) | MCP server and client integration |
-| [Sessions](./docs/usage/sessions.md) | Session types and lifecycle |
-| [Runtime](./docs/usage/runtime.md) | How agents execute |
-| [Workspace Files](./docs/usage/workspace-files.md) | AGENTS.md, SOUL.md, TOOLS.md reference |
-| [Troubleshooting](./docs/usage/troubleshooting.md) | Common issues and fixes |
+| [Architecture](./docs/architecture.md) | Bus registry, service contract, surfaces, hot reload |
+| [Usage](./docs/usage.md) | Channels, sessions, MCP, runtime, personas, workspace files |
+| [Extending](./docs/extending.md) | Add tools, skills, providers |
+| [Examples](./docs/examples.md) | MCP integration, scheduled research, multi-channel |
+| [Debugging](./docs/debugging.md) | Debug modes and logging |
 | [Roadmap](./docs/ROADMAP.md) | Planned features |
-
-### Examples
-
-- [MCP Integration](./docs/examples/mcp-integration.md) — Connect external tool servers
-- [Scheduled Research](./docs/examples/scheduled-research.md) — Daily reports via cron
-- [Multi-Channel Presence](./docs/examples/multi-channel-presence.md) — WhatsApp + Telegram + CLI
-- [Architecture Deep Dive](./docs/architecture/bus-design.md) — Event bus patterns
-- [Extending](./docs/extending/) — Tools, skills, providers
 
 ## Usage
 
 ```bash
 vargos                 # First-run wizard or help
-vargos start           # Boot the server (gateway + all services)
+vargos start           # Boot the daemon (bus + all services + JSON-RPC :9000)
+vargos <service>       # List a service's methods (e.g. vargos channel)
+vargos <service> --help        # Methods, descriptions, arg shapes
+vargos <service> <method> …    # Invoke a method (e.g. vargos channel send <to> "<msg>")
 vargos onboard         # Re-run setup wizard
-vargos config          # Show current configuration
 ```
 
 ## Development
 
 ```bash
 pnpm install          # Install deps
-pnpm start            # Start gateway + all services (alias: vargos start)
+pnpm start            # Boot the daemon (alias: vargos start)
 pnpm chat             # Pi SDK interactive REPL bound to ~/.vargos/agent
-pnpm seed             # Re-seed .templates/ → ~/.vargos/ (idempotent)
 pnpm cli              # Run the CLI entrypoint directly (tsx cli.ts)
-pnpm test             # Tests (watch mode)
+pnpm verify           # Run the core acceptance checks (scripts/verify-core.ts)
 pnpm run test:run     # Tests (single run)
 pnpm run typecheck    # TypeScript check
 pnpm lint             # ESLint + typecheck
 pnpm build            # Clean + compile + copy templates → dist/
+```
 
 ## Contributing
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for architecture details, event reference, and development guidelines.
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for architecture and development guidelines.
 
 ## License
 

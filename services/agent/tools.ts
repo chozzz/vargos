@@ -1,7 +1,7 @@
 /**
  * Agent — Bus Tools Integration
  *
- * Converts bus callable events with @register decorators into PiAgent ToolDefinitions.
+ * Converts registered bus methods into PiAgent ToolDefinitions (the agent-tool surface).
  *
  * Session key injection:
  * - Every tool closes over the parent sessionKey from getCustomTools().
@@ -21,18 +21,19 @@
  *   view (no sessionKey) and the service's view (sessionKey required).
  */
 
-import type { ToolDefinition } from '@earendil-works/pi-coding-agent';
+import type { ToolDefinition, ExtensionContext } from '@earendil-works/pi-coding-agent';
 import type { AgentToolResult, AgentToolUpdateCallback } from '@earendil-works/pi-agent-core';
-import type { Bus } from '../../gateway/bus.js';
+import type { Bus } from '../../core/types.js';
 import { createLogger } from '../../lib/logger.js';
-import { isToolEvent } from '../../gateway/emitter.js';
 import { toMessage } from '../../lib/error.js';
+import { truncate } from '../../lib/util.js';
 import { appendError } from './error-store.js';
 import { subagentSessionKey } from '../../lib/session-key.js';
 
 const log = createLogger('agent-tools');
 
 const LARGE_RESULT_TOKEN_THRESHOLD = 5_000;
+const MAX_RESULT_CHARS = 10_000;
 
 /**
  * Wrap a bus event as a PiAgent ToolDefinition.
@@ -57,8 +58,7 @@ function wrapEventAsToolDefinition(
       params: unknown,
       _signal: AbortSignal | undefined,
       _onUpdate: AgentToolUpdateCallback<unknown> | undefined,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      _ctx: any,
+      _ctx: ExtensionContext,
     ): Promise<AgentToolResult<unknown>> => {
       const paramsObj = params as Record<string, unknown>;
       log.debug(`${eventName}: ${Object.entries(paramsObj).map(([k, v]) => `${k}=${JSON.stringify(v).slice(0, 100)}`).join(', ')}`);
@@ -76,21 +76,14 @@ function wrapEventAsToolDefinition(
           paramsObj.sessionKey = sessionKey;
         }
 
-        const result = await bus.call(eventName as never, paramsObj);
+        const result = await bus.call(eventName, paramsObj);
 
+        // Head/tail truncation preserves the start and end of large results.
         let resultText = '';
         if (result && typeof result === 'object') {
-          resultText = JSON.stringify(result).slice(0, 10_000);
+          resultText = truncate(JSON.stringify(result), MAX_RESULT_CHARS);
         } else if (result !== undefined && result !== null) {
-          resultText = String(result).slice(0, 10_000);
-        }
-
-        // Head+tail truncation for large results (preserves start and end, drops middle).
-        const MAX_RESULT_CHARS = 20_000;
-        if (resultText.length > MAX_RESULT_CHARS) {
-          const head = Math.floor(MAX_RESULT_CHARS * 0.7);
-          const tail = Math.floor(MAX_RESULT_CHARS * 0.2);
-          resultText = `${resultText.slice(0, head)}\n\n[…truncated ${resultText.length - head - tail} chars…]\n\n${resultText.slice(-tail)}`;
+          resultText = truncate(String(result), MAX_RESULT_CHARS);
         }
 
         const resultTokens = Math.ceil(resultText.length / 4);
@@ -125,11 +118,10 @@ function wrapEventAsToolDefinition(
  * `allowedTools` glob whitelist in `agents/subagent.md` frontmatter, applied
  * by `AgentService.getCustomTools()` via `matchesGlob`.
  */
-export async function createCustomTools(sessionKey: string, bus: Bus): Promise<ToolDefinition[]> {
-  const metadata = await bus.call('bus.search', {});
-  return metadata
-    .filter(isToolEvent)
+export function createCustomTools(sessionKey: string, bus: Bus): ToolDefinition[] {
+  return bus.list()
+    .filter(m => !m.internal)
     .map(m =>
-      wrapEventAsToolDefinition(m.event, m.description, (m.schema?.params as Record<string, unknown>) || {}, sessionKey, bus),
+      wrapEventAsToolDefinition(m.name, m.description, (m.schema as Record<string, unknown>) || {}, sessionKey, bus),
     );
 }

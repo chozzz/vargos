@@ -7,10 +7,11 @@
  * Uses @clack/prompts (already a dependency) for the TUI.
  */
 
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import * as p from '@clack/prompts';
 import { getDataPaths } from '../lib/paths.js';
+import { writeJson } from '../lib/util.js';
 import { registerChannel } from './channels.js';
 
 // ── Provider presets ──────────────────────────────────────────────────────────
@@ -85,14 +86,6 @@ const PROVIDERS: Record<string, ProviderPreset> = {
     models: [{ id: 'llama3.2', name: 'Llama 3.2' }],
   },
 };
-
-// ── Write helpers ─────────────────────────────────────────────────────────────
-
-function writeJson(filePath: string, data: unknown): void {
-  const dir = filePath.substring(0, filePath.lastIndexOf('/'));
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  writeFileSync(filePath, JSON.stringify(data, null, 2), { mode: 0o600 });
-}
 
 // ── Main wizard ───────────────────────────────────────────────────────────────
 

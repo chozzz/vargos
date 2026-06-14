@@ -1,12 +1,26 @@
 import eslint from "@eslint/js";
 import tseslint from "typescript-eslint";
-import { noUnusedEventsRule } from "./eslint-rules/unused-events.mjs";
 
-const customPlugin = {
+// Domain services. `config` is intentionally excluded: it owns the shared config
+// schema/types (AppConfig, CronTaskSchema, …) every service may import directly.
+// All other cross-domain communication goes through the bus.
+const SERVICES = ["agent", "channel", "cron", "log", "mcp", "media", "memory", "web"];
+
+const boundaryRules = SERVICES.map((svc) => ({
+  files: [`services/${svc}/**/*.ts`],
+  ignores: [`services/${svc}/**/*.test.ts`],
   rules: {
-    "no-unused-events": noUnusedEventsRule,
+    "no-restricted-imports": ["error", {
+      patterns: [{
+        group: [
+          ...SERVICES.filter((s) => s !== svc).map((s) => `*/services/${s}/*`),
+          "*/edge/*",
+        ],
+        message: `${svc}/ communicates with other domains via the bus only`,
+      }],
+    }],
   },
-};
+}));
 
 export default tseslint.config(
   eslint.configs.recommended,
@@ -20,11 +34,11 @@ export default tseslint.config(
         "error",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
       ],
-      "@typescript-eslint/no-explicit-any": "warn",
+      "@typescript-eslint/no-explicit-any": "error",
     },
   },
   // ── Domain boundary enforcement ──────────────────────────────────────
-  // lib/ — pure utilities; can import from gateway but not from services or edge
+  // lib/ — pure utilities; can import from core but not from services or edge
   {
     files: ["lib/**/*.ts"],
     ignores: ["lib/**/*.test.ts"],
@@ -32,77 +46,13 @@ export default tseslint.config(
       "no-restricted-imports": ["error", {
         patterns: [{
           group: ["*/services/*", "*/edge/*"],
-          message: "lib/ is pure utilities — cannot import from service or edge modules (gateway is allowed)",
+          message: "lib/ is pure utilities — cannot import from service or edge modules (core is allowed)",
         }],
       }],
     },
   },
-  // services/agent/ — bus + Pi SDK; no direct imports from other domain services
-  {
-    files: ["services/agent/**/*.ts"],
-    ignores: ["services/agent/**/*.test.ts"],
-    rules: {
-      "no-restricted-imports": ["error", {
-        patterns: [{
-          group: ["*/services/channels/*", "*/services/cron/*", "*/services/memory/*", "*/edge/*"],
-          message: "agent communicates with other domains via gateway RPC only",
-        }],
-      }],
-    },
-  },
-  // services/channels/ — no cross-domain imports
-  {
-    files: ["services/channels/**/*.ts"],
-    ignores: ["services/channels/**/*.test.ts"],
-    rules: {
-      "no-restricted-imports": ["error", {
-        patterns: [{
-          group: ["*/services/agent/*", "*/services/cron/*", "*/services/memory/*", "*/services/tools/*", "*/edge/*"],
-          message: "channels/ communicates with other domains via gateway RPC only",
-        }],
-      }],
-    },
-  },
-  // services/cron/ — no cross-domain imports
-  {
-    files: ["services/cron/**/*.ts"],
-    ignores: ["services/cron/**/*.test.ts"],
-    rules: {
-      "no-restricted-imports": ["error", {
-        patterns: [{
-          group: ["*/services/agent/*", "*/services/channels/*", "*/services/memory/*", "*/services/tools/*", "*/edge/*"],
-          message: "cron/ communicates with other domains via gateway RPC only",
-        }],
-      }],
-    },
-  },
-  // services/memory/ — no cross-domain imports
-  {
-    files: ["services/memory/**/*.ts"],
-    ignores: ["services/memory/**/*.test.ts"],
-    rules: {
-      "no-restricted-imports": ["error", {
-        patterns: [{
-          group: ["*/services/agent/*", "*/services/channels/*", "*/services/cron/*", "*/services/tools/*", "*/edge/*"],
-          message: "memory/ communicates with other domains via gateway RPC only",
-        }],
-      }],
-    },
-  },
-  // services/tools/ — can import services/browser + services/process
-  {
-    files: ["services/tools/**/*.ts"],
-    ignores: ["services/tools/**/*.test.ts"],
-    rules: {
-      "no-restricted-imports": ["error", {
-        patterns: [{
-          group: ["*/services/agent/*", "*/services/channels/*", "*/services/cron/*", "*/services/memory/*", "*/edge/*"],
-          message: "tools/ cannot import from other domain services (browser/process are allowed)",
-        }],
-      }],
-    },
-  },
-  // edge/ — external adapters, can talk to gateway and services
+  ...boundaryRules,
+  // edge/ — external adapters can talk to core and services but not each other
   {
     files: ["edge/**/*.ts"],
     ignores: ["edge/**/*.test.ts"],
@@ -113,17 +63,6 @@ export default tseslint.config(
           message: "edge adapters cannot import from each other",
         }],
       }],
-    },
-  },
-  // gateway/ — orchestration layer, no restrictions (intentionally imports everything)
-  // Custom: validate EventMap usage
-  {
-    files: ["gateway/events.ts"],
-    plugins: {
-      custom: customPlugin,
-    },
-    rules: {
-      "custom/no-unused-events": "error",
     },
   },
 );

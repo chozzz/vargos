@@ -1,9 +1,8 @@
-import type { Bus } from '../gateway/bus.js';
-import type { Json } from '../gateway/events.js';
+import type { Bus, Json } from '../core/types.js';
 
 let _bus: Bus | null = null;
 
-/** Called once by LogService.boot() to wire the global logger to the bus. */
+/** Called once by the log service's init() to route logs through the bus. */
 export function setLoggerBus(bus: Bus): void {
   _bus = bus;
 }
@@ -31,4 +30,3 @@ export function createLogger(service: string) {
     error: (msg: string, data?: Json) => write('error', msg, data),
   };
 }
-

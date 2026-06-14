@@ -16,7 +16,7 @@ All four are `0o600` (owner-only). The config service merges them at runtime. Ov
 
 Each entry in `config.json#channels[]` matches [`services/config/schemas/channels.ts`](../services/config/schemas/channels.ts). Keys: `type` (`telegram` | `whatsapp`), `id` (unique instance id, used as sessionKey prefix), `enabled`, `model?` (per-channel override), `cwd?`, `debounceMs?`, `allowFrom?` (whitelist), plus `botToken` for telegram.
 
-The old `instructionsFile` field has been removed — channel system-prompt overrides live in [persona files](./usage/personas.md) at `~/.vargos/agents/<id>.md`.
+The old `instructionsFile` field has been removed — channel system-prompt overrides live in [persona files](./usage.md) at `~/.vargos/agents/<id>.md`.
 
 ## Cron tasks
 
@@ -47,7 +47,7 @@ To run Pi CLI against the same config: `pnpm chat` (sets `PI_CODING_AGENT_DIR` a
 
 ## MCP
 
-External MCP servers are configured in `~/.vargos/agent/mcp.json`, which is shared between Vargos (`pnpm start`) and Pi SDK CLI (`pnpm chat`). See [MCP documentation](./usage/mcp.md) for examples and setup.
+External MCP servers are configured in `~/.vargos/agent/mcp.json`, which is shared between Vargos (`pnpm start`) and Pi SDK CLI (`pnpm chat`). See [MCP documentation](./usage.md) for examples and setup.
 
 Tools are namespaced as `mcp.<server>.<tool>` on the bus when the Vargos server is running.
 
@@ -59,6 +59,6 @@ Configured under `webhooks[]` in `config.json`. Receiver lives in [`edge/webhook
 
 ## See also
 
-- [Channels](./usage/channels.md)
-- [Personas](./usage/personas.md)
-- [API Reference](./api-reference.md)
+- [Channels](./usage.md)
+- [Personas](./usage.md)
+- [Architecture](./architecture.md)

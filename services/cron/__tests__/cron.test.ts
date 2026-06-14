@@ -2,62 +2,53 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { EventEmitterBus } from '../../../gateway/emitter.js';
+import { EmitterBus } from '../../../core/bus.js';
 import { CronService } from '../index.js';
-import type { AppConfig } from '../../config/index.js';
+import type { CronTask, CronAddParams, CronUpdateParams } from '../../config/index.js';
 
 describe('CronService — Markdown File CRUD', () => {
   let tempDir: string;
   let cronDir: string;
-  let bus: EventEmitterBus;
+  let bus: EmitterBus;
   let service: CronService;
-  let config: AppConfig;
+
+  const search = (query = '') => bus.call<{ items: CronTask[] }>('cron.search', { query, page: 1, limit: 10 });
+  const add = (p: CronAddParams) => bus.call('cron.add', p);
+  const remove = (id: string) => bus.call('cron.remove', { id });
+  const update = (p: CronUpdateParams) => bus.call('cron.update', p);
+
+  async function startService(): Promise<void> {
+    service = new CronService(cronDir);
+    bus.beginLoading('cron');
+    await service.init(bus);
+    bus.endLoading();
+  }
 
   beforeEach(async () => {
-    tempDir = path.join(os.tmpdir(), `cron-test-${Date.now()}`);
+    tempDir = path.join(os.tmpdir(), `cron-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     cronDir = path.join(tempDir, 'cron');
     await fs.mkdir(cronDir, { recursive: true });
-
-    bus = new EventEmitterBus();
-
-    config = {
-      auth: { workspaceId: 'test', key: 'test-key' },
-      agent: {
-        model: 'test:test',
-        executionTimeoutMs: 30000,
-      },
-      heartbeat: {
-        enabled: false,
-      },
-    };
-
-    service = new CronService(bus, config, cronDir);
+    bus = new EmitterBus();
   });
 
   afterEach(async () => {
-    service.stop();
+    service?.dispose();
+    bus.releaseService('cron');
     await fs.rm(tempDir, { recursive: true, force: true });
   });
 
   it('loads empty task list when no files exist', async () => {
-    await service.start();
-    const result = await service.search({ query: '', page: 1, limit: 10 });
-    expect(result.items).toHaveLength(0);
+    await startService();
+    expect((await search()).items).toHaveLength(0);
   });
 
   it('writes task with metadata to markdown file', async () => {
-    await service.start();
-
-    await service.add({
-      name: 'Test Task',
-      schedule: '0 9 * * *',
-      task: 'Test task prompt',
-    });
+    await startService();
+    await add({ name: 'Test Task', schedule: '0 9 * * *', task: 'Test task prompt' });
 
     const files = await fs.readdir(cronDir);
     expect(files).toHaveLength(1);
     expect(files[0]).toMatch(/\.md$/);
-
     const content = await fs.readFile(path.join(cronDir, files[0]), 'utf-8');
     expect(content).toContain('name: Test Task');
     expect(content).toContain('schedule: "0 9 * * *"');
@@ -65,405 +56,142 @@ describe('CronService — Markdown File CRUD', () => {
   });
 
   it('parses metadata from markdown frontmatter correctly', async () => {
-    await fs.writeFile(
-      path.join(cronDir, 'test-task.md'),
-      `---
-id: test-task
-name: "Test Task"
-schedule: "0 9 * * *"
-enabled: true
----
+    await fs.writeFile(path.join(cronDir, 'test-task.md'),
+      `---\nid: test-task\nname: "Test Task"\nschedule: "0 9 * * *"\nenabled: true\n---\n\nTest prompt`);
+    await startService();
 
-Test prompt`
-    );
-
-    await service.start();
-
-    const result = await service.search({ query: '', page: 1, limit: 10 });
+    const result = await search();
     expect(result.items).toHaveLength(1);
-    expect(result.items[0].id).toBe('test-task');
-    expect(result.items[0].name).toBe('Test Task');
-    expect(result.items[0].schedule).toBe('0 9 * * *');
-    expect(result.items[0].enabled).toBe(true);
-    expect(result.items[0].task).toBe('Test prompt');
+    expect(result.items[0]).toMatchObject({ id: 'test-task', name: 'Test Task', schedule: '0 9 * * *', enabled: true, task: 'Test prompt' });
   });
 
   it('deletes markdown file when task is removed', async () => {
-    await service.start();
+    await startService();
+    await add({ name: 'Task to Delete', schedule: '0 9 * * *', task: 'Will be deleted' });
 
-    await service.add({
-      name: 'Task to Delete',
-      schedule: '0 9 * * *',
-      task: 'Will be deleted',
-    });
+    const taskId = (await search()).items[0].id;
+    await remove(taskId);
 
-    const result = await service.search({ query: '', page: 1, limit: 10 });
-    const taskId = result.items[0].id;
-
-    await service.remove({ id: taskId });
-
-    const updated = await service.search({ query: '', page: 1, limit: 10 });
-    expect(updated.items).toHaveLength(0);
-
-    const files = await fs.readdir(cronDir);
-    expect(files).toHaveLength(0);
+    expect((await search()).items).toHaveLength(0);
+    expect(await fs.readdir(cronDir)).toHaveLength(0);
   });
 
   it('updates markdown file with new metadata and body', async () => {
-    await service.start();
+    await startService();
+    await add({ name: 'Original Name', schedule: '0 9 * * *', task: 'Original prompt' });
 
-    await service.add({
-      name: 'Original Name',
-      schedule: '0 9 * * *',
-      task: 'Original prompt',
-    });
+    const taskId = (await search()).items[0].id;
+    await update({ id: taskId, name: 'Updated Name', task: 'Updated prompt' });
 
-    const result = await service.search({ query: '', page: 1, limit: 10 });
-    const taskId = result.items[0].id;
-
-    await service.update({
-      id: taskId,
-      name: 'Updated Name',
-      task: 'Updated prompt',
-    });
-
-    const updated = await service.search({ query: '', page: 1, limit: 10 });
+    const updated = await search();
     expect(updated.items[0].name).toBe('Updated Name');
     expect(updated.items[0].task).toBe('Updated prompt');
   });
 
-  it('does not persist ephemeral tasks', async () => {
-    config.heartbeat = {
-      enabled: true,
-      intervalMinutes: 30,
-      notify: [],
-    };
-
-    const svc = new CronService(bus, config, cronDir);
-    await svc.start();
-
-    const result = await svc.search({ query: 'heartbeat', page: 1, limit: 10 });
-    // Ephemeral heartbeat should not be in search results
-    expect(result.items).toHaveLength(0);
-
-    svc.stop();
+  it('does not persist ephemeral tasks (heartbeat)', async () => {
+    await fs.writeFile(path.join(cronDir, 'heartbeat.md'),
+      `---\nid: heartbeat\nname: "Heartbeat"\nschedule: "*/30 * * * *"\nenabled: false\n---\n\nHeartbeat check`);
+    await startService();
+    // Ephemeral heartbeat is excluded from search results.
+    expect((await search('heartbeat')).items).toHaveLength(0);
   });
 
   describe('YAML array parsing', () => {
     it('parses multi-line notify array from markdown', async () => {
-      await fs.writeFile(
-        path.join(cronDir, 'notify-task.md'),
-        `---
-id: notify-task
-name: "Task with Notifications"
-schedule: "0 9 * * *"
-enabled: true
-notify:
-  - whatsapp:61423222658
-  - telegram:987654321
----
-
-Send results to channels`
-      );
-
-      await service.start();
-
-      const result = await service.search({ query: '', page: 1, limit: 10 });
-      expect(result.items).toHaveLength(1);
+      await fs.writeFile(path.join(cronDir, 'notify-task.md'),
+        `---\nid: notify-task\nname: "Task with Notifications"\nschedule: "0 9 * * *"\nenabled: true\nnotify:\n  - whatsapp:61423222658\n  - telegram:987654321\n---\n\nSend results to channels`);
+      await startService();
+      const result = await search();
       expect(result.items[0].notify).toEqual(['whatsapp:61423222658', 'telegram:987654321']);
     });
 
     it('parses activeHours array from markdown', async () => {
-      await fs.writeFile(
-        path.join(cronDir, 'hours-task.md'),
-        `---
-id: hours-task
-name: "Task with Active Hours"
-schedule: "0 * * * *"
-enabled: true
-activeHours: [8, 18]
-activeHoursTimezone: "Australia/Sydney"
----
-
-Only runs 8am-6pm Sydney time`
-      );
-
-      await service.start();
-
-      const result = await service.search({ query: '', page: 1, limit: 10 });
-      expect(result.items).toHaveLength(1);
+      await fs.writeFile(path.join(cronDir, 'hours-task.md'),
+        `---\nid: hours-task\nname: "Task with Active Hours"\nschedule: "0 * * * *"\nenabled: true\nactiveHours: [8, 18]\nactiveHoursTimezone: "Australia/Sydney"\n---\n\nOnly runs 8am-6pm Sydney time`);
+      await startService();
+      const result = await search();
       expect(result.items[0].activeHours).toEqual([8, 18]);
       expect(result.items[0].activeHoursTimezone).toBe('Australia/Sydney');
     });
 
     it('handles empty notify array in markdown', async () => {
-      await fs.writeFile(
-        path.join(cronDir, 'no-notify.md'),
-        `---
-id: no-notify
-name: "Task without notifications"
-schedule: "0 9 * * *"
-enabled: true
-notify: []
----
-
-This task runs but sends no notifications`
-      );
-
-      await service.start();
-
-      const result = await service.search({ query: '', page: 1, limit: 10 });
-      expect(result.items).toHaveLength(1);
-      expect(result.items[0].notify).toEqual([]);
+      await fs.writeFile(path.join(cronDir, 'no-notify.md'),
+        `---\nid: no-notify\nname: "Task without notifications"\nschedule: "0 9 * * *"\nenabled: true\nnotify: []\n---\n\nThis task runs but sends no notifications`);
+      await startService();
+      expect((await search()).items[0].notify).toEqual([]);
     });
 
     it('handles missing notify field', async () => {
-      await fs.writeFile(
-        path.join(cronDir, 'no-notify-field.md'),
-        `---
-id: no-notify-field
-name: "Task without notify field"
-schedule: "0 9 * * *"
-enabled: true
----
-
-Task with no notification configuration`
-      );
-
-      await service.start();
-
-      const result = await service.search({ query: '', page: 1, limit: 10 });
-      expect(result.items).toHaveLength(1);
-      expect(result.items[0].notify).toBeUndefined();
+      await fs.writeFile(path.join(cronDir, 'no-notify-field.md'),
+        `---\nid: no-notify-field\nname: "Task without notify field"\nschedule: "0 9 * * *"\nenabled: true\n---\n\nTask with no notification configuration`);
+      await startService();
+      expect((await search()).items[0].notify).toBeUndefined();
     });
   });
 
   describe('Schema validation', () => {
-    it('rejects task missing required id field', async () => {
-      await fs.writeFile(
-        path.join(cronDir, 'no-id.md'),
-        `---
-name: "Task without ID"
-schedule: "0 9 * * *"
----
+    const expectRejected = async (filename: string, content: string) => {
+      await fs.writeFile(path.join(cronDir, filename), content);
+      await startService();
+      expect((await search()).items).toHaveLength(0);
+    };
 
-This should fail validation`
-      );
+    it('rejects task missing required id field', () =>
+      expectRejected('no-id.md', `---\nname: "Task without ID"\nschedule: "0 9 * * *"\n---\n\nThis should fail validation`));
 
-      await service.start();
+    it('rejects task missing required schedule field', () =>
+      expectRejected('no-schedule.md', `---\nid: no-schedule\nname: "Task without schedule"\n---\n\nThis should fail validation`));
 
-      const result = await service.search({ query: '', page: 1, limit: 10 });
-      expect(result.items).toHaveLength(0);
-    });
-
-    it('rejects task missing required schedule field', async () => {
-      await fs.writeFile(
-        path.join(cronDir, 'no-schedule.md'),
-        `---
-id: no-schedule
-name: "Task without schedule"
----
-
-This should fail validation`
-      );
-
-      await service.start();
-
-      const result = await service.search({ query: '', page: 1, limit: 10 });
-      expect(result.items).toHaveLength(0);
-    });
-
-    it('rejects task with empty task body', async () => {
-      await fs.writeFile(
-        path.join(cronDir, 'empty-body.md'),
-        `---
-id: empty-body
-name: "Task with empty body"
-schedule: "0 9 * * *"
----
-
-`
-      );
-
-      await service.start();
-
-      const result = await service.search({ query: '', page: 1, limit: 10 });
-      expect(result.items).toHaveLength(0);
-    });
+    it('rejects task with empty task body', () =>
+      expectRejected('empty-body.md', `---\nid: empty-body\nname: "Task with empty body"\nschedule: "0 9 * * *"\n---\n\n`));
 
     it('accepts valid task with all optional fields', async () => {
-      await fs.writeFile(
-        path.join(cronDir, 'complete.md'),
-        `---
-id: complete-task
-name: "Complete Task"
-schedule: "0 9 * * *"
-enabled: true
-notify:
-  - whatsapp:61423222658
-activeHours: [8, 22]
-activeHoursTimezone: "Australia/Sydney"
----
-
-This is a complete task with all optional fields`
-      );
-
-      await service.start();
-
-      const result = await service.search({ query: '', page: 1, limit: 10 });
-      expect(result.items).toHaveLength(1);
-      const task = result.items[0];
-      expect(task.id).toBe('complete-task');
-      expect(task.name).toBe('Complete Task');
-      expect(task.schedule).toBe('0 9 * * *');
-      expect(task.enabled).toBe(true);
-      expect(task.notify).toEqual(['whatsapp:61423222658']);
-      expect(task.activeHours).toEqual([8, 22]);
-      expect(task.activeHoursTimezone).toBe('Australia/Sydney');
+      await fs.writeFile(path.join(cronDir, 'complete.md'),
+        `---\nid: complete-task\nname: "Complete Task"\nschedule: "0 9 * * *"\nenabled: true\nnotify:\n  - whatsapp:61423222658\nactiveHours: [8, 22]\nactiveHoursTimezone: "Australia/Sydney"\n---\n\nThis is a complete task with all optional fields`);
+      await startService();
+      const task = (await search()).items[0];
+      expect(task).toMatchObject({
+        id: 'complete-task', name: 'Complete Task', schedule: '0 9 * * *', enabled: true,
+        notify: ['whatsapp:61423222658'], activeHours: [8, 22], activeHoursTimezone: 'Australia/Sydney',
+      });
     });
 
     it('uses id as fallback for name if name is missing', async () => {
-      await fs.writeFile(
-        path.join(cronDir, 'fallback-name.md'),
-        `---
-id: fallback-name
-schedule: "0 9 * * *"
----
-
-Task prompt without explicit name field`
-      );
-
-      await service.start();
-
-      const result = await service.search({ query: '', page: 1, limit: 10 });
-      expect(result.items).toHaveLength(1);
-      expect(result.items[0].name).toBe('fallback-name');
+      await fs.writeFile(path.join(cronDir, 'fallback-name.md'),
+        `---\nid: fallback-name\nschedule: "0 9 * * *"\n---\n\nTask prompt without explicit name field`);
+      await startService();
+      expect((await search()).items[0].name).toBe('fallback-name');
     });
 
     it('prefers title field over name field', async () => {
-      await fs.writeFile(
-        path.join(cronDir, 'title-priority.md'),
-        `---
-id: title-priority
-title: "Title Takes Priority"
-name: "Name Field"
-schedule: "0 9 * * *"
----
-
-Task prompt`
-      );
-
-      await service.start();
-
-      const result = await service.search({ query: '', page: 1, limit: 10 });
-      expect(result.items).toHaveLength(1);
-      expect(result.items[0].name).toBe('Title Takes Priority');
+      await fs.writeFile(path.join(cronDir, 'title-priority.md'),
+        `---\nid: title-priority\ntitle: "Title Takes Priority"\nname: "Name Field"\nschedule: "0 9 * * *"\n---\n\nTask prompt`);
+      await startService();
+      expect((await search()).items[0].name).toBe('Title Takes Priority');
     });
   });
 
   describe('Error handling', () => {
-    it('skips tasks with malformed YAML frontmatter', async () => {
-      await fs.writeFile(
-        path.join(cronDir, 'malformed.md'),
-        `---
-This is not valid YAML: because: there's: no: colons
----
-
-Task body`
-      );
-
-      await service.start();
-
-      const result = await service.search({ query: '', page: 1, limit: 10 });
-      expect(result.items).toHaveLength(0);
-    });
-
     it('skips tasks with invalid type values', async () => {
-      await fs.writeFile(
-        path.join(cronDir, 'invalid-types.md'),
-        `---
-id: invalid-types
-name: "Invalid Types"
-schedule: "0 9 * * *"
-activeHours: [8, 25]
----
-
-activeHours has invalid hour (25)`
-      );
-
-      await service.start();
-
-      const result = await service.search({ query: '', page: 1, limit: 10 });
-      // Should be rejected due to invalid hour value
-      expect(result.items).toHaveLength(0);
+      await fs.writeFile(path.join(cronDir, 'invalid-types.md'),
+        `---\nid: invalid-types\nname: "Invalid Types"\nschedule: "0 9 * * *"\nactiveHours: [8, 25]\n---\n\nactiveHours has invalid hour (25)`);
+      await startService();
+      expect((await search()).items).toHaveLength(0);
     });
 
     it('handles files without YAML frontmatter gracefully', async () => {
-      await fs.writeFile(
-        path.join(cronDir, 'no-frontmatter.md'),
-        `Just a regular markdown file with no YAML frontmatter at all`
-      );
-
-      await service.start();
-
-      const result = await service.search({ query: '', page: 1, limit: 10 });
-      expect(result.items).toHaveLength(0);
+      await fs.writeFile(path.join(cronDir, 'no-frontmatter.md'), `Just a regular markdown file with no YAML frontmatter at all`);
+      await startService();
+      expect((await search()).items).toHaveLength(0);
     });
 
     it('continues loading other tasks when one fails validation', async () => {
-      await fs.writeFile(
-        path.join(cronDir, 'invalid.md'),
-        `---
-name: "Missing required fields"
----
-
-This should fail`
-      );
-
-      await fs.writeFile(
-        path.join(cronDir, 'valid.md'),
-        `---
-id: valid-task
-name: "Valid Task"
-schedule: "0 9 * * *"
----
-
-This should load`
-      );
-
-      await service.start();
-
-      const result = await service.search({ query: '', page: 1, limit: 10 });
+      await fs.writeFile(path.join(cronDir, 'invalid.md'), `---\nname: "Missing required fields"\n---\n\nThis should fail`);
+      await fs.writeFile(path.join(cronDir, 'valid.md'), `---\nid: valid-task\nname: "Valid Task"\nschedule: "0 9 * * *"\n---\n\nThis should load`);
+      await startService();
+      const result = await search();
       expect(result.items).toHaveLength(1);
       expect(result.items[0].id).toBe('valid-task');
-    });
-  });
-
-  describe('Cron Job Configuration', () => {
-    it('schedules tasks in local timezone, not UTC', async () => {
-      // Create a task scheduled for 9:00 AM
-      await fs.writeFile(
-        path.join(cronDir, 'test-tz.md'),
-        `---
-id: test-tz
-name: "Timezone Test"
-schedule: "0 9 * * *"
----
-
-Test task`
-      );
-
-      await service.start();
-
-      // Verify the task was loaded
-      const result = await service.search({ query: '', page: 1, limit: 10 });
-      expect(result.items).toHaveLength(1);
-      expect(result.items[0].id).toBe('test-tz');
-
-      // The actual cron job will use system timezone (not UTC)
-      // If it were UTC, the next fire would be at a different local time
-      // This test verifies the job was created successfully (no UTC parameter)
-      // by checking that the service loaded it without errors
     });
   });
 });

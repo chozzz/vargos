@@ -34,16 +34,14 @@ pnpm lint             # eslint + typecheck
 
 ## Service Boot Order
 
-```
-config → log → web → memory → media → agent → channels → cron → mcp-client → tcp server → bus.onReady
-```
+`boot.ts` discovers `services/*/index.<ext>` and loads them: `config` and `log` first (others read config during `init`), then the rest, then the JSON-RPC server, then `bus.onReady`.
 
-`edge/mcp/` and `edge/webhooks/` exist in code but are commented out in `boot.ts` (currently disabled at boot). `index.ts` is a tiny supervisor that spawns `boot.ts` as a child and respawns it on exit code 42 — that's how `bus.restart` picks up fresh code from disk without needing systemd.
+`edge/mcp/` and `edge/webhooks/` exist in code but are not auto-discovered (they live in `edge/`). `index.ts` is a tiny supervisor that spawns `boot.ts` as a child and respawns it on exit code 42 — that's how `bus.restartProcess` picks up fresh code from disk without needing systemd.
 
 ## Key Patterns
 
-- Services extend a class with `@on` (pure events) and `@register` (callable RPC) decorated methods.
-- Each service exports a `boot(bus)` function that calls `bus.bootstrap(this)`.
+- A service is `services/<name>/index.ts` exporting `createService(): { name, init(bus), dispose() }`. The directory name is the service name and method namespace.
+- `init(bus)` registers methods with `bus.register('service.method', { schema, description, cli }, handler)` and listeners with `bus.on('event', fn)`; `dispose()` must release everything it opened (timers, sockets, db).
 - Cross-service imports are forbidden. Use `bus.call('service.method', params)` instead.
 - Type-only imports from `services/config/` are allowed for type-checking `AppConfig`.
 

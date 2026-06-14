@@ -50,7 +50,7 @@ pnpm chat "what's in /tmp?"   # one-shot
 
 ## Connecting channels
 
-Edit `~/.vargos/config.json` `channels[]` to add Telegram or WhatsApp adapters. See [Channels](./usage/channels.md).
+Edit `~/.vargos/config.json` `channels[]` to add Telegram or WhatsApp adapters. See [Channels](./usage.md).
 
 ## Manual reseed
 
@@ -63,7 +63,7 @@ Re-runs the `.templates/` → `~/.vargos/` recursive copy. Copy-missing only —
 ## What's next
 
 - [Configuration](./configuration.md) — full config reference
-- [Channels](./usage/channels.md) — WhatsApp and Telegram setup
-- [Personas](./usage/personas.md) — per-channel behavior overrides
-- [Runtime](./usage/runtime.md) — execution flow
-- [MCP](./usage/mcp.md) — connect external MCP servers
+- [Channels](./usage.md) — WhatsApp and Telegram setup
+- [Personas](./usage.md) — per-channel behavior overrides
+- [Runtime](./usage.md) — execution flow
+- [MCP](./usage.md) — connect external MCP servers

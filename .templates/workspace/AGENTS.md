@@ -43,7 +43,7 @@ A good long-running job:
 Notify with the CLI — it reaches the running gateway and handles the channel key format for you:
 
 ```bash
-vargos channels send "${SESSION_KEY}" "✅ Job done — log: /tmp/job.log"
+vargos channel send "${SESSION_KEY}" "✅ Job done — log: /tmp/job.log"
 ```
 
 That is shorthand for the raw gateway call:
@@ -56,7 +56,7 @@ Detach so the work survives the run, and notify on exit:
 
 ```bash
 nohup bash -c 'my_command > /tmp/job.log 2>&1; \
-  vargos channels send "${SESSION_KEY}" "Job finished (exit $?) — log: /tmp/job.log"' >/dev/null 2>&1 &
+  vargos channel send "${SESSION_KEY}" "Job finished (exit $?) — log: /tmp/job.log"' >/dev/null 2>&1 &
 echo "Started PID $! → /tmp/job.log"
 ```
 

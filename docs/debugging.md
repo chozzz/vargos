@@ -49,10 +49,10 @@ Each line is a `SessionEntry`. Look for:
 
 ### Tool not found / not exposed
 
-Open the gateway TCP socket and call `bus.search`:
+Open the gateway TCP socket and call `bus.list`:
 
 ```bash
-echo '{"jsonrpc":"2.0","id":1,"method":"bus.search","params":{}}' | nc -q 1 127.0.0.1 9000
+echo '{"jsonrpc":"2.0","id":1,"method":"bus.list","params":{}}' | nc -q 1 127.0.0.1 9000
 ```
 
 The agent sees a filtered subset based on the channel persona's `allowedTools` glob — check `~/.vargos/agents/<channelId>.md`.
@@ -73,13 +73,13 @@ The indexer watches `~/.vargos/workspace/**/*.md` and chunks JSONL session files
 
 The gateway speaks JSON-RPC 2.0 over TCP — not HTTP. Useful direct calls:
 
-- `bus.search` — list all events
-- `bus.inspect { event: "agent.execute" }` — schema for one event
+- `bus.list` — list all events
+- `bus.list { event: "agent.execute" }` — schema for one event
 - `agent.status` — session inventory (state, parent links, model) + active runs
 - `memory.stats` — index size
 
 ## See also
 
-- [Troubleshooting](./usage/troubleshooting.md) — common error fixes
-- [Runtime](./usage/runtime.md) — execution flow
-- [API Reference](./api-reference.md) — bus event catalog
+- [Troubleshooting](./usage.md) — common error fixes
+- [Runtime](./usage.md) — execution flow
+- [Architecture](./architecture.md) — bus event catalog

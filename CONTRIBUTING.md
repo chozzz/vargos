@@ -50,9 +50,8 @@ pnpm lint              # ESLint + typecheck
 
 For deeper understanding of the project:
 
-- [Architecture Deep Dive](./docs/architecture/bus-design.md) — Event bus design, service patterns
-- [Channels Design](./docs/architecture/channels-design.md) — Channel provider architecture
-- [API Reference](./docs/api-reference.md) — Complete bus RPC reference
+- [Architecture](./docs/architecture.md) — bus registry, service contract, surfaces, hot reload
+- [Extending](./docs/extending.md) — add tools, skills, providers
 - [Debugging](./docs/debugging.md) — Debug modes and logging
 
 ## Project Status

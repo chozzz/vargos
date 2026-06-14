@@ -16,15 +16,14 @@ import { CronJob } from 'cron';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { register } from '../../gateway/decorators.js';
-import type { Bus } from '../../gateway/bus.js';
-import type { EventMap } from '../../gateway/events.js';
-import type { AppConfig, CronTask, CronAddParams, CronUpdateParams } from '../../services/config/index.js';
+import type { Bus, Service } from '../../core/types.js';
+import type { CronTask, CronAddParams, CronUpdateParams } from '../../services/config/index.js';
 import { CronTaskSchema } from '../../services/config/schemas/cron.js';
 import { createLogger } from '../../lib/logger.js';
 import { toMessage } from '../../lib/error.js';
+import { formatZodIssues } from '../../core/errors.js';
 import { getDataPaths } from '../../lib/paths.js';
-import { generateId } from '../../lib/id.js';
+import { generateId } from '../../lib/util.js';
 import { paginate } from '../../lib/paginate.js';
 import { cronSessionKey, parseSessionKey } from '../../lib/session-key.js';
 import { parseFrontmatter, serializeFrontmatter } from '../../lib/frontmatter.js';
@@ -36,56 +35,89 @@ import {
 
 const log = createLogger('cron');
 
+type AgentCompletedPayload = { sessionKey: string; success: boolean };
+
 // ── CronService ───────────────────────────────────────────────────────────────
 
-export class CronService {
+export class CronService implements Service {
+  readonly name = 'cron';
   private jobs = new Map<string, { task: CronTask; job: CronJob }>();
   private ephemeralIds = new Set<string>();
   private activeTasks = new Set<string>();
   private beforeFireHooks = new Map<string, () => Promise<boolean>>();
-  private unsubscribeCompleted?: () => void;
-  private readonly cronDir: string;
+  private bus!: Bus;
+  private cronDir: string;
 
-  constructor(
-    private readonly bus: Bus,
-    private readonly config: AppConfig,
-    cronDir?: string,
-  ) {
+  constructor(cronDir?: string) {
     this.cronDir = cronDir ?? getDataPaths().cronDir;
   }
 
-  async start(): Promise<void> {
-    // Load tasks from disk
+  async init(bus: Bus): Promise<void> {
+    this.bus = bus;
+
+    this.registerMethods(bus);
+
     const diskTasks = await this.loadTasksFromDisk();
-    for (const task of diskTasks) {
-      this.addJob(task);
-    }
-
-    // Register heartbeat if task exists (loaded from disk)
-    if (this.jobs.has('heartbeat')) {
-      this.registerHeartbeat();
-    }
-
+    for (const task of diskTasks) this.addJob(task);
+    if (this.jobs.has('heartbeat')) this.registerHeartbeat();
     this.startAll();
 
-    this.unsubscribeCompleted = this.bus.on(
-      'agent.onCompleted',
-      (payload) => this.onAgentCompleted(payload),
-    );
+    bus.on('agent.onCompleted', (p: AgentCompletedPayload) => this.onAgentCompleted(p));
+    log.info('cron service started');
   }
 
-  stop(): void {
+  /** Stop every CronJob timer — without this, a reload would leave timers firing (D2). */
+  dispose(): void {
     this.stopAll();
-    this.unsubscribeCompleted?.();
+  }
+
+  private registerMethods(bus: Bus): void {
+    bus.register('cron.search', {
+      description: 'Search scheduled cron tasks.',
+      schema: z.object({ query: z.string().optional(), page: z.number().default(1), limit: z.number().default(20) }),
+      cli: { positional: ['query'] },
+    }, (p) => this.search(p));
+
+    bus.register('cron.add', {
+      description: 'Add a new scheduled cron task.',
+      schema: z.object({
+        name: z.string(),
+        schedule: z.string(),
+        task: z.string(),
+        notify: z.array(z.string()).optional(),
+      }),
+      cli: { positional: ['name', 'schedule', 'task'] },
+    }, (p) => this.add(p));
+
+    bus.register('cron.remove', {
+      description: 'Remove a scheduled cron task.',
+      schema: z.object({ id: z.string() }),
+      cli: { positional: ['id'] },
+    }, (p) => this.remove(p));
+
+    bus.register('cron.update', {
+      description: 'Update a scheduled cron task.',
+      schema: z.object({
+        id: z.string(),
+        name: z.string().optional(),
+        schedule: z.string().optional(),
+        task: z.string().optional(),
+        enabled: z.boolean().optional(),
+        notify: z.array(z.string()).optional(),
+      }),
+      cli: { positional: ['id'] },
+    }, (p) => this.update(p));
+
+    bus.register('cron.run', {
+      description: 'Manually trigger a cron task immediately.',
+      schema: z.object({ id: z.string() }),
+      cli: { positional: ['id'] },
+    }, (p) => this.run(p));
   }
 
   // ── Callable handlers ─────────────────────────────────────────────────────
 
-  @register('cron.search', {
-    description: 'Search scheduled cron tasks.',
-    schema: z.object({ query: z.string().optional(), page: z.number().default(1), limit: z.number().default(20) }),
-  })
-  async search(params: EventMap['cron.search']['params']): Promise<EventMap['cron.search']['result']> {
+  private async search(params: { query?: string; page: number; limit: number }) {
     const { query } = params;
     const all = Array.from(this.jobs.values())
       .filter(e => !this.ephemeralIds.has(e.task.id))
@@ -97,16 +129,7 @@ export class CronService {
     return paginate(filtered, params.page, params.limit);
   }
 
-  @register('cron.add', {
-    description: 'Add a new scheduled cron task.',
-    schema: z.object({
-      name: z.string(),
-      schedule: z.string(),
-      task: z.string(),
-      notify: z.array(z.string()).optional(),
-    }),
-  })
-  async add(params: CronAddParams): Promise<void> {
+  private async add(params: CronAddParams): Promise<void> {
     const id = generateId('cron');
     if (this.jobs.has(id)) {
       throw new Error(`Cron task already exists: ${id}`);
@@ -123,11 +146,7 @@ export class CronService {
     log.info(`task added: ${task.name} (${task.id})`);
   }
 
-  @register('cron.remove', {
-    description: 'Remove a scheduled cron task.',
-    schema: z.object({ id: z.string() }),
-  })
-  async remove(params: EventMap['cron.remove']['params']): Promise<void> {
+  private async remove(params: { id: string }): Promise<void> {
     const entry = this.jobs.get(params.id);
     if (!entry) return;
 
@@ -146,18 +165,7 @@ export class CronService {
     log.info(`task removed: ${params.id}`);
   }
 
-  @register('cron.update', {
-    description: 'Update a scheduled cron task.',
-    schema: z.object({
-      id: z.string(),
-      name: z.string().optional(),
-      schedule: z.string().optional(),
-      task: z.string().optional(),
-      enabled: z.boolean().optional(),
-      notify: z.array(z.string()).optional(),
-    }),
-  })
-  async update(params: CronUpdateParams): Promise<void> {
+  private async update(params: CronUpdateParams): Promise<void> {
     const entry = this.jobs.get(params.id);
     if (!entry) throw new Error(`No task with id: ${params.id}`);
 
@@ -191,11 +199,7 @@ export class CronService {
     log.info(`task updated: ${params.id}`);
   }
 
-  @register('cron.run', {
-    description: 'Manually trigger a cron task immediately.',
-    schema: z.object({ id: z.string() }),
-  })
-  async run(params: EventMap['cron.run']['params']): Promise<void> {
+  private async run(params: { id: string }): Promise<void> {
     const entry = this.jobs.get(params.id);
     if (!entry) throw new Error(`No task with id: ${params.id}`);
     // Fire without awaiting — long-running tasks must not block the RPC socket
@@ -269,7 +273,7 @@ export class CronService {
     }).catch(err => log.error(`hook check error: ${id}: ${err}`));
   }
 
-  private onAgentCompleted(payload: EventMap['agent.onCompleted']): void {
+  private onAgentCompleted(payload: AgentCompletedPayload): void {
     const parsed = parseSessionKey(payload.sessionKey);
     if (parsed.type !== 'cron') return;
     // Strip date suffix to recover taskId (e.g. "daily-backup:2026-03-29" → "daily-backup")
@@ -285,7 +289,7 @@ export class CronService {
     const sessionKey = cronSessionKey(task.id);
     log.info(`⏰ ${task.name} (${task.id})`);
 
-    const result = await this.bus.call('agent.execute', {
+    const result = await this.bus.call<{ response: string }>('agent.execute', {
       sessionKey,
       task: task.task,
       ...(task.model && { model: task.model }),
@@ -364,8 +368,7 @@ export class CronService {
           // Validate against schema
           const validation = CronTaskSchema.safeParse(task);
           if (!validation.success) {
-            const errors = validation.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join('; ');
-            log.error(`${filename}: schema validation failed — ${errors}`);
+            log.error(`${filename}: schema validation failed — ${formatZodIssues(validation.error)}`);
             continue;
           }
 
@@ -452,7 +455,7 @@ export class CronService {
     this.beforeFireHooks.set('heartbeat', async () => {
       if (!isWithinActiveHours(activeHours, activeHoursTimezone)) return false;
 
-      const { activeRuns } = await this.bus.call('agent.status', {});
+      const { activeRuns } = await this.bus.call<{ activeRuns: string[] }>('agent.status', {});
       if (activeRuns.length > 0) return false;
 
       try {
@@ -469,13 +472,6 @@ export class CronService {
   }
 }
 
-// ── Boot ───────────────────────────────────────────────────────────────────────
-
-export async function boot(bus: Bus): Promise<{ stop(): void }> {
-  const config = await bus.call('config.get', {});
-  const svc = new CronService(bus, config);
-  await svc.start();
-  bus.bootstrap(svc);
-  log.info('cron service started');
-  return { stop: () => svc.stop() };
+export function createService(): Service {
+  return new CronService();
 }

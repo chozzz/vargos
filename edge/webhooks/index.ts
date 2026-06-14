@@ -11,9 +11,7 @@
 import http from 'node:http';
 import { timingSafeEqual, createHash } from 'node:crypto';
 import { z } from 'zod';
-import { register } from '../../gateway/decorators.js';
-import type { Bus } from '../../gateway/bus.js';
-import type { EventMap } from '../../gateway/events.js';
+import type { Bus, Service } from '../../core/types.js';
 import type { AppConfig, WebhookEntry } from '../../services/config/index.js';
 import { createLogger } from '../../lib/logger.js';
 import { toMessage } from '../../lib/error.js';
@@ -31,46 +29,43 @@ const HTTP_HOST = '127.0.0.1';
 
 // ── WebhooksEdge ──────────────────────────────────────────────────────────────
 
-export class WebhooksEdge {
-  private hooks: Map<string, WebhookEntry>;
+type AgentCompletedPayload = { sessionKey: string; success: boolean };
+
+export class WebhooksEdge implements Service {
+  readonly name = 'webhook';
+  private hooks = new Map<string, WebhookEntry>();
   private activeHooks = new Set<string>();
   private server: http.Server | null = null;
-  private unsubscribeCompleted?: () => void;
+  private bus!: Bus;
 
-  constructor(
-    private readonly bus: Bus,
-    private readonly config: AppConfig,
-  ) {
+  async init(bus: Bus): Promise<void> {
+    this.bus = bus;
+    const config = await bus.call<AppConfig>('config.get', {});
     this.hooks = new Map(config.webhooks.map(h => [h.id, h]));
-  }
 
-  async start(): Promise<void> {
-    this.unsubscribeCompleted = this.bus.on(
-      'agent.onCompleted',
-      (payload) => this.onAgentCompleted(payload),
-    );
+    bus.register('webhook.search', {
+      description: 'List registered webhook endpoints.',
+      schema: z.object({
+        query: z.string().optional(),
+        page: z.number().default(1),
+        limit: z.number().optional(),
+      }),
+      cli: { positional: ['query'] },
+    }, (p) => this.search(p));
+
+    bus.on('agent.onCompleted', (p: AgentCompletedPayload) => this.onAgentCompleted(p));
 
     await this.startHttp();
-    this.bus.bootstrap(this);
     log.info(`started with ${this.hooks.size} webhook(s) on ${HTTP_HOST}:${HTTP_PORT}`);
   }
 
-  async stop(): Promise<void> {
-    this.unsubscribeCompleted?.();
+  async dispose(): Promise<void> {
     await this.stopHttp();
   }
 
   // ── Callable handler ─────────────────────────────────────────────────────
 
-  @register('webhook.search', {
-    description: 'List registered webhook endpoints.',
-    schema: z.object({
-      query: z.string().optional(),
-      page: z.number(),
-      limit: z.number().optional(),
-    }),
-  })
-  async search(params: EventMap['webhook.search']['params']): Promise<EventMap['webhook.search']['result']> {
+  private async search(params: { query?: string; page: number; limit?: number }) {
     // Strip tokens — never expose secrets
     const all: WebhookEntry[] = Array.from(this.hooks.values()).map(
       ({ id, name, transform, notify }) => ({ id, name, token: '', transform, notify }),
@@ -83,7 +78,7 @@ export class WebhooksEdge {
 
   // ── Agent completed handler ───────────────────────────────────────────────
 
-  private onAgentCompleted(payload: EventMap['agent.onCompleted']): void {
+  private onAgentCompleted(payload: AgentCompletedPayload): void {
     const parsed = parseSessionKey(payload.sessionKey);
     if (parsed.type !== 'webhook') return;
     // webhookSessionKey format: "webhook:<hookId>:<timestamp>"
@@ -203,7 +198,7 @@ export class WebhooksEdge {
     log.info(`fired: ${hook.id} → ${sessionKey}`);
     this.activeHooks.add(hook.id);
 
-    const result = await this.bus.call('agent.execute', { sessionKey, task });
+    const result = await this.bus.call<{ response: string }>('agent.execute', { sessionKey, task });
 
     if (result.response && hook.notify?.length) {
       log.info(`${hook.id} delivering response to ${hook.notify.length} targets`);
@@ -219,11 +214,6 @@ export class WebhooksEdge {
   }
 }
 
-// ── Boot ───────────────────────────────────────────────────────────────────────
-
-export async function boot(bus: Bus): Promise<{ stop(): Promise<void> }> {
-  const config = await bus.call('config.get', {});
-  const svc = new WebhooksEdge(bus, config);
-  await svc.start();
-  return { stop: () => svc.stop() };
+export function createService(): Service {
+  return new WebhooksEdge();
 }
