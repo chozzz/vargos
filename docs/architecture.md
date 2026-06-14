@@ -85,4 +85,4 @@ Outbound: `channel.send` → strip markdown → chunk → `adapter.send`.
 
 ## See also
 
-- [Configuration](./configuration.md) · [Usage](./usage.md) · [Extending](./extending.md)
+- [CLI reference](./cli.md) · [Configuration](./configuration.md) · [Usage](./usage.md) · [Extending](./extending.md)

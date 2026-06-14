@@ -131,6 +131,7 @@ export class AgentService implements Service {
       description: 'Return the agent session inventory (state, parent links, model). Pass sessionKey to scope to one session and its subagents.',
       schema: z.object({ sessionKey: z.string().optional() }),
       cli: { positional: ['sessionKey'] },
+      live: true, // session state lives in the daemon; a local stack is always empty
     }, (p) => this.status(p));
   }
 
@@ -174,11 +175,11 @@ export class AgentService implements Service {
    * supply it. It survives validation via the schema's .passthrough().
    */
   private async execute(params: { sessionKey?: string; task: string; cwd?: string; model?: string }): Promise<{ response: string }> {
-    if (!params.sessionKey) {
-      throw new Error('sessionKey is required for agent.execute');
-    }
+    // Channels/cron/webhooks and the agent-tool wrapper always supply a sessionKey; a bare
+    // `vargos agent execute "<task>"` does not, so default to a shared ad-hoc CLI session.
+    const sessionKey = params.sessionKey || 'cli:adhoc';
 
-    log.debug(`execute: START ${params.sessionKey}`);
+    log.debug(`execute: START ${sessionKey}`);
 
     // Fall back to the session's default model when the override is missing or unknown,
     // instead of failing the run (agents sometimes pass an ill-formed or stale model id).
@@ -191,28 +192,28 @@ export class AgentService implements Service {
     const directives = parseDirectives(params.task);
     const task = interpolatePrompt(directives.cleaned || params.task);
 
-    const session = await this.getOrCreateSession(params.sessionKey, { cwd: params.cwd, model });
+    const session = await this.getOrCreateSession(sessionKey, { cwd: params.cwd, model });
 
     if (directives.thinkingLevel) {
       session.setThinkingLevel(directives.thinkingLevel);
     }
 
-    this.activeRuns.add(params.sessionKey);
+    this.activeRuns.add(sessionKey);
     const startTime = Date.now();
     const modelTag = `${session.model?.provider}:${session.model?.id}`;
     try {
       await withTimeout(session.prompt(task, { streamingBehavior: 'steer' }), EXECUTION_TIMEOUT_MS, `Agent execution timeout after ${EXECUTION_TIMEOUT_MS}ms`);
     } finally {
-      this.activeRuns.delete(params.sessionKey);
+      this.activeRuns.delete(sessionKey);
     }
 
     const { content, error } = this.extractFinalAssistant(session);
     if (error) {
-      log.error(`execute: ${params.sessionKey} ended with error [model=${modelTag}]: ${error}`);
+      log.error(`execute: ${sessionKey} ended with error [model=${modelTag}]: ${error}`);
       throw new Error(error);
     }
     const elapsed = Date.now() - startTime;
-    log.info(`${params.sessionKey} → ${content.length} chars in ${elapsed}ms (${modelTag})`);
+    log.info(`${sessionKey} → ${content.length} chars in ${elapsed}ms (${modelTag})`);
     return { response: content };
   }
 

@@ -45,7 +45,7 @@ async function usage(): Promise<void> {
     vargos start                 Boot the daemon (bus + all services + JSON-RPC :9000)
     vargos <service>             List a service's methods
     vargos <service> --help      Show methods, descriptions, and arg shapes
-    vargos <service> <method> …  Invoke a method            (e.g. vargos channel send <to> "<msg>")
+    vargos <service> <method> …  Invoke a method            (e.g. vargos channel send <sessionKey> "<msg>")
 
   Built-ins:
     onboard                      Interactive setup wizard
@@ -184,6 +184,9 @@ async function dispatch(parsed: ParsedCli): Promise<number> {
     infos = await client.call<MethodInfo[]>('bus.list', { service });
     invoke = (m, p) => client.call(m, p);
   } else {
+    // One-shot mode: services skip live startup (channel adapters, webhook HTTP) — we only
+    // need the registry to introspect, and `live` methods are refused below anyway.
+    process.env.VARGOS_CLI_ONESHOT = '1';
     const stack = await bootLocal([service], here, ext);
     infos = stack.bus.list(service);
     invoke = (m, p) => stack.bus.call(m, p);
@@ -209,6 +212,11 @@ async function dispatch(parsed: ParsedCli): Promise<number> {
       return 1;
     }
     if (parsed.help) { console.log(renderHelp(service, [info])); return 0; }
+
+    if (!daemonUp && info.live) {
+      console.error(`❌ "${fullName}" needs the daemon (live channels / session state / background runs).\n   Start it first:  vargos start`);
+      return 1;
+    }
 
     const params = buildParams(info, parsed.args);
     print(await invoke(fullName, params));

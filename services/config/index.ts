@@ -123,8 +123,9 @@ export class ConfigService implements Service {
     }, () => this.get());
 
     bus.register('config.set', {
-      description: 'Update the application config. Routes to the correct file (config.json, agent/models.json, or agent/settings.json).',
+      description: 'Update the application config (whole-object). Routes to the correct file (config.json, agent/models.json, agent/settings.json). Programmatic/RPC use — not a CLI or agent surface.',
       schema: z.object({}).passthrough(),
+      internal: true,
     }, (p: AppConfig) => this.set(p));
   }
 

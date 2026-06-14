@@ -12,7 +12,7 @@ describe('CronService — Markdown File CRUD', () => {
   let bus: EmitterBus;
   let service: CronService;
 
-  const search = (query = '') => bus.call<{ items: CronTask[] }>('cron.search', { query, page: 1, limit: 10 });
+  const search = (query = '') => bus.call<{ items: CronTask[] }>('cron.list', { query, page: 1, limit: 10 });
   const add = (p: CronAddParams) => bus.call('cron.add', p);
   const remove = (id: string) => bus.call('cron.remove', { id });
   const update = (p: CronUpdateParams) => bus.call('cron.update', p);

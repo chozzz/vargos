@@ -97,7 +97,7 @@ Pi-SDK-powered runtime (`@mariozechner/pi-coding-agent`) with Vargos-managed con
 | Feature | Status |
 |---------|--------|
 | File-based tasks at `~/.vargos/cron/<id>.md` (frontmatter + prompt body) | ✅ |
-| `cron.search`, `cron.add`, `cron.update`, `cron.remove`, `cron.run` | ✅ |
+| `cron.list`, `cron.add`, `cron.update`, `cron.remove`, `cron.run` | ✅ |
 | Notify targets — `channel.send` with `fromSessionKey` for history continuity | ✅ |
 | Heartbeat task (active-hours filter, `HEARTBEAT_OK` token pruning, history-injection skipped) | ✅ |
 | Per-task model override | ✅ |

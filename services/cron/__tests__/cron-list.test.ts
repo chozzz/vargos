@@ -1,6 +1,6 @@
 /**
- * Regression: cron.search must return tasks when called with no pagination params,
- * e.g. `echo '{"jsonrpc":"2.0","method":"cron.search","params":{}}' | nc localhost 9000`.
+ * Regression: cron.list must return tasks when called with no pagination params,
+ * e.g. `echo '{"jsonrpc":"2.0","method":"cron.list","params":{}}' | nc localhost 9000`.
  * The schema defaults page/limit, so the handler never slices with NaN.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -11,13 +11,13 @@ import { EmitterBus } from '../../../core/bus.js';
 import { CronService } from '../index.js';
 import type { CronTask } from '../../config/index.js';
 
-describe('cron.search', () => {
+describe('cron.list', () => {
   let tempDir: string;
   let cronDir: string;
   let bus: EmitterBus;
   let service: CronService;
 
-  const search = (params: object) => bus.call<{ items: CronTask[]; page: number; limit: number }>('cron.search', params);
+  const search = (params: object) => bus.call<{ items: CronTask[]; page: number; limit: number }>('cron.list', params);
 
   beforeEach(async () => {
     tempDir = path.join(os.tmpdir(), `cron-search-${Date.now()}-${Math.random().toString(36).slice(2)}`);

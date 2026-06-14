@@ -23,7 +23,7 @@ describe('CronService — activeHours respected for all tasks', () => {
   let bus: EmitterBus;
   let service: CronService;
 
-  const search = () => bus.call<{ items: CronTask[] }>('cron.search', { query: '', page: 1, limit: 10 });
+  const search = () => bus.call<{ items: CronTask[] }>('cron.list', { query: '', page: 1, limit: 10 });
 
   async function start(): Promise<void> {
     service = new CronService(cronDir);

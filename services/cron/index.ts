@@ -1,7 +1,7 @@
 /**
  * Cron service — schedules and fires periodic tasks.
  *
- * Callable: cron.search, cron.add, cron.remove, cron.update, cron.run
+ * Callable: cron.list, cron.add, cron.remove, cron.update, cron.run
  *
  * Concurrency: one active run per task (via activeTasks set).
  * Lock released on agent.onCompleted for cron sessions.
@@ -24,7 +24,7 @@ import { toMessage } from '../../lib/error.js';
 import { formatZodIssues } from '../../core/errors.js';
 import { getDataPaths } from '../../lib/paths.js';
 import { generateId } from '../../lib/util.js';
-import { paginate } from '../../lib/paginate.js';
+import { filterPaginate, ListSchema, type ListParams } from '../../lib/paginate.js';
 import { cronSessionKey, parseSessionKey } from '../../lib/session-key.js';
 import { parseFrontmatter, serializeFrontmatter } from '../../lib/frontmatter.js';
 import {
@@ -72,11 +72,11 @@ export class CronService implements Service {
   }
 
   private registerMethods(bus: Bus): void {
-    bus.register('cron.search', {
-      description: 'Search scheduled cron tasks.',
-      schema: z.object({ query: z.string().optional(), page: z.number().default(1), limit: z.number().default(20) }),
+    bus.register('cron.list', {
+      description: 'List scheduled cron tasks.',
+      schema: ListSchema,
       cli: { positional: ['query'] },
-    }, (p) => this.search(p));
+    }, (p) => this.list(p));
 
     bus.register('cron.add', {
       description: 'Add a new scheduled cron task.',
@@ -112,24 +112,20 @@ export class CronService implements Service {
       description: 'Manually trigger a cron task immediately.',
       schema: z.object({ id: z.string() }),
       cli: { positional: ['id'] },
+      live: true, // fires the agent run in the background — needs the daemon to outlive it
     }, (p) => this.run(p));
   }
 
   // ── Callable handlers ─────────────────────────────────────────────────────
 
-  private async search(params: { query?: string; page: number; limit: number }) {
-    const { query } = params;
-    const all = Array.from(this.jobs.values())
+  private list(params: ListParams) {
+    const tasks = Array.from(this.jobs.values())
       .filter(e => !this.ephemeralIds.has(e.task.id))
       .map(e => e.task);
-    const filtered = query
-      ? all.filter(t => t.name.includes(query) || t.id.includes(query) || t.task.includes(query))
-      : all;
-    // page/limit are omitted by untyped JSON-RPC callers — paginate() defaults them to 1/20.
-    return paginate(filtered, params.page, params.limit);
+    return filterPaginate(tasks, params, t => [t.name, t.id, t.task]);
   }
 
-  private async add(params: CronAddParams): Promise<void> {
+  private async add(params: CronAddParams): Promise<CronTask> {
     const id = generateId('cron');
     if (this.jobs.has(id)) {
       throw new Error(`Cron task already exists: ${id}`);
@@ -144,11 +140,12 @@ export class CronService implements Service {
     this.addJob(task);
     this.jobs.get(task.id)!.job.start();
     log.info(`task added: ${task.name} (${task.id})`);
+    return task;
   }
 
-  private async remove(params: { id: string }): Promise<void> {
+  private async remove(params: { id: string }): Promise<{ removed: boolean; id: string }> {
     const entry = this.jobs.get(params.id);
-    if (!entry) return;
+    if (!entry) return { removed: false, id: params.id };
 
     const isEphemeral = this.ephemeralIds.has(params.id);
 
@@ -163,9 +160,10 @@ export class CronService implements Service {
     }
 
     log.info(`task removed: ${params.id}`);
+    return { removed: true, id: params.id };
   }
 
-  private async update(params: CronUpdateParams): Promise<void> {
+  private async update(params: CronUpdateParams): Promise<CronTask> {
     const entry = this.jobs.get(params.id);
     if (!entry) throw new Error(`No task with id: ${params.id}`);
 
@@ -197,15 +195,17 @@ export class CronService implements Service {
     }
 
     log.info(`task updated: ${params.id}`);
+    return updated;
   }
 
-  private async run(params: { id: string }): Promise<void> {
+  private async run(params: { id: string }): Promise<{ started: boolean; id: string }> {
     const entry = this.jobs.get(params.id);
     if (!entry) throw new Error(`No task with id: ${params.id}`);
     // Fire without awaiting — long-running tasks must not block the RPC socket
     this.executeTask(entry.task).catch(err =>
       log.error(`manual run failed: ${params.id}: ${toMessage(err)}`),
     );
+    return { started: true, id: params.id };
   }
 
   // ── Internal scheduling ───────────────────────────────────────────────────

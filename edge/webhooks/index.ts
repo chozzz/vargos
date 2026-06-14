@@ -1,7 +1,7 @@
 /**
  * Webhooks edge service — inbound HTTP webhooks that trigger agent runs.
  *
- * Callable: webhook.search
+ * Callable: webhook.list
  * Subscribes: agent.onCompleted (delivery to notify targets)
  *
  * Inbound flow: POST /hooks/:id → validate token → transform payload
@@ -10,14 +10,13 @@
 
 import http from 'node:http';
 import { timingSafeEqual, createHash } from 'node:crypto';
-import { z } from 'zod';
 import type { Bus, Service } from '../../core/types.js';
 import type { AppConfig, WebhookEntry } from '../../services/config/index.js';
 import { createLogger } from '../../lib/logger.js';
 import { toMessage } from '../../lib/error.js';
 import { getDataPaths } from '../../lib/paths.js';
 import { webhookSessionKey, parseSessionKey } from '../../lib/session-key.js';
-import { paginate } from '../../lib/paginate.js';
+import { filterPaginate, ListSchema, type ListParams } from '../../lib/paginate.js';
 import { passthroughTransform, loadTransform } from './transform.js';
 
 const log = createLogger('webhooks');
@@ -43,18 +42,16 @@ export class WebhooksEdge implements Service {
     const config = await bus.call<AppConfig>('config.get', {});
     this.hooks = new Map(config.webhooks.map(h => [h.id, h]));
 
-    bus.register('webhook.search', {
+    bus.register('webhook.list', {
       description: 'List registered webhook endpoints.',
-      schema: z.object({
-        query: z.string().optional(),
-        page: z.number().default(1),
-        limit: z.number().optional(),
-      }),
+      schema: ListSchema,
       cli: { positional: ['query'] },
-    }, (p) => this.search(p));
+    }, (p) => this.list(p));
 
     bus.on('agent.onCompleted', (p: AgentCompletedPayload) => this.onAgentCompleted(p));
 
+    // One-shot CLI introspection (webhook.list) reads hooks from config — no HTTP needed.
+    if (process.env.VARGOS_CLI_ONESHOT) return;
     await this.startHttp();
     log.info(`started with ${this.hooks.size} webhook(s) on ${HTTP_HOST}:${HTTP_PORT}`);
   }
@@ -65,15 +62,12 @@ export class WebhooksEdge implements Service {
 
   // ── Callable handler ─────────────────────────────────────────────────────
 
-  private async search(params: { query?: string; page: number; limit?: number }) {
+  private list(params: ListParams) {
     // Strip tokens — never expose secrets
     const all: WebhookEntry[] = Array.from(this.hooks.values()).map(
       ({ id, name, transform, notify }) => ({ id, name, token: '', transform, notify }),
     );
-    const filtered = params.query
-      ? all.filter(h => h.id.includes(params.query!) || h.name.includes(params.query!))
-      : all;
-    return paginate(filtered, params.page, params.limit ?? 20);
+    return filterPaginate(all, params, h => [h.id, h.name]);
   }
 
   // ── Agent completed handler ───────────────────────────────────────────────

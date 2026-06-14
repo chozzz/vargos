@@ -20,6 +20,12 @@ export interface MethodOptions {
   cli?: CliShape;
   /** Hide from the agent tool surface (still callable via CLI/RPC). Default false. */
   internal?: boolean;
+  /**
+   * Method only completes meaningfully against a running daemon (live channels, agent
+   * session state, fire-and-forget runs). The CLI refuses it with a "start the daemon"
+   * hint instead of running it in a throwaway local stack. Default false.
+   */
+  live?: boolean;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -38,6 +44,8 @@ export interface MethodInfo {
   description: string;
   cli?: CliShape;
   internal: boolean;
+  /** Requires a running daemon (see MethodOptions.live). */
+  live: boolean;
   /** JSON Schema derived from the zod schema. */
   schema: unknown;
 }

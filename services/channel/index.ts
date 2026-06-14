@@ -1,7 +1,7 @@
 /**
  * Channel service — manages external messaging adapters.
  *
- * Callable: channel.send, channel.sendMedia, channel.search, channel.get, channel.register
+ * Callable: channel.send, channel.sendMedia, channel.list, channel.get, channel.register
  * Pure events emitted: channel.onConnected, channel.onDisconnected
  * Pure events subscribed: agent.onDelta, agent.onTool, agent.onCompleted
  *
@@ -24,7 +24,7 @@ import { createLogger } from '../../lib/logger.js';
 import { toMessage } from '../../lib/error.js';
 import { stripMarkdown } from '../../lib/util.js';
 import { parseChannelTarget } from '../../lib/session-key.js';
-import { paginate } from '../../lib/paginate.js';
+import { filterPaginate, ListSchema, type ListParams } from '../../lib/paginate.js';
 import type { ChannelAdapter, ChannelProvider, NormalizedInboundMessage, AdapterDeps } from './types.js';
 import { deliverReply } from './delivery.js';
 import { extractMediaPaths } from './media-paths.js';
@@ -34,7 +34,7 @@ import { loadProviders } from './provider-loader.js';
 const log = createLogger('channels');
 const TOOL_ARGS_PREVIEW_CHARS = 160;
 
-interface ChannelInfo { instanceId: string; type: string; status: string }
+interface ChannelInfo { id: string; type: string; status: string }
 type AgentToolPayload =
   | { sessionKey: string; toolName: string; phase: 'start'; args: unknown }
   | { sessionKey: string; toolName: string; phase: 'end'; result: unknown };
@@ -104,7 +104,9 @@ export class ChannelService implements Service {
     bus.on('agent.onCompleted', (p: AgentCompletedPayload) => this.onAgentCompleted(p));
 
     await this.registerProviders();
-    await this.startAllConfigured();
+    // Skip live adapter startup for one-shot CLI calls — `channel.*` methods are `live`
+    // and refused without a daemon, so there is nothing to connect for.
+    if (!process.env.VARGOS_CLI_ONESHOT) await this.startAllConfigured();
   }
 
   async dispose(): Promise<void> {
@@ -123,6 +125,7 @@ export class ChannelService implements Service {
         fromSessionKey: z.string().optional(),
       }),
       cli: { positional: ['sessionKey', 'text'] },
+      live: true,
     }, (p) => this.send(p));
 
     bus.register('channel.sendMedia', {
@@ -134,26 +137,25 @@ export class ChannelService implements Service {
         caption: z.string().optional(),
       }),
       cli: { positional: ['sessionKey', 'filePath', 'mimeType'] },
+      live: true,
     }, (p) => this.sendMedia(p));
 
-    bus.register('channel.search', {
+    bus.register('channel.list', {
       description: 'List connected channel adapters.',
-      schema: z.object({
-        query: z.string().optional(),
-        page: z.number().default(1),
-        limit: z.number().default(20),
-      }),
+      schema: ListSchema,
       cli: { positional: ['query'] },
-    }, (p) => this.search(p));
+      live: true,
+    }, (p) => this.list(p));
 
     bus.register('channel.get', {
       description: 'Get status of a specific channel adapter.',
-      schema: z.object({ instanceId: z.string() }),
-      cli: { positional: ['instanceId'] },
+      schema: z.object({ id: z.string() }),
+      cli: { positional: ['id'] },
+      live: true,
     }, (p) => this.get(p));
 
     bus.register('channel.register', {
-      description: 'Dynamically register a new channel adapter. `type` must match a loaded provider (e.g. telegram, whatsapp).',
+      description: 'Register a channel adapter and persist it to config. `type` must match a loaded provider (e.g. telegram, whatsapp).',
       schema: z.object({
         id: z.string(),
         type: z.string(),
@@ -163,8 +165,10 @@ export class ChannelService implements Service {
         allowFrom: z.array(z.string()).optional(),
         cwd: z.string().optional(),
         botToken: z.string().optional(),
-        persist: z.boolean().optional(),
+        persist: z.boolean().optional().describe('Persist to config.json (default true). Set false for an ephemeral runtime-only adapter.'),
       }),
+      cli: { positional: ['type', 'id'] },
+      live: true,
     }, (p) => this.registerChannel(p));
   }
 
@@ -226,47 +230,45 @@ export class ChannelService implements Service {
     return { sent: true };
   }
 
-  private async search(params: { query?: string; page: number; limit: number }) {
+  private list(params: ListParams) {
     const all: ChannelInfo[] = Array.from(this.adapters.values()).map(a => ({
-      instanceId: a.instanceId,
+      id: a.instanceId,
       type: a.type,
       status: a.status,
     }));
-
-    const filtered = params.query
-      ? all.filter(c => c.instanceId.includes(params.query!) || c.type.includes(params.query!))
-      : all;
-
-    return paginate(filtered, params.page ?? 1, params.limit ?? 20);
+    return filterPaginate(all, params, c => [c.id, c.type]);
   }
 
-  private async get(params: { instanceId: string }): Promise<ChannelInfo> {
-    const adapter = this.adapters.get(params.instanceId);
-    if (!adapter) throw new Error(`No adapter for channel: ${params.instanceId}`);
-    return { instanceId: adapter.instanceId, type: adapter.type, status: adapter.status };
+  private async get(params: { id: string }): Promise<ChannelInfo> {
+    const adapter = this.adapters.get(params.id);
+    if (!adapter) throw new Error(`No adapter for channel: ${params.id}`);
+    return { id: adapter.instanceId, type: adapter.type, status: adapter.status };
   }
 
-  private async registerChannel(params: ChannelEntry & { persist?: boolean }): Promise<void> {
+  private async registerChannel(
+    params: ChannelEntry & { persist?: boolean },
+  ): Promise<{ id: string; type: string; started: boolean; persisted: boolean }> {
     if (!this.registry.has(params.type)) {
       throw new Error(`Unknown channel type: ${params.type}. Loaded providers: ${this.registry.types().join(', ')}`);
     }
+    const { persist, ...entry } = params;
     if (this.adapters.has(params.id)) {
       log.info(`channel already registered: ${params.id}`);
-      return;
+      return { id: params.id, type: params.type, started: false, persisted: false };
     }
-    const { persist, ...entry } = params;
     await this.startChannel(entry);
 
-    if (persist) {
+    // Persist by default so a CLI/RPC registration survives the process; the daemon
+    // picks it up on next load. Pass persist:false for an ephemeral runtime-only adapter.
+    let persisted = false;
+    if (persist !== false) {
       const config = await this.bus.call<AppConfig>('config.get', {});
-      const exists = config.channels.some(c => c.id === entry.id);
-      if (!exists) {
-        await this.bus.call('config.set', {
-          ...config,
-          channels: [...config.channels, entry],
-        });
+      if (!config.channels.some(c => c.id === entry.id)) {
+        await this.bus.call('config.set', { ...config, channels: [...config.channels, entry] });
+        persisted = true;
       }
     }
+    return { id: entry.id, type: entry.type, started: true, persisted };
   }
 
   // ── Agent event handlers ──────────────────────────────────────────────────────

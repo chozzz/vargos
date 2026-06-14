@@ -98,6 +98,7 @@ export class EmitterBus implements Bus {
         description: e.description,
         cli: e.cli,
         internal: e.internal ?? false,
+        live: e.live ?? false,
         schema: toJsonSchema(e.schema),
       });
     }

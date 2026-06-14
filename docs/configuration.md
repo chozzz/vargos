@@ -55,7 +55,7 @@ The MCP **server** (Vargos exposing itself as an MCP server) lives in [`edge/mcp
 
 ## Webhooks
 
-Configured under `webhooks[]` in `config.json`. Receiver lives in [`edge/webhooks/`](../edge/webhooks/) and is currently commented out in `index.ts` — only `webhook.search` introspection is registered.
+Configured under `webhooks[]` in `config.json`. Receiver lives in [`edge/webhooks/`](../edge/webhooks/) and is currently commented out in `index.ts` — only `webhook.list` introspection is registered.
 
 ## See also
 
