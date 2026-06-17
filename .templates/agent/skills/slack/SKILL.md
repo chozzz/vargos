@@ -28,7 +28,7 @@ Resolution order:
 If the user has not stored credentials yet, ask them to run:
 
 ```
-python3 ~/.claude/skills/slack/slack.py auth
+python3 ~/.vargos/agent/skills/slack/slack.py auth
 ```
 
 It prompts for the token and — if the token starts with `xoxc-` — the `d` cookie value (just the value, no `d=` prefix), verifies via `auth.test`, then asks for a profile name (default: a slug derived from the team name). The first profile is auto-promoted to default.
@@ -153,4 +153,4 @@ These are the natural questions users ask and the commands that answer them. Don
 
 ## Manual testing
 
-The user can run `python3 ~/.claude/skills/slack/slack.py menu` to exercise the script interactively without going through Claude.
+The user can run `python3 ~/.vargos/agent/skills/slack/slack.py menu` to exercise the script interactively without going through Claude.
