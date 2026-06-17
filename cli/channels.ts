@@ -5,6 +5,7 @@
  */
 
 import path from 'node:path';
+import qrcode from 'qrcode-terminal';
 import { getDataPaths } from '../lib/paths.js';
 import { readJson, writeJson } from '../lib/util.js';
 import type { ChannelEntry } from '../services/config/schemas/channels.js';
@@ -59,22 +60,37 @@ export async function pairWhatsApp(id: string): Promise<void> {
   const { createWhatsAppSocket } = await import('../services/channel/providers/whatsapp/session.js');
 
   return new Promise<void>((resolve, reject) => {
-    createWhatsAppSocket(authDir, {
-      onQR: () => {},
-      onConnected: (name) => {
-        console.log(`\n✅ Connected as ${name}`);
-        console.log(`   Credentials saved to ${authDir}/creds.json\n`);
-        resolve();
-      },
-      onDisconnected: (reason) => {
-        if (reason === 'logged_out') reject(new Error('Pairing failed — device logged out. Try again.'));
-        else if (reason === 'forbidden') reject(new Error('Pairing failed — access forbidden.'));
-        else {
-          console.log(`\n⚠ Connection closed (${reason}). If you scanned the QR, pairing may have succeeded.`);
+    let settled = false;
+    let restarts = 0;
+
+    const connect = async (): Promise<void> => {
+      await createWhatsAppSocket(authDir, {
+        onQR: (qr) => qrcode.generate(qr, { small: true }),
+        onConnected: (name) => {
+          if (settled) return;
+          settled = true;
+          console.log(`\n✅ Connected as ${name}`);
+          console.log(`   Credentials saved to ${authDir}/creds.json\n`);
           resolve();
-        }
-      },
-      onMessage: () => {},
-    }).catch(reject);
+        },
+        onDisconnected: (reason) => {
+          if (settled) return;
+          // Baileys closes with restart_required immediately after a successful scan — the
+          // creds are saved, but login only completes after reconnecting. This is normal.
+          if (reason === 'restart_required' && restarts++ < 5) {
+            console.log('  Scan accepted — finishing login…');
+            connect().catch(err => { if (!settled) { settled = true; reject(err); } });
+            return;
+          }
+          settled = true;
+          if (reason === 'logged_out') reject(new Error('Pairing failed — device logged out. Try again.'));
+          else if (reason === 'forbidden') reject(new Error('Pairing failed — access forbidden.'));
+          else reject(new Error(`Pairing failed — connection closed (${reason}). Re-run with --reset to retry.`));
+        },
+        onMessage: () => {},
+      });
+    };
+
+    connect().catch(reject);
   });
 }

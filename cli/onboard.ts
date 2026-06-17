@@ -293,13 +293,13 @@ export async function onboard(): Promise<void> {
                 await pairWhatsApp(channelId);
               } catch (err) {
                 p.note(
-                  `Pairing failed: ${err instanceof Error ? err.message : err}\nRun "vargos channels pair whatsapp ${channelId}" to try again.`,
+                  `Pairing failed: ${err instanceof Error ? err.message : err}\nRun "vargos channel pair ${channelId}" to try again.`,
                   'WhatsApp',
                 );
               }
             } else {
               p.note(
-                `Channel "${channelId}" registered.\nRun "vargos channels pair whatsapp ${channelId}" to pair.`,
+                `Channel "${channelId}" registered.\nRun "vargos channel pair ${channelId}" to pair.`,
                 'WhatsApp',
               );
             }

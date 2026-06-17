@@ -12,7 +12,7 @@
  * Built-in commands (not registry methods): start, onboard, chat, sync, migrate.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getDataPaths } from './lib/paths.js';
@@ -168,6 +168,27 @@ async function runBuiltin(cmd: string): Promise<boolean> {
   }
 }
 
+/**
+ * `vargos channel pair <id> [--reset]` — interactive WhatsApp QR pairing. Not a registry
+ * method: it must run locally (renders the QR in *this* terminal) and bypass the daemon,
+ * which is the opposite of how registry methods proxy to :9000. Hence a channel subcommand.
+ */
+async function pairChannel(args: string[]): Promise<number> {
+  const id = args.find(a => !a.startsWith('--'));
+  if (!id) { console.error('Usage: vargos channel pair <channel-id> [--reset]'); return 1; }
+  const authDir = path.join(getDataPaths().channelsDir, id);
+  if (args.includes('--reset') && existsSync(authDir)) {
+    rmSync(authDir, { recursive: true, force: true });
+    console.log(`  Cleared stale auth state at ${authDir}`);
+  }
+  console.log(`\n  Pairing "${id}" — scan the QR with WhatsApp → Linked Devices.`);
+  console.log('  Stop the daemon first if it is running, so it does not hold the session.\n');
+  const { pairWhatsApp } = await import('./cli/channels.js');
+  await pairWhatsApp(id);
+  console.log('  Done. Run "vargos start" (or restart the daemon) to use it.\n');
+  return 0;
+}
+
 // ── Registry-driven dispatch (the three-surface projection) ───────────────────────
 
 async function dispatch(parsed: ParsedCli): Promise<number> {
@@ -202,6 +223,8 @@ async function dispatch(parsed: ParsedCli): Promise<number> {
     const visible = infos.filter(i => !i.internal);
     if (!parsed.method) {
       console.log(parsed.help ? renderHelp(service, visible) : renderList(service, visible));
+      // `pair` is a CLI-local subcommand, not a registry method, so surface it here.
+      if (service === 'channel') console.log('\n  channel pair <id> [--reset]  Pair/repair a WhatsApp channel (interactive QR)');
       return 0;
     }
 
@@ -250,6 +273,11 @@ if (!parsed.service) {
 if (parsed.reserved) {
   const handled = await runBuiltin(parsed.service);
   process.exit(handled ? 0 : 1);
+}
+
+// `channel pair` is a CLI-local interactive action (QR), not a registry/daemon method.
+if ((parsed.service === 'channel' || parsed.service === 'channels') && parsed.method === 'pair') {
+  process.exit(await pairChannel(parsed.args));
 }
 
 process.exit(await dispatch(parsed));

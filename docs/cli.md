@@ -63,6 +63,15 @@ one-shot.
 ² `mcp.*` tools are registered dynamically only after a daemon loads the external MCP servers, so
   they don't exist in a local stack at all (not "refused" — simply absent).
 
+### `channel pair <id> [--reset]` (special subcommand)
+
+Not a registry method — interactive WhatsApp QR pairing that must run **locally** (renders the QR
+in your terminal) and **bypass the daemon**, the opposite of how registry methods proxy to `:9000`.
+It writes creds to `~/.vargos/channels/<id>/`; `--reset` clears stale/logged-out creds first. Stop
+the daemon while pairing so it doesn't hold the session, then `vargos start`. The daemon itself
+never pairs: on a QR/logout at runtime it logs `run: vargos channel pair <id> --reset` and stops
+(no reconnect loop).
+
 ## CLI design principles
 
 These are the rules the surface is held to (enforced by the `live`/`internal` registry flags):

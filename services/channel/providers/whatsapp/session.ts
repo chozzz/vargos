@@ -14,7 +14,6 @@ import makeWASocket, {
   type ConnectionState,
   type WAMessage,
 } from '@whiskeysockets/baileys';
-import qrcode from 'qrcode-terminal';
 import pino from 'pino';
 import { promises as fs } from 'node:fs';
 import { createLogger } from '../../../../lib/logger.js';
@@ -49,10 +48,9 @@ export async function createWhatsAppSocket(
   sock.ev.on('connection.update', (update: Partial<ConnectionState>) => {
     const { connection, lastDisconnect, qr } = update;
 
-    if (qr) {
-      qrcode.generate(qr, { small: true });
-      events.onQR(qr);
-    }
+    // QR means Baileys wants to pair. The caller decides: the CLI `pair` flow renders it;
+    // the daemon adapter treats it as "needs repair" and aborts (no QR at runtime).
+    if (qr) events.onQR(qr);
 
     if (connection === 'close') {
       const err = lastDisconnect?.error as { output?: { statusCode?: number } } | undefined;

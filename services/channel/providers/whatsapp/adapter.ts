@@ -2,7 +2,7 @@
  * WhatsApp channel adapter via Baileys
  */
 
-import { readFileSync, existsSync, writeFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { jidDecode, jidNormalizedUser, areJidsSameUser } from '@whiskeysockets/baileys';
 import type { WASocket } from '@whiskeysockets/baileys';
@@ -25,6 +25,8 @@ export class WhatsAppAdapter extends BaseChannelAdapter<WhatsAppInboundMessage> 
   private reconnector = new Reconnector();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private authDir = '';
+  /** Set when creds are invalid/logged-out. Stops reconnect attempts — repair is CLI-only. */
+  private needsRepair = false;
 
   constructor(
     instanceId: string,
@@ -47,14 +49,20 @@ export class WhatsAppAdapter extends BaseChannelAdapter<WhatsAppInboundMessage> 
     if (!existsSync(creds)) {
       this.status = 'error';
       throw new Error(
-        `No auth state found at ${this.authDir} — run "vargos channels register whatsapp ${this.instanceId}" to pair`,
+        `No auth state found at ${this.authDir} — run "vargos channel pair ${this.instanceId}" to pair`,
       );
     }
 
     try {
       this.sock = await createWhatsAppSocket(this.authDir, {
         onQR: () => {
-          this.log.info('scan the QR code above with WhatsApp > Linked Devices');
+          // The daemon never pairs interactively. A QR means the creds are missing/invalid;
+          // require an explicit CLI repair instead of looping on a QR nobody can scan.
+          this.needsRepair = true;
+          this.status = 'error';
+          this.log.error(`WhatsApp "${this.instanceId}" needs pairing — run:  vargos channel pair ${this.instanceId} --reset`);
+          try { this.sock?.end(undefined); } catch { /* already closing */ }
+          this.sock = null;
         },
         onConnected: (name) => {
           this.botJid = this.sock?.user?.id || '';
@@ -67,23 +75,16 @@ export class WhatsAppAdapter extends BaseChannelAdapter<WhatsAppInboundMessage> 
           this.sock = null;
 
           if (reason === 'logged_out') {
-            // Device was logged out - clear registered flag to force re-pairing
-            this.log.info('WhatsApp device logged out — attempting to reset for re-pairing');
-            try {
-              this.resetCredentialsForRepairing();
-            } catch (err) {
-              this.log.error('failed to reset credentials', { error: toMessage(err) });
-              this.status = 'error';
-              return;
-            }
-            this.status = 'disconnected';
-            this.scheduleReconnect();
+            // Repair is CLI-only — do not auto-reset creds or reconnect (would loop on a QR).
+            this.needsRepair = true;
+            this.status = 'error';
+            this.log.error(`WhatsApp "${this.instanceId}" logged out — run:  vargos channel pair ${this.instanceId} --reset`);
             return;
           }
 
           if (reason === 'forbidden') {
             this.status = 'error';
-            this.log.info('WhatsApp access forbidden — device may be blocked or credentials invalid');
+            this.log.error(`WhatsApp "${this.instanceId}" access forbidden (blocked or invalid creds) — run:  vargos channel pair ${this.instanceId} --reset`);
             return;
           }
 
@@ -245,25 +246,8 @@ export class WhatsAppAdapter extends BaseChannelAdapter<WhatsAppInboundMessage> 
     this.log.debug(`received ${msg.mediaType} from ${userId}: ${caption} (${mimeType}) - ${savedPath}`);
   }
 
-  /**
-   * Reset credentials to allow re-pairing after logout.
-   * Sets registered=false and clears user identity so Baileys shows QR code.
-   */
-  private resetCredentialsForRepairing(): void {
-    const credsPath = path.join(this.authDir, 'creds.json');
-    const creds = JSON.parse(readFileSync(credsPath, 'utf-8')) as Record<string, unknown>;
-
-    // Force Baileys to show QR code by marking as not registered
-    creds.registered = false;
-    // Clear user identity so it's treated as a new pairing
-    creds.me = undefined;
-
-    writeFileSync(credsPath, JSON.stringify(creds, null, 2));
-    this.log.debug('cleared registered flag and user identity for re-pairing');
-  }
-
   private scheduleReconnect(): void {
-    if (this.reconnectTimer) return;
+    if (this.needsRepair || this.reconnectTimer) return; // repair is CLI-only — never loop
     const delay = this.reconnector.next();
     if (delay === null) {
       this.log.debug('max reconnect attempts reached');
