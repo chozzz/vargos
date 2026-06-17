@@ -841,6 +841,104 @@ def cmd_saved(args):
     print(json.dumps({"count": len(out), "saved": out}, indent=2))
 
 
+# -- files ------------------------------------------------------------------
+
+_FILE_ID_RE = re.compile(r"\bF[A-Z0-9]{6,}\b")
+
+
+def _extract_file_id(s: str) -> str:
+    m = _FILE_ID_RE.search(s)
+    if not m:
+        sys.exit(f"can't find a Slack file ID in: {s!r}")
+    return m.group(0)
+
+
+def download_file(file_id: str, output: Path | None = None) -> tuple[Path, dict]:
+    """Download a file by ID. Returns (saved_path, file_info)."""
+    info = api_call("files.info", {"file": file_id}).get("file", {})
+    url = info.get("url_private_download") or info.get("url_private")
+    if not url:
+        raise SystemExit(f"file {file_id} has no download URL (may be external or deleted)")
+    name = info.get("name") or f"{file_id}.bin"
+    if output is None:
+        output = Path.cwd() / name
+    elif output.is_dir():
+        output = output / name
+    output.parent.mkdir(parents=True, exist_ok=True)
+
+    token, cookie = load_credentials()
+    headers = {"Authorization": f"Bearer {token}"}
+    cookies = {"d": cookie} if cookie else None
+    with _session.get(url, headers=headers, cookies=cookies, stream=True, timeout=300) as r:
+        r.raise_for_status()
+        with output.open("wb") as f:
+            for chunk in r.iter_content(8192):
+                if chunk:
+                    f.write(chunk)
+    return output, info
+
+
+def cmd_files(args):
+    params: dict[str, Any] = {"count": args.limit, "page": args.page}
+    if args.channel:
+        params["channel"] = resolve_channel(args.channel)
+    if args.user:
+        params["user"] = resolve_user_id(args.user)
+    if args.types:
+        params["types"] = args.types
+    if args.from_ts:
+        params["ts_from"] = args.from_ts
+    if args.to_ts:
+        params["ts_to"] = args.to_ts
+    data = api_call("files.list", params)
+    out = []
+    for f in data.get("files", []):
+        out.append({
+            "id": f.get("id"),
+            "name": f.get("name"),
+            "title": f.get("title"),
+            "filetype": f.get("filetype"),
+            "mimetype": f.get("mimetype"),
+            "size": f.get("size"),
+            "user": f.get("user"),
+            "channels": f.get("channels"),
+            "created": f.get("created"),
+            "permalink": f.get("permalink"),
+        })
+    paging = data.get("paging") or {}
+    print(json.dumps({"count": len(out), "page": paging.get("page"), "pages": paging.get("pages"), "files": out}, indent=2))
+
+
+def cmd_download(args):
+    fid = _extract_file_id(args.file)
+    out = Path(args.output).expanduser() if args.output else None
+    saved, info = download_file(fid, out)
+    print(json.dumps({
+        "ok": True,
+        "file_id": fid,
+        "name": info.get("name"),
+        "filetype": info.get("filetype"),
+        "size": saved.stat().st_size,
+        "saved_to": str(saved),
+    }, indent=2))
+
+
+def _collect_file_ids(msgs: list[dict]) -> list[str]:
+    ids: list[str] = []
+    seen: set[str] = set()
+    def walk(m: dict):
+        for f in (m.get("files") or []):
+            fid = f.get("id")
+            if fid and fid not in seen:
+                seen.add(fid)
+                ids.append(fid)
+    for m in msgs:
+        walk(m)
+        for t in (m.get("_thread") or []):
+            walk(t)
+    return ids
+
+
 def cmd_info(args):
     cid = resolve_channel(args.channel)
     data = api_call("conversations.info", {"channel": cid})
@@ -873,9 +971,19 @@ def cmd_export(args):
     if args.with_threads:
         _attach_threads(cid, msgs, log=True, workers=args.workers)
 
+    file_count = 0
+    if args.with_files:
+        ids = _collect_file_ids(msgs)
+        if ids:
+            files_dir = out_dir / "files"
+            files_dir.mkdir(exist_ok=True)
+            print(f"  downloading {len(ids)} files → {files_dir}", file=sys.stderr)
+            results = parallel_map(lambda fid: download_file(fid, files_dir), ids, workers=args.workers)
+            file_count = len(results)
+
     (out_dir / "channel.json").write_text(json.dumps(info, indent=2))
     (out_dir / "messages.json").write_text(json.dumps(msgs, indent=2))
-    print(json.dumps({"ok": True, "messages": len(msgs), "output": str(out_dir)}, indent=2))
+    print(json.dumps({"ok": True, "messages": len(msgs), "files": file_count, "output": str(out_dir)}, indent=2))
 
 
 # -- interactive menu -------------------------------------------------------
@@ -929,6 +1037,9 @@ def cmd_menu(args):
         ("reminders", "List your reminders"),
         ("set-reminder", "Create a reminder"),
         ("saved", "List saved-for-later items"),
+        # files
+        ("files", "List files (attachments)"),
+        ("download", "Download a file by ID/permalink"),
         # export / exit
         ("export", "Export full channel to JSON"),
         ("quit", "Exit"),
@@ -1074,6 +1185,16 @@ def cmd_menu(args):
             elif key == "saved":
                 n = int(_prompt("limit", "50"))
                 cmd_saved(argparse.Namespace(limit=n))
+            elif key == "files":
+                ch = _prompt("channel (blank for any)") or None
+                u = _prompt("user (blank for any)") or None
+                ty = _prompt("types (blank for all)") or None
+                n = int(_prompt("limit", "100"))
+                cmd_files(argparse.Namespace(channel=ch, user=u, types=ty, limit=n, page=1, from_ts=None, to_ts=None))
+            elif key == "download":
+                fid = _prompt("file ID or permalink")
+                o = _prompt("output (blank = ./<filename>)") or None
+                cmd_download(argparse.Namespace(file=fid, output=o))
         except KeyboardInterrupt:
             print("\ninterrupted")
         except Exception as e:
@@ -1268,11 +1389,27 @@ def build_parser() -> argparse.ArgumentParser:
     sv.add_argument("--limit", type=int, default=50)
     sv.set_defaults(func=cmd_saved)
 
+    fl = sub.add_parser("files", help="list files (files.list)")
+    fl.add_argument("--channel", help="restrict to one channel")
+    fl.add_argument("--user", help="restrict to one user (@name or U-ID)")
+    fl.add_argument("--types", help="comma list: images,pdfs,snippets,spaces,zips,etc")
+    fl.add_argument("--limit", type=int, default=100)
+    fl.add_argument("--page", type=int, default=1)
+    fl.add_argument("--from-ts", help="unix ts lower bound (ts_from)")
+    fl.add_argument("--to-ts", help="unix ts upper bound (ts_to)")
+    fl.set_defaults(func=cmd_files)
+
+    dl = sub.add_parser("download", help="download a file by ID or permalink")
+    dl.add_argument("file", help="Slack file ID (F…) or a permalink containing one")
+    dl.add_argument("--output", help="output path (file or directory; default: ./<filename>)")
+    dl.set_defaults(func=cmd_download)
+
     e = sub.add_parser("export", help="export full channel history to JSON files")
     e.add_argument("channel")
     e.add_argument("--output", help="output directory (default: ./slack_export_<name>_<ts>)")
     e.add_argument("--with-threads", action="store_true")
-    e.add_argument("--workers", type=int, default=8, help="parallel thread fetches")
+    e.add_argument("--with-files", action="store_true", help="also download every attached file to <output>/files/")
+    e.add_argument("--workers", type=int, default=8, help="parallel thread / file fetches")
     e.set_defaults(func=cmd_export)
 
     return p

@@ -84,7 +84,11 @@ The top-level `--profile NAME` flag (before the subcommand) picks which credenti
 | `reminders` | Your reminders (`reminders.list`). |
 | `set-reminder <text> --at <when>` | `reminders.add`. `<when>` accepts Slack natural language ("in 30 min", "tomorrow at 9am") OR unix epoch. |
 | `saved [--limit N]` | "Saved for later" items (`stars.list` — Slack renamed the UI but kept the API). |
-| `export <channel> [--output DIR] [--with-threads] [--workers N]` | Dump full history + threads to `<dir>/messages.json` and `<dir>/channel.json`. |
+| **Files** | |
+| `upload <channel> <path> [--comment T] [--title T] [--thread TS]` | Attach any file (image, PDF, etc.). Uses the modern `files.getUploadURLExternal` flow. |
+| `files [--channel C] [--user U] [--types T] [--from-ts TS] [--to-ts TS] [--limit N] [--page N]` | List file attachments. `--types` accepts a comma list like `images,pdfs,zips,snippets`. |
+| `download <file-id-or-permalink> [--output PATH]` | Download a file by its `F…` ID — accepts a bare ID or any string containing one (a permalink works). Streams via authed GET on `url_private_download`. `--output` may be a file path or a directory. |
+| `export <channel> [--output DIR] [--with-threads] [--with-files] [--workers N]` | Dump full history + threads to JSON. With `--with-files`, also downloads every attachment referenced in messages and threads to `<dir>/files/` in parallel. |
 | `menu` | Interactive prompt-driven mode for the user to run manually. |
 
 ## How to invoke from Claude
@@ -134,6 +138,11 @@ These are the natural questions users ask and the commands that answer them. Don
 | "What did I save for later?" | `saved` | |
 | "Add Bob to #x" | `invite #x @bob` | Multiple users can be passed positionally. |
 | "Join #announcements" / "Leave #noisy" | `join #x` / `leave #x` | Both are write operations — confirm first. |
+| "Attach this screenshot to #x" / "Send image" | `upload #x /path/to/image.png [--comment "..."]` | Works for any file type. |
+| "What files were shared in #x recently?" | `files --channel #x --limit 50` | Add `--types images` or `--types pdfs` to filter. |
+| "Download that PDF" / "Save the file" | `download <F-ID>` | Find the ID via `files`, `history` (look in `files[]`), or paste a permalink. `--output` accepts a file path or directory. |
+| "Download everything Alice has posted in #x" | `files --channel #x --user alice` → `download` each `id` | Loop the IDs. |
+| "Export #x including the attached files" | `export #x --with-threads --with-files` | Writes `messages.json`, `channel.json`, and `files/<original-name>`. |
 
 ### Presentation tips
 

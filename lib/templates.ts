@@ -3,11 +3,18 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getDataPaths } from './paths.js';
 
-// Seeding is always copy-missing (user edits preserved). These files are additionally
-// offered for update by `vargos sync` when the bundled version changes — the user picks
-// which to overwrite. Scoped to AGENTS.md only; SOUL/TOOLS/MEMORY are never touched.
-// Paths are POSIX-relative to the data dir.
+// Seeding is always copy-missing (user edits preserved). "Managed" templates are additionally
+// offered for update by `vargos sync` when the bundled version changes — the user picks which to
+// overwrite. Covers workspace/AGENTS.md and the bundled skills subtree (shipped code: each
+// skill's SKILL.md + scripts). SOUL/TOOLS/MEMORY, personas, cron, and user-created skills (which
+// aren't in .templates) are never offered. Paths are POSIX-relative to the data dir.
 const OVERRIDABLE = new Set(['workspace/AGENTS.md']);
+const OVERRIDABLE_PREFIXES = ['agent/skills/'];
+
+/** Is this bundled template offered for update by `vargos sync`? */
+function isManaged(rel: string): boolean {
+  return OVERRIDABLE.has(rel) || OVERRIDABLE_PREFIXES.some(prefix => rel.startsWith(prefix));
+}
 
 /** Walk up from this module to locate `.templates/`. Works in both dev and dist layouts. */
 export function findTemplatesRoot(): string | null {
@@ -72,15 +79,15 @@ export async function seedDataDir(
 }
 
 /**
- * Overridable bundled templates that exist on disk but differ — candidates for `vargos sync`.
- * Scoped to OVERRIDABLE (AGENTS.md), so user-owned files are never offered for overwrite.
+ * Managed bundled templates that exist on disk but differ — candidates for `vargos sync`.
+ * Scoped by isManaged() (AGENTS.md + skills), so user-owned files are never offered for overwrite.
  */
 export async function collectTemplateConflicts(): Promise<TemplateFile[]> {
   const root = findTemplatesRoot();
   if (!root) return [];
   const conflicts: TemplateFile[] = [];
   for (const file of await walkTemplates(root, getDataPaths().dataDir)) {
-    if (OVERRIDABLE.has(file.rel) && await differs(file.src, file.dest)) conflicts.push(file);
+    if (isManaged(file.rel) && await differs(file.src, file.dest)) conflicts.push(file);
   }
   return conflicts;
 }
