@@ -41,6 +41,9 @@ export interface ChannelAdapter {
 
   // Execution decision — used by pipeline and media processing
   shouldExecute(userId: string, chatType: string, isMentioned: boolean): boolean;
+  // Whitelist check without mention requirement — lets the pipeline distinguish
+  // "whitelisted but observing in a group" from "not whitelisted at all".
+  isAllowed(userId: string): boolean;
 
   // Optional capabilities — check before calling
   sendMedia?: (sessionKey: string, filePath: string, mimeType: string, caption?: string) => Promise<void>;

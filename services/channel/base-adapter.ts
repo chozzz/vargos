@@ -111,7 +111,7 @@ export abstract class BaseChannelAdapter<TRaw = never> implements ChannelAdapter
     }
 
     const text = messages.join('\n');
-    this.log.info(`batch for ${this.instanceId}:${id}: "${text.slice(0, 80)}"`);
+    this.log.debug(`batch for ${this.instanceId}:${id}: "${text.slice(0, 80)}"`);
     await this.onInboundMessage(this.buildSessionKey(id), { ...normalizedMsg, text });
   }
 
@@ -138,23 +138,20 @@ export abstract class BaseChannelAdapter<TRaw = never> implements ChannelAdapter
    * - Group chat: mentioned + whitelisted → execute
    * - No allowFrom configured: always execute (permissive)
    */
-  shouldExecute(userId: string, chatType: string, isMentioned: boolean): boolean {
-    // undefined = not configured (allow all), [] = configured but empty (block all)
+  isAllowed(userId: string): boolean {
     if (this.allowFrom === undefined) return true;
-
     const normalizedUser = userId.replace(/^\+/, '').replace(/@[^@]+$/, '');
     const fullJidNoPlus = userId.replace(/^\+/, '');
-    const isWhitelisted = this.allowFrom.some(entry => {
+    return this.allowFrom.some(entry => {
       const normalizedEntry = entry.replace(/^\+/, '');
-      // Match: full JID (no +) OR normalized numeric (no +, no @...)
       return fullJidNoPlus === normalizedEntry || normalizedUser === normalizedEntry;
     });
+  }
 
-    if (!isWhitelisted) return false;
+  shouldExecute(userId: string, chatType: string, isMentioned: boolean): boolean {
+    if (!this.isAllowed(userId)) return false;
     if (chatType === 'private') return true;
-
-    // Group chat: require mention. For practical purposes, any @number pattern
-    // in the message counts (covers both proper mentions and manual @typing).
+    // Group chat: require mention.
     return isMentioned;
   }
 

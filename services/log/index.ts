@@ -34,6 +34,9 @@ export class LogService implements Service {
 
   private onLog(payload: LogPayload): void {
     const { level, service, message, data } = payload;
+    // Suppress debug lines unless LOG_LEVEL=debug is explicitly set.
+    if (level === 'debug' && process.env.LOG_LEVEL !== 'debug') return;
+
     const line = `${ts()} [${service}] ${message}${data !== undefined ? ' ' + JSON.stringify(data) : ''}`;
 
     if (level === 'debug') console.debug(line);

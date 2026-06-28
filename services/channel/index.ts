@@ -196,7 +196,7 @@ export class ChannelService implements Service {
     const adapter = this.adapters.get(target.channel);
     if (!adapter) throw new Error(`No adapter for channel: ${target.channel}`);
 
-    log.info(`send: ${sessionKey} (${text.length} chars) channel=${target.channel}`);
+    log.debug(`send: ${sessionKey} (${text.length} chars) channel=${target.channel}`);
     const cleaned = stripMarkdown(text);
     await deliverReply((chunk) => adapter.send(sessionKey, chunk), cleaned);
 
@@ -204,7 +204,7 @@ export class ChannelService implements Service {
     const session = this.activeSessions.get(sessionKey);
     if (session) session.replied = true;
 
-    log.info(`send: completed ${sessionKey}`);
+    log.debug(`send: completed ${sessionKey}`);
 
     if (adapter.sendMedia) {
       const files = extractMediaPaths(text);

@@ -73,9 +73,18 @@ export class InboundMessagePipeline {
     const shouldExecute = adapter.shouldExecute(message.fromUserId, message.chatType, message.isMentioned);
 
     if (!shouldExecute) {
-      const reason = message.chatType === 'private' ? 'not whitelisted' : (message.isMentioned ? 'not whitelisted' : 'not mentioned');
-      log.debug(`shouldExecute=false: userId=${message.fromUserId} chatType=${message.chatType} isMentioned=${message.isMentioned}`);
-      log.info(`← ${sessionKey} (skip: ${reason}) "${enrichedContent.slice(0, 80)}"`);
+      // group + not mentioned is the only ambiguous case: could be whitelisted (sentry)
+      // or simply blocked. Distinguish so whitelisted observers are logged at info.
+      const observing = message.chatType === 'group'
+        && !message.isMentioned
+        && adapter.isAllowed(message.fromUserId);
+
+      const reason = observing ? 'observing (no @mention)' : 'not whitelisted';
+      if (observing) {
+        log.info(`← ${sessionKey} (${reason}) "${enrichedContent.slice(0, 80)}"`);
+      } else {
+        log.debug(`← ${sessionKey} (${reason}) "${enrichedContent.slice(0, 80)}"`);
+      }
       this.bus.call('agent.appendMessage', {
         sessionKey,
         content: enrichedContent,

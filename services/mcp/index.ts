@@ -52,6 +52,13 @@ interface McpServerConfig {
   enabled?: boolean;
 }
 
+// 1-liner format: "server-name": "command with args"
+type McpServerEntry = string | McpServerConfig;
+
+function normalizeEntry(entry: McpServerEntry): McpServerConfig {
+  return typeof entry === 'string' ? { command: entry } : entry;
+}
+
 // ── McpClientService ──────────────────────────────────────────────────────────
 
 export class McpClientService implements Service {
@@ -70,13 +77,13 @@ export class McpClientService implements Service {
     const { dataDir } = getDataPaths();
     const mcpConfigPath = path.join(dataDir, 'agent', 'mcp.json');
 
-    let mcpServers: Record<string, McpServerConfig> = this.config.mcpServers ?? {};
+    let mcpServers: Record<string, McpServerEntry> = this.config.mcpServers ?? {};
 
     // Load from agent/mcp.json if it exists (merged with config.mcpServers)
     if (existsSync(mcpConfigPath)) {
       try {
         const content = readFileSync(mcpConfigPath, 'utf8');
-        const mcpConfig = JSON.parse(content) as { mcpServers?: Record<string, McpServerConfig> };
+        const mcpConfig = JSON.parse(content) as { mcpServers?: Record<string, McpServerEntry> };
         if (mcpConfig.mcpServers) {
           mcpServers = { ...mcpServers, ...mcpConfig.mcpServers };
           log.info(`loaded MCP servers from agent/mcp.json`);
@@ -91,7 +98,8 @@ export class McpClientService implements Service {
       return;
     }
 
-    for (const [name, serverConfig] of Object.entries(mcpServers)) {
+    for (const [name, entry] of Object.entries(mcpServers)) {
+      const serverConfig = normalizeEntry(entry);
       // Skip disabled servers
       if (serverConfig.enabled === false) {
         log.debug(`MCP server disabled: ${name}`);
@@ -151,6 +159,7 @@ export class McpClientService implements Service {
       command: cmd,
       args,
       env: Object.keys(env).length > 0 ? { ...process.env, ...env } as Record<string, string> : undefined,
+      stderr: 'ignore', // suppress FastMCP banners and other server startup noise
     });
 
     const client = new Client({
