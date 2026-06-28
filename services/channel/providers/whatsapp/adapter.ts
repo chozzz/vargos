@@ -37,6 +37,7 @@ export class WhatsAppAdapter extends BaseChannelAdapter<WhatsAppInboundMessage> 
   }
 
   async start(): Promise<void> {
+    this.needsRepair = false; // explicit start() always clears a previous repair flag
     if (this.sock) {
       try { this.sock.end(undefined); } catch { /* already closed */ }
       this.sock = null;
@@ -56,13 +57,20 @@ export class WhatsAppAdapter extends BaseChannelAdapter<WhatsAppInboundMessage> 
     try {
       this.sock = await createWhatsAppSocket(this.authDir, {
         onQR: () => {
-          // The daemon never pairs interactively. A QR means the creds are missing/invalid;
-          // require an explicit CLI repair instead of looping on a QR nobody can scan.
+          // The daemon never pairs interactively. A QR means the creds are missing/invalid.
+          // We close the socket immediately — the auth dir is then free to use with the CLI.
           this.needsRepair = true;
           this.status = 'error';
-          this.log.error(`WhatsApp "${this.instanceId}" needs pairing — run:  vargos channel pair ${this.instanceId} --reset`);
           try { this.sock?.end(undefined); } catch { /* already closing */ }
           this.sock = null;
+          this.log.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          this.log.error(`  WhatsApp "${this.instanceId}" needs re-pairing`);
+          this.log.error('  Credentials are invalid or expired.');
+          this.log.error('  This channel will not send or receive messages.');
+          this.log.error('  Daemon does NOT need to stop. Run:');
+          this.log.error(`    1. vargos channel pair ${this.instanceId} --reset`);
+          this.log.error(`    2. vargos channel restart ${this.instanceId}`);
+          this.log.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         },
         onConnected: (name) => {
           this.botJid = this.sock?.user?.id || '';
@@ -75,16 +83,28 @@ export class WhatsAppAdapter extends BaseChannelAdapter<WhatsAppInboundMessage> 
           this.sock = null;
 
           if (reason === 'logged_out') {
-            // Repair is CLI-only — do not auto-reset creds or reconnect (would loop on a QR).
             this.needsRepair = true;
             this.status = 'error';
-            this.log.error(`WhatsApp "${this.instanceId}" logged out — run:  vargos channel pair ${this.instanceId} --reset`);
+            this.log.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            this.log.error(`  WhatsApp "${this.instanceId}" was logged out`);
+            this.log.error('  Another device removed this session.');
+            this.log.error('  Daemon does NOT need to stop. Run:');
+            this.log.error(`    1. vargos channel pair ${this.instanceId} --reset`);
+            this.log.error(`    2. vargos channel restart ${this.instanceId}`);
+            this.log.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
             return;
           }
 
           if (reason === 'forbidden') {
+            this.needsRepair = true;
             this.status = 'error';
-            this.log.error(`WhatsApp "${this.instanceId}" access forbidden (blocked or invalid creds) — run:  vargos channel pair ${this.instanceId} --reset`);
+            this.log.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            this.log.error(`  WhatsApp "${this.instanceId}" access forbidden`);
+            this.log.error('  Account may be banned or credentials revoked.');
+            this.log.error('  Daemon does NOT need to stop. Run:');
+            this.log.error(`    1. vargos channel pair ${this.instanceId} --reset`);
+            this.log.error(`    2. vargos channel restart ${this.instanceId}`);
+            this.log.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
             return;
           }
 

@@ -61,15 +61,37 @@ export async function pairWhatsApp(id: string): Promise<void> {
 
   return new Promise<void>((resolve, reject) => {
     let settled = false;
+    let connected = false;
+    let qrShown = false;
     let restarts = 0;
 
     const connect = async (): Promise<void> => {
       await createWhatsAppSocket(authDir, {
-        onQR: (qr) => qrcode.generate(qr, { small: true }),
+        onQR: (qr) => {
+          if (qrShown) {
+            // Baileys rotated the QR — the previous one expired before it was scanned.
+            // Exit cleanly so the user can re-run and get a fresh code immediately.
+            if (!settled) {
+              settled = true;
+              reject(new Error('QR code expired before scan. Re-run the command to get a fresh QR.'));
+            }
+            return;
+          }
+          qrShown = true;
+          qrcode.generate(qr, { small: true });
+          console.log('\n  Scan the QR above with WhatsApp → Linked Devices.\n');
+        },
         onConnected: (name) => {
           if (settled) return;
-          settled = true;
+          connected = true;
           console.log(`\n✅ Connected as ${name}`);
+          console.log(`   Saving credentials…`);
+          // Do not resolve here — wait for onCredsSaved to confirm the disk write completed.
+          // Resolving at connection.open risks process.exit() truncating the creds.json write.
+        },
+        onCredsSaved: () => {
+          if (!connected || settled) return;
+          settled = true;
           console.log(`   Credentials saved to ${authDir}/creds.json\n`);
           resolve();
         },

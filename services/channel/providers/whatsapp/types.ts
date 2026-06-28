@@ -22,4 +22,7 @@ export interface WhatsAppSessionEvents {
   onConnected: (name: string) => void;
   onDisconnected: (reason: string) => void;
   onMessage: (msg: WhatsAppInboundMessage) => void;
+  /** Called after each creds.update is flushed to disk. Used by the CLI pairing flow to
+   *  confirm credentials are persisted before process.exit(). Optional — daemon doesn't use it. */
+  onCredsSaved?: () => void;
 }

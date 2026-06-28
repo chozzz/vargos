@@ -176,16 +176,40 @@ async function runBuiltin(cmd: string): Promise<boolean> {
 async function pairChannel(args: string[]): Promise<number> {
   const id = args.find(a => !a.startsWith('--'));
   if (!id) { console.error('Usage: vargos channel pair <channel-id> [--reset]'); return 1; }
+
+  // Guard: refuse to pair a channel that is currently connected.
+  // Opening a second Baileys socket to the same auth dir would silently kick the daemon's session.
+  const { host, port } = gatewayAddress();
+  const client = new RpcClient(host, port);
+  if (await client.isUp()) {
+    try {
+      const info = await client.call<{ id: string; status: string }>('channel.get', { id });
+      if (info.status === 'connected') {
+        console.error(`\n  Error: "${id}" is already connected and healthy.`);
+        console.error(`  Re-pairing a live channel would drop the current session.`);
+        console.error(`  Only pair when the channel is in error or disconnected state.`);
+        console.error(`\n  To check:   vargos channel get ${id}`);
+        console.error(`  To restart: vargos channel restart ${id}\n`);
+        return 1;
+      }
+    } catch {
+      // channel.get failed — channel not registered yet, or daemon can't reach it. Proceed.
+    }
+  }
+
   const authDir = path.join(getDataPaths().channelsDir, id);
   if (args.includes('--reset') && existsSync(authDir)) {
     rmSync(authDir, { recursive: true, force: true });
     console.log(`  Cleared stale auth state at ${authDir}`);
   }
-  console.log(`\n  Pairing "${id}" — scan the QR with WhatsApp → Linked Devices.`);
-  console.log('  Stop the daemon first if it is running, so it does not hold the session.\n');
+  console.log(`\n  Pairing "${id}" — scan the QR with WhatsApp → Linked Devices.\n`);
   const { pairWhatsApp } = await import('./cli/channels.js');
   await pairWhatsApp(id);
-  console.log('  Done. Run "vargos start" (or restart the daemon) to use it.\n');
+  if (await client.isUp()) {
+    console.log(`  Done. Run: vargos channel restart ${id}\n`);
+  } else {
+    console.log('  Done. Run "vargos start" to bring the daemon up.\n');
+  }
   return 0;
 }
 

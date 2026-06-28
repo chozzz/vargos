@@ -154,6 +154,13 @@ export class ChannelService implements Service {
       live: true,
     }, (p) => this.get(p));
 
+    bus.register('channel.restart', {
+      description: 'Restart a channel adapter (stop + start). For WhatsApp: run `channel pair` first, then call this.',
+      schema: z.object({ id: z.string() }),
+      cli: { positional: ['id'] },
+      live: true,
+    }, (p) => this.restart(p));
+
     bus.register('channel.register', {
       description: 'Register a channel adapter and persist it to config. `type` must match a loaded provider (e.g. telegram, whatsapp).',
       schema: z.object({
@@ -243,6 +250,16 @@ export class ChannelService implements Service {
     const adapter = this.adapters.get(params.id);
     if (!adapter) throw new Error(`No adapter for channel: ${params.id}`);
     return { id: adapter.instanceId, type: adapter.type, status: adapter.status };
+  }
+
+  private async restart(params: { id: string }): Promise<{ restarted: boolean; id: string }> {
+    const adapter = this.adapters.get(params.id);
+    if (!adapter) throw new Error(`No adapter for channel: ${params.id}`);
+    log.info(`restarting channel: ${params.id}`);
+    await adapter.stop();
+    await adapter.start();
+    log.info(`channel restarted: ${params.id} (status=${adapter.status})`);
+    return { restarted: true, id: params.id };
   }
 
   private async registerChannel(

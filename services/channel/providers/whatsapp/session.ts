@@ -76,7 +76,10 @@ export async function createWhatsAppSocket(
     }
   });
 
-  sock.ev.on('creds.update', saveCreds);
+  sock.ev.on('creds.update', async () => {
+    await saveCreds();
+    events.onCredsSaved?.();
+  });
 
   sock.ev.on('messages.upsert', ({ messages, type }) => {
     if (type !== 'notify') return;
