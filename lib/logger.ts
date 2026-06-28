@@ -19,7 +19,9 @@ export function createLogger(service: string) {
     if (_bus) {
       _bus.emit('log.onLog', { level, service, message, ...(data !== undefined ? { data } : {}) });
     } else {
-      console.error(`${ts()} [${service}] ${level.toUpperCase()} ${message}`, data ?? '');
+      const line = `${ts()} [${service}] ${message}${data !== undefined ? ' ' + JSON.stringify(data) : ''}`;
+      if (level === 'warn' || level === 'error') console.error(line);
+      else console.log(line);
     }
   }
 
