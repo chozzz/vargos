@@ -13,7 +13,6 @@ import path from 'node:path';
 import type { Bus, Service, Json } from '../../core/types.js';
 import type { AppConfig } from '../../services/config/index.js';
 import { createLogger } from '../../lib/logger.js';
-import { parseDirectives } from './directives.js';
 import { withTimeout } from '../../lib/util.js';
 import { interpolatePrompt } from './prompt-interpolate.js';
 import { truncate } from '../../lib/util.js';
@@ -45,11 +44,30 @@ import { createCustomTools } from './tools.js';
 import { loadChannelPersona, loadSubagentPersona } from './persona.js';
 import { resolveSkillPaths } from './skills.js';
 import { matchesGlob } from '../../lib/glob-match.js';
+import { toMessage } from '../../lib/error.js';
 
 const log = createLogger('agent');
 
 // Hardcoded agent execution constants
 const EXECUTION_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+
+
+const COMPACTION_MESSAGES = [
+  "Our conversation's getting long — giving my memory a quick tidy. Back in a sec! 🗂️",
+  "Pausing to condense what we've covered so far. One moment...",
+  "Summarizing our chat history to stay sharp. Won't be long!",
+  "Our thread's growing — archiving earlier context so I stay focused. Just a moment.",
+  "Quick memory refresh in progress. Hang tight! 🔄",
+  "Archiving the earlier parts of our conversation. Be right back...",
+  "Doing a context repack to stay on top of things. Give me a sec!",
+  "Our chat history's getting full — tidying it up. Back shortly.",
+  "Taking a breath to consolidate what we've discussed. One sec...",
+  "Memory housekeeping in progress. Won't be a moment! 📚",
+] as const;
+
+function randomCompactionMessage(): string {
+  return COMPACTION_MESSAGES[Math.floor(Math.random() * COMPACTION_MESSAGES.length)];
+}
 
 /** Narrow read-only view of a Pi SDK assistant message (see extractFinalAssistant). */
 interface AssistantMessageView {
@@ -189,14 +207,9 @@ export class AgentService implements Service {
       model = undefined;
     }
 
-    const directives = parseDirectives(params.task);
-    const task = interpolatePrompt(directives.cleaned || params.task);
+    const task = interpolatePrompt(params.task).trim();
 
     const session = await this.getOrCreateSession(sessionKey, { cwd: params.cwd, model });
-
-    if (directives.thinkingLevel) {
-      session.setThinkingLevel(directives.thinkingLevel);
-    }
 
     this.activeRuns.add(sessionKey);
     const startTime = Date.now();
@@ -388,45 +401,34 @@ export class AgentService implements Service {
    */
   protected subscribeToSessionEvents(session: AgentSession, sessionKey: string): void {
     session.subscribe((event: AgentSessionEvent) => {
-      const eventType = event.type;
-
-      // log.debug(` --- :: Agent Lifecycle = ${eventType} --- :: ${sessionKey} --- ::  `);
-
-      // Skip session-specific events (auto_retry_start, auto_retry_end) - not emitted as bus events
-      if (eventType === 'auto_retry_start' || eventType === 'auto_retry_end') {
-        return;
-      }
-
-      // Map PiAgent events to our bus events
-      // Bridge PiAgent's untyped event structure to our typed EventMap
-
-      switch (eventType) {
+      // Switching on event.type directly lets TypeScript narrow the union per-case,
+      // so each branch can access typed fields without casting.
+      switch (event.type) {
         case 'tool_execution_start': {
-          const e = event as { toolName?: string; args?: unknown };
-          if (e.toolName) {
+          if (event.toolName) {
             this.bus.emit('agent.onTool', {
               sessionKey,
-              toolName: e.toolName,
+              toolName: event.toolName,
               phase: 'start',
-              args: (e.args ?? {}) as Json,
+              args: (event.args ?? {}) as Json,
             });
           }
           break;
         }
         case 'tool_execution_end': {
-          const e = event as { toolName?: string; result?: unknown };
-          if (e.toolName) {
+          if (event.toolName) {
             this.bus.emit('agent.onTool', {
               sessionKey,
-              toolName: e.toolName,
+              toolName: event.toolName,
               phase: 'end',
-              result: (e.result ?? {}) as Json,
+              result: (event.result ?? {}) as Json,
             });
           }
           break;
         }
         case 'message_update': {
-          const e = event as { delta?: string; text?: string };
+          // delta/text are carried at the top level in practice but not in the declared type.
+          const e = event as typeof event & { delta?: string; text?: string };
           const delta = e.delta || e.text || '';
           if (delta) {
             this.bus.emit('agent.onDelta', { sessionKey, chunk: delta });
@@ -445,6 +447,27 @@ export class AgentService implements Service {
           } else {
             log.debug(`  emitting agent.onCompleted with ${content.length} chars`);
             this.bus.emit('agent.onCompleted', { sessionKey, success: true, response: content });
+          }
+          break;
+        }
+        case 'compaction_start': {
+          log.info(`compacting ${sessionKey} (${event.reason})`);
+          const { type } = parseSessionKey(sessionKey);
+          const isChannel = this.config.channels.some(c => c.id === type);
+          if (isChannel) {
+            this.bus.call('channel.send', { sessionKey, text: randomCompactionMessage() })
+              .catch(err => log.debug(`compaction notice send failed: ${toMessage(err)}`));
+          }
+          break;
+        }
+        case 'compaction_end': {
+          if (event.aborted) {
+            const msg = `compaction failed for ${sessionKey}: ${event.errorMessage ?? 'unknown'}`;
+            if (event.willRetry) log.warn(`${msg} (will retry)`);
+            else log.error(`${msg} (no retry)`);
+          } else {
+            const before = event.result?.tokensBefore;
+            log.info(`compaction done: ${sessionKey}${before !== undefined ? ` (${before.toLocaleString()} tokens condensed)` : ''}`);
           }
           break;
         }
