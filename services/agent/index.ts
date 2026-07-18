@@ -49,7 +49,7 @@ import { toMessage } from '../../lib/error.js';
 const log = createLogger('agent');
 
 // Hardcoded agent execution constants
-const EXECUTION_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+const EXECUTION_TIMEOUT_MS = 300 * 60 * 1000; // 5 hours
 
 
 const COMPACTION_MESSAGES = [
