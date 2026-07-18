@@ -25,21 +25,21 @@ export async function loadChannelPersona(channelId: string): Promise<Persona | n
   const files = await ensureChannelPersonaFiles([channelId]);
 
   if (files.length === 0) {
-    log.warn(`agents/${channelId}.md is missing — not loaded`);
+    log.warn(`[persona:${channelId}] missing file=agents/${channelId}.md; not loaded`);
     return null;
   }
 
   const file = files?.[0];
 
   if (!file || !existsSync(file)) {
-    log.warn(`agents/${channelId}.md exists but is not readable — not loaded`);
+    log.warn(`[persona:${channelId}] not readable file=agents/${channelId}.md; not loaded`);
     return null;
   }
 
   const content = await fs.readFile(file, 'utf-8');
-  
+
   if (!content || !content.trim()) {
-    log.warn(`agents/${channelId}.md is empty — not loaded`);
+    log.warn(`[persona:${channelId}] empty file=agents/${channelId}.md; not loaded`);
     return null;
   }
 
@@ -51,7 +51,7 @@ export async function loadChannelPersona(channelId: string): Promise<Persona | n
   const body = parsed.body.trim();
   const hasAllowedTools = Array.isArray(parsed.meta.allowedTools) && parsed.meta.allowedTools.length > 0;
   if (!body && !hasAllowedTools) {
-    log.warn(`agents/${channelId}.md has no overrides — not loaded`);
+    log.warn(`[persona:${channelId}] no overrides file=agents/${channelId}.md; not loaded`);
     return null;
   }
 
@@ -66,7 +66,7 @@ export async function loadChannelPersona(channelId: string): Promise<Persona | n
 export async function loadSubagentPersona(): Promise<Persona | null> {
   const file = path.join(getDataPaths().dataDir, 'agents', 'subagent.md');
   if (!existsSync(file)) {
-    log.warn('agents/subagent.md not found — subagent running without preamble or tool restrictions');
+    log.warn('[persona:subagent] missing file=agents/subagent.md; running without preamble or tool restrictions');
     return null;
   }
 
@@ -86,7 +86,7 @@ async function ensureChannelPersonaFiles(channelIds: string[]): Promise<string[]
   const agentsDir = path.join(getDataPaths().dataDir, 'agents');
   const defaultFile = path.join(agentsDir, 'default.md');
   if (!existsSync(defaultFile)) {
-    log.warn(`${defaultFile} missing — startup template seed should have copied it`);
+    log.warn(`[persona:default] missing file=${defaultFile}; startup template seed should have copied it`);
     return [];
   }
   await fs.mkdir(agentsDir, { recursive: true });
@@ -95,7 +95,7 @@ async function ensureChannelPersonaFiles(channelIds: string[]): Promise<string[]
     const file = path.join(agentsDir, `${id}.md`);
     if (!existsSync(file)) {
       await fs.copyFile(defaultFile, file);
-      log.info(`seeded agent persona file: ${file}`);
+      log.info(`[persona:${id}] seeded file=${file}`);
     }
     files.push(file);
   }

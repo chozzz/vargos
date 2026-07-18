@@ -81,7 +81,7 @@ function interpolatePromptWithMissing(prompt: string, context?: Record<string, s
     CURRENT_TIMEZONE: currentTimezone,
 
     // Session identity.
-    SESSION_KEY:   context?.SESSION_KEY   || 'unknown',
+    SESSION_KEY: context?.SESSION_KEY || 'unknown',
 
     // Known documentation variables — referenced in bootstrap docs but not runtime values.
     // These prevent spurious "Missing interpolation keys" warnings.
@@ -109,7 +109,8 @@ function interpolatePromptWithMissing(prompt: string, context?: Record<string, s
   });
 
   if (missing.length > 0) {
-    log.warn(`Missing interpolation keys: ${missing.join(', ')}`);
+    const sessionPrefix = context?.SESSION_KEY ? `[${context.SESSION_KEY}] ` : '';
+    log.warn(`${sessionPrefix}interpolation missing keys: ${missing.join(', ')}`);
   }
 
   return { prompt: result, missing };

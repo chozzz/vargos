@@ -61,7 +61,6 @@ function wrapEventAsToolDefinition(
       _ctx: ExtensionContext,
     ): Promise<AgentToolResult<unknown>> => {
       const paramsObj = params as Record<string, unknown>;
-      log.debug(`${eventName}: ${Object.entries(paramsObj).map(([k, v]) => `${k}=${JSON.stringify(v).slice(0, 100)}`).join(', ')}`);
 
       try {
         // Auto-inject sessionKey for agent.execute subagent calls.
@@ -76,6 +75,12 @@ function wrapEventAsToolDefinition(
           paramsObj.sessionKey = sessionKey;
         }
 
+        const paramText = Object.entries(paramsObj).map(([key, value]) => {
+          const text = value === undefined ? 'undefined' : JSON.stringify(value) ?? String(value);
+          return `${key}=${text.slice(0, 100)}`;
+        }).join(' ');
+        log.debug(`[${sessionKey}] tool ${eventName} call${paramText ? ` ${paramText}` : ''}`);
+
         const result = await bus.call(eventName, paramsObj);
 
         // Head/tail truncation preserves the start and end of large results.
@@ -87,20 +92,20 @@ function wrapEventAsToolDefinition(
         }
 
         const resultTokens = Math.ceil(resultText.length / 4);
-        log.debug(`${eventName} ok (${resultTokens} tokens): ${resultText.slice(0, 200).replace(/\n/g, ' ')}${resultText.length > 200 ? '...' : ''}`);
+        log.debug(`[${sessionKey}] tool ${eventName} ok tokens=${resultTokens} preview=${resultText.slice(0, 200).replace(/\n/g, ' ')}${resultText.length > 200 ? '...' : ''}`);
 
         const content = [{ type: 'text' as const, text: resultText }];
 
         if (resultTokens > LARGE_RESULT_TOKEN_THRESHOLD) {
-          const warning = `⚠ Large tool response (~${(resultTokens / 1000).toFixed(1)}k tokens). Extract what you need and avoid additional large calls.\n\n`;
+          const warning = `Large tool response (~${(resultTokens / 1000).toFixed(1)}k tokens). Extract what you need and avoid additional large calls.\n\n`;
           content[0] = { type: 'text' as const, text: warning + content[0].text };
-          log.info(`${eventName}: large result warning (${resultTokens} tokens)`);
+          log.info(`[${sessionKey}] tool ${eventName} large-result tokens=${resultTokens}`);
         }
 
         return { content, details: {} };
       } catch (err) {
         const message = toMessage(err);
-        log.debug(`${eventName} error: ${message}`);
+        log.debug(`[${sessionKey}] tool ${eventName} error: ${message}`);
         appendError({ tool: eventName, sessionKey, message }).catch(() => { });
         return {
           content: [{ type: 'text' as const, text: `Error: ${message}` }],

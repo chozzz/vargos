@@ -178,9 +178,9 @@ export class AgentService implements Service {
         },
       };
       await fs.writeFile(settingsPath, JSON.stringify(updated, null, 2), 'utf-8');
-      log.debug('Agent retry settings persisted to settings.json');
+      log.debug('retry settings persisted to agent/settings.json');
     } catch (err) {
-      log.warn(`Failed to persist retry settings: ${err instanceof Error ? err.message : String(err)}`);
+      log.warn(`retry settings persist failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -194,17 +194,17 @@ export class AgentService implements Service {
     // `vargos agent execute "<task>"` does not, so default to a shared ad-hoc CLI session.
     const sessionKey = params.sessionKey || 'cli:adhoc';
 
-    log.debug(`execute: START ${sessionKey}`);
+    log.debug(`[${sessionKey}] execute start`);
 
     // Fall back to the session's default model when the override is missing or unknown,
     // instead of failing the run (agents sometimes pass an ill-formed or stale model id).
     let model = params.model;
     if (model && !this.isValidModel(model)) {
-      log.warn(`agent.execute: ignoring invalid model "${model}" (expected provider:modelId) — using default`);
+      log.warn(`[${sessionKey}] invalid model override "${model}"; expected provider:modelId, using default`);
       model = undefined;
     }
 
-    const task = interpolatePrompt(params.task).trim();
+    const task = interpolatePrompt(params.task, { SESSION_KEY: sessionKey }).trim();
 
     const session = await this.getOrCreateSession(sessionKey, { cwd: params.cwd, model });
 
@@ -218,13 +218,13 @@ export class AgentService implements Service {
       this.activeRuns.delete(sessionKey);
     }
 
-    const { content, error } = this.extractFinalAssistant(session);
+    const { content, error } = this.extractFinalAssistant(session, sessionKey);
     if (error) {
-      log.error(`execute: ${sessionKey} ended with error [model=${modelTag}]: ${error}`);
+      log.error(`[${sessionKey}] execute failed model=${modelTag}: ${error}`);
       throw new Error(error);
     }
     const elapsed = Date.now() - startTime;
-    log.info(`${sessionKey} → ${content.length} chars in ${elapsed}ms (${modelTag})`);
+    log.info(`[${sessionKey}] execute ok chars=${content.length} elapsedMs=${elapsed} model=${modelTag}`);
     return { response: content };
   }
 
@@ -238,11 +238,11 @@ export class AgentService implements Service {
     const sessionFile = session.sessionManager.getSessionFile();
 
     if (!sessionFile) {
-      log.debug(`No session file for ${params.sessionKey}, skipping append`);
+      log.debug(`[${params.sessionKey}] append skipped: no session file`);
       return;
     }
 
-    log.debug(`Appending message to session ${params.sessionKey} (no execution)`);
+    log.debug(`[${params.sessionKey}] append message without execution`);
 
     const isExecuting = this.activeRuns.has(params.sessionKey);
 
@@ -318,7 +318,7 @@ export class AgentService implements Service {
       if (err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'EEXIST') {
         // File was created by another code path (e.g. concurrent message for same session).
         // Fall back to continueRecent which opens existing files gracefully.
-        log.debug(`session ${sessionKey}: create() hit EEXIST, falling back to continueRecent()`);
+        log.debug(`[${sessionKey}] session create hit EEXIST; using continueRecent`);
         sessionManager = SessionManager.continueRecent(effectiveCwd, sessionDir);
       } else {
         throw err;
@@ -331,9 +331,9 @@ export class AgentService implements Service {
     const persona = await this.loadPersonaIfChannel(sessionKey);
     const customTools = await this.getCustomTools(sessionKey, persona?.meta.allowedTools);
     const rawSystemPrompt = await this.getSystemPrompt(sessionKey, persona?.body);
-    const resourceLoader = await this.createResourceLoader(rawSystemPrompt, effectiveCwd);
+    const resourceLoader = await this.createResourceLoader(rawSystemPrompt, effectiveCwd, sessionKey);
 
-    log.debug(`session: ${sessionKey} created (${customTools.length} tools, ${rawSystemPrompt?.length ?? 0} chars prompt)`);
+    log.debug(`[${sessionKey}] session created tools=${customTools.length} promptChars=${rawSystemPrompt?.length ?? 0}`);
 
     // Apply the per-call/channel model override at creation time, when provided and known.
     const model = this.resolveModel(options?.model);
@@ -356,7 +356,7 @@ export class AgentService implements Service {
         await fs.mkdir(debugDir, { recursive: true });
       }
 
-      log.debug(`Storing debug files in session's debug directory: ${debugDir}`);
+      log.debug(`[${sessionKey}] debug files dir=${debugDir}`);
       await fs.writeFile(path.join(debugDir, `systemPrompt.md`), session.systemPrompt ?? '', 'utf-8');
     }
 
@@ -384,7 +384,7 @@ export class AgentService implements Service {
     if (!resolved) return;
     if (session.model?.provider === resolved.provider && session.model?.id === resolved.id) return;
     await session.setModel(resolved);
-    log.info(`session ${sessionKey}: model → ${resolved.provider}:${resolved.id}`);
+    log.info(`[${sessionKey}] model set ${resolved.provider}:${resolved.id}`);
   }
 
   /** Resolve a `provider:modelId` override to a Pi SDK model, or undefined if unknown. */
@@ -437,35 +437,35 @@ export class AgentService implements Service {
           break;
         }
         case 'agent_end': {
-          const { content, error } = this.extractFinalAssistant(session);
+          const { content, error } = this.extractFinalAssistant(session, sessionKey);
           if (error) {
             const model = session.model?.id ?? 'unknown';
-            log.error(`agent_end with error for ${sessionKey} [model=${model}]: ${error}`);
+            log.error(`[${sessionKey}] event agent_end error model=${model}: ${error}`);
             this.bus.emit('agent.onCompleted', { sessionKey, success: false, error });
           } else {
-            log.debug(`  emitting agent.onCompleted with ${content.length} chars`);
+            log.debug(`[${sessionKey}] event agent_end emitted chars=${content.length}`);
             this.bus.emit('agent.onCompleted', { sessionKey, success: true, response: content });
           }
           break;
         }
         case 'compaction_start': {
-          log.info(`compacting ${sessionKey} (${event.reason})`);
+          log.info(`[${sessionKey}] compaction start reason=${event.reason}`);
           const { type } = parseSessionKey(sessionKey);
           const isChannel = this.config.channels.some(c => c.id === type);
           if (isChannel) {
             this.bus.call('channel.send', { sessionKey, text: randomCompactionMessage() })
-              .catch(err => log.debug(`compaction notice send failed: ${toMessage(err)}`));
+              .catch(err => log.debug(`[${sessionKey}] compaction notice send failed: ${toMessage(err)}`));
           }
           break;
         }
         case 'compaction_end': {
           if (event.aborted) {
-            const msg = `compaction failed for ${sessionKey}: ${event.errorMessage ?? 'unknown'}`;
-            if (event.willRetry) log.warn(`${msg} (will retry)`);
-            else log.error(`${msg} (no retry)`);
+            const msg = `compaction failed: ${event.errorMessage ?? 'unknown'}`;
+            if (event.willRetry) log.warn(`[${sessionKey}] ${msg}; retry=true`);
+            else log.error(`[${sessionKey}] ${msg}; retry=false`);
           } else {
             const before = event.result?.tokensBefore;
-            log.info(`compaction done: ${sessionKey}${before !== undefined ? ` (${before.toLocaleString()} tokens condensed)` : ''}`);
+            log.info(`[${sessionKey}] compaction done${before !== undefined ? ` tokensBefore=${before}` : ''}`);
           }
           break;
         }
@@ -480,7 +480,7 @@ export class AgentService implements Service {
    * Create ResourceLoader. PiAgent's DefaultResourceLoader handles skills, themes, and
    * prompt templates. We override systemPrompt with our Vargos bootstrap files.
    */
-  protected async createResourceLoader(systemPromptOverride?: string, cwd?: string): Promise<DefaultResourceLoader> {
+  protected async createResourceLoader(systemPromptOverride?: string, cwd?: string, sessionKey?: string): Promise<DefaultResourceLoader> {
     const paths = getDataPaths();
     const effectiveCwd = cwd ?? paths.workspaceDir;
     // Only workspace + cwd here — Pi SDK already auto-loads <agentDir>/skills and <cwd>/.pi/skills.
@@ -498,7 +498,7 @@ export class AgentService implements Service {
 
     await resourceLoader.reload();
     const { skills } = resourceLoader.getSkills();
-    log.debug(`Resource loader loaded with ${skills.length} skills.`);
+    log.debug(`${sessionKey ? `[${sessionKey}] ` : ''}resource loader ready skills=${skills.length}`);
     return resourceLoader;
   }
 
@@ -546,13 +546,13 @@ export class AgentService implements Service {
         try {
           const content = await fs.readFile(item.path, 'utf-8');
           const truncated = truncate(content, maxCharsPerFile);
-          log.debug(`Loaded ${item.dir}/${item.filename}: ${truncated.length} chars`);
+          log.debug(`[${sessionKey}] bootstrap loaded file=${item.path} chars=${truncated.length}`);
           return {
             label: `<!-- ${item.dir}/${item.filename} -->`,
             content: truncated.trim(),
           };
         } catch {
-          log.debug(`${item.dir}/${item.filename}: not found`);
+          log.debug(`[${sessionKey}] bootstrap missing file=${item.path}`);
           return null;
         }
       }),
@@ -563,14 +563,13 @@ export class AgentService implements Service {
       if (result) sections.push(result.label, result.content, '');
     }
 
-    // Also log bootstrap files loaded
-    log.debug(`session: ${sessionKey} bootstrap ${sections.filter(s => s.startsWith('<!--')).length} files, ${sections.join('\n').length} chars`);
+    log.debug(`[${sessionKey}] bootstrap ready files=${sections.filter(s => s.startsWith('<!--')).length} chars=${sections.join('\n').length}`);
     if (personaBody) {
       sections.push('<!-- channel persona -->', '<channel-persona>', personaBody.trim(), '</channel-persona>');
     }
 
     if (sections.length === 0) {
-      log.debug('No bootstrap files found, using PiAgent default');
+      log.debug(`[${sessionKey}] bootstrap empty; using PiAgent default`);
       return undefined;
     }
 
@@ -607,7 +606,7 @@ export class AgentService implements Service {
    * empty content and `errorMessage` populated, instead of throwing — without inspecting
    * `stopReason`/`errorMessage` here, those would surface as silent empty completions.
    */
-  private extractFinalAssistant(session: AgentSession): { content: string; error?: string } {
+  private extractFinalAssistant(session: AgentSession, sessionKey?: string): { content: string; error?: string } {
     const messages = session.state.messages as AssistantMessageView[];
 
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -618,7 +617,7 @@ export class AgentService implements Service {
       if (msg.stopReason === 'error') {
         error = msg.errorMessage ?? 'unknown inference error';
         // Log full message details for debugging connection/auth issues
-        log.debug('agent error details:', {
+        log.debug(`${sessionKey ? `[${sessionKey}] ` : ''}assistant error details`, {
           stopReason: msg.stopReason,
           errorMessage: msg.errorMessage,
           model: session.model?.id,
