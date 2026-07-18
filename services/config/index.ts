@@ -9,7 +9,6 @@ import {
   ChannelEntrySchema,
   CronTaskSchema,
   WebhookEntrySchema,
-  HeartbeatConfigSchema,
   LinkExpandConfigSchema,
   ProvidersSchema,
   McpClientConfigSchema,
@@ -23,7 +22,6 @@ import {
   type CronUpdateParams,
   type ProviderConfig,
   type Providers,
-  type HeartbeatConfig,
   type WebhookEntry,
   type LinkExpandConfig,
   type McpClientConfig,
@@ -48,7 +46,6 @@ export const AppConfigSchema = z
       tasks: z.array(CronTaskSchema).optional(),
     }).optional(),
     webhooks: z.array(WebhookEntrySchema).default([]),
-    heartbeat: HeartbeatConfigSchema.optional(),
     linkExpand: LinkExpandConfigSchema.default({}),
     mcp: McpClientConfigSchema.default({}),
     mcpServers: z.record(z.string(), McpServerConfigSchema).optional().describe('External MCP servers to load as bus callable events'),
@@ -57,15 +54,11 @@ export const AppConfigSchema = z
       audio: z.string().optional(),
       image: z.string().optional(),
     }).optional(),
-    paths: z.object({
-      dataDir: z.string().optional(),
-      workspace: z.string().optional(),
-    }).default({}),
     gateway: z.object({
       host: z.string().optional().default('127.0.0.1'),
       port: z.number().int().min(1).max(65535).default(9000),
       /** Client socket idle timeout (ms) for JSON-RPC connections */
-      requestTimeout: z.number().int().positive().optional(),
+      requestTimeoutMs: z.number().int().positive().optional().default(6e5).describe('Client socket idle timeout for JSON-RPC connections, in milliseconds. Defaults to 10 minutes.'),
     }).default({})
   })
   .passthrough();
@@ -81,7 +74,6 @@ export type {
   ProviderConfig,
   Providers,
   Auth,
-  HeartbeatConfig,
   WebhookEntry,
   LinkExpandConfig,
   McpClientConfig,
@@ -129,7 +121,7 @@ export class ConfigService implements Service {
     }, (p: AppConfig) => this.set(p));
   }
 
-  dispose(): void {}
+  dispose(): void { }
 
   private loadConfig(): AppConfig {
     const raw = JSON.parse(readFileSync(this.configFile, 'utf8')) as Record<string, unknown>;

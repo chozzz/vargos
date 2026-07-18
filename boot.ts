@@ -79,7 +79,9 @@ const host = config.gateway.host ?? process.env.BUS_HOST ?? '127.0.0.1';
 const port = parseInt(config.gateway.port ? String(config.gateway.port) : (process.env.BUS_PORT || '9000'), 10);
 
 try {
-  rpcStop = await startRpcServer(bus, host, port, config.gateway.requestTimeout ?? 35 * 60 * 1000);
+  const timeoutMinutes = config.gateway.requestTimeoutMs / 1000 / 60; // 600000 ms = 10 minutes
+  log.info(`Starting RPC server on ${host}:${port} with timeout ${timeoutMinutes} minutes...`);
+  rpcStop = await startRpcServer(bus, host, port, config.gateway.requestTimeoutMs);
 } catch (err) {
   log.error(`failed to start RPC server: ${err instanceof Error ? err.message : String(err)}`);
   process.exit(1);

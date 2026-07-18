@@ -42,8 +42,8 @@ export {
 export type { PiAgentSettings, AgentConfig } from './agent.js';
 
 // Features
-export { HeartbeatConfigSchema, LinkExpandConfigSchema } from './features.js';
-export type { HeartbeatConfig, LinkExpandConfig } from './features.js';
+export { LinkExpandConfigSchema } from './features.js';
+export type { LinkExpandConfig } from './features.js';
 
 // MCP
 export { McpClientConfigSchema, McpServerConfigSchema } from './mcp.js';

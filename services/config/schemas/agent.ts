@@ -93,6 +93,7 @@ export type PiAgentSettings = z.infer<typeof PiAgentSettingsSchema>;
 // ─── Vargos Agent Config ───────────────────────────────────────────────────────
 
 export const AgentConfigSchema = PiAgentSettingsSchema.extend({
+  executionTimeoutMs: z.number().int().positive().optional().default(300 * 60 * 1000).describe('Max execution time for agent tasks in milliseconds. Default is 5 hours (300 minutes).'),
   media: z.object({
     audio: z.string().optional(),
     image: z.string().optional(),

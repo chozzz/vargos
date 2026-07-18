@@ -47,10 +47,7 @@ import { matchesGlob } from '../../lib/glob-match.js';
 import { toMessage } from '../../lib/error.js';
 
 const log = createLogger('agent');
-
-// Hardcoded agent execution constants
-const EXECUTION_TIMEOUT_MS = 300 * 60 * 1000; // 5 hours
-
+const DEFAULT_EXECUTION_TIMEOUT_MS = 300 * 60 * 1000; // 5 hours
 
 const COMPACTION_MESSAGES = [
   "Our conversation's getting long — giving my memory a quick tidy. Back in a sec! 🗂️",
@@ -215,7 +212,8 @@ export class AgentService implements Service {
     const startTime = Date.now();
     const modelTag = `${session.model?.provider}:${session.model?.id}`;
     try {
-      await withTimeout(session.prompt(task, { streamingBehavior: 'steer' }), EXECUTION_TIMEOUT_MS, `Agent execution timeout after ${EXECUTION_TIMEOUT_MS}ms`);
+      const timeoutMs = this.config.agent?.executionTimeoutMs ?? DEFAULT_EXECUTION_TIMEOUT_MS;
+      await withTimeout(session.prompt(task, { streamingBehavior: 'steer' }), timeoutMs, `Agent execution timeout after ${timeoutMs}ms`);
     } finally {
       this.activeRuns.delete(sessionKey);
     }
