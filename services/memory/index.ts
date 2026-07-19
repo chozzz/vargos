@@ -1,19 +1,37 @@
 import path from 'node:path';
 import { z } from 'zod';
 import type { Bus, Service } from '../../core/types.js';
+import type { AppConfig } from '../config/index.js';
 import { getDataPaths } from '../../lib/paths.js';
 import { MemoryContext } from './context.js';
-import { MemorySQLiteStorage } from './sqlite-storage.js';
+import { MemorySQLiteStorage } from './providers/sqlite.js';
 import { createLogger } from '../../lib/logger.js';
+import type { MemoryStorage } from './types.js';
 
 export class MemoryService implements Service {
   readonly name = 'memory';
   protected readonly log = createLogger('memory');
-  protected readonly context: MemoryContext;
+  protected context!: MemoryContext;
 
-  constructor() {
+  private createStorage(dataDir: string, storageType?: string): MemoryStorage {
+    const type = storageType ?? 'sqlite';
+    switch (type) {
+      case 'sqlite':
+        return new MemorySQLiteStorage(path.join(dataDir, 'memory.db'));
+      case 'postgres':
+        throw new Error('Postgres storage provider not yet implemented');
+      default:
+        throw new Error(`Unknown storage type: ${type}`);
+    }
+  }
+
+  async init(bus: Bus): Promise<void> {
+    this.log.info('Initializing memory service');
+
+    const config = await bus.call<AppConfig>('config.get', {});
     const { workspaceDir, cacheDir, sessionsDir, dataDir } = getDataPaths();
-    const storage = new MemorySQLiteStorage(path.join(dataDir, 'memory.db'));
+    const storage = this.createStorage(dataDir, config.storage?.type);
+
     this.context = new MemoryContext({
       memoryDir: workspaceDir,
       cacheDir,
@@ -21,10 +39,7 @@ export class MemoryService implements Service {
       storage,
       enableFileWatcher: true,
     });
-  }
 
-  async init(bus: Bus): Promise<void> {
-    this.log.info('Initializing memory service');
     await this.context.initialize();
 
     bus.register('memory.search', {

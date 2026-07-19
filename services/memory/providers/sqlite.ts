@@ -1,8 +1,12 @@
+/**
+ * SQLite storage provider — uses better-sqlite3 with chunk + file tracking tables.
+ */
+
 import Database from 'better-sqlite3';
 import type BetterSqlite3 from 'better-sqlite3';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import type { MemoryChunk, MemoryStorage } from './types.js';
+import type { MemoryChunk, MemoryStorage } from '../types.js';
 
 export class MemorySQLiteStorage implements MemoryStorage {
   private db: BetterSqlite3.Database | null = null;
