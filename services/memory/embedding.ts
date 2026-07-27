@@ -8,32 +8,34 @@ export async function generateEmbedding(
   text: string,
   config: EmbeddingConfig,
 ): Promise<number[] | undefined> {
-  if (config.provider === 'none') return undefined;
-
-  if (config.provider === 'openai' && config.openaiApiKey) {
-    try {
-      const response = await fetch('https://api.openai.com/v1/embeddings', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${config.openaiApiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          input: text.slice(0, 8000),
-          model: config.model ?? 'text-embedding-3-small',
-        }),
-      });
-
-      if (!response.ok) return undefined;
-
-      const data = await response.json() as { data: Array<{ embedding: number[] }> };
-      return data.data[0].embedding;
-    } catch {
-      return undefined;
-    }
+  if (config.provider === 'none' || config.provider !== 'openai') {
+    return undefined;
+  }
+  
+  if (!config.openaiApiKey) {
+    return undefined;
   }
 
-  return undefined;
+  try {
+    const response = await fetch('https://api.openai.com/v1/embeddings', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${config.openaiApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        input: text.slice(0, 8000),
+        model: config.model ?? 'text-embedding-3-small',
+      }),
+    });
+
+    if (!response.ok) return undefined;
+
+    const data = await response.json() as { data: Array<{ embedding: number[] }> };
+    return data.data[0].embedding;
+  } catch {
+    return undefined;
+  }
 }
 
 export function cosineSimilarity(a: number[], b: number[]): number {

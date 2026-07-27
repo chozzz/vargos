@@ -19,6 +19,8 @@ export interface MemoryStorage {
   deleteChunksByPath(filePath: string): Promise<void>;
   updateFileStatus(path: string, mtime: number, size: number): Promise<void>;
   getFileStatus(path: string): Promise<{ mtime: number; size: number; indexedAt: number } | null>;
+  /** All distinct paths currently tracked in the files table (for stale cleanup). */
+  getAllTrackedPaths(): Promise<string[]>;
   close(): Promise<void>;
   searchSimilar?(embedding: number[], limit: number, minScore?: number): Promise<Array<{ chunk: MemoryChunk; score: number }>>;
 }

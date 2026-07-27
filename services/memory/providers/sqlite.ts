@@ -70,6 +70,11 @@ export class MemorySQLiteStorage implements MemoryStorage {
     return { mtime: row.mtime as number, size: row.size as number, indexedAt: row.indexed_at as number };
   }
 
+  async getAllTrackedPaths(): Promise<string[]> {
+    const rows = this.db!.prepare('SELECT DISTINCT path FROM files ORDER BY path').all() as Array<{ path: string }>;
+    return rows.map(r => r.path);
+  }
+
   async getStats(): Promise<{ fileCount: number; chunkCount: number }> {
     const f = this.db!.prepare('SELECT COUNT(*) as count FROM files').get() as { count: number };
     const c = this.db!.prepare('SELECT COUNT(*) as count FROM chunks').get() as { count: number };

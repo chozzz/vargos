@@ -14,9 +14,9 @@ export function createChunks(
   const lines = content.split('\n');
   const chunks: MemoryChunk[] = [];
 
-  // Approximate tokens: ~4 chars per token
-  const charsPerChunk = config.chunkSize * 4;
-  const overlapChars  = config.chunkOverlap * 4;
+  // Approximate token to character conversion (~4 chars per token)
+  const approxCharsPerChunk = config.chunkSize * 4;
+  const approxOverlapChars  = config.chunkOverlap * 4;
 
   let currentChunk: string[] = [];
   let currentChars = 0;
@@ -25,9 +25,9 @@ export function createChunks(
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     currentChunk.push(line);
-    currentChars += line.length + 1;
+    currentChars += line.length + 1; // +1 for newline character
 
-    if (currentChars >= charsPerChunk) {
+    if (currentChars >= approxCharsPerChunk) {
       const chunkContent = currentChunk.join('\n');
       chunks.push({
         id:        `${relPath}:${chunkStartLine}`,
@@ -38,8 +38,8 @@ export function createChunks(
         metadata:  { date: mtime.toISOString(), size: chunkContent.length },
       });
 
-      const overlapLines = Math.floor(overlapChars / (currentChars / currentChunk.length));
-      currentChunk   = currentChunk.slice(-overlapLines);
+      const calculatedOverlapLines = Math.floor(approxOverlapChars / (currentChars / currentChunk.length));
+      currentChunk   = currentChunk.slice(-calculatedOverlapLines);
       currentChars   = currentChunk.reduce((sum, l) => sum + l.length + 1, 0);
       chunkStartLine = i + 1 - currentChunk.length + 1;
     }

@@ -1,1 +1,33 @@
-{}
+{
+  "gateway": {
+    "host": "0.0.0.0",
+    "port": 9000,
+    "requestTimeoutMs": 600000
+  },
+  "mcp": {
+    "host": "0.0.0.0"
+  },
+  "agent": {
+    "executionTimeoutMs": 18e6
+  },
+  "channels": [
+    {
+      "id": "telegram-vargos-template",
+      "enabled": true,
+      "allowFrom": [
+        "1111111111",
+        "2222222222"
+      ],
+      "cwd": "~/",
+      "type": "telegram",
+      "botToken": "xxxxxxxxxx:Xxxxxxxxxxxxx-Xxxxxxxxxxxxxxxxxxxxx"
+    }
+  ],
+  "webhooks": [],
+  "linkExpand": {
+    "enabled": true,
+    "maxUrls": 3,
+    "maxCharsPerUrl": 8000,
+    "timeoutMs": 5000
+  }
+}

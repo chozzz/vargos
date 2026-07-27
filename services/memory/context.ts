@@ -41,7 +41,6 @@ export class MemoryContext {
   private readonly hybridWeight:     { vector: number; text: number };
   private readonly enableFileWatcher: boolean;
   private readonly embeddingConfig:  EmbeddingConfig;
-
   private chunks: Map<string, MemoryChunk> = new Map();
   private lastSync = 0;
   private storage: MemoryStorage | null    = null;
@@ -49,8 +48,8 @@ export class MemoryContext {
   private watcherDebounce = new Map<string, NodeJS.Timeout>();
 
   constructor(private readonly config: MemoryContextConfig) {
-    this.chunkSize         = config.chunkSize        ?? 400;
-    this.chunkOverlap      = config.chunkOverlap     ?? 80;
+    this.chunkSize         = config.chunkSize        ?? 400;  // target token count per chunk
+    this.chunkOverlap      = config.chunkOverlap     ?? 80;   // overlapping tokens between chunks
     this.embeddingProvider = config.embeddingProvider ?? 'none';
     this.hybridWeight      = config.hybridWeight     ?? { vector: 0.7, text: 0.3 };
     this.enableFileWatcher = config.enableFileWatcher ?? false;
@@ -79,15 +78,17 @@ export class MemoryContext {
 
   async close(): Promise<void> {
     this.stopFileWatcher();
-    await this.storage?.close();
-    this.storage = null;
+      if (this.storage) {
+      await this.storage.close();
+      this.storage = null;
+    }
   }
 
   // ── Indexing ───────────────────────────────────────────────────────────────
 
   async sync(options?: { reason?: string; force?: boolean }): Promise<void> {
-    const now = Date.now();
-    if (!options?.force && now - this.lastSync < 5_000) return;
+    const currentTimestampMs = Date.now();
+    if (!options?.force && currentTimestampMs - this.lastSync < 5_000) return;
 
     const files = await glob('**/*.md', { cwd: this.config.memoryDir, absolute: true });
     for (const file of files) {
@@ -148,8 +149,13 @@ export class MemoryContext {
   }
 
   private removeFileChunks(relPath: string): void {
+    // Create an array of keys to remove to avoid modifying map during iteration
+    const idsToRemove: string[] = [];
     for (const [id, chunk] of this.chunks) {
-      if (chunk.path === relPath) this.chunks.delete(id);
+      if (chunk.path === relPath) idsToRemove.push(id);
+    }
+    for (const id of idsToRemove) {
+      this.chunks.delete(id);
     }
   }
 
@@ -165,6 +171,24 @@ export class MemoryContext {
     const minScore       = options.minScore   ?? 0.3;
     const queryEmbedding = await generateEmbedding(query, this.embeddingConfig);
 
+    // Build initial scores from storage-based vector search if available
+    const vectorResults = await this.getVectorScores(queryEmbedding, maxResults, minScore);
+
+    // Build complete scores combining vector and text-based scoring
+    const scoredChunks = await this.calculateHybridScores(query, queryEmbedding, vectorResults, minScore);
+    
+    // Sort by score and return top results
+    const sortedResults = scoredChunks.sort((a, b) => b.score - a.score);
+    return sortedResults
+      .slice(0, maxResults)
+      .map(({ chunk, score }) => this.formatSearchResult(chunk, score));
+  }
+
+  private async getVectorScores(
+    queryEmbedding: number[] | undefined,
+    maxResults: number, 
+    minScore: number
+  ): Promise<Map<string, number>> {
     const vectorResults = new Map<string, number>();
     if (queryEmbedding && this.storage?.searchSimilar) {
       const hits = await this.storage.searchSimilar(queryEmbedding, maxResults * 2, minScore);
@@ -173,38 +197,106 @@ export class MemoryContext {
         if (!this.chunks.has(chunk.id)) this.chunks.set(chunk.id, chunk);
       }
     }
+    return vectorResults;
+  }
 
+  private async calculateHybridScores(
+    query: string,
+    queryEmbedding: number[] | undefined,
+    vectorResults: Map<string, number>,
+    minScore: number
+  ): Promise<Array<{ chunk: MemoryChunk; score: number }>> {
     const scores: Array<{ chunk: MemoryChunk; score: number }> = [];
 
     for (const chunk of this.chunks.values()) {
       let score = vectorResults.get(chunk.id) ?? 0;
 
+      // Add vector scoring if storage doesn't support similarity search but query embedding exists
       if (!this.storage?.searchSimilar && queryEmbedding && chunk.embedding) {
         score += cosineSimilarity(queryEmbedding, chunk.embedding) * this.hybridWeight.vector;
       }
 
+      // Add text-based scoring
       score += textScore(query, chunk.content) * this.hybridWeight.text;
+      
       if (score >= minScore) scores.push({ chunk, score });
     }
+    
+    return scores;
+  }
 
-    scores.sort((a, b) => b.score - a.score);
-
-    return scores.slice(0, maxResults).map(({ chunk, score }) => ({
+  private formatSearchResult(chunk: MemoryChunk, score: number): ContextSearchResult {
+    return {
       chunk,
       score,
       citation: chunk.startLine === chunk.endLine
         ? `${chunk.path}#L${chunk.startLine}`
         : `${chunk.path}#L${chunk.startLine}-L${chunk.endLine}`,
-    }));
+    };
+  }
+
+  // ── Reindex (stale cleanup) ──────────────────────────────────────────────
+
+  async reindex(): Promise<{ removed: number; kept: number }> {
+    if (!this.storage) return { removed: 0, kept: 0 };
+
+    const files = await glob('**/*.md', { cwd: this.config.memoryDir, absolute: true });
+    const activePaths = new Set(files.map(f => path.relative(this.config.memoryDir, f)));
+
+    // Session-derived chunks have paths starting with session dir relative paths
+    if (this.config.sessionsDir) {
+      const sessionFiles = await glob('**/*.jsonl', { cwd: this.config.sessionsDir, absolute: true });
+      for (const sf of sessionFiles) {
+        activePaths.add(path.relative(this.config.sessionsDir, sf));
+      }
+    }
+
+    let removed = 0;
+    const trackedPaths = await this.storage.getAllTrackedPaths();
+
+    const removedPaths: string[] = [];
+    for (const tracked of trackedPaths) {
+      if (!activePaths.has(tracked)) {
+        this.removeFileChunks(tracked);
+        await this.storage.deleteChunksByPath(tracked);
+        removed++;
+        removedPaths.push(tracked); // Track what was removed for logging
+      }
+    }
+    
+    if (removed > 0) {
+      const sampleRemoved = removedPaths.slice(0, 5); // Only log up to 5 paths to avoid log spam
+      const remainder = removedPaths.length - sampleRemoved.length;
+      log.info('reindex cleaned stale files', { 
+        removed, 
+        kept: trackedPaths.length - removed, 
+        removedFiles: sampleRemoved, 
+        ...(remainder > 0 && { moreFilesCount: remainder }) 
+      });
+    }
+
+    // Re-sync remaining active files
+    await this.sync({ reason: 'reindex', force: true });
+
+    return { removed, kept: trackedPaths.length - removed };
   }
 
   // ── Read / Write ───────────────────────────────────────────────────────────
 
-  async readFile(params: { relPath: string; from?: number; lines?: number }): Promise<{ path: string; text: string }> {
-    const fullPath = path.resolve(this.config.memoryDir, params.relPath);
-    if (!fullPath.startsWith(path.resolve(this.config.memoryDir))) {
+  private validatePathTraversal(filePath: string, baseDir: string): void {
+    // Resolve both paths to canonical form for comparison
+    const resolvedBase = path.resolve(baseDir);
+    const resolvedPath = path.resolve(filePath);
+    
+    if (!resolvedPath.startsWith(resolvedBase + path.sep) && resolvedPath !== resolvedBase) {
       throw new Error('Path traversal denied');
     }
+  }
+
+  async readFile(params: { relPath: string; from?: number; lines?: number }): Promise<{ path: string; text: string }> {
+    const fullPath = path.resolve(this.config.memoryDir, params.relPath);
+    this.validatePathTraversal(fullPath, this.config.memoryDir);
+    
     const content = await fs.readFile(fullPath, 'utf-8');
     const lines   = content.split('\n');
     const start   = (params.from ?? 1) - 1;
@@ -214,9 +306,8 @@ export class MemoryContext {
 
   async writeFile(relPath: string, content: string, mode: 'overwrite' | 'append' = 'overwrite'): Promise<void> {
     const fullPath = path.resolve(this.config.memoryDir, relPath);
-    if (!fullPath.startsWith(path.resolve(this.config.memoryDir))) {
-      throw new Error('Path traversal denied');
-    }
+    this.validatePathTraversal(fullPath, this.config.memoryDir);
+    
     await fs.mkdir(path.dirname(fullPath), { recursive: true });
     if (mode === 'append') {
       await fs.appendFile(fullPath, content);

@@ -32,12 +32,50 @@ export class MemoryService implements Service {
     const { workspaceDir, cacheDir, sessionsDir, dataDir } = getDataPaths();
     const storage = this.createStorage(dataDir, config.storage?.type);
 
+    // Extract embedding-related configs with proper type checking
+    let embeddingProvider: 'openai' | 'local' | 'none' = 'none';
+    if (config.agent && 'memoryEmbeddingProvider' in config.agent && typeof config.agent.memoryEmbeddingProvider === 'string') {
+      embeddingProvider = config.agent.memoryEmbeddingProvider as any as 'openai' | 'local' | 'none';
+    } else if ('embeddingProvider' in config && typeof config.embeddingProvider === 'string') {
+      embeddingProvider = config.embeddingProvider as any as 'openai' | 'local' | 'none';
+    }
+    
+    let openaiApiKey: string | undefined;
+    if (config.agent && 'memoryEmbeddingApiKey' in config.agent && typeof config.agent.memoryEmbeddingApiKey === 'string') {
+      openaiApiKey = config.agent.memoryEmbeddingApiKey;
+    } else if ('embeddingOpenAiKey' in config && typeof config.embeddingOpenAiKey === 'string') {
+      openaiApiKey = config.embeddingOpenAiKey;
+    }
+    
+    let embeddingModel = 'text-embedding-3-small';
+    if (config.agent && 'memoryEmbeddingModel' in config.agent && typeof config.agent.memoryEmbeddingModel === 'string') {
+      embeddingModel = config.agent.memoryEmbeddingModel;
+    } else if ('embeddingModel' in config && typeof config.embeddingModel === 'string') {
+      embeddingModel = config.embeddingModel;
+    }
+    
     this.context = new MemoryContext({
       memoryDir: workspaceDir,
       cacheDir,
       sessionsDir,
       storage,
       enableFileWatcher: true,
+      embeddingProvider,
+      openaiApiKey,
+      embeddingModel,
+      // Use default values if not in config - these values now come from the config layer
+      chunkSize: (config.agent && typeof config.agent.memoryChunkSize === 'number') ? config.agent.memoryChunkSize : 
+               (typeof config.chunkSize === 'number' ? config.chunkSize : 400),
+      chunkOverlap: (config.agent && typeof config.agent.memoryChunkOverlap === 'number') ? config.agent.memoryChunkOverlap : 
+                 (typeof config.chunkOverlap === 'number' ? config.chunkOverlap : 80),
+      hybridWeight: (config.agent && config.agent.memoryHybridWeight &&
+               typeof config.agent.memoryHybridWeight === 'object' &&
+               typeof (config.agent.memoryHybridWeight as any).vector === 'number' &&
+               typeof (config.agent.memoryHybridWeight as any).text === 'number') ? (config.agent.memoryHybridWeight as { vector: number; text: number }) :
+               (config.hybridWeight &&
+               typeof config.hybridWeight === 'object' &&
+               typeof (config.hybridWeight as any).vector === 'number' &&
+               typeof (config.hybridWeight as any).text === 'number') ? (config.hybridWeight as { vector: number; text: number }) : { vector: 0.7, text: 0.3 },
     });
 
     await this.context.initialize();
@@ -71,6 +109,11 @@ export class MemoryService implements Service {
       }),
       cli: { positional: ['path', 'content'] },
     }, (p) => this.context.writeFile(p.path, p.content, p.mode ?? 'overwrite'));
+
+    bus.register('memory.reindex', {
+      description: 'Remove stale chunks for deleted files and re-sync all active files. Returns counts of removed and kept files.',
+      schema: z.object({}),
+    }, () => this.context.reindex());
 
     bus.register('memory.stats', {
       description: 'Get memory index stats (file count, chunk count, last sync).',
