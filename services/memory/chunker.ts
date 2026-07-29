@@ -38,8 +38,14 @@ export function createChunks(
         metadata:  { date: mtime.toISOString(), size: chunkContent.length },
       });
 
-      const calculatedOverlapLines = Math.floor(approxOverlapChars / (currentChars / currentChunk.length));
-      currentChunk   = currentChunk.slice(-calculatedOverlapLines);
+      let calculatedOverlapLines = Math.floor(approxOverlapChars / (currentChars / currentChunk.length));
+      // When chunkOverlap is configured but lines are larger than the overlap
+      // window, the formula rounds to zero — guarantee at least 1 overlap line.
+      if (calculatedOverlapLines === 0 && config.chunkOverlap > 0 && currentChunk.length > 1) {
+        calculatedOverlapLines = 1;
+      }
+      // slice(-0) === slice(0) returns the entire array — guard against zero overlap.
+      currentChunk   = calculatedOverlapLines > 0 ? currentChunk.slice(-calculatedOverlapLines) : [];
       currentChars   = currentChunk.reduce((sum, l) => sum + l.length + 1, 0);
       chunkStartLine = i + 1 - currentChunk.length + 1;
     }
