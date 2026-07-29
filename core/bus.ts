@@ -11,7 +11,6 @@
 
 import EventEmitter from 'node:events';
 import { z } from 'zod';
-import { zodToJsonSchema } from 'zod-to-json-schema';
 import type { Bus, Handler, MethodInfo, MethodOptions, RegistryEntry } from './types.js';
 import { MethodNotFoundError, ValidationError } from './errors.js';
 
@@ -143,7 +142,8 @@ export class EmitterBus implements Bus {
 /** Convert a zod schema to JSON Schema, swallowing conversion failures. */
 function toJsonSchema(schema: z.ZodTypeAny): unknown {
   try {
-    return zodToJsonSchema(schema);
+    // Zod v4 has a built-in toJSONSchema method.
+    return schema.toJSONSchema();
   } catch {
     return {};
   }

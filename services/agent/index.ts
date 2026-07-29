@@ -25,7 +25,7 @@ import {
   createAgentSession,
   SessionManager,
   SettingsManager,
-  AuthStorage,
+  ModelRuntime,
   ModelRegistry,
   DefaultResourceLoader,
   type AgentSession,
@@ -86,7 +86,7 @@ export class AgentService implements Service {
   protected activeRuns = new Set<string>();
 
   protected agentDir!: string;
-  protected authStorage!: AuthStorage;
+  protected modelRuntime!: ModelRuntime;
   protected modelRegistry!: ModelRegistry;
   protected settings!: SettingsManager;
 
@@ -101,10 +101,10 @@ export class AgentService implements Service {
     const authJsonPath = path.join(this.agentDir, 'auth.json');
     const modelsJsonPath = path.join(this.agentDir, 'models.json');
 
-    this.authStorage = AuthStorage.create(authJsonPath);
-    this.modelRegistry = ModelRegistry.create(this.authStorage, modelsJsonPath);
+    this.modelRuntime = await ModelRuntime.create({ authPath: authJsonPath, modelsPath: modelsJsonPath });
+    this.modelRegistry = new ModelRegistry(this.modelRuntime);
 
-    const modelError = this.modelRegistry.getError();
+    const modelError = this.modelRuntime.getError();
     if (modelError) {
       throw new Error(`Failed to load models from ${modelsJsonPath}: ${modelError}`);
     }
@@ -343,8 +343,7 @@ export class AgentService implements Service {
       agentDir: this.agentDir,
       sessionManager,
       settingsManager: this.settings,
-      authStorage: this.authStorage,
-      modelRegistry: this.modelRegistry,
+      modelRuntime: this.modelRuntime,
       customTools,
       resourceLoader,
       ...(model && { model }),

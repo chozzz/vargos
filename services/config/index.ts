@@ -46,7 +46,7 @@ export const AppConfigSchema = z
       tasks: z.array(CronTaskSchema).optional(),
     }).optional(),
     webhooks: z.array(WebhookEntrySchema).default([]),
-    linkExpand: LinkExpandConfigSchema.default({}),
+    linkExpand: LinkExpandConfigSchema.default({ enabled: true, maxUrls: 3, maxCharsPerUrl: 8_000, timeoutMs: 5_000 }),
     mcp: McpClientConfigSchema.default({}),
     mcpServers: z.record(z.string(), McpServerConfigSchema).optional().describe('External MCP servers to load as bus callable events'),
     storage: StorageConfigSchema.optional(),
@@ -59,7 +59,7 @@ export const AppConfigSchema = z
       port: z.number().int().min(1).max(65535).default(9000),
       /** Client socket idle timeout (ms) for JSON-RPC connections */
       requestTimeoutMs: z.number().int().positive().optional().default(6e5).describe('Client socket idle timeout for JSON-RPC connections, in milliseconds. Defaults to 10 minutes.'),
-    }).default({})
+    }).default({ host: '127.0.0.1', port: 9000, requestTimeoutMs: 600000 })
   })
   .passthrough();
 
