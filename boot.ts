@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { EmitterBus } from './core/bus.js';
 import { ServiceLoader } from './core/loader.js';
 import { discoverServices } from './core/services.js';
+import { discoverEdgeServices } from './core/edges.js';
 import { startRpcServer } from './core/rpc-server.js';
 import { createLogger } from './lib/logger.js';
 import { seedDataDir } from './lib/templates.js';
@@ -74,6 +75,24 @@ for (const spec of specs) {
   }
 }
 
+// ── Edge services (external protocol bridges) ───────────────────────────────────
+// Loaded after core services so the bus is fully wired. Failures are warnings.
+const edgeSpecs = discoverEdgeServices(here, ext);
+if (edgeSpecs.length > 0) {
+  log.info(`loading ${edgeSpecs.length} edge service(s): ${edgeSpecs.map(s => s.name).join(', ')}`);
+}
+
+for (const spec of edgeSpecs) {
+  try {
+    await loader.load(spec);
+  } catch (err) {
+    log.warn(`⚠️  edge service ${spec.name} failed to load: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+if (edgeSpecs.length > 0) {
+  log.info('edge services loaded');
+}
+
 const config = await bus.call<AppConfig>('config.get', {});
 const host = config.gateway.host ?? process.env.BUS_HOST ?? '127.0.0.1';
 const port = parseInt(config.gateway.port ? String(config.gateway.port) : (process.env.BUS_PORT || '9000'), 10);
@@ -88,7 +107,8 @@ try {
 }
 
 bus.emit('bus.onReady', {});
-log.info(`✅ ${specs.length} services ready: ${specs.map(s => s.name).join(', ')}`);
+const allLoaded = [...specs.map(s => s.name), ...loader.names().filter(n => !specs.some(s => s.name === n))];
+log.info(`✅ ${allLoaded.length} services ready: ${allLoaded.join(', ')}`);
 
 // ── Process-level handlers ──────────────────────────────────────────────────────
 

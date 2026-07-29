@@ -25,7 +25,7 @@ export class ServiceLoader {
   private readonly instances = new Map<string, Service>();
   private readonly specs = new Map<string, ServiceSpec>();
 
-  constructor(private readonly bus: EmitterBus) {}
+  constructor(private readonly bus: EmitterBus) { }
 
   names(): string[] {
     return [...this.specs.keys()];
@@ -50,7 +50,7 @@ export class ServiceLoader {
     } finally {
       this.bus.endLoading();
     }
-    log.info(`✅ "${spec.name}" loaded`);
+    log.info(`============================== ✅ "${spec.name}" Loaded ==============================`);
   }
 
   /** Tear down a service: release bus wiring, then dispose its resources. */

@@ -23,15 +23,15 @@ const log = createLogger('webhooks');
 
 const MAX_BODY = 1024 * 1024; // 1 MB
 const HOOK_ID_RE = /^[a-z0-9_-]+$/i;
-const HTTP_PORT = 9002;
-const HTTP_HOST = '127.0.0.1';
+const HTTP_PORT = parseInt(process.env.WEBHOOKS_PORT || '9002', 10);
+const HTTP_HOST = process.env.WEBHOOKS_HOST || '127.0.0.1';
 
 // ── WebhooksEdge ──────────────────────────────────────────────────────────────
 
 type AgentCompletedPayload = { sessionKey: string; success: boolean };
 
 export class WebhooksEdge implements Service {
-  readonly name = 'webhook';
+  readonly name = 'edge-webhooks';
   private hooks = new Map<string, WebhookEntry>();
   private activeHooks = new Set<string>();
   private server: http.Server | null = null;
@@ -89,7 +89,7 @@ export class WebhooksEdge implements Service {
       this.server.requestTimeout = 30_000;
       this.server.on('error', reject);
       this.server.listen(HTTP_PORT, HTTP_HOST, () => {
-        log.info(`http listening on ${HTTP_HOST}:${HTTP_PORT}`);
+        log.info(`Webhooks HTTP is listening on ${HTTP_HOST}:${HTTP_PORT}`);
         resolve();
       });
     });

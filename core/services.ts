@@ -4,7 +4,8 @@ import type { ServiceSpec } from './loader.js';
 
 // Convention: a service is any `services/<name>/index.<ext>`. The directory name IS
 // the service name and method namespace (e.g. services/channel → channel.send). No
-// manifest — drop a folder in and it loads. `edge/*` is intentionally NOT auto-loaded.
+// manifest — drop a folder in and it loads. `edge/*` is intentionally NOT auto-loaded
+// here — see core/edges.ts for edge service discovery.
 
 /** Services loaded before the rest, in this order — the only dependency the set has
  *  (others read config during init; logging wires early). Everything else follows,
@@ -36,3 +37,4 @@ export function resolveService(name: string, rootDir: string, ext: 'ts' | 'js'):
 export function discoverServices(rootDir: string, ext: 'ts' | 'js'): ServiceSpec[] {
   return discoverServiceNames(rootDir, ext).map(name => resolveService(name, rootDir, ext)!);
 }
+

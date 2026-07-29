@@ -178,9 +178,9 @@ export class AgentService implements Service {
         },
       };
       await fs.writeFile(settingsPath, JSON.stringify(updated, null, 2), 'utf-8');
-      log.debug('retry settings persisted to agent/settings.json');
+      log.debug('Retry settings persisted to', settingsPath);
     } catch (err) {
-      log.warn(`retry settings persist failed: ${err instanceof Error ? err.message : String(err)}`);
+      log.warn(`Retry settings persist failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 

@@ -30,7 +30,7 @@ const VERSION = '0.0.1';
 // ── McpEdge ────────────────────────────────────────────────────────────────────
 
 export class McpEdge implements Service {
-  readonly name = 'mcp-edge';
+  readonly name = 'edge-mcp';
   private mcpServer: Server;
   private httpServer: http.Server | null = null;
   private bus!: Bus;
@@ -59,7 +59,8 @@ export class McpEdge implements Service {
   }
 
   private httpPort(): number {
-    return this.config.mcp.port ?? 9001;
+    const envPort = process.env.MCP_PORT ? parseInt(process.env.MCP_PORT, 10) : undefined;
+    return envPort ?? this.config.mcp.port ?? 9001;
   }
 
   /** Path prefix for Streamable HTTP, always starts with / */
@@ -69,12 +70,11 @@ export class McpEdge implements Service {
   }
 
   async start(): Promise<void> {
-    if (this.config.mcp.bearerToken) {
-      await this.startHttp(this.config.mcp.bearerToken);
-    } else {
-      log.info('no bearerToken — skipping HTTP; use stdio transport');
+    const bt = this.config.mcp.bearerToken;
+    if (!bt) {
+      log.warn(`no bearerToken set — serving without auth (${this.httpHost()}:${this.httpPort()}${this.httpEndpointPath()})`);
     }
-    log.info('started');
+    await this.startHttp(bt ?? null);
   }
 
   async stop(): Promise<void> {
@@ -88,14 +88,16 @@ export class McpEdge implements Service {
 
   // ── HTTP transport ─────────────────────────────────────────────────────────
 
-  private async startHttp(bearerToken: string): Promise<void> {
+  private async startHttp(bearerToken: string | null): Promise<void> {
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => crypto.randomUUID(),
     });
 
     await this.mcpServer.connect(transport);
 
-    const expectedHash = createHash('sha256').update(`Bearer ${bearerToken}`).digest();
+    const expectedHash = bearerToken
+      ? createHash('sha256').update(`Bearer ${bearerToken}`).digest()
+      : null;
 
     this.httpServer = http.createServer(async (req, res) => {
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -107,13 +109,15 @@ export class McpEdge implements Service {
         return;
       }
 
-      // Timing-safe bearer token comparison (hash prevents length leakage)
-      const auth     = req.headers.authorization ?? '';
-      const authHash = createHash('sha256').update(auth).digest();
-      if (!timingSafeEqual(authHash, expectedHash)) {
-        res.writeHead(401, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Unauthorized' }));
-        return;
+      // Bearer token auth (only enforced when a token is configured)
+      if (expectedHash) {
+        const auth     = req.headers.authorization ?? '';
+        const authHash = createHash('sha256').update(auth).digest();
+        if (!timingSafeEqual(authHash, expectedHash)) {
+          res.writeHead(401, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Unauthorized' }));
+          return;
+        }
       }
 
       if (req.url === '/openapi.json' && req.method === 'GET') {
@@ -147,7 +151,7 @@ export class McpEdge implements Service {
     const port = this.httpPort();
     return new Promise((resolve) => {
       this.httpServer!.listen(port, host, () => {
-        log.info(`http listening on ${host}:${port}${this.httpEndpointPath()}`);
+        log.info(`MCP server listening on ${host}:${port}${this.httpEndpointPath()}${bearerToken ? ' (auth enabled)' : ' (no auth)'}`);
         resolve();
       });
     });
