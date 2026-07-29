@@ -85,6 +85,7 @@ class ChannelRegistry {
 
 // ── ChannelService ─────────────────────────────────────────────────────────────
 
+export const BOOT_PRIORITY = 70; // telegram / whatsapp listeners — listeners last
 export class ChannelService implements Service {
   readonly name = 'channel';
   private adapters = new Map<string, ChannelAdapter>();

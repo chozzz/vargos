@@ -19,6 +19,8 @@ export interface ServiceSpec {
   name: string;
   /** Absolute path to the service module exporting createService(). */
   modulePath: string;
+  /** Boot priority — lower loads first. Read from the module's BOOT_PRIORITY export. */
+  priority: number;
 }
 
 export class ServiceLoader {

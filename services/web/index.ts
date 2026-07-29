@@ -9,6 +9,7 @@ const FetchSchema = z.object({
   maxChars:    z.number().optional().describe('Max characters to return (default: 50000)'),
 });
 
+export const BOOT_PRIORITY = 30; // web fetch tool before agent runs
 export class WebService implements Service {
   readonly name = 'web';
 

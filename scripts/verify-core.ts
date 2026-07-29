@@ -103,8 +103,8 @@ async function main() {
   const pid = process.pid;
   const bus = new EmitterBus();
   const loader = new ServiceLoader(bus);
-  await loader.load({ name: 'channel', modulePath: chanPath });
-  await loader.load({ name: 'memory', modulePath: memPath });
+  await loader.load({ name: 'channel', modulePath: chanPath, priority: 0 });
+  await loader.load({ name: 'memory', modulePath: memPath, priority: 0 });
 
   console.log('\nA. Centralization — one registration, three surfaces');
   const list = bus.list();

@@ -76,6 +76,7 @@ interface AssistantMessageView {
 
 // ── AgentService ─────────────────────────────────────────────────────────────
 
+export const BOOT_PRIORITY = 50; // core agent — registers agent.execute
 export class AgentService implements Service {
   readonly name = 'agent';
   protected bus!: Bus;

@@ -8,6 +8,7 @@ import { MemorySQLiteStorage } from './providers/sqlite.js';
 import { createLogger } from '../../lib/logger.js';
 import type { MemoryStorage } from './types.js';
 
+export const BOOT_PRIORITY = 10; // vector search / tool registration before agent runs
 export class MemoryService implements Service {
   readonly name = 'memory';
   protected readonly log = createLogger('memory');

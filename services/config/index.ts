@@ -90,6 +90,7 @@ export function saveConfig(path: string, config: Partial<AppConfig>): void {
 
 // ─── ConfigService ───────────────────────────────────────────────────────────
 
+export const BOOT_PRIORITY = 0; // must be first — all services read config during init
 export class ConfigService implements Service {
   readonly name = 'config';
   private readonly log = createLogger('config');

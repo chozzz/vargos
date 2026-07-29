@@ -88,6 +88,7 @@ class MediaCache {
   }
 }
 
+export const BOOT_PRIORITY = 20; // media processing tools before agent runs
 export class MediaService implements Service {
   readonly name = 'media';
   private cache = new MediaCache();

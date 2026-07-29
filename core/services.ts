@@ -7,34 +7,40 @@ import type { ServiceSpec } from './loader.js';
 // manifest — drop a folder in and it loads. `edge/*` is intentionally NOT auto-loaded
 // here — see core/edges.ts for edge service discovery.
 
-/** Services loaded before the rest, in this order — the only dependency the set has
- *  (others read config during init; logging wires early). Everything else follows,
- *  discovered and sorted. Adding a service requires no edit here. */
-const LOAD_FIRST = ['config', 'log'];
+/** Each service module may export `BOOT_PRIORITY` (lower = earlier). Default 0. */
+export const DEFAULT_BOOT_PRIORITY = 0;
 
-/** Names of all services present on disk (directory basenames), ordered for loading. */
+/** Names of all services present on disk (directory basenames), sorted alphabetically. */
 export function discoverServiceNames(rootDir: string, ext: 'ts' | 'js'): string[] {
   const servicesDir = path.join(rootDir, 'services');
   let names: string[] = [];
   try {
     names = readdirSync(servicesDir, { withFileTypes: true })
       .filter(e => e.isDirectory() && existsSync(path.join(servicesDir, e.name, `index.${ext}`)))
-      .map(e => e.name);
+      .map(e => e.name)
+      .sort();
   } catch { /* no services dir */ }
-
-  const rest = names.filter(n => !LOAD_FIRST.includes(n)).sort();
-  const first = LOAD_FIRST.filter(n => names.includes(n));
-  return [...first, ...rest];
+  return names;
 }
 
 /** Resolve a service name to its on-disk module, or null if absent. */
 export function resolveService(name: string, rootDir: string, ext: 'ts' | 'js'): ServiceSpec | null {
   const modulePath = path.join(rootDir, 'services', name, `index.${ext}`);
-  return existsSync(modulePath) ? { name, modulePath } : null;
+  return existsSync(modulePath) ? { name, modulePath, priority: DEFAULT_BOOT_PRIORITY } : null;
 }
 
-/** Every discovered service as a load spec, in load order. */
-export function discoverServices(rootDir: string, ext: 'ts' | 'js'): ServiceSpec[] {
-  return discoverServiceNames(rootDir, ext).map(name => resolveService(name, rootDir, ext)!);
+/** Every discovered service as a load spec, sorted by BOOT_PRIORITY (lower = earlier). */
+export async function discoverServices(rootDir: string, ext: 'ts' | 'js'): Promise<ServiceSpec[]> {
+  const names = discoverServiceNames(rootDir, ext);
+  const specs: ServiceSpec[] = [];
+  for (const name of names) {
+    const modulePath = path.join(rootDir, 'services', name, `index.${ext}`);
+    if (!existsSync(modulePath)) continue;
+    // Import to read BOOT_PRIORITY — ESM caches the module so loader.load() won't re-execute.
+    const mod = await import(modulePath) as { BOOT_PRIORITY?: number };
+    const priority = mod.BOOT_PRIORITY ?? DEFAULT_BOOT_PRIORITY;
+    specs.push({ name, modulePath, priority });
+  }
+  return specs.sort((a, b) => a.priority - b.priority);
 }
 

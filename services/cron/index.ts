@@ -39,6 +39,7 @@ type AgentCompletedPayload = { sessionKey: string; success: boolean };
 
 // ── CronService ───────────────────────────────────────────────────────────────
 
+export const BOOT_PRIORITY = 60; // cron scheduler — listeners last
 export class CronService implements Service {
   readonly name = 'cron';
   private jobs = new Map<string, { task: CronTask; job: CronJob }>();

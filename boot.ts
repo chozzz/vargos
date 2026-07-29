@@ -22,7 +22,7 @@ const log = createLogger('boot');
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ext = import.meta.url.endsWith('.ts') ? 'ts' : 'js';
-const specs = discoverServices(here, ext);
+const specs = await discoverServices(here, ext);
 
 const bus = new EmitterBus();
 const loader = new ServiceLoader(bus);
@@ -77,7 +77,7 @@ for (const spec of specs) {
 
 // ── Edge services (external protocol bridges) ───────────────────────────────────
 // Loaded after core services so the bus is fully wired. Failures are warnings.
-const edgeSpecs = discoverEdgeServices(here, ext);
+const edgeSpecs = await discoverEdgeServices(here, ext);
 if (edgeSpecs.length > 0) {
   log.info(`loading ${edgeSpecs.length} edge service(s): ${edgeSpecs.map(s => s.name).join(', ')}`);
 }

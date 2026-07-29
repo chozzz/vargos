@@ -61,6 +61,7 @@ function normalizeEntry(entry: McpServerEntry): McpServerConfig {
 
 // ── McpClientService ──────────────────────────────────────────────────────────
 
+export const BOOT_PRIORITY = 40; // external MCP tool imports before agent runs
 export class McpClientService implements Service {
   readonly name = 'mcp';
   private servers = new Map<string, McpServerConnection>();
