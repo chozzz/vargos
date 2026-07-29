@@ -72,7 +72,12 @@ export class McpEdge implements Service {
   async start(): Promise<void> {
     const bt = this.config.mcp.bearerToken;
     if (!bt) {
-      log.warn(`no bearerToken set — serving without auth (${this.httpHost()}:${this.httpPort()}${this.httpEndpointPath()})`);
+      const addr = `${this.httpHost()}:${this.httpPort()}${this.httpEndpointPath()}`;
+      log.warn('╔══════════════════════════════════════════════════════════════╗');
+      log.warn('║  MCP server has NO bearerToken configured!                ║');
+      log.warn('║  Set mcp.bearerToken in config.json to secure the API.    ║');
+      log.warn(`║  Listening on ${addr.padEnd(44)}║`);
+      log.warn('╚══════════════════════════════════════════════════════════════╝');
     }
     await this.startHttp(bt ?? null);
   }
@@ -100,6 +105,7 @@ export class McpEdge implements Service {
       : null;
 
     this.httpServer = http.createServer(async (req, res) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Mcp-Session-Id, Authorization');
 
