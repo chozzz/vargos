@@ -20,7 +20,8 @@ export class MemoryService implements Service {
       case 'sqlite':
         return new MemorySQLiteStorage(path.join(dataDir, 'memory.db'));
       case 'postgres':
-        throw new Error('Postgres storage provider not yet implemented');
+        this.log.warn('Postgres storage not yet implemented — falling back to sqlite');
+        return new MemorySQLiteStorage(dataDir);
       default:
         throw new Error(`Unknown storage type: ${type}`);
     }
