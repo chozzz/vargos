@@ -6,7 +6,7 @@ Vargos splits config across **five files** under `~/.vargos/`. The split keeps s
 |---|---|---|
 | `config.json` | App config: channels, cron, webhooks, gateway | [`services/config/index.ts`](../services/config/index.ts) `AppConfigSchema` |
 | `agent/mcp.json` | External MCP servers (shared with Pi SDK) | See [MCP](#mcp) |
-| `agent/models.json` | Provider definitions and model registry (Pi SDK owned) | [Pi SDK `ModelRegistry`](../node_modules/@mariozechner/pi-coding-agent/dist/core/model-registry.d.ts) |
+| `agent/models.json` | Provider definitions and model registry (Pi SDK owned) | [Pi SDK `ModelRegistry`](../node_modules/@earendil-works/pi-coding-agent/dist/core/model-registry.d.ts) |
 | `agent/settings.json` | Default model, thinking level, media providers | Pi SDK `SettingsManager` |
 | `agent/auth.json` | Provider API keys + OAuth tokens | Pi SDK `AuthStorage` |
 

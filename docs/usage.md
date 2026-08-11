@@ -19,13 +19,15 @@ Templates seed first: `seedDataDir(log)` runs before any service boots, recursiv
 ### Execution flow
 
 `agent.execute` →
-1. Parse directives (`/think:`, `/verbose`)
-2. `getOrCreateSession(sessionKey, { cwd, model })` — load or create the Pi SDK `AgentSession`
-3. `loadPersonaIfChannel(sessionKey)` — channel sessionKeys only
-4. `getCustomTools(sessionKey, persona.allowedTools?)` — bus tools, glob-filtered
-5. `getSystemPrompt(sessionKey, persona.body?)` — assemble + interpolate
-6. `session.prompt(task, { streamingBehavior: 'steer' })` — Pi SDK runs the turn
-7. `extractFinalAssistant(session)` — read final message, surface inference errors
+1. `getOrCreateSession(sessionKey, { cwd, model })` — load or create the Pi SDK `AgentSession`
+2. `loadPersonaIfChannel(sessionKey)` — channel sessionKeys only
+3. `getCustomTools(sessionKey, persona.allowedTools?)` — bus tools, glob-filtered
+4. `getSystemPrompt(sessionKey, persona.body?)` — assemble + interpolate
+5. `session.prompt(task, { streamingBehavior: 'steer' })` — Pi SDK runs the turn
+6. `extractFinalAssistant(session)` — read final message, surface inference errors
+
+Vargos does not pre-parse slash commands: the raw task goes to `session.prompt()` so Pi SDK's
+extension runner handles anything it supports (e.g. `/compact`) without double-handling.
 
 Streaming events flow through `subscribeToSessionEvents` → `agent.onDelta` / `agent.onTool` / `agent.onCompleted` on the bus.
 
@@ -73,7 +75,7 @@ Pi SDK records LLM call failures (e.g. expired API key) as an assistant message 
 
 ## Sessions
 
-A session is one conversation thread. Pi SDK persists every turn to a JSONL file; Vargos caches the in-memory `AgentSession` keyed by sessionKey. Helpers: [`lib/subagent.ts`](../lib/subagent.ts).
+A session is one conversation thread. Pi SDK persists every turn to a JSONL file; Vargos caches the in-memory `AgentSession` keyed by sessionKey. Helpers: [`lib/session-key.ts`](../lib/session-key.ts).
 
 ### SessionKey formats
 
@@ -106,7 +108,7 @@ Examples:
 
 ### Observe-only path
 
-For inbound messages where the agent shouldn't run (whitelist rejection, group chat without bot mention), the channel pipeline delegates to `adapter.shouldExecute()`. When it returns `false`, the message is recorded into history via `agent.appendMessage` without firing the LLM. No LLM call, no streaming, no `agent.onCompleted`.
+For inbound messages where the agent shouldn't run (whitelist rejection, group chat without bot mention), the channel pipeline consults `shouldExecute()` in [`access.ts`](../services/channel/access.ts). When it returns `false`, the message is recorded into history via `agent.appendMessage` without firing the LLM. No LLM call, no streaming, no `agent.onCompleted`.
 
 ### Cross-session injection
 
@@ -171,7 +173,9 @@ Each channel has its own system-prompt overrides at `~/.vargos/agents/<channelId
 
 ### Inbound message fields
 
-Channel adapters normalize each inbound message into `NormalizedInboundMessage` ([`contracts.ts`](../services/channel/types.ts)): `fromUserId`, `fromUser`, `chatType` (`private` | `group`), `isMentioned`, `messageId` (for reactions), `media`, and `text`. The pipeline uses `fromUserId` + `isMentioned` for execution decisions via `adapter.shouldExecute()`.
+Channel adapters normalize each inbound message into `NormalizedInboundMessage` ([`types.ts`](../services/channel/types.ts)): `chatId`, `fromUserId`, `fromUser`, `chatType` (`private` | `group`), `isMentioned`, `messageId`, `mediaKind`, and `text`. The pipeline uses `fromUserId` + `isMentioned` for execution decisions.
+
+In a group `chatId` and `fromUserId` are different values and must not be conflated: replies and reactions go to `chatId` (which becomes the session key), while whitelist checks are about `fromUserId` (the sender).
 
 ### Documents and media
 
@@ -187,24 +191,15 @@ Configure transcription/vision providers in `agent/settings.json` `media`. Imple
 
 While the agent processes, the bot updates its message reactions: 👀 received → 🤔 thinking → 🔧 tool use → 👍 done / ❗ error. See [`services/channel/status-reactions.ts`](../services/channel/status-reactions.ts).
 
-### Chat directives
-
-Inline directives the user can prefix to a message:
-
-| Directive | Effect |
-|---|---|
-| `/think:high` | Force thinking-level (`off`, `low`, `medium`, `high`, `xhigh`) |
-| `/verbose` | More detailed responses |
-
-Parser: [`services/agent/directives.ts`](../services/agent/directives.ts).
-
 ### Execution decisions
 
-`adapter.shouldExecute(userId, chatType, isMentioned)` decides whether the agent runs or the message is recorded to history only. Called by [`pipeline.ts`](../services/channel/pipeline.ts) for every inbound message.
+`shouldExecute(allowFrom, userId, chatType, isMentioned)` in [`access.ts`](../services/channel/access.ts) decides whether the agent runs or the message is recorded to history only. Called by [`pipeline.ts`](../services/channel/pipeline.ts) for every inbound message.
 
 | `allowFrom` | Chat type | Mentioned? | Result |
 |---|---|---|---|
-| omitted / `undefined` | any | any | **Execute** (permissive default) |
+| omitted / `undefined` | private | — | **Execute** (permissive default) |
+| omitted / `undefined` | group | yes | **Execute** |
+| omitted / `undefined` | group | no | **Observe** — a group always needs a mention |
 | `[]` (empty) | any | any | **Observe** (block all) |
 | user whitelisted | private | — | **Execute** |
 | user whitelisted | group | yes | **Execute** |
@@ -214,11 +209,11 @@ Parser: [`services/agent/directives.ts`](../services/agent/directives.ts).
 "Observe" means the message is appended to session history via `agent.appendMessage` (so the agent has context later) but no LLM call is made. This applies to both text and media:
 
 - **Text** — appended as-is to history
-- **Media** — file is saved to disk, appended to history as a file path only. Vision/transcription/extraction are **skipped** (no API calls). The `shouldProcessMedia` flag in [`base-adapter.ts`](../services/channel/base-adapter.ts) is tied directly to `shouldExecute()`.
+- **Media** — file is saved to disk, appended to history as a file path only. Vision/transcription/extraction are **skipped** (no API calls). Before paying for enrichment the base adapter asks `shouldEnrich()`, which the channel service wires to the same `shouldExecute()` rule — so the enrichment decision and the execution decision can never disagree.
 
 ### Whitelist enforcement
 
-`allowFrom` is checked **before** the agent runs via `adapter.shouldExecute()`. See the [execution decisions table](#execution-decisions) above.
+`allowFrom` is checked **before** the agent runs, in the pipeline via [`access.ts`](../services/channel/access.ts). See the [execution decisions table](#execution-decisions) above.
 
 Always set `allowFrom` for production channels — see [`SECURITY.md`](../SECURITY.md).
 
@@ -327,7 +322,7 @@ Body content is appended verbatim to the system prompt.
 | `mcp.atlassian.*` | every tool from the `atlassian` MCP server |
 | `*` | all bus tools |
 
-Matcher: [`lib/glob.ts`](../lib/glob.ts) `matchesGlob`. Filter applied in [`services/agent/index.ts`](../services/agent/index.ts) `getCustomTools`.
+Matcher: [`lib/glob-match.ts`](../lib/glob-match.ts) `matchesGlob`. Filter applied in [`services/agent/index.ts`](../services/agent/index.ts) `getCustomTools`.
 
 ### Re-loading
 
@@ -449,7 +444,7 @@ Group chats: bot only runs when @-mentioned or replied-to.
 |---|---|
 | Bot stays in 🤔 forever | Tool hung mid-call — check `[agent.onTool]` in stdout; restart gateway |
 | Heartbeat never delivers | Heartbeat replied `HEARTBEAT_OK` (token pruning skips delivery) — working as designed |
-| Model returns no text | Thinking-only or tool-only turn. Try `/think:low` or rephrase. |
+| Model returns no text | Thinking-only or tool-only turn. Rephrase, or set a lower thinking level for the model in `agent/settings.json`. |
 
 ### Skill / persona changes don't take effect
 

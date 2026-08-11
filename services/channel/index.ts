@@ -3,16 +3,17 @@
  *
  * Callable: channel.send, channel.sendMedia, channel.list, channel.get, channel.register
  * Pure events emitted: channel.onConnected, channel.onDisconnected
- * Pure events subscribed: agent.onDelta, agent.onTool, agent.onCompleted
+ * Pure events subscribed: agent.onTool, agent.onCompleted
+ *
+ * This file owns adapter lifecycle and the bus surface only. Inbound policy, in-flight
+ * run state and reply delivery live in `pipeline.ts`; access rules in `access.ts`.
  *
  * Inbound flow:
- *   adapter → normalizer → pipeline → expand links → whitelist check → agent.execute
- *   agent.onTool updates reaction phase
- *   agent.onCompleted stops typing + seals reaction + delivers reply
+ *   adapter → normalizer → pipeline → expand links → access check → agent.execute
  *
  * Reply routing:
- *   - Channel-triggered: agent.onCompleted looks up activeSessions, delivers to source
- *   - Non-channel (cron, etc): agent.onCompleted ignored — caller is responsible for reply delivery
+ *   - Channel-triggered: the pipeline's completion handler delivers to the source
+ *   - Non-channel (cron, etc): no session, so completion is ignored — the caller replies
  *
  * Outbound flow: channel.send → strip markdown → chunk → adapter.send
  */
@@ -25,72 +26,39 @@ import { toMessage } from '../../lib/error.js';
 import { stripMarkdown } from '../../lib/util.js';
 import { parseChannelTarget } from '../../lib/session-key.js';
 import { filterPaginate, ListSchema, type ListParams } from '../../lib/paginate.js';
-import type { ChannelAdapter, ChannelProvider, NormalizedInboundMessage, AdapterDeps } from './types.js';
+import type {
+  ChannelAdapter,
+  ChannelProvider,
+  MediaKind,
+  NormalizedInboundMessage,
+  AdapterDeps,
+} from './types.js';
+import { shouldExecute } from './access.js';
 import { deliverReply } from './delivery.js';
 import { extractMediaPaths } from './media-paths.js';
-import { InboundMessagePipeline, type PipelineSession } from './pipeline.js';
-import { loadProviders } from './provider-loader.js';
+import {
+  InboundMessagePipeline,
+  type AgentToolPayload,
+  type AgentCompletedPayload,
+} from './pipeline.js';
+import { loadProviders } from '../../lib/provider-loader.js';
 
 const log = createLogger('channels');
-const TOOL_ARGS_PREVIEW_CHARS = 160;
+
+/** Built-in channel providers, imported lazily so a broken one cannot block boot. */
+const PROVIDERS: Record<string, () => Promise<ChannelProvider>> = {
+  telegram: () => import('./providers/telegram/index.js').then(m => m.default),
+  whatsapp: () => import('./providers/whatsapp/index.js').then(m => m.default),
+};
 
 interface ChannelInfo { id: string; type: string; status: string }
-type AgentToolPayload =
-  | { sessionKey: string; toolName: string; phase: 'start'; args: unknown }
-  | { sessionKey: string; toolName: string; phase: 'end'; result: unknown };
-type AgentCompletedPayload =
-  | { sessionKey: string; success: true; response: string }
-  | { sessionKey: string; success: false; error: string };
-
-function formatToolLog(payload: AgentToolPayload): string {
-  const base = `agent.onTool: ${payload.sessionKey} ${payload.toolName} ${payload.phase}`;
-  if (payload.phase !== 'start') return base;
-
-  const args = JSON.stringify(payload.args);
-  if (!args || args === '{}') return base;
-
-  const preview = args.length > TOOL_ARGS_PREVIEW_CHARS
-    ? `${args.slice(0, TOOL_ARGS_PREVIEW_CHARS)}...`
-    : args;
-
-  return `${base} args=${preview}`;
-}
-
-// ── Provider Registry ──────────────────────────────────────────────────────────
-
-class ChannelRegistry {
-  private providers = new Map<string, ChannelProvider>();
-
-  register(provider: ChannelProvider): void {
-    this.providers.set(provider.type, provider);
-  }
-
-  has(type: string): boolean {
-    return this.providers.has(type);
-  }
-
-  types(): string[] {
-    return [...this.providers.keys()];
-  }
-
-  async createAdapter(entry: ChannelEntry, deps: AdapterDeps): Promise<ChannelAdapter | null> {
-    const provider = this.providers.get(entry.type);
-    if (!provider) {
-      log.warn(`no provider for channel type: ${entry.type}`);
-      return null;
-    }
-    return provider.createAdapter(entry.id, entry, deps);
-  }
-}
-
-// ── ChannelService ─────────────────────────────────────────────────────────────
 
 export const BOOT_PRIORITY = 70; // telegram / whatsapp listeners — listeners last
+
 export class ChannelService implements Service {
   readonly name = 'channel';
   private adapters = new Map<string, ChannelAdapter>();
-  private activeSessions = new Map<string, PipelineSession>();
-  private registry = new ChannelRegistry();
+  private providers = new Map<string, ChannelProvider>();
   private bus!: Bus;
   private config!: AppConfig;
   private pipeline!: InboundMessagePipeline;
@@ -101,10 +69,12 @@ export class ChannelService implements Service {
     this.pipeline = new InboundMessagePipeline(bus, this.config);
 
     this.registerMethods(bus);
-    bus.on('agent.onTool', (p: AgentToolPayload) => this.onAgentTool(p));
-    bus.on('agent.onCompleted', (p: AgentCompletedPayload) => this.onAgentCompleted(p));
+    bus.on('agent.onTool', (p: AgentToolPayload) => this.pipeline.onTool(p));
+    bus.on('agent.onCompleted', (p: AgentCompletedPayload) => this.pipeline.onCompleted(p));
 
-    await this.registerProviders();
+    for (const provider of await loadProviders(PROVIDERS)) {
+      this.providers.set(provider.type, provider);
+    }
     // Skip live adapter startup for one-shot CLI calls — `channel.*` methods are `live`
     // and refused without a daemon, so there is nothing to connect for.
     if (!process.env.VARGOS_CLI_ONESHOT) await this.startAllConfigured();
@@ -173,43 +143,26 @@ export class ChannelService implements Service {
         allowFrom: z.array(z.string()).optional(),
         cwd: z.string().optional(),
         botToken: z.string().optional(),
-        persist: z.boolean().optional().describe('Persist to config.json (default true). Set false for an ephemeral runtime-only adapter.'),
       }),
       cli: { positional: ['type', 'id'] },
       live: true,
     }, (p) => this.registerChannel(p));
   }
 
-  private async registerProviders(): Promise<void> {
-    const providers = await loadProviders();
-    for (const provider of providers) {
-      this.registry.register(provider);
-    }
-  }
-
   // ── Callable handlers ────────────────────────────────────────────────────────
 
   private async send(params: { sessionKey: string; text: string; fromSessionKey?: string }): Promise<{ sent: boolean }> {
     const { sessionKey, text, fromSessionKey } = params;
-    const target = parseChannelTarget(sessionKey);
-    if (!target) throw new Error(`Invalid session key: ${sessionKey}`);
+    const adapter = this.adapterFor(sessionKey);
 
-    const adapter = this.adapters.get(target.channel);
-    if (!adapter) throw new Error(`No adapter for channel: ${target.channel}`);
+    log.debug(`send: ${sessionKey} (${text.length} chars)`);
+    await deliverReply((chunk) => adapter.send(sessionKey, chunk), stripMarkdown(text));
 
-    log.debug(`send: ${sessionKey} (${text.length} chars) channel=${target.channel}`);
-    const cleaned = stripMarkdown(text);
-    await deliverReply((chunk) => adapter.send(sessionKey, chunk), cleaned);
-
-    // Mark session as replied so onAgentCompleted knows agent sent its own reply
-    const session = this.activeSessions.get(sessionKey);
-    if (session) session.replied = true;
-
-    log.debug(`send: completed ${sessionKey}`);
+    // Tell the pipeline the agent replied itself, so completion doesn't send it again
+    this.pipeline.markReplied(sessionKey);
 
     if (adapter.sendMedia) {
-      const files = extractMediaPaths(text);
-      for (const { filePath, mimeType } of files) {
+      for (const { filePath, mimeType } of extractMediaPaths(text)) {
         await adapter.sendMedia(sessionKey, filePath, mimeType)
           .catch(err => log.error(`media send failed: ${filePath}: ${err}`));
       }
@@ -227,12 +180,8 @@ export class ChannelService implements Service {
 
   private async sendMedia(params: { sessionKey: string; filePath: string; mimeType: string; caption?: string }): Promise<{ sent: boolean }> {
     const { sessionKey, filePath, mimeType, caption } = params;
-    const target = parseChannelTarget(sessionKey);
-    if (!target) throw new Error(`Invalid session key: ${sessionKey}`);
-
-    const adapter = this.adapters.get(target.channel);
-    if (!adapter) throw new Error(`No adapter for channel: ${target.channel}`);
-    if (!adapter.sendMedia) throw new Error(`Channel ${target.channel} does not support media`);
+    const adapter = this.adapterFor(sessionKey);
+    if (!adapter.sendMedia) throw new Error(`Channel ${adapter.instanceId} does not support media`);
 
     await adapter.sendMedia(sessionKey, filePath, mimeType, caption);
     return { sent: true };
@@ -264,102 +213,35 @@ export class ChannelService implements Service {
   }
 
   private async registerChannel(
-    params: ChannelEntry & { persist?: boolean },
+    entry: ChannelEntry,
   ): Promise<{ id: string; type: string; started: boolean; persisted: boolean }> {
-    if (!this.registry.has(params.type)) {
-      throw new Error(`Unknown channel type: ${params.type}. Loaded providers: ${this.registry.types().join(', ')}`);
+    if (!this.providers.has(entry.type)) {
+      throw new Error(`Unknown channel type: ${entry.type}. Loaded providers: ${[...this.providers.keys()].join(', ')}`);
     }
-    const { persist, ...entry } = params;
-    if (this.adapters.has(params.id)) {
-      log.info(`channel already registered: ${params.id}`);
-      return { id: params.id, type: params.type, started: false, persisted: false };
+
+    if (this.adapters.has(entry.id)) {
+      log.info(`channel already registered: ${entry.id}`);
+      return { id: entry.id, type: entry.type, started: false, persisted: false };
     }
     await this.startChannel(entry);
 
     // Persist by default so a CLI/RPC registration survives the process; the daemon
     // picks it up on next load. Pass persist:false for an ephemeral runtime-only adapter.
     let persisted = false;
-    if (persist !== false) {
-      const config = await this.bus.call<AppConfig>('config.get', {});
-      if (!config.channels.some(c => c.id === entry.id)) {
-        await this.bus.call('config.set', { ...config, channels: [...config.channels, entry] });
-        persisted = true;
-      }
+
+    const config = await this.bus.call<AppConfig>('config.get', {});
+    if (!config.channels.some(c => c.id === entry.id)) {
+      await this.bus.call('config.set', { ...config, channels: [...config.channels, entry] });
+      persisted = true;
     }
+
     return { id: entry.id, type: entry.type, started: true, persisted };
   }
 
-  // ── Agent event handlers ──────────────────────────────────────────────────────
+  // ── Inbound handoff ──────────────────────────────────────────────────────────
 
-  private onAgentTool(payload: AgentToolPayload): void {
-    const session = this.activeSessions.get(payload.sessionKey);
-    if (!session) return;
-
-    if (payload.sessionKey.includes(':subagent')) {
-      log.debug(`agent.onTool: subagent, skipping reaction`);
-      return;
-    }
-
-    log.debug(formatToolLog(payload));
-
-    if (payload.phase === 'start') {
-      if (session.reactionController) {
-        session.reactionController.setTool();
-      }
-      // Resume typing if it was paused (long-running tool)
-      session.adapter.resumeTyping(payload.sessionKey);
-    } else {
-      if (session.reactionController) {
-        session.reactionController.setThinking();
-      }
-    }
-  }
-
-  private onAgentCompleted(payload: AgentCompletedPayload): void {
-    if (!payload.sessionKey || payload.sessionKey.includes(':subagent')) return;
-
-    const session = this.activeSessions.get(payload.sessionKey);
-    if (!session) {
-      // Non-channel session (cron, webhook, etc.) — expected, ignore.
-      log.debug(`onAgentCompleted: session not found: ${payload.sessionKey}`);
-      return;
-    }
-
-    // agent.onCompleted (pi's agent_end) fires once at the true end of the run — even with
-    // steering, where a second message's agent.execute settles early. So THIS is the cleanup
-    // anchor, not the execute promise: claim + remove the session now. The captured `session`
-    // object still serves the async reply send + reaction seal below. `completed` guards the
-    // pipeline catch against a double-send.
-    session.completed = true;
-    this.activeSessions.delete(payload.sessionKey);
-
-    const sessionKey = payload.sessionKey;
-    const text = payload.success ? (payload.response ?? '') : `Error: ${payload.error || 'Unknown error'}`;
-    log.info(`→ ${sessionKey} ${payload.success ? '✓' : '✗'} (${text.length} chars)`);
-
-    // Send on error (always), or on a successful response the agent didn't already deliver
-    // via the channel-send tool.
-    const shouldSend = !payload.success || (!session.replied && !!payload.response);
-    const finalize = () => this.pipeline.finalize(session, sessionKey, payload.success !== false);
-
-    if (!shouldSend) { finalize(); return; }
-
-    this.bus.call<{ sent: boolean }>('channel.send', { sessionKey, text })
-      .then(({ sent }) => log.debug(`→ ${sessionKey} sent=${sent}`))
-      .catch(err => log.error(`failed to send reply: ${toMessage(err)}`))
-      .finally(finalize);
-  }
-
-  // ── Inbound message handling ─────────────────────────────────────────────────
-
-  /**
-   * Process a normalized inbound message from an adapter.
-   * Called by adapters after normalizing their raw message format.
-   */
-  async onInboundMessage(
-    sessionKey: string,
-    message: NormalizedInboundMessage,
-  ): Promise<void> {
+  /** Called by adapters once a message is normalized, debounced and enriched. */
+  private async onInboundMessage(sessionKey: string, message: NormalizedInboundMessage): Promise<void> {
     const target = parseChannelTarget(sessionKey);
     if (!target) {
       log.debug(`invalid session key: ${sessionKey}`);
@@ -372,20 +254,28 @@ export class ChannelService implements Service {
       return;
     }
 
-    // Delegate to pipeline for policy orchestration
-    log.debug(`onInboundMessage: Running pipeline process for ${sessionKey}`);
-    await this.pipeline.process(sessionKey, message, adapter, this.activeSessions);
+    await this.pipeline.process(sessionKey, message, adapter);
   }
 
   // ── Channel startup ──────────────────────────────────────────────────────────
 
+  private adapterFor(sessionKey: string): ChannelAdapter {
+    const target = parseChannelTarget(sessionKey);
+    if (!target) throw new Error(`Invalid session key: ${sessionKey}`);
+
+    const adapter = this.adapters.get(target.channel);
+    if (!adapter) throw new Error(`No adapter for channel: ${target.channel}`);
+    return adapter;
+  }
+
   private async startChannel(entry: ChannelEntry): Promise<void> {
-    const adapter = await this.createAdapter(entry);
-    if (!adapter) {
+    const provider = this.providers.get(entry.type);
+    if (!provider) {
       log.warn(`unknown channel type: ${entry.type} (id=${entry.id})`);
       return;
     }
 
+    const adapter = await provider.createAdapter(entry.id, entry, this.adapterDeps(entry));
     this.adapters.set(entry.id, adapter);
 
     try {
@@ -398,18 +288,26 @@ export class ChannelService implements Service {
     }
   }
 
-  private async createAdapter(entry: ChannelEntry): Promise<ChannelAdapter | null> {
-    const deps: AdapterDeps = {
-      onInbound: this.onInboundMessage.bind(this),
-      transcribe: (filePath: string) =>
-        this.bus.call<{ text: string }>('media.transcribeAudio', { filePath }).then(r => r.text),
-      describe: (filePath: string) =>
-        this.bus.call<{ description: string }>('media.describeImage', { filePath }).then(r => r.description),
-      extract: (filePath: string, mimeType: string) =>
-        this.bus.call<{ text: string }>('media.extractDocument', { filePath, mimeType }),
+  /**
+   * The only core capabilities an adapter gets. `shouldEnrich` mirrors the pipeline's
+   * execution rule so we never pay for a transcript of a message we will not act on.
+   */
+  private adapterDeps(entry: ChannelEntry): AdapterDeps {
+    return {
+      onInbound: (sessionKey, message) => this.onInboundMessage(sessionKey, message),
+      enrichMedia: (kind, filePath, mimeType) => this.enrichMedia(kind, filePath, mimeType),
+      shouldEnrich: (m) => shouldExecute(entry.allowFrom, m.fromUserId, m.chatType, m.isMentioned),
     };
+  }
 
-    return this.registry.createAdapter(entry, deps);
+  private enrichMedia(kind: MediaKind, filePath: string, mimeType: string): Promise<string> {
+    if (kind === 'image') {
+      return this.bus.call<{ description: string }>('media.describeImage', { filePath }).then(r => r.description);
+    }
+    if (kind === 'audio') {
+      return this.bus.call<{ text: string }>('media.transcribeAudio', { filePath }).then(r => r.text);
+    }
+    return this.bus.call<{ text: string }>('media.extractDocument', { filePath, mimeType }).then(r => r.text);
   }
 
   private async startAllConfigured(): Promise<void> {

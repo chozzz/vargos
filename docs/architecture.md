@@ -79,8 +79,10 @@ re-imports, and runs `init()` again — other services keep running and retain s
 ## Channels
 
 The `channel` service manages messaging adapters (Telegram, WhatsApp/Baileys) behind a common
-`ChannelAdapter` contract (`services/channel/base-adapter.ts`). Inbound: adapter → normalize →
-pipeline (link-expand, whitelist) → `agent.execute`; `agent.onCompleted` delivers the reply.
+`ChannelAdapter` contract (`services/channel/types.ts`); `base-adapter.ts` implements the single
+shared inbound path, so providers supply only transport hooks. Inbound: adapter → normalize →
+pipeline (link-expand, access check) → `agent.execute`. `pipeline.ts` owns in-flight run state and
+delivers the reply on `agent.onCompleted`; access rules are pure functions in `access.ts`.
 Outbound: `channel.send` → strip markdown → chunk → `adapter.send`.
 
 ## See also

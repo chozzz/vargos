@@ -44,9 +44,8 @@ export class TelegramAdapter extends BaseChannelAdapter<TelegramMessage> {
     instanceId: string,
     private readonly botToken: string,
     deps: AdapterDeps,
-    allowFrom?: string[],
   ) {
-    super(instanceId, 'telegram', deps, allowFrom);
+    super(instanceId, deps);
   }
 
   async start(): Promise<void> {
@@ -69,20 +68,38 @@ export class TelegramAdapter extends BaseChannelAdapter<TelegramMessage> {
 
   async stop(): Promise<void> {
     this.polling = false;
-    this.cleanupTimers();
+    this.cleanup();
     this.abortController?.abort();
     this.abortController = null;
     this.status = 'disconnected';
     this.log.debug('stopped');
   }
 
-  async send(sessionKey: string, text: string): Promise<void> {
-    const chatId = this.extractUserId(sessionKey);
+  protected normalize(msg: TelegramMessage): NormalizedInboundMessage | null {
+    return normalizeTelegramMessage(msg, {
+      botUserId: this.botUser?.id || null,
+      botUsername: this.botUser?.username,
+    });
+  }
+
+  protected async sendText(chatId: string, text: string): Promise<void> {
     await this.apiCall('sendMessage', { chat_id: chatId, text });
   }
 
+  protected async sendTyping(chatId: string): Promise<void> {
+    await this.apiCall('sendChatAction', { chat_id: chatId, action: 'typing' });
+  }
+
+  async react(sessionKey: string, messageId: string, emoji: string): Promise<void> {
+    await this.apiCall('setMessageReaction', {
+      chat_id: this.chatId(sessionKey),
+      message_id: Number(messageId),
+      reaction: [{ type: 'emoji', emoji }],
+    });
+  }
+
   async sendMedia(sessionKey: string, filePath: string, mimeType: string, caption?: string): Promise<void> {
-    const chatId = this.extractUserId(sessionKey);
+    const chatId = this.chatId(sessionKey);
     const [mediaType] = mimeType.split('/');
     const methodMap: Record<string, { method: string; field: string }> = {
       image: { method: 'sendPhoto', field: 'photo' },
@@ -123,43 +140,50 @@ export class TelegramAdapter extends BaseChannelAdapter<TelegramMessage> {
     this.log.debug(`sendMedia: ${sessionKey} ${mimeType} ${fileName}`);
   }
 
-  protected async sendTypingIndicator(sessionKey: string): Promise<void> {
-    const chatId = this.extractUserId(sessionKey);
-    await this.apiCall('sendChatAction', { chat_id: chatId, action: 'typing' });
-  }
+  protected async resolveMedia(msg: TelegramMessage): Promise<InboundMediaSource | null> {
+    if (msg.photo?.length) {
+      const largest = msg.photo[msg.photo.length - 1];
+      return { buffer: await this.downloadFile(largest.file_id), mimeType: 'image/jpeg', caption: msg.caption };
+    }
 
-  async react(sessionKey: string, messageId: string, emoji: string): Promise<void> {
-    const chatId = this.extractUserId(sessionKey);
-    await this.apiCall('setMessageReaction', {
-      chat_id: chatId,
-      message_id: Number(messageId),
-      reaction: [{ type: 'emoji', emoji }],
-    });
+    if (msg.document) {
+      const buffer = await this.downloadFile(msg.document.file_id);
+      const mimeType = msg.document.mime_type || 'application/octet-stream';
+      return { buffer, mimeType, caption: msg.caption || `[Document: ${msg.document.file_name}]` };
+    }
+
+    const audio = msg.voice ?? msg.audio;
+    if (!audio) return null;
+
+    const duration = audio.duration;
+    const label = msg.voice ? 'Voice message' : 'Audio message';
+    return {
+      buffer: await this.downloadFile(audio.file_id),
+      mimeType: audio.mime_type?.split(';')[0].trim() || 'audio/ogg',
+      caption: msg.caption || `[${label}, ${duration}s]`,
+      duration,
+    };
   }
 
   private async pollLoop(): Promise<void> {
     this.log.debug(`poll loop starting with offset ${this.offset}`);
-    let cycleCount = 0;
     while (this.polling) {
       try {
-        cycleCount++;
-        // this.log.debug(`poll cycle ${cycleCount}: calling getUpdates with offset ${this.offset}`);
         const updates = await this.apiCall<TelegramUpdate[]>('getUpdates', {
           offset: this.offset,
           timeout: POLL_TIMEOUT_S,
           allowed_updates: ['message'],
         });
 
-        // this.log.debug(`poll cycle ${cycleCount}: received response with ${updates.length} update(s)`);
         this.reconnector.reset();
 
         for (const update of updates) {
           this.offset = update.update_id + 1;
-          this.handleUpdate(update);
+          if (update.message) void this.receive(update.message);
         }
       } catch (err) {
         if (!this.polling) break;
-        this.log.warn(`poll error (cycle ${cycleCount}): ${err}`);
+        this.log.warn(`poll error: ${err}`);
         const delay = this.reconnector.next();
         if (delay === null) {
           this.log.error('max reconnect attempts reached');
@@ -171,108 +195,13 @@ export class TelegramAdapter extends BaseChannelAdapter<TelegramMessage> {
     }
   }
 
-  private handleUpdate(update: TelegramUpdate): void {
-    const msg = update.message;
-    if (!msg) return;
-
-    const normalizedMsg = normalizeTelegramMessage(msg, {
-      botUserId: this.botUser?.id || null,
-      botUsername: this.botUser?.username,
-      botName: this.botUser?.first_name,
-    });
-    if (!normalizedMsg) {
-      this.log.error(`${msg.chat.type} message from user ${msg.from?.id} not normalized`);
-      return;
-    }
-
-    const chatId = String(msg.chat.id);
-    const msgKey = `${chatId}:${msg.message_id}`;
-    if (!this.dedupe.add(msgKey)) return;
-
-    if (msg.photo || msg.voice || msg.audio || msg.document) {
-      this.debouncer.flush(chatId);
-      this.log.debug(`${msg.chat.type} media from user ${normalizedMsg.fromUserId}`);
-      this.handleMedia(chatId, msg, normalizedMsg).catch((err) => {
-        this.log.warn(`handleMedia error for ${normalizedMsg.fromUserId}: ${err}`);
-      });
-      return;
-    }
-
-    this.log.debug(`${msg.chat.type} text from user ${normalizedMsg.fromUserId}: ${msg.text!.slice(0, 80)}`);
-    this.latestMessageId.set(chatId, String(msg.message_id));
-    this.debouncer.push(chatId, msg.text!, normalizedMsg);
-  }
-
-  private isMentioned(msg: TelegramMessage): boolean {
-    if (!msg.text || !this.botUser) return false;
-    const botUsername = this.botUser.username;
-    if (botUsername && msg.text.toLowerCase().includes(`@${botUsername.toLowerCase()}`)) {
-      return true;
-    }
-    // Also check if it's a reply to the bot's message
-    if (msg.reply_to_message?.from?.id === this.botUser.id) {
-      return true;
-    }
-    return false;
-  }
-
-
   private async downloadFile(fileId: string): Promise<Buffer> {
     const file = await this.apiCall<TelegramFile>('getFile', { file_id: fileId });
     if (!file.file_path) throw new Error('No file_path returned from getFile');
 
-    const url = `${API_FILE_BASE}${this.botToken}/${file.file_path}`;
-    const res = await this.request(url, { method: 'GET' });
+    const res = await this.request(`${API_FILE_BASE}${this.botToken}/${file.file_path}`, { method: 'GET' });
     validateHttpResponse(res, 'File download');
     return res.buffer();
-  }
-
-  protected async resolveMedia(tgMsg: TelegramMessage): Promise<InboundMediaSource | null> {
-    if (tgMsg.photo?.length) {
-      const largest = tgMsg.photo[tgMsg.photo.length - 1];
-      const buffer = await this.downloadFile(largest.file_id);
-      return { buffer, mimeType: 'image/jpeg', mediaType: 'image', caption: tgMsg.caption };
-    }
-
-    if (tgMsg.document) {
-      const buffer = await this.downloadFile(tgMsg.document.file_id);
-      const mimeType = tgMsg.document.mime_type || 'application/octet-stream';
-      const caption = tgMsg.caption || `[Document: ${tgMsg.document.file_name}]`;
-      return { buffer, mimeType, mediaType: 'document', caption };
-    }
-
-    const fileId = tgMsg.voice?.file_id ?? tgMsg.audio?.file_id;
-    if (!fileId) return null;
-
-    const rawMime = (tgMsg.voice?.mime_type ?? tgMsg.audio?.mime_type)?.split(';')[0].trim();
-    const mimeType = rawMime || 'audio/ogg';
-    const duration = tgMsg.voice?.duration ?? tgMsg.audio?.duration;
-    const label = tgMsg.voice ? 'Voice message' : 'Audio message';
-    const caption = tgMsg.caption || `[${label}, ${duration}s]`;
-    const buffer = await this.downloadFile(fileId);
-    return { buffer, mimeType, mediaType: 'audio', caption, duration };
-  }
-
-  private async handleMedia(chatId: string, msg: TelegramMessage, normalizedMsg: NormalizedInboundMessage): Promise<void> {
-    if (!this.onInboundMessage) {
-      this.log.error('No inbound message handler');
-      return;
-    }
-
-    const sessionKey = this.buildSessionKey(chatId);
-    const label = msg.photo?.length ? 'photo' : (msg.voice ? 'voice' : msg.audio ? 'audio' : 'document');
-
-    try {
-      const { caption, savedPath, mimeType } = await this.processInboundMedia(
-        msg,
-        (text) => this.onInboundMessage!(sessionKey, { ...normalizedMsg, text }),
-        sessionKey,
-        this.shouldExecute(chatId, normalizedMsg.chatType, normalizedMsg.isMentioned),
-      );
-      this.log.debug(`received ${label} from ${chatId}: ${caption} (${mimeType}) - ${savedPath}`);
-    } catch (err) {
-      this.log.warn(`${label} download failed for ${chatId}: ${err}`);
-    }
   }
 
   private async apiCall<T>(method: string, params?: Record<string, unknown>): Promise<T> {

@@ -44,13 +44,11 @@ function createNormalizedMessage(opts: {
 }): NormalizedInboundMessage {
   return {
     messageId: 'msg_123',
+    chatId: opts.chatType === 'private' ? (opts.userId || '210994982838335@lid') : '120363@g.us',
     fromUserId: opts.userId || '210994982838335@lid',
-    fromUser: 'Test User',
     chatType: opts.chatType || 'group',
     isMentioned: opts.isMentioned ?? false,
-    channelType: 'whatsapp',
     text: opts.text || 'hello',
-    media: undefined,
   };
 }
 
@@ -109,7 +107,6 @@ class StubAdapter implements ChannelAdapter {
 describe('WhatsApp normalizer: group mention detection', () => {
   const context = {
     botJid: '6282123123373@s.whatsapp.net',
-    botName: 'TestBot',
   };
 
   it('marks private messages as mentioned (always true)', () => {
@@ -487,17 +484,5 @@ describe('Edge cases', () => {
     };
     const result = normalizeWhatsAppMessage(msg, { botJid: '6282123123373@s.whatsapp.net' });
     expect(result).toBeNull();
-  });
-
-  it('preserves pushName in fromUser', () => {
-    const msg = createWhatsAppMessage({
-      isGroup: true,
-      text: '@176136675979485 hello',
-      senderJid: '210994982838335@lid',
-    });
-    // Manually set pushName
-    Object.assign(msg, { pushName: 'Vadi Taslim' });
-    const result = normalizeWhatsAppMessage(msg, { botJid: '6282123123373@s.whatsapp.net' });
-    expect(result?.fromUser).toBe('Vadi Taslim');
   });
 });

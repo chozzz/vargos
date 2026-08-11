@@ -8,7 +8,6 @@ import makeWASocket, {
   DisconnectReason,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
-  downloadMediaMessage,
   jidNormalizedUser,
   type WASocket,
   type ConnectionState,
@@ -16,10 +15,7 @@ import makeWASocket, {
 } from '@whiskeysockets/baileys';
 import pino from 'pino';
 import { promises as fs } from 'node:fs';
-import { createLogger } from '../../../../lib/logger.js';
 import type { WhatsAppSessionEvents } from './types.js';
-
-const log = createLogger('whatsapp');
 
 // libsignal-node session_record.js dumps Signal protocol state via console.info — silence it.
 console.info = () => { };
@@ -92,10 +88,10 @@ export async function createWhatsAppSocket(
   return sock;
 }
 
-export async function processInboundMessage(
+export function processInboundMessage(
   msg: WAMessage,
   events: WhatsAppSessionEvents,
-): Promise<void> {
+): void {
   const m = msg.message!;
   // Baileys normalizes JID structure in cleanMessage() (strips device/agent suffixes,
   // converts @c.us→@s.whatsapp.net) but does NOT resolve LID→PN. We apply
@@ -136,22 +132,13 @@ export async function processInboundMessage(
             m.stickerMessage ? { type: 'sticker' as const, msg: m.stickerMessage } :
               null;
 
+  // Bytes are fetched later by the adapter's resolveMedia — downloading here would
+  // pay for every duplicate and every message the whitelist is about to reject.
   if (mediaMsg) {
-    let mediaBuffer: Buffer | undefined;
-    try {
-      const downloaded = await downloadMediaMessage(msg, 'buffer', {});
-      mediaBuffer = Buffer.isBuffer(downloaded) ? downloaded : Buffer.from(downloaded as Uint8Array);
-      if (!mediaBuffer || mediaBuffer.length === 0) {
-        log.warn(`Media download returned empty buffer for ${base.messageId} (${mediaMsg.type})`);
-      }
-    } catch (err) {
-      log.error(`Media download failed for ${base.messageId} (${mediaMsg.type}): ${err}`);
-    }
-
     const caption = (mediaMsg.msg as { caption?: string }).caption || '';
     const mimeType = (mediaMsg.msg as { mimetype?: string }).mimetype || undefined;
 
-    events.onMessage({ ...base, text: caption, mediaType: mediaMsg.type, mediaBuffer, mimeType, caption });
+    events.onMessage({ ...base, raw: msg, text: caption, mediaType: mediaMsg.type, mimeType, caption });
     return;
   }
 

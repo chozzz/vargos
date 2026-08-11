@@ -6,7 +6,7 @@ Legend: ✅ shipped · 🟧 partial / disabled at boot · 📋 planned
 
 ## Core Agent Runtime
 
-Pi-SDK-powered runtime (`@mariozechner/pi-coding-agent`) with Vargos-managed config, sessions, and bus tools.
+Pi-SDK-powered runtime (`@earendil-works/pi-coding-agent`) with Vargos-managed config, sessions, and bus tools.
 
 | Feature | Status | Location |
 |---------|--------|----------|
@@ -17,8 +17,7 @@ Pi-SDK-powered runtime (`@mariozechner/pi-coding-agent`) with Vargos-managed con
 | Inference error surfacing — `success: false` on `stopReason === 'error'` | ✅ | `services/agent/index.ts` |
 | Custom tools from bus events (auto-wrapped) | ✅ | `services/agent/tools.ts` |
 | Streaming events to bus (`agent.onDelta`, `agent.onTool`, `agent.onCompleted`) | ✅ | `services/agent/index.ts` |
-| Subagent orchestration via nested `agent.execute` (`<parent>:subagent:<child>` keys) | ✅ | `lib/subagent.ts` |
-| Chat directives (`/think:<level>`, `/verbose`) | ✅ | `services/agent/directives.ts` |
+| Subagent orchestration via nested `agent.execute` (`<parent>:subagent:<child>` keys) | ✅ | `lib/session-key.ts` |
 
 ## System Prompt
 
@@ -118,7 +117,7 @@ Pi-SDK-powered runtime (`@mariozechner/pi-coding-agent`) with Vargos-managed con
 | Feature | Status |
 |---------|--------|
 | Pi SDK auto-discovery: `<agentDir>/skills/`, `<cwd>/.pi/skills/` | ✅ |
-| Vargos additional paths via `lib/skills.ts` `resolveSkillPaths`: `<workspaceDir>/skills/`, `<cwd>/skills/` | ✅ |
+| Vargos additional paths via `services/agent/skills.ts` `resolveSkillPaths`: `<workspaceDir>/skills/`, `<cwd>/skills/` | ✅ |
 | Bundled `skill-creator` skill at `.templates/agent/skills/skill-creator/SKILL.md` | ✅ |
 | Skills metadata in system prompt (description-first, body via `read` tool on demand) | ✅ |
 

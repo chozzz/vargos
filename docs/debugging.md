@@ -45,7 +45,7 @@ Each line is a `SessionEntry`. Look for:
 
 1. Check channel started cleanly: `[telegram-foo] long-polling started` or `[whatsapp-foo] connected as ...`.
 2. Telegram groups: bot only fires on `@`-mention or reply.
-3. Check `allowFrom` whitelist — rejected senders log `[channels-pipeline] DEBUG user X not whitelisted - skipping agent`.
+3. Check `allowFrom` whitelist — rejected senders log `[channels-pipeline] ← <sessionKey> (not whitelisted)` at DEBUG. A whitelisted user in a group who didn't `@`-mention the bot logs `(observing (no @mention))` at INFO.
 
 ### Tool not found / not exposed
 

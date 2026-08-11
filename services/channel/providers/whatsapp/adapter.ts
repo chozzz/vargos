@@ -4,10 +4,10 @@
 
 import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
-import { jidDecode, jidNormalizedUser, areJidsSameUser } from '@whiskeysockets/baileys';
+import { jidNormalizedUser, downloadMediaMessage } from '@whiskeysockets/baileys';
 import type { WASocket } from '@whiskeysockets/baileys';
 import type { InboundMediaSource, NormalizedInboundMessage, AdapterDeps } from '../../types.js';
-import { BaseChannelAdapter, MEDIA_TYPE_LABELS } from '../../base-adapter.js';
+import { BaseChannelAdapter } from '../../base-adapter.js';
 import { createWhatsAppSocket } from './session.js';
 import type { WhatsAppInboundMessage } from './types.js';
 import { normalizeWhatsAppMessage } from './normalizer.js';
@@ -21,19 +21,14 @@ export class WhatsAppAdapter extends BaseChannelAdapter<WhatsAppInboundMessage> 
 
   private sock: WASocket | null = null;
   private botJid = '';
-  private botLid: string | null = null; // learned from proper mentions
   private reconnector = new Reconnector();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private authDir = '';
   /** Set when creds are invalid/logged-out. Stops reconnect attempts — repair is CLI-only. */
   private needsRepair = false;
 
-  constructor(
-    instanceId: string,
-    deps: AdapterDeps,
-    allowFrom?: string[],
-  ) {
-    super(instanceId, 'whatsapp', deps, allowFrom);
+  constructor(instanceId: string, deps: AdapterDeps) {
+    super(instanceId, deps);
   }
 
   async start(): Promise<void> {
@@ -59,18 +54,9 @@ export class WhatsAppAdapter extends BaseChannelAdapter<WhatsAppInboundMessage> 
         onQR: () => {
           // The daemon never pairs interactively. A QR means the creds are missing/invalid.
           // We close the socket immediately — the auth dir is then free to use with the CLI.
-          this.needsRepair = true;
-          this.status = 'error';
           try { this.sock?.end(undefined); } catch { /* already closing */ }
           this.sock = null;
-          this.log.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-          this.log.error(`  WhatsApp "${this.instanceId}" needs re-pairing`);
-          this.log.error('  Credentials are invalid or expired.');
-          this.log.error('  This channel will not send or receive messages.');
-          this.log.error('  Daemon does NOT need to stop. Run:');
-          this.log.error(`    1. vargos channel pair ${this.instanceId} --reset`);
-          this.log.error(`    2. vargos channel restart ${this.instanceId}`);
-          this.log.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          this.requireRepair('Credentials are invalid or expired.');
         },
         onConnected: (name) => {
           this.botJid = this.sock?.user?.id || '';
@@ -82,36 +68,13 @@ export class WhatsAppAdapter extends BaseChannelAdapter<WhatsAppInboundMessage> 
           this.log.info(`disconnected: ${reason}`);
           this.sock = null;
 
-          if (reason === 'logged_out') {
-            this.needsRepair = true;
-            this.status = 'error';
-            this.log.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-            this.log.error(`  WhatsApp "${this.instanceId}" was logged out`);
-            this.log.error('  Another device removed this session.');
-            this.log.error('  Daemon does NOT need to stop. Run:');
-            this.log.error(`    1. vargos channel pair ${this.instanceId} --reset`);
-            this.log.error(`    2. vargos channel restart ${this.instanceId}`);
-            this.log.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-            return;
-          }
-
-          if (reason === 'forbidden') {
-            this.needsRepair = true;
-            this.status = 'error';
-            this.log.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-            this.log.error(`  WhatsApp "${this.instanceId}" access forbidden`);
-            this.log.error('  Account may be banned or credentials revoked.');
-            this.log.error('  Daemon does NOT need to stop. Run:');
-            this.log.error(`    1. vargos channel pair ${this.instanceId} --reset`);
-            this.log.error(`    2. vargos channel restart ${this.instanceId}`);
-            this.log.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-            return;
-          }
+          if (reason === 'logged_out') return this.requireRepair('Another device removed this session.');
+          if (reason === 'forbidden') return this.requireRepair('Account may be banned or credentials revoked.');
 
           this.status = 'disconnected';
           this.scheduleReconnect();
         },
-        onMessage: (msg) => this.handleInbound(msg),
+        onMessage: (msg) => void this.receive(msg),
       });
     } catch (err) {
       this.status = 'error';
@@ -121,7 +84,7 @@ export class WhatsAppAdapter extends BaseChannelAdapter<WhatsAppInboundMessage> 
   }
 
   async stop(): Promise<void> {
-    this.cleanupTimers();
+    this.cleanup();
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -133,17 +96,31 @@ export class WhatsAppAdapter extends BaseChannelAdapter<WhatsAppInboundMessage> 
     this.status = 'disconnected';
   }
 
-  async send(sessionKey: string, text: string): Promise<void> {
+  protected normalize(msg: WhatsAppInboundMessage): NormalizedInboundMessage | null {
+    return normalizeWhatsAppMessage(msg, { botJid: this.botJid });
+  }
+
+  protected async sendText(chatId: string, text: string): Promise<void> {
     if (!this.sock) throw new Error('WhatsApp not connected');
-    const targetJid = this.toJid(this.extractUserId(sessionKey));
-    this.log.info(`send: sessionKey=${sessionKey} targetJid=${targetJid} text=${text.slice(0, 80)}`);
-    await this.sock.sendMessage(targetJid, { text });
-    this.log.info(`send: delivered to ${targetJid}`);
+    const jid = this.toJid(chatId);
+    await this.sock.sendMessage(jid, { text });
+    this.log.debug(`sent to ${jid} (${text.length} chars)`);
+  }
+
+  protected async sendTyping(chatId: string): Promise<void> {
+    await this.sock?.sendPresenceUpdate('composing', this.toJid(chatId));
+  }
+
+  async react(sessionKey: string, messageId: string, emoji: string): Promise<void> {
+    const jid = this.toJid(this.chatId(sessionKey));
+    await this.sock?.sendMessage(jid, {
+      react: { text: emoji, key: { remoteJid: jid, id: messageId } },
+    });
   }
 
   async sendMedia(sessionKey: string, filePath: string, mimeType: string, caption?: string): Promise<void> {
     if (!this.sock) throw new Error('WhatsApp not connected');
-    const jid = this.toJid(this.extractUserId(sessionKey));
+    const jid = this.toJid(this.chatId(sessionKey));
     const buffer = readFileSync(filePath);
     const fileName = path.basename(filePath);
     const [mediaType] = mimeType.split('/');
@@ -160,110 +137,51 @@ export class WhatsAppAdapter extends BaseChannelAdapter<WhatsAppInboundMessage> 
     this.log.info(`sendMedia: ${sessionKey} ${mimeType} ${fileName}`);
   }
 
-  protected async sendTypingIndicator(sessionKey: string): Promise<void> {
-    await this.sock?.sendPresenceUpdate('composing', this.toJid(this.extractUserId(sessionKey)));
-  }
+  protected async resolveMedia(msg: WhatsAppInboundMessage): Promise<InboundMediaSource | null> {
+    if (!msg.raw || !msg.mediaType) return null;
 
-  async react(sessionKey: string, messageId: string, emoji: string): Promise<void> {
-    const jid = this.toJid(this.extractUserId(sessionKey));
-    this.log.info(`react: sessionKey=${sessionKey} jid=${jid} messageId=${messageId} emoji=${emoji}`);
-    await this.sock?.sendMessage(jid, {
-      react: { text: emoji, key: { remoteJid: jid, id: messageId } },
-    });
+    try {
+      const downloaded = await downloadMediaMessage(msg.raw, 'buffer', {});
+      const buffer = Buffer.isBuffer(downloaded) ? downloaded : Buffer.from(downloaded as Uint8Array);
+      if (buffer.length === 0) {
+        this.log.warn(`empty media buffer for ${msg.messageId} (${msg.mediaType})`);
+        return null;
+      }
+      return {
+        buffer,
+        mimeType: msg.mimeType?.split(';')[0].trim()
+          || MEDIA_TYPE_MIME_DEFAULTS[msg.mediaType]
+          || 'application/octet-stream',
+        caption: msg.caption,
+      };
+    } catch (err) {
+      this.log.error(`media download failed for ${msg.messageId} (${msg.mediaType}): ${toMessage(err)}`);
+      return null;
+    }
   }
 
   private toJid(id: string): string {
-    // If already a full JID with domain, normalize and return
-    if (id.includes('@')) {
-      const decoded = jidDecode(id);
-      if (decoded) return jidNormalizedUser(id);
-    }
-    // Plain phone number — append canonical domain
+    // Anything with an @ is already addressable: jidNormalizedUser canonicalises the
+    // domain (c.us → s.whatsapp.net) and leaves @lid and @g.us intact.
+    if (id.includes('@')) return jidNormalizedUser(id);
+    // Plain phone number — append the canonical domain
     return `${id.replace(/^\+/, '')}@s.whatsapp.net`;
   }
 
-  private handleInbound(msg: WhatsAppInboundMessage): void {
-    if (msg.fromMe) return;
-
-    if (!this.dedupe.add(msg.messageId)) return;
-
-    // Learn bot's LID from proper mentions (mentionedJids populated by WhatsApp).
-    // When user mentions bot via the menu, WhatsApp includes the bot's LID in mentionedJids.
-    // We cache it so text fallback (@number typing) can match it later.
-    if (msg.mentionedJids) {
-      for (const jid of msg.mentionedJids) {
-        if (areJidsSameUser(jid, this.botJid) && jid !== this.botJid) {
-          this.botLid = jid;
-          this.log.debug(`learned bot LID: ${jid} (from ${this.botJid})`);
-          break;
-        }
-      }
-    }
-
-    const chatId = msg.sessionJid; // group JID for groups, user JID for private
-    const normalizedMsg = normalizeWhatsAppMessage(msg, {
-      botJid: this.botJid,
-      botLid: this.botLid,
-      botName: this.sock?.user?.name,
-    });
-
-    if (!normalizedMsg) {
-      this.log.error(`whatsapp message from user ${msg.jid} not normalized`);
-      return;
-    }
-
-    if (msg.mediaType) {
-      this.log.debug(`received ${msg.mediaType} from ${normalizedMsg.fromUserId}`);
-      this.debouncer.flush(chatId);
-      this.handleMedia(msg, normalizedMsg).catch((err) => {
-        this.log.error('handleMedia error', { jid: normalizedMsg.fromUserId, error: toMessage(err) });
-      });
-      return;
-    }
-
-    this.log.debug(`received from ${normalizedMsg.fromUserId}: ${msg.text?.slice(0, 80) || ''}`);
-    this.latestMessageId.set(chatId, msg.messageId);
-    this.debouncer.push(chatId, msg.text, normalizedMsg);
-  }
-
-  protected async resolveMedia(msg: WhatsAppInboundMessage): Promise<InboundMediaSource | null> {
-    if (!msg.mediaBuffer) return null;
-
-    const rawMime = msg.mimeType?.split(';')[0].trim();
-    const mimeType = rawMime || MEDIA_TYPE_MIME_DEFAULTS[msg.mediaType!] || 'application/octet-stream';
-    return {
-      buffer: msg.mediaBuffer,
-      mimeType,
-      mediaType: msg.mediaType === 'sticker' ? 'image' : (msg.mediaType ?? 'document'),
-      caption: msg.caption,
-    };
-  }
-
-  private async handleMedia(msg: WhatsAppInboundMessage, normalizedMsg: NormalizedInboundMessage): Promise<void> {
-    if (!this.onInboundMessage) {
-      this.log.error('No inbound message handler');
-      return;
-    }
-
-    const userId = msg.jid;
-    const sessionKey = this.buildSessionKey(userId);
-
-    if (!msg.mediaBuffer) {
-      const label = MEDIA_TYPE_LABELS[msg.mediaType!] || 'Media';
-      const content = msg.caption ? `[${label}] ${msg.caption}` : `[${label} received]`;
-
-      const messageWithText: NormalizedInboundMessage = { ...normalizedMsg, text: content };
-      await this.onInboundMessage(sessionKey, messageWithText);
-      return;
-    }
-
-    const { caption, savedPath, mimeType } = await this.processInboundMedia(
-      msg,
-      (text) => this.onInboundMessage!(sessionKey, { ...normalizedMsg, text }),
-      sessionKey,
-      normalizedMsg.chatType !== 'group',
-    );
-    this.log.debug(`received ${msg.mediaType} from ${userId}: ${caption} (${mimeType}) - ${savedPath}`);
+  /** Terminal auth failure: stop reconnecting and tell the operator how to fix it. */
+  private requireRepair(cause: string): void {
+    this.needsRepair = true;
+    this.status = 'error';
+    this.log.error([
+      '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
+      `  WhatsApp "${this.instanceId}" needs re-pairing`,
+      `  ${cause}`,
+      '  This channel will not send or receive messages.',
+      '  Daemon does NOT need to stop. Run:',
+      `    1. vargos channel pair ${this.instanceId} --reset`,
+      `    2. vargos channel restart ${this.instanceId}`,
+      '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
+    ].join('\n'));
   }
 
   private scheduleReconnect(): void {

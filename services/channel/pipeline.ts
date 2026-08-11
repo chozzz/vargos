@@ -1,6 +1,8 @@
 /**
- * Inbound message pipeline — core policy orchestrator for normalized messages.
- * Handles: link expansion, whitelist enforcement, agent execution flow.
+ * Inbound message pipeline — core policy orchestrator and owner of in-flight runs.
+ *
+ * Handles: link expansion, access control, agent execution, typing and reaction
+ * lifecycle, and reply delivery when the agent finishes.
  */
 
 import type { Bus } from '../../core/types.js';
@@ -9,43 +11,64 @@ import type { NormalizedInboundMessage, ChannelAdapter } from './types.js';
 import { createLogger } from '../../lib/logger.js';
 import { toMessage } from '../../lib/error.js';
 import { parseChannelTarget } from '../../lib/session-key.js';
+import { isAllowed, shouldExecute } from './access.js';
 import { expandLinks } from './link-expand.js';
 import { StatusReactionController } from './status-reactions.js';
 
 const log = createLogger('channels-pipeline');
+const TOOL_ARGS_PREVIEW_CHARS = 160;
 
-export interface PipelineSession {
+export type AgentToolPayload =
+  | { sessionKey: string; toolName: string; phase: 'start'; args: unknown }
+  | { sessionKey: string; toolName: string; phase: 'end'; result: unknown };
+
+export type AgentCompletedPayload =
+  | { sessionKey: string; success: true; response: string }
+  | { sessionKey: string; success: false; error: string };
+
+interface PipelineSession {
   adapter: ChannelAdapter;
   reactionController?: StatusReactionController;
-  replied: boolean;   // true if agent called channel.send
+  replied: boolean;    // true if the agent called channel.send itself
   completed?: boolean; // true once agent.onCompleted handled it — guards against double-send
 }
 
+function formatToolLog(payload: AgentToolPayload): string {
+  const base = `agent.onTool: ${payload.sessionKey} ${payload.toolName} ${payload.phase}`;
+  if (payload.phase !== 'start') return base;
+
+  const args = JSON.stringify(payload.args);
+  if (!args || args === '{}') return base;
+
+  const preview = args.length > TOOL_ARGS_PREVIEW_CHARS
+    ? `${args.slice(0, TOOL_ARGS_PREVIEW_CHARS)}...`
+    : args;
+
+  return `${base} args=${preview}`;
+}
+
 export class InboundMessagePipeline {
+  private readonly sessions = new Map<string, PipelineSession>();
+
   constructor(
     private readonly bus: Bus,
     private readonly config: AppConfig,
   ) { }
 
-  /** Seal the reaction (done/error) and stop the typing indicator. Shared with onAgentCompleted. */
-  finalize(session: PipelineSession, sessionKey: string, success: boolean): void {
-    if (session.reactionController) {
-      if (success) session.reactionController.setDone();
-      else session.reactionController.setError();
-      session.reactionController.dispose();
-    }
-    session.adapter.stopTyping(sessionKey, true);
+  /** Record that the agent delivered its own reply, so completion does not send it twice. */
+  markReplied(sessionKey: string): void {
+    const session = this.sessions.get(sessionKey);
+    if (session) session.replied = true;
   }
 
   /**
    * Process a normalized inbound message through the policy pipeline.
-   * Handles: link expansion, whitelist checking, agent execution, typing indicators.
+   * Handles: link expansion, access control, agent execution, typing indicators.
    */
   async process(
     sessionKey: string,
     message: NormalizedInboundMessage,
     adapter: ChannelAdapter,
-    activeSessions: Map<string, PipelineSession>,
   ): Promise<void> {
     const target = parseChannelTarget(sessionKey);
     if (!target) {
@@ -58,76 +81,46 @@ export class InboundMessagePipeline {
       log.debug(`no channel entry for: ${target.channel}`);
       return;
     }
+    const { allowFrom, cwd, model } = channelEntry;
 
-    // Expand links in text content
-    let enrichedContent = message.text || '';
-    if (enrichedContent) {
-      enrichedContent = await expandLinks(enrichedContent, this.config.linkExpand).catch(() => enrichedContent);
-    }
+    const content = message.text
+      ? await expandLinks(message.text, this.config.linkExpand).catch(() => message.text!)
+      : '';
 
-    // Extract execution-relevant fields from channel config
-    const cwd = channelEntry.cwd;
-    const model = channelEntry.model;
-
-    // Delegate execution decision to adapter (handles whitelist + mention logic)
-    const shouldExecute = adapter.shouldExecute(message.fromUserId, message.chatType, message.isMentioned);
-
-    if (!shouldExecute) {
-      // group + not mentioned is the only ambiguous case: could be whitelisted (sentry)
-      // or simply blocked. Distinguish so whitelisted observers are logged at info.
-      const observing = message.chatType === 'group'
-        && !message.isMentioned
-        && adapter.isAllowed(message.fromUserId);
-
-      const reason = observing ? 'observing (no @mention)' : 'not whitelisted';
-      if (observing) {
-        log.info(`← ${sessionKey} (${reason}) "${enrichedContent.slice(0, 80)}"`);
-      } else {
-        log.debug(`← ${sessionKey} (${reason}) "${enrichedContent.slice(0, 80)}"`);
-      }
-      this.bus.call('agent.appendMessage', {
-        sessionKey,
-        content: enrichedContent,
-      }).catch(err => log.error(`failed to append message: ${toMessage(err)}`));
+    if (!shouldExecute(allowFrom, message.fromUserId, message.chatType, message.isMentioned)) {
+      this.observe(sessionKey, message, content, allowFrom);
       return;
     }
 
-    adapter.startTyping(sessionKey, true);
+    adapter.startTyping(sessionKey);
 
     // If a run is already in flight for this chat, steer the new message into it: pi injects it
     // into the active session. Don't create a competing session/completion handler — a single
-    // sessionKey has one activeSessions slot, and a second run racing cleanup is what dropped
-    // replies (its agent.execute can settle early under steering while the real run continues).
-    if (activeSessions.has(sessionKey)) {
-      log.info(`← ${sessionKey} (steer) "${enrichedContent.slice(0, 80)}"`);
-      this.bus.call('agent.execute', { sessionKey, task: enrichedContent, ...(cwd && { cwd }), ...(model && { model }) })
+    // sessionKey has one session slot, and a second run racing cleanup is what dropped replies
+    // (its agent.execute can settle early under steering while the real run continues).
+    if (this.sessions.has(sessionKey)) {
+      log.info(`← ${sessionKey} (steer) "${content.slice(0, 80)}"`);
+      this.bus.call('agent.execute', { sessionKey, task: content, ...(cwd && { cwd }), ...(model && { model }) })
         .catch(err => log.error(`steered agent.execute failed: ${toMessage(err)}`));
       return;
     }
 
-    const messageId = adapter.extractLatestMessageId(target.userId);
-    let reactionController: StatusReactionController | undefined;
-    if (adapter.react && messageId) {
-      reactionController = new StatusReactionController(
-        { react: adapter.react.bind(adapter) },
-        sessionKey,
-        messageId,
-      );
-      reactionController.setThinking();
-    }
+    const session: PipelineSession = {
+      adapter,
+      reactionController: this.startReaction(adapter, sessionKey, target.userId),
+      replied: false,
+    };
+    this.sessions.set(sessionKey, session);
 
-    const session: PipelineSession = { adapter, reactionController, replied: false };
-    activeSessions.set(sessionKey, session);
+    log.info(`← ${sessionKey} "${content.slice(0, 80)}"`);
 
-    log.info(`← ${sessionKey} "${enrichedContent.slice(0, 80)}"`);
-
-    // Cleanup is owned by onAgentCompleted (pi's agent_end fires once at the true end of the
-    // run, even under steering where a second message's agent.execute settles early). This catch
-    // only covers a rejection that arrives WITHOUT a completion event (a pre-execution failure),
-    // guarded by `completed` so it never double-sends or fights onAgentCompleted's cleanup.
+    // Cleanup is owned by onCompleted (pi's agent_end fires once at the true end of the run,
+    // even under steering where a second message's agent.execute settles early). This catch
+    // only covers a rejection that arrives WITHOUT a completion event (a pre-execution
+    // failure), guarded by `completed` so it never double-sends or fights that cleanup.
     this.bus.call('agent.execute', {
       sessionKey,
-      task: enrichedContent,
+      task: content,
       ...(cwd && { cwd }),
       ...(model && { model }),
     }).catch(err => {
@@ -135,10 +128,114 @@ export class InboundMessagePipeline {
       const errorMsg = toMessage(err);
       log.error(`agent execution failed before completion: ${errorMsg}`);
       this.finalize(session, sessionKey, false);
-      if (activeSessions.get(sessionKey) === session) activeSessions.delete(sessionKey);
+      if (this.sessions.get(sessionKey) === session) this.sessions.delete(sessionKey);
       this.bus.call('channel.send', { sessionKey, text: `System error: ${errorMsg}` })
         .catch(sendErr => log.error(`failed to send error message: ${toMessage(sendErr)}`));
     });
   }
 
+  /** Tool activity drives the reaction emoji and keeps the typing indicator alive. */
+  onTool(payload: AgentToolPayload): void {
+    const session = this.sessions.get(payload.sessionKey);
+    if (!session) return;
+
+    if (payload.sessionKey.includes(':subagent')) {
+      log.debug('agent.onTool: subagent, skipping reaction');
+      return;
+    }
+
+    log.debug(formatToolLog(payload));
+
+    if (payload.phase === 'start') {
+      session.reactionController?.setTool();
+      session.adapter.startTyping(payload.sessionKey); // resumes if the TTL paused it
+      return;
+    }
+    session.reactionController?.setThinking();
+  }
+
+  /** The one cleanup anchor for a run, and where a channel-triggered reply is delivered. */
+  onCompleted(payload: AgentCompletedPayload): void {
+    if (!payload.sessionKey || payload.sessionKey.includes(':subagent')) return;
+
+    const session = this.sessions.get(payload.sessionKey);
+    if (!session) {
+      // Non-channel session (cron, webhook, etc.) — expected, ignore.
+      log.debug(`onCompleted: session not found: ${payload.sessionKey}`);
+      return;
+    }
+
+    // agent.onCompleted (pi's agent_end) fires once at the true end of the run — even with
+    // steering, where a second message's agent.execute settles early. So THIS is the cleanup
+    // anchor, not the execute promise: claim + remove the session now. The captured `session`
+    // object still serves the async reply send + reaction seal below. `completed` guards the
+    // process() catch against a double-send.
+    session.completed = true;
+    this.sessions.delete(payload.sessionKey);
+
+    const sessionKey = payload.sessionKey;
+    const text = payload.success ? (payload.response ?? '') : `Error: ${payload.error || 'Unknown error'}`;
+    log.info(`→ ${sessionKey} ${payload.success ? '✓' : '✗'} (${text.length} chars)`);
+
+    // Send on error (always), or on a successful response the agent didn't already deliver
+    // via the channel-send tool.
+    const shouldSend = !payload.success || (!session.replied && !!payload.response);
+    const finalize = () => this.finalize(session, sessionKey, payload.success !== false);
+
+    if (!shouldSend) { finalize(); return; }
+
+    this.bus.call<{ sent: boolean }>('channel.send', { sessionKey, text })
+      .then(({ sent }) => log.debug(`→ ${sessionKey} sent=${sent}`))
+      .catch(err => log.error(`failed to send reply: ${toMessage(err)}`))
+      .finally(finalize);
+  }
+
+  /**
+   * Not executing. Still append to history so the agent has the context next time.
+   * "Group, whitelisted, no @mention" is sentry mode and worth an info line; everything
+   * else is simply not our business.
+   */
+  private observe(
+    sessionKey: string,
+    message: NormalizedInboundMessage,
+    content: string,
+    allowFrom: string[] | undefined,
+  ): void {
+    const observing = message.chatType === 'group'
+      && !message.isMentioned
+      && isAllowed(allowFrom, message.fromUserId);
+
+    const line = `← ${sessionKey} (${observing ? 'observing (no @mention)' : 'not whitelisted'}) "${content.slice(0, 80)}"`;
+    if (observing) log.info(line); else log.debug(line);
+
+    this.bus.call('agent.appendMessage', { sessionKey, content })
+      .catch(err => log.error(`failed to append message: ${toMessage(err)}`));
+  }
+
+  private startReaction(
+    adapter: ChannelAdapter,
+    sessionKey: string,
+    chatId: string,
+  ): StatusReactionController | undefined {
+    const messageId = adapter.latestMessageId(chatId);
+    if (!adapter.react || !messageId) return undefined;
+
+    const controller = new StatusReactionController(
+      { react: adapter.react.bind(adapter) },
+      sessionKey,
+      messageId,
+    );
+    controller.setThinking();
+    return controller;
+  }
+
+  /** Seal the reaction (done/error) and stop the typing indicator. */
+  private finalize(session: PipelineSession, sessionKey: string, success: boolean): void {
+    if (session.reactionController) {
+      if (success) session.reactionController.setDone();
+      else session.reactionController.setError();
+      session.reactionController.dispose();
+    }
+    session.adapter.stopTyping(sessionKey);
+  }
 }

@@ -1,5 +1,7 @@
 /** WhatsApp adapter types */
 
+import type { WAMessage } from '@whiskeysockets/baileys';
+
 export interface WhatsAppInboundMessage {
   messageId: string;
   jid: string;                // sender's JID (for whitelist checks)
@@ -12,9 +14,10 @@ export interface WhatsAppInboundMessage {
   mentionedJids?: string[];
   quotedSenderJid?: string;
   mediaType?: 'image' | 'audio' | 'video' | 'document' | 'sticker';
-  mediaBuffer?: Buffer;
   mimeType?: string;
   caption?: string;
+  /** Kept only for media: the adapter downloads bytes lazily, after dedupe. */
+  raw?: WAMessage;
 }
 
 export interface WhatsAppSessionEvents {

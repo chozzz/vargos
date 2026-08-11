@@ -84,7 +84,7 @@ Pi SDK auto-loads skills from:
 - `<agentDir>/skills/` — `~/.vargos/agent/skills/` (user-edited + bundled defaults)
 - `<cwd>/.pi/skills/` — Pi SDK convention for project-local skills
 
-Vargos's [`lib/skills.ts`](../lib/skills.ts) `resolveSkillPaths()` adds two more roots via Pi SDK's `additionalSkillPaths`:
+Vargos's [`services/agent/skills.ts`](../services/agent/skills.ts) `resolveSkillPaths()` adds two more roots via Pi SDK's `additionalSkillPaths`:
 - `<workspaceDir>/skills/` — `~/.vargos/workspace/skills/` (user-edited)
 - `<cwd>/skills/` — project-local (when channel `cwd` is set)
 
@@ -127,10 +127,13 @@ A channel provider is a factory + adapter pair that connects a messaging platfor
 
 What an adapter must satisfy:
 
-- `ChannelAdapter` interface — [`services/channel/types.ts`](../services/channel/types.ts)
+- `ChannelAdapter` interface — [`services/channel/types.ts`](../services/channel/types.ts) — what core calls on your adapter
 - `ChannelProvider` factory — same file
-- `BaseChannelAdapter` — [`services/channel/base-adapter.ts`](../services/channel/base-adapter.ts) — extend this for shared mechanics (typing state, dedupe, debounce, status reactions, reconnect)
-- `NormalizedInboundMessage` — what your adapter must produce after normalization
+- `BaseChannelAdapter` — [`services/channel/base-adapter.ts`](../services/channel/base-adapter.ts) — extend this; it owns the entire inbound path and you supply only transport hooks
+- `NormalizedInboundMessage` — what your normalizer must produce
+
+Adapters never see session keys or the whitelist: you work in `chatId`, the base builds
+`<instanceId>:<chatId>`, and the pipeline decides who may run the agent.
 
 ### What you write
 
@@ -138,7 +141,7 @@ A new provider is typically four files under `providers/<name>/`:
 
 | File | Purpose |
 |---|---|
-| `adapter.ts` | Concrete `ChannelAdapter` extending `BaseChannelAdapter`. Connects, polls/listens, calls `onInbound(normalized)`, implements `send(sessionKey, text)`. |
+| `adapter.ts` | Extends `BaseChannelAdapter`. Connects, polls/listens, and calls `this.receive(raw)` for every platform event. Implements `start`, `stop`, `normalize`, `sendText(chatId, text)`, `sendTyping(chatId)`, plus optional `resolveMedia`, `sendMedia`, `react`. |
 | `normalizer.ts` | Provider-specific message → `NormalizedInboundMessage` |
 | `types.ts` | Provider-specific raw types |
 | `index.ts` | `ChannelProvider` factory |
@@ -148,14 +151,16 @@ Read the telegram provider for the leanest example, whatsapp for the most elabor
 ### Wiring it up
 
 1. Add a discriminated-union member to [`services/config/schemas/channels.ts`](../services/config/schemas/channels.ts) `ChannelEntrySchema` for your provider's config.
-2. Register the provider in [`services/channel/provider-loader.ts`](../services/channel/provider-loader.ts) so it's discovered at boot.
+2. Add a lazy import to the `PROVIDERS` map at the top of [`services/channel/index.ts`](../services/channel/index.ts) so it's discovered at boot.
 3. Restart — the channel service's boot loop ([`services/channel/index.ts`](../services/channel/index.ts)) finds your config entries and instantiates the adapter.
 
 ### What you get for free from `BaseChannelAdapter`
 
+- The whole inbound path — `receive()` runs normalize → dedupe → debounce text / flush + resolve media → emit. There is nothing to override, so providers cannot drift from each other
+- Session-key construction, and `latestMessageId` tracking for reaction anchoring
 - Typing-indicator state machine ([`typing-state.ts`](../services/channel/typing-state.ts))
 - Status reactions via [`status-reactions.ts`](../services/channel/status-reactions.ts) — your adapter implements `react()` if the platform supports it
-- Inbound media handling — call `processInboundMedia()` with a media source
+- Inbound media — implement `resolveMedia()` to return the bytes; the base saves the file, decides whether enrichment is worth its cost, and labels the saved path
 - Reconnection with backoff via [`Reconnector`](../services/channel/reconnect.ts)
 - Per-message dedup ([`dedupe.ts`](../services/channel/dedupe.ts)) and debounce ([`debounce.ts`](../services/channel/debounce.ts))
 

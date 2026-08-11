@@ -2,71 +2,48 @@
  * WhatsApp message normalizer — converts WhatsApp adapter output to canonical form.
  */
 
-import { jidDecode, areJidsSameUser } from '@whiskeysockets/baileys';
-import type { NormalizedInboundMessage } from '../../types.js';
+import { areJidsSameUser } from '@whiskeysockets/baileys';
+import type { MediaKind, NormalizedInboundMessage } from '../../types.js';
 import type { WhatsAppInboundMessage } from './types.js';
 
 export interface WhatsAppNormalizerContext {
   botJid: string;
-  botLid?: string | null;
-  botName?: string;
 }
 
 export function normalizeWhatsAppMessage(
   msg: WhatsAppInboundMessage,
   context: WhatsAppNormalizerContext,
 ): NormalizedInboundMessage | null {
-  // Ignore bot's own messages
-  if (msg.fromMe) {
-    return null;
-  }
-
-  if (!msg.text && !msg.mediaType) {
-    return null;
-  }
-
-  const chatType = msg.isGroup ? 'group' : 'private';
-  const isMentioned = msg.isGroup ? isMentionedInGroup(msg, context.botJid, context.botLid) : true;
+  // Ignore the bot's own messages
+  if (msg.fromMe) return null;
+  if (!msg.text && !msg.mediaType) return null;
 
   return {
     messageId: msg.messageId,
-    fromUserId: msg.jid, // Store JID for whitelist checking
-    fromUser: msg.pushName || resolvePhoneFromJid(msg.jid),
-    chatType,
-    isMentioned,
-    channelType: 'whatsapp',
-    botUserId: context.botJid || undefined,
-    botName: context.botName,
+    chatId: msg.sessionJid,        // group JID for groups, user JID for private
+    fromUserId: msg.jid,           // sender, for whitelist checking
+    chatType: msg.isGroup ? 'group' : 'private',
+    isMentioned: msg.isGroup ? isMentionedInGroup(msg, context.botJid) : true,
     text: msg.text,
-    media: undefined, // Media handling done separately
+    mediaKind: toMediaKind(msg.mediaType),
   };
 }
 
-function isMentionedInGroup(msg: WhatsAppInboundMessage, botJid: string, _botLid?: string | null): boolean {
-  // Check if bot was explicitly mentioned via areJidsSameUser
-  // (handles @lid vs @s.whatsapp.net format differences)
-  if (msg.mentionedJids?.some(jid => areJidsSameUser(jid, botJid))) {
-    return true;
-  }
-
-  // Check if it's a reply to bot's message
-  if (msg.quotedSenderJid && areJidsSameUser(msg.quotedSenderJid, botJid)) {
-    return true;
-  }
-
-  // Fallback: check for @number patterns in text.
-  // When user types @Name in WhatsApp, the raw text contains @<number> (PN or LID).
-  // mentionedJids is only populated when using the proper mention menu.
-  // So we detect @number in text and treat it as a mention for whitelisted users.
-  if (msg.text && /@\d{5,}/.test(msg.text)) {
-    return true;
-  }
-
-  return false;
+/** Stickers are images as far as saving and describing are concerned. */
+function toMediaKind(mediaType: WhatsAppInboundMessage['mediaType']): MediaKind | undefined {
+  if (!mediaType) return undefined;
+  return mediaType === 'sticker' ? 'image' : mediaType;
 }
 
-function resolvePhoneFromJid(jid: string): string {
-  // Use Baileys' jidDecode to extract user portion (handles @s.whatsapp.net, @lid, device suffixes, etc.)
-  const decoded = jidDecode(jid);
-  return decoded?.user || jid;
+function isMentionedInGroup(msg: WhatsAppInboundMessage, botJid: string): boolean {
+  // areJidsSameUser handles @lid vs @s.whatsapp.net format differences
+  if (msg.mentionedJids?.some(jid => areJidsSameUser(jid, botJid))) return true;
+
+  // A reply to one of the bot's messages
+  if (msg.quotedSenderJid && areJidsSameUser(msg.quotedSenderJid, botJid)) return true;
+
+  // Fallback: mentionedJids is only populated when the sender used the mention menu.
+  // Typing "@<number>" by hand leaves a bare number in the text, so treat that as a
+  // mention too — deliberately loose, since the whitelist still gates execution.
+  return !!msg.text && /@\d{5,}/.test(msg.text);
 }

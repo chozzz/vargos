@@ -1,74 +1,55 @@
 /**
- * Telegram message normalizer — converts Telegram adapter output to canonical form.
+ * Telegram message normalizer — converts a raw Telegram message to canonical form.
  */
 
-import type { NormalizedInboundMessage } from '../../types.js';
+import type { MediaKind, NormalizedInboundMessage } from '../../types.js';
 import type { TelegramMessage } from './types.js';
 
 export interface TelegramNormalizerContext {
   botUserId: number | null;
   botUsername?: string;
-  botName?: string;
 }
 
 export function normalizeTelegramMessage(
   msg: TelegramMessage,
   context: TelegramNormalizerContext,
 ): NormalizedInboundMessage | null {
-  // Ignore bot's own messages
-  if (msg.from?.id === context.botUserId) {
-    return null;
-  }
+  // Ignore the bot's own messages
+  if (msg.from?.id === context.botUserId) return null;
 
-  if (!msg.text && !msg.photo && !msg.voice && !msg.audio && !msg.document) {
-    return null;
-  }
+  const mediaKind = detectMediaKind(msg);
+  if (!msg.text && !mediaKind) return null;
 
-  const chatType = msg.chat.type;
-  const isPrivateChat = chatType === 'private';
-
-  const isMentioned = isPrivateChat || isMentionedInMessage(msg, context.botUserId, context.botUsername);
-
-  // Use caption as fallback for media messages (documents, photos, audio, voice)
-  const textContent = msg.text ?? msg.caption;
+  const isPrivateChat = msg.chat.type === 'private';
 
   return {
     messageId: String(msg.message_id),
+    chatId: String(msg.chat.id),
     fromUserId: String(msg.from?.id || 0),
-    fromUser: msg.from?.first_name || msg.from?.username || 'Unknown',
-    fromUserHandle: msg.from?.username,
     chatType: isPrivateChat ? 'private' : 'group',
-    isMentioned,
-    channelType: 'telegram',
-    botUserId: context.botUserId != null ? String(context.botUserId) : undefined,
-    botName: context.botName,
-    botHandle: context.botUsername,
-    text: textContent,
-    media: undefined, // Media handling done separately
+    isMentioned: isPrivateChat || isMentionedInMessage(msg, context.botUserId, context.botUsername),
+    // Captions double as text for media messages
+    text: msg.text ?? msg.caption,
+    mediaKind,
   };
+}
+
+function detectMediaKind(msg: TelegramMessage): MediaKind | undefined {
+  if (msg.photo?.length) return 'image';
+  if (msg.voice || msg.audio) return 'audio';
+  if (msg.document) return 'document';
+  return undefined;
 }
 
 function isMentionedInMessage(msg: TelegramMessage, botUserId: number | null, botUsername?: string): boolean {
   if (!botUserId) return false;
 
-  // Check if message is a reply to the bot
-  if (msg.reply_to_message?.from?.id === botUserId) {
-    return true;
-  }
+  if (msg.reply_to_message?.from?.id === botUserId) return true;
 
-  // Check text content — use caption for media messages (documents, photos, etc.)
   const textContent = msg.text ?? msg.caption;
-  if (!textContent) return false;
+  if (!textContent || !botUsername) return false;
 
-  // Check if this specific bot's username is mentioned with @
-  if (botUsername) {
-    const mentionPattern = /@[\w]+/g;
-    const mentions = textContent.match(mentionPattern) || [];
-    const botMentionPattern = new RegExp(`@${botUsername}\\b`, 'i');
-    if (mentions.some(m => botMentionPattern.test(m))) {
-      return true;
-    }
-  }
-
-  return false;
+  const mentions = textContent.match(/@[\w]+/g) || [];
+  const botMention = new RegExp(`@${botUsername}\\b`, 'i');
+  return mentions.some(m => botMention.test(m));
 }

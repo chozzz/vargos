@@ -8,7 +8,7 @@ import { WhatsAppAdapter } from './adapter.js';
 
 export default {
   type: 'whatsapp',
-  async createAdapter(instanceId: string, config: WhatsAppChannel, deps: AdapterDeps): Promise<ChannelAdapter> {
-    return new WhatsAppAdapter(instanceId, deps, config.allowFrom);
+  async createAdapter(instanceId: string, _config: WhatsAppChannel, deps: AdapterDeps): Promise<ChannelAdapter> {
+    return new WhatsAppAdapter(instanceId, deps);
   },
 } satisfies ChannelProvider<WhatsAppChannel>;
