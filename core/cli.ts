@@ -17,7 +17,7 @@ export interface ParsedCli {
   help: boolean;
 }
 
-const RESERVED = new Set(['start', 'onboard', 'chat', 'sync', 'migrate', '--help', '-h', '--version', '-v']);
+const RESERVED = new Set(['start', 'onboard', 'chat', 'sync', 'migrate', 'doctor', '--help', '-h', '--version', '-v']);
 
 /** Parse `vargos <service> [method] [args...] [--help]`. Returns reserved=true for built-in commands. */
 export function parseCli(argv: string[]): ParsedCli & { reserved: boolean } {
