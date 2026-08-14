@@ -121,7 +121,9 @@ Body`;
       });
     });
 
-    it('skips lines without colons', () => {
+    it('returns null when the frontmatter is not valid YAML', () => {
+      // Partial recovery would fold the stray line into the next key, inventing
+      // "invalid line without colon name" — reporting nothing found is the honest answer.
       const content = `---
 type: prompt
 invalid line without colon
@@ -129,12 +131,45 @@ name: test
 ---
 
 Body`;
+      expect(parseFrontmatter(content)).toBeNull();
+    });
+
+    it('reads folded block scalars', () => {
+      const content = `---
+name: distill-project
+description: >
+  Distill a project into markdown.
+  Activate when the user asks to: generate CPT docs.
+---
+
+Body`;
       const result = parseFrontmatter(content);
 
-      expect(result?.meta).toEqual({
-        type: 'prompt',
-        name: 'test',
-      });
+      expect(result?.meta.name).toBe('distill-project');
+      expect(result?.meta.description).toBe(
+        'Distill a project into markdown. Activate when the user asks to: generate CPT docs.\n',
+      );
+    });
+
+    it('reads inline arrays whose items are unquoted', () => {
+      const content = `---
+tags: [benchmark, inference, tool-use]
+---
+
+Body`;
+      expect(parseFrontmatter(content)?.meta.tags).toEqual(['benchmark', 'inference', 'tool-use']);
+    });
+
+    it('ignores comment lines', () => {
+      const content = `---
+# these tools are intentionally excluded
+tools: [memory.search]
+---
+
+Body`;
+      const result = parseFrontmatter(content);
+
+      expect(result?.meta).toEqual({ tools: ['memory.search'] });
     });
 
     it('handles frontmatter with no trailing newline in body', () => {
@@ -243,20 +278,18 @@ Body`;
       expect(result).toContain('timezone: Australia/Sydney');
     });
 
-    it('inlines arrays of numbers, multi-lines arrays of strings', () => {
+    it('writes arrays as block sequences that survive a round-trip', () => {
       const meta = {
         name: 'daily-sync',
         activeHours: [8, 22],
         schedule: ['0 9 * * *', '0 17 * * *'],
       };
-      const body = 'Sync task';
-      const result = serializeFrontmatter(meta, body);
+      const result = serializeFrontmatter(meta, 'Sync task');
 
       expect(result).toContain('name: daily-sync');
-      expect(result).toContain('activeHours: [8, 22]');
-      expect(result).toContain('schedule:');
-      expect(result).toContain('  - "0 9 * * *"');
-      expect(result).toContain('  - "0 17 * * *"');
+      expect(result).toContain('activeHours:\n  - 8\n  - 22');
+      expect(result).toContain('schedule:\n  - 0 9 * * *\n  - 0 17 * * *');
+      expect(parseFrontmatter(result)?.meta).toEqual(meta);
     });
 
     it('skips undefined and null values', () => {

@@ -161,7 +161,6 @@ Pi-SDK-powered runtime (`@earendil-works/pi-coding-agent`) with Vargos-managed c
 | `pnpm start` — boot the daemon (bus + all services) | ✅ |
 | `vargos <service> [method]` — registry-driven dispatch (daemon proxy or local stack) | ✅ |
 | `pnpm chat` — Pi SDK CLI bound to `~/.vargos/agent` and sessions in `sessions/cli/` | ✅ |
-| `pnpm verify` — core acceptance checks | ✅ |
 
 ## MCP Bridge
 

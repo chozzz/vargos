@@ -74,7 +74,7 @@ re-imports, and runs `init()` again — other services keep running and retain s
 > module generation in memory each reload (ESM has no cache invalidation). `dispose()`
 > discipline bounds the *resource* leak (timers, sockets) but not the *module* leak — fine for
 > occasional restarts, pathological under hundreds/day. Revisit per-service worker processes if
-> reload frequency grows. Acceptance for all of the above is encoded in [`scripts/verify-core.ts`](../scripts/verify-core.ts) (`pnpm verify`).
+> reload frequency grows. Acceptance for all of the above is encoded in [`core/__tests__/acceptance.test.ts`](../core/__tests__/acceptance.test.ts).
 
 ## Channels
 

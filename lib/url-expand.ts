@@ -58,16 +58,7 @@ export async function fetchUrlContent(
   const { maxChars = 8000, timeoutMs = 5000 } = opts;
 
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-
-    let response: Response;
-    try {
-      response = await fetch(url, { signal: controller.signal });
-    } finally {
-      clearTimeout(timer);
-    }
-
+    const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
     if (!response.ok) return null;
 
     const contentType = response.headers.get('content-type') ?? '';

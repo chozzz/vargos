@@ -2,6 +2,7 @@
 
 import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 
 /** Read+parse a JSON file; returns `undefined` if it's missing or unparseable. */
 export function readJson<T = unknown>(file: string): T | undefined {
@@ -39,15 +40,8 @@ export function truncate(content: string, maxChars: number): string {
   return `${content.slice(0, head)}\n\n[...truncated...]\n\n${content.slice(-tail)}`;
 }
 
-/** Interruptible sleep: resolves after `ms`, or rejects if `signal` aborts. */
-export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) return reject(signal.reason ?? new DOMException('Aborted', 'AbortError'));
-    const onAbort = () => { clearTimeout(timer); reject(signal!.reason ?? new DOMException('Aborted', 'AbortError')); };
-    const timer = setTimeout(() => { signal?.removeEventListener('abort', onAbort); resolve(); }, ms);
-    signal?.addEventListener('abort', onAbort, { once: true });
-  });
-}
+/** Interruptible sleep: resolves after `ms`, or rejects with AbortError if `signal` aborts. */
+export const sleep = (ms: number, signal?: AbortSignal): Promise<void> => delay(ms, undefined, { signal });
 
 /** Strip markdown to readable plain text (for WhatsApp/Telegram). */
 export function stripMarkdown(text: string): string {

@@ -40,7 +40,6 @@
     "seed": "tsx scripts/seed.ts",
     "migrate": "tsx scripts/migrate.ts",
     "cli": "tsx cli.ts",
-    "verify": "tsx scripts/verify-core.ts",
     "chat": "tsx scripts/seed.ts && PI_CODING_AGENT_DIR=\"${VARGOS_DATA_DIR:-$HOME/.vargos}/agent\" pi --session-dir \"${VARGOS_DATA_DIR:-$HOME/.vargos}/sessions/cli\"",
     "build": "rm -rf dist && tsc && cp -r .templates dist/.templates",
     "prepare": "husky && pnpm run build",
@@ -68,6 +67,7 @@
     "qrcode-terminal": "^0.12.0",
     "tinyglobby": "^0.2.17",
     "xlsx": "^0.18.5",
+    "yaml": "^2.9.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

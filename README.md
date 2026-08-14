@@ -92,7 +92,6 @@ pnpm install          # Install deps
 pnpm start            # Boot the daemon (alias: vargos start)
 pnpm chat             # Pi SDK interactive REPL bound to ~/.vargos/agent
 pnpm cli              # Run the CLI entrypoint directly (tsx cli.ts)
-pnpm verify           # Run the core acceptance checks (scripts/verify-core.ts)
 pnpm run test:run     # Tests (single run)
 pnpm run typecheck    # TypeScript check
 pnpm lint             # ESLint + typecheck

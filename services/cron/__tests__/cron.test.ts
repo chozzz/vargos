@@ -51,7 +51,7 @@ describe('CronService — Markdown File CRUD', () => {
     expect(files[0]).toMatch(/\.md$/);
     const content = await fs.readFile(path.join(cronDir, files[0]), 'utf-8');
     expect(content).toContain('name: Test Task');
-    expect(content).toContain('schedule: "0 9 * * *"');
+    expect(content).toContain('schedule: 0 9 * * *'); // plain scalar — YAML reads it back as a string
     expect(content).toContain('Test task prompt');
   });
 

@@ -1,147 +1,45 @@
 /**
- * Shared YAML frontmatter parser for markdown files.
- * Supports the format:
- *   ---
- *   key: value
- *   multiline:
- *     - item1
- *     - item2
- *   ---
- *   body content
+ * YAML frontmatter for markdown files — a thin wrapper over `yaml`.
+ *
+ * Malformed frontmatter is reported as absent (null) rather than partially parsed:
+ * yaml's own error recovery folds a broken line into its neighbouring key, which is
+ * worse than saying nothing was found.
  */
+
+import YAML from 'yaml';
 
 export interface FrontmatterResult<T = Record<string, unknown>> {
   meta: T;
   body: string;
 }
 
+const FRONTMATTER_RE = /^---\n([\s\S]*?)\n?---\n?([\s\S]*)/;
+
 /**
- * Parse YAML-ish frontmatter. The optional generic `T` lets callers declare the expected
+ * Parse YAML frontmatter. The optional generic `T` lets callers declare the expected
  * meta shape — at runtime the parsed value is just cast (no validation), so callers should
  * still treat fields as optional unless they validate downstream (Zod, manual checks).
  */
 export function parseFrontmatter<T = Record<string, unknown>>(content: string): FrontmatterResult<T> | null {
-  if (!content || typeof content !== 'string') {
-    return null;
-  }
+  if (typeof content !== 'string') return null;
 
-  const match = content.match(/^---\n([\s\S]*?)\n?---\n?([\s\S]*)/);
-  if (!match) {
-    return null;
-  }
+  const match = content.match(FRONTMATTER_RE);
+  if (!match) return null;
 
-  const meta: Record<string, unknown> = {};
-  const metaStr = match[1].trim();
   const body = match[2]?.trim() ?? '';
 
-  // Empty frontmatter (e.g. `---\n---\n\n`) is valid — return empty meta + body so callers
-  // can distinguish "no frontmatter wrapper" (parse returns null) from "wrapper but empty".
-  if (!metaStr) {
-    return { meta: {} as T, body };
+  try {
+    // `---\n---` is a valid wrapper with no keys — callers distinguish that (empty meta)
+    // from "no frontmatter wrapper at all" (null).
+    return { meta: (YAML.parse(match[1]) ?? {}) as T, body };
+  } catch {
+    return null;
   }
-
-  const lines = metaStr.split('\n');
-  let i = 0;
-
-  while (i < lines.length) {
-    const line = lines[i];
-    if (!line.trim()) {
-      i++;
-      continue;
-    }
-
-    const colonIdx = line.indexOf(':');
-    if (colonIdx === -1) {
-      i++;
-      continue;
-    }
-
-    const key = line.substring(0, colonIdx).trim();
-    if (!key) {
-      i++;
-      continue;
-    }
-
-    const rawValue = line.substring(colonIdx + 1).trim();
-
-    // Check if this is a multi-line array (next line starts with -)
-    if (!rawValue && i + 1 < lines.length && lines[i + 1].trim().startsWith('-')) {
-      const arrayItems: string[] = [];
-      i++;
-      while (i < lines.length && lines[i].trim().startsWith('-')) {
-        const item = lines[i].trim().substring(1).trim();
-        // Strip quotes from array items (e.g., "0 9 * * *" -> 0 9 * * *)
-        const unquoted = item.replace(/^["']|["']$/g, '');
-        arrayItems.push(unquoted);
-        i++;
-      }
-      meta[key] = arrayItems;
-    } else {
-      meta[key] = parseFrontmatterValue(rawValue);
-      i++;
-    }
-  }
-
-  return { meta: meta as T, body };
 }
 
-function parseFrontmatterValue(value: string): unknown {
-  if (value === 'true') return true;
-  if (value === 'false') return false;
-
-  if (value.startsWith('[') && value.endsWith(']')) {
-    try {
-      return JSON.parse(value);
-    } catch {
-      return value;
-    }
-  }
-
-  // Try to parse as number (integer or float)
-  if (/^-?\d+(\.\d+)?$/.test(value)) {
-    return Number(value);
-  }
-
-  return value.replace(/^["']|["']$/g, '');
-}
-
+/** Serialize meta + body back into a frontmatter document. Undefined/null keys are dropped. */
 export function serializeFrontmatter(meta: Record<string, unknown>, body: string): string {
-  const frontmatter = Object.entries(meta)
-    .filter(([, value]) => value !== undefined && value !== null)
-    .map(([key, value]) => formatEntry(key, value))
-    .join('\n');
-
-  return `---\n${frontmatter}\n---\n\n${body}\n`;
-}
-
-function formatEntry(key: string, value: unknown): string {
-  if (Array.isArray(value)) {
-    if (value.length === 0) return `${key}: []`;
-    if (value.every(v => typeof v === 'number')) {
-      return `${key}: [${value.join(', ')}]`;
-    }
-    return `${key}:\n${value.map(v => `  - ${formatScalar(v)}`).join('\n')}`;
-  }
-  return `${key}: ${formatScalar(value)}`;
-}
-
-function formatScalar(value: unknown): string {
-  if (typeof value === 'boolean' || typeof value === 'number') return String(value);
-  const s = String(value);
-  return needsQuotes(s) ? `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"` : s;
-}
-
-function needsQuotes(s: string): boolean {
-  if (s === '') return true;
-  if (/^(true|false|null|yes|no|on|off|~)$/i.test(s)) return true;
-  if (/^-?\d+(\.\d+)?$/.test(s)) return true;
-  // Starts with a YAML-special character or whitespace
-  if (/^[\s!&*?|>%@`[\]{},#"'-]/.test(s)) return true;
-  // Contains ": ", " #", tab, or newline
-  if (/:\s|\s#|\t|\n/.test(s)) return true;
-  // Trailing whitespace
-  if (/\s$/.test(s)) return true;
-  // Contains chars conventionally quoted for safety (cron expressions, etc.)
-  if (/[*?&!|>%`]/.test(s)) return true;
-  return false;
+  const present = Object.entries(meta).filter(([, value]) => value !== undefined && value !== null);
+  const frontmatter = present.length ? YAML.stringify(Object.fromEntries(present)) : '';
+  return `---\n${frontmatter}---\n\n${body}\n`;
 }
