@@ -27,11 +27,8 @@ import { generateId } from '../../lib/util.js';
 import { filterPaginate, ListSchema, type ListParams } from '../../lib/paginate.js';
 import { cronSessionKey, parseSessionKey } from '../../lib/session-key.js';
 import { parseFrontmatter, serializeFrontmatter } from '../../lib/frontmatter.js';
-import {
-  isWithinActiveHours,
-  isHeartbeatContentEffectivelyEmpty,
-  stripHeartbeatToken,
-} from './heartbeat.js';
+import { isWithinActiveHours } from '../../lib/active-hours.js';
+import { isHeartbeatContentEffectivelyEmpty, stripHeartbeatToken } from '../../lib/heartbeat.js';
 
 const log = createLogger('cron');
 
