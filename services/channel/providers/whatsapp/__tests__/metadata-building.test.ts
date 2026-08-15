@@ -19,6 +19,7 @@ describe('WhatsApp normalizer — metadata building', () => {
       const msg: WhatsAppInboundMessage = {
         messageId: 'msg123',
         jid: '1111111111@s.whatsapp.net',
+        sessionJid: '1111111111@s.whatsapp.net',
         text: 'Hello',
         fromMe: false,
         isGroup: false,
@@ -37,7 +38,8 @@ describe('WhatsApp normalizer — metadata building', () => {
     it('detects bot mention in mentionedJids', () => {
       const msg: WhatsAppInboundMessage = {
         messageId: 'msg123',
-        jid: 'group123@g.us',
+        jid: '1111111111@s.whatsapp.net',
+        sessionJid: 'group123@g.us',
         text: 'Hey @bot check this',
         fromMe: false,
         isGroup: true,
@@ -53,7 +55,8 @@ describe('WhatsApp normalizer — metadata building', () => {
     it('skips group messages without bot mention', () => {
       const msg: WhatsAppInboundMessage = {
         messageId: 'msg123',
-        jid: 'group123@g.us',
+        jid: '1111111111@s.whatsapp.net',
+        sessionJid: 'group123@g.us',
         text: 'Hey everyone',
         fromMe: false,
         isGroup: true,
@@ -68,7 +71,8 @@ describe('WhatsApp normalizer — metadata building', () => {
     it('detects reply to bot message', () => {
       const msg: WhatsAppInboundMessage = {
         messageId: 'msg123',
-        jid: 'group123@g.us',
+        jid: '1111111111@s.whatsapp.net',
+        sessionJid: 'group123@g.us',
         text: 'That makes sense',
         fromMe: false,
         isGroup: true,
@@ -83,7 +87,8 @@ describe('WhatsApp normalizer — metadata building', () => {
     it('handles messages with no mentions or quotes', () => {
       const msg: WhatsAppInboundMessage = {
         messageId: 'msg123',
-        jid: 'group123@g.us',
+        jid: '1111111111@s.whatsapp.net',
+        sessionJid: 'group123@g.us',
         text: 'Random group message',
         fromMe: false,
         isGroup: true,
@@ -97,7 +102,8 @@ describe('WhatsApp normalizer — metadata building', () => {
     it('requires bot mention even when mentions list exists', () => {
       const msg: WhatsAppInboundMessage = {
         messageId: 'msg123',
-        jid: 'group123@g.us',
+        jid: '1111111111@s.whatsapp.net',
+        sessionJid: 'group123@g.us',
         text: '@user1 @user2 check this',
         fromMe: false,
         isGroup: true,
@@ -113,7 +119,8 @@ describe('WhatsApp normalizer — metadata building', () => {
       // Bot is @s.whatsapp.net, but mention comes in as @lid format
       const msg: WhatsAppInboundMessage = {
         messageId: 'msg123',
-        jid: 'group123@g.us',
+        jid: '1111111111@s.whatsapp.net',
+        sessionJid: 'group123@g.us',
         text: '@bot help',
         fromMe: false,
         isGroup: true,
@@ -129,7 +136,8 @@ describe('WhatsApp normalizer — metadata building', () => {
     it('detects quoted reply across JID formats', () => {
       const msg: WhatsAppInboundMessage = {
         messageId: 'msg123',
-        jid: 'group123@g.us',
+        jid: '1111111111@s.whatsapp.net',
+        sessionJid: 'group123@g.us',
         text: 'Thanks',
         fromMe: false,
         isGroup: true,
@@ -146,7 +154,8 @@ describe('WhatsApp normalizer — metadata building', () => {
     it('handles message with empty mentionedJids', () => {
       const msg: WhatsAppInboundMessage = {
         messageId: 'msg123',
-        jid: 'group123@g.us',
+        jid: '1111111111@s.whatsapp.net',
+        sessionJid: 'group123@g.us',
         text: 'Hello',
         fromMe: false,
         isGroup: true,
@@ -161,7 +170,8 @@ describe('WhatsApp normalizer — metadata building', () => {
     it('handles message with undefined mentionedJids', () => {
       const msg: WhatsAppInboundMessage = {
         messageId: 'msg123',
-        jid: 'group123@g.us',
+        jid: '1111111111@s.whatsapp.net',
+        sessionJid: 'group123@g.us',
         text: 'Hello',
         fromMe: false,
         isGroup: true,
@@ -175,7 +185,8 @@ describe('WhatsApp normalizer — metadata building', () => {
     it('handles mention without botJid set', () => {
       const msg: WhatsAppInboundMessage = {
         messageId: 'msg123',
-        jid: 'group123@g.us',
+        jid: '1111111111@s.whatsapp.net',
+        sessionJid: 'group123@g.us',
         text: 'Hello',
         fromMe: false,
         isGroup: true,
@@ -191,6 +202,7 @@ describe('WhatsApp normalizer — metadata building', () => {
       const msg: WhatsAppInboundMessage = {
         messageId: 'msg123',
         jid: '1111111111@s.whatsapp.net',
+        sessionJid: '1111111111@s.whatsapp.net',
         text: 'Hello',
         fromMe: true,
         isGroup: false,

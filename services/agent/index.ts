@@ -163,8 +163,14 @@ export class AgentService implements Service {
   private async persistRetrySettings() {
     try {
       const settingsPath = path.join(this.agentDir, 'settings.json');
-      const currentData = await fs.readFile(settingsPath, 'utf-8');
-      const currentSettings = JSON.parse(currentData);
+      // A fresh install has no settings.json yet — start from empty and write one,
+      // rather than warning and leaving retry settings unpersisted.
+      const currentSettings = await fs.readFile(settingsPath, 'utf-8')
+        .then(data => JSON.parse(data) as Record<string, unknown>)
+        .catch((err: NodeJS.ErrnoException) => {
+          if (err.code === 'ENOENT') return {};
+          throw err;
+        });
       const updated = {
         ...currentSettings,
         retry: {

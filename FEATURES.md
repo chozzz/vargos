@@ -140,7 +140,7 @@ Pi-SDK-powered runtime (`@earendil-works/pi-coding-agent`) with Vargos-managed c
 | Pi SDK tool wrapping via `createCustomTools` | ✅ |
 | Pi SDK built-ins: `read`, `bash`, `edit`, `write`, `grep`, `find`, `ls` | ✅ |
 | Persona `allowedTools` glob filter applied to custom tools | ✅ |
-| `web.fetch` (HTTP → markdown extraction) | ✅ |
+| Web fetching (via Playwright MCP, or `fetch` from your own code) | ✅ |
 
 ## Gateway
 
