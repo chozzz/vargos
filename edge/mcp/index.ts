@@ -107,7 +107,7 @@ export class McpEdge implements Service {
     this.httpServer = http.createServer(async (req, res) => {
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Mcp-Session-Id, Authorization');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Mcp-Session-Id, Authorization, CF-Access-Client-Id, CF-Access-Client-Secret');
 
       if (req.method === 'OPTIONS') {
         res.writeHead(200);
