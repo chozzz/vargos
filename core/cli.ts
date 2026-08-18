@@ -109,8 +109,8 @@ function namedFlags(info: MethodInfo): string[] {
   const out: string[] = [];
   for (const [key, p] of Object.entries(props)) {
     if (positional.has(key)) continue;
-    const token = p.type === 'boolean' ? `--${key}` : `--${key} <${p.type ?? 'value'}>`;
-    out.push(required.has(key) ? token : `[${token}]`);
+    const flag = p.type === 'boolean' ? `--${key}` : `--${key} <${p.type ?? 'value'}>`;
+    out.push(required.has(key) ? flag : `[${flag}]`);
   }
   return out;
 }
