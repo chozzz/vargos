@@ -4,6 +4,11 @@
 - Node.js 22.19+
 - pnpm
 
+Some MCP servers need tooling that npm won't install for you — `uvx` (from [uv](https://astral.sh/uv))
+for Python-packaged servers, downloaded browsers for `@playwright/mcp`. `vargos doctor` detects
+what your configured servers actually need and offers to install it; it runs as the last step of
+`vargos onboard`, and reports (without prompting) on `vargos start` and `vargos chat`.
+
 ## Install
 
 ```bash

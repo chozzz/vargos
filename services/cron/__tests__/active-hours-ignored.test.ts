@@ -10,7 +10,7 @@ import os from 'node:os';
 import { EmitterBus } from '../../../core/bus.js';
 import { CronService } from '../index.js';
 import type { CronTask } from '../../config/index.js';
-import { isWithinActiveHours } from '../heartbeat.js';
+import { isWithinActiveHours } from '../../../lib/active-hours.js';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const beforeFireHooks = (s: CronService): Map<string, unknown> => (s as any).beforeFireHooks;

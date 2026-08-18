@@ -73,7 +73,7 @@ activeHours: [8, 22]
 activeHoursTimezone: "Australia/Sydney"
 ---
 
-Research today's AI news, GitHub trending, and package releases via web.fetch.
+Research today's AI news, GitHub trending, and package releases from the web.
 Spawn parallel subagents for each angle (use agent.execute with sub-session keys).
 Synthesize into a single report under 800 words.
 ```

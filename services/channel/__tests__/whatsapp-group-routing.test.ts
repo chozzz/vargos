@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type { NormalizedInboundMessage } from '../types.js';
+import type { ChannelAdapter, NormalizedInboundMessage } from '../types.js';
 import type { WhatsAppInboundMessage } from '../providers/whatsapp/types.js';
 import { normalizeWhatsAppMessage } from '../providers/whatsapp/normalizer.js';
 
@@ -38,7 +38,7 @@ function createWhatsAppMessage(opts: {
 
 function createNormalizedMessage(opts: {
   userId?: string;
-  chatType?: string;
+  chatType?: NormalizedInboundMessage['chatType'];
   isMentioned?: boolean;
   text?: string;
 }): NormalizedInboundMessage {
@@ -56,6 +56,7 @@ function createNormalizedMessage(opts: {
 class StubAdapter implements ChannelAdapter {
   readonly type = 'stub' as const;
   readonly instanceId = 'stub-test';
+  readonly status = 'connected' as const;
   readonly allowFrom: string[] | undefined;
 
   sent: Array<{ sessionKey: string; text: string }> = [];
@@ -72,13 +73,13 @@ class StubAdapter implements ChannelAdapter {
   async send(sessionKey: string, text: string): Promise<void> {
     this.sent.push({ sessionKey, text });
   }
-  protected async sendTypingIndicator(sessionKey: string): Promise<void> {
+  startTyping(sessionKey: string): void {
     this.typingStarted.push({ sessionKey });
   }
-  async startTyping(sessionKey: string, _isGroup: boolean): Promise<void> {
-    this.typingStarted.push({ sessionKey });
+  latestMessageId(): string | undefined {
+    return undefined;
   }
-  async stopTyping(sessionKey: string, isFinal?: boolean): Promise<void> {
+  stopTyping(sessionKey: string, isFinal?: boolean): void {
     this.typingStopped.push({ sessionKey, final: isFinal });
   }
   async react(recipientId: string, messageId: string, emoji: string): Promise<void> {
@@ -340,7 +341,7 @@ describe('Group routing: sessionKey uses group JID', () => {
   it('typing indicators route to group JID', () => {
     const adapter = new StubAdapter(['210994982838335']);
     const sessionKey = 'whatsapp-test:120363426286921624@g.us';
-    adapter.startTyping(sessionKey, true);
+    adapter.startTyping(sessionKey);
     expect(adapter.typingStarted).toHaveLength(1);
     expect(adapter.typingStarted[0].sessionKey).toBe(sessionKey);
   });

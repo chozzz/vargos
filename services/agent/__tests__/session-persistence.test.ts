@@ -92,10 +92,8 @@ describe('SessionManager.continueRecent', () => {
     const result = SessionManager.continueRecent('/tmp/test', sessionDir);
     const ctx = result.buildSessionContext();
     expect(ctx.messages).toHaveLength(2);
-    expect(ctx.messages[0].role).toBe('user');
-    expect(ctx.messages[0].content).toBe('hello');
-    expect(ctx.messages[1].role).toBe('assistant');
-    expect(ctx.messages[1].content).toBe('hi there');
+    expect(ctx.messages[0]).toMatchObject({ role: 'user', content: 'hello' });
+    expect(ctx.messages[1]).toMatchObject({ role: 'assistant', content: 'hi there' });
   });
 
   it('handles empty session file (header only)', () => {

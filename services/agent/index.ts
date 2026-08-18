@@ -163,8 +163,14 @@ export class AgentService implements Service {
   private async persistRetrySettings() {
     try {
       const settingsPath = path.join(this.agentDir, 'settings.json');
-      const currentData = await fs.readFile(settingsPath, 'utf-8');
-      const currentSettings = JSON.parse(currentData);
+      // A fresh install has no settings.json yet — start from empty and write one,
+      // rather than warning and leaving retry settings unpersisted.
+      const currentSettings = await fs.readFile(settingsPath, 'utf-8')
+        .then(data => JSON.parse(data) as Record<string, unknown>)
+        .catch((err: NodeJS.ErrnoException) => {
+          if (err.code === 'ENOENT') return {};
+          throw err;
+        });
       const updated = {
         ...currentSettings,
         retry: {
@@ -209,21 +215,24 @@ export class AgentService implements Service {
 
     const session = await this.getOrCreateSession(sessionKey, { cwd: params.cwd, model });
 
+    const timeoutMs = this.config.agent?.executionTimeoutMs ?? DEFAULT_EXECUTION_TIMEOUT_MS;
+
     this.activeRuns.add(sessionKey);
     const startTime = Date.now();
     const modelTag = `${session.model?.provider}:${session.model?.id}`;
     try {
-      const timeoutMs = this.config.agent?.executionTimeoutMs ?? DEFAULT_EXECUTION_TIMEOUT_MS;
       await withTimeout(session.prompt(task, { streamingBehavior: 'steer' }), timeoutMs, `Agent execution timeout after ${timeoutMs}ms`);
     } finally {
       this.activeRuns.delete(sessionKey);
     }
 
     const { content, error } = this.extractFinalAssistant(session, sessionKey);
+
     if (error) {
       log.error(`[${sessionKey}] execute failed model=${modelTag}: ${error}`);
       throw new Error(error);
     }
+
     const elapsed = Date.now() - startTime;
     log.info(`[${sessionKey}] execute ok chars=${content.length} elapsedMs=${elapsed} model=${modelTag}`);
     return { response: content };
@@ -466,6 +475,12 @@ export class AgentService implements Service {
           } else {
             const before = event.result?.tokensBefore;
             log.info(`[${sessionKey}] compaction done${before !== undefined ? ` tokensBefore=${before}` : ''}`);
+            // Use prompt (not followUp): followUp throws when the agent is idle (e.g. a
+            // pre-prompt threshold check), silently dropping the nudge. prompt with
+            // streamingBehavior:'followUp' works in both states — queues a follow-up turn
+            // while streaming, or triggers one immediately when idle.
+            session.prompt('Compaction complete. Your memory has been tidied up and is ready to continue.', { streamingBehavior: 'followUp' })
+              .catch(err => log.debug(`[${sessionKey}] compaction follow-up failed: ${toMessage(err)}`));
           }
           break;
         }

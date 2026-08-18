@@ -29,6 +29,7 @@ function toolMethods(events: string[]): MethodInfo[] {
     service: name.split('.')[0],
     description: `Tool: ${name}`,
     internal: false,
+    live: false,
     schema: {},
   }));
 }
@@ -101,10 +102,10 @@ describe('loadSubagentPersona', () => {
   });
 
   it('parses frontmatter allowedTools and body', async () => {
-    writeFileSync(path.join(agentsDir, 'subagent.md'), '---\nallowedTools:\n  - memory.*\n  - web.*\n---\n\nYou are a subagent.\n');
+    writeFileSync(path.join(agentsDir, 'subagent.md'), '---\nallowedTools:\n  - memory.*\n  - media.*\n---\n\nYou are a subagent.\n');
     const result = await loadSubagentPersona();
     expect(result).not.toBeNull();
-    expect(result!.meta.allowedTools).toEqual(['memory.*', 'web.*']);
+    expect(result!.meta.allowedTools).toEqual(['memory.*', 'media.*']);
     expect(result!.body).toBe('You are a subagent.');
   });
 
@@ -236,7 +237,7 @@ describe('subagent tool filtering via allowedTools', () => {
 
   const allTools = [
     'agent.execute', 'agent.status', 'channel.send', 'channel.sendMedia',
-    'memory.search', 'memory.read', 'memory.write', 'web.fetch',
+    'memory.search', 'memory.read', 'memory.write', 'media.describeImage',
     'cron.add', 'mcp.github.create_issue',
   ];
 
@@ -260,19 +261,19 @@ describe('subagent tool filtering via allowedTools', () => {
 
   it('filters tools by glob patterns matching label (event name with dots)', async () => {
     const runtime = await createTestRuntime(tmpDir, toolMethods(allTools));
-    const tools = await runtime.testGetCustomTools('telegram:user123', ['memory.*', 'web.*']);
-    expect(tools.map(t => t.label)).toEqual(['memory.search', 'memory.read', 'memory.write', 'web.fetch']);
+    const tools = await runtime.testGetCustomTools('telegram:user123', ['memory.*', 'media.*']);
+    expect(tools.map(t => t.label)).toEqual(['memory.search', 'memory.read', 'memory.write', 'media.describeImage']);
   });
 
   it('excludes agent.execute and channel.send with subagent-style allowlist', async () => {
     const runtime = await createTestRuntime(tmpDir, toolMethods(allTools));
-    const tools = await runtime.testGetCustomTools('telegram:user123:subagent:abc12345', ['memory.*', 'web.*', 'cron.*', 'mcp.*', 'agent.status']);
+    const tools = await runtime.testGetCustomTools('telegram:user123:subagent:abc12345', ['memory.*', 'media.*', 'cron.*', 'mcp.*', 'agent.status']);
     const labels = tools.map(t => t.label);
     expect(labels).not.toContain('agent.execute');
     expect(labels).not.toContain('channel.send');
     expect(labels).not.toContain('channel.sendMedia');
     expect(labels).toContain('memory.search');
-    expect(labels).toContain('web.fetch');
+    expect(labels).toContain('media.describeImage');
     expect(labels).toContain('agent.status');
     expect(labels).toContain('mcp.github.create_issue');
   });

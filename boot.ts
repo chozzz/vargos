@@ -15,6 +15,7 @@ import { startRpcServer } from './core/rpc-server.js';
 import { createLogger } from './lib/logger.js';
 import { seedDataDir } from './lib/templates.js';
 import { runMigrations } from './lib/migrate.js';
+import { reportProblems } from './scripts/doctors/index.js';
 import type { AppConfig } from './services/config/index.js';
 
 const RESTART_EXIT_CODE = 42;
@@ -65,6 +66,7 @@ bus.register('bus.restartProcess', {
 
 await seedDataDir(log);
 await runMigrations(log);
+await reportProblems(log); // advisory only — a missing prerequisite must never block boot
 
 for (const spec of specs) {
   try {

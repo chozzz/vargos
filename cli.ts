@@ -52,6 +52,7 @@ async function usage(): Promise<void> {
     chat                         Interactive chat session with the agent
     sync                         Update bundled templates
     migrate                      Run pending data migrations
+    doctor                       Check external prerequisites and offer fixes
     --version, -v                Show version
     --help, -h                   Show this help`);
 
@@ -141,6 +142,11 @@ async function runBuiltin(cmd: string): Promise<boolean> {
     case 'migrate': {
       const { runMigrations } = await import('./lib/migrate.js');
       await runMigrations(console, { dryRun: process.argv.includes('--dry-run') });
+      return true;
+    }
+    case 'doctor': {
+      const { runDoctors } = await import('./scripts/doctors/index.js');
+      await runDoctors();
       return true;
     }
     case 'sync': {

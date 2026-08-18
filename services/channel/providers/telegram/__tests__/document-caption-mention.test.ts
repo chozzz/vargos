@@ -19,7 +19,6 @@ import type { TelegramMessage } from '../types.js';
 const BOT_CONTEXT: TelegramNormalizerContext = {
   botUserId: 200002,
   botUsername: 'AgentBotTest',
-  botName: 'AgentBot',
 };
 
 function buildDocumentMessage(overrides?: Partial<TelegramMessage>): TelegramMessage {

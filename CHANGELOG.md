@@ -2,6 +2,13 @@
 
 All notable changes to Vargos will be documented in this file.
 
+## [3.2.13] - 2026-08-18
+
+### Fixed
+- Agent now nudges the same session after compaction so a run that settles with an empty final message still produces an answer. The nudge uses `prompt` with `streamingBehavior: 'followUp'` (works both while the run is in flight and when the pre-prompt threshold check fires while idle, where `session.followUp` would throw).
+
+[3.2.13]: https://github.com/chozzz/vargos/releases/tag/v3.2.13
+
 ## [3.1.4] - 2026-06-06
 
 ### Changed

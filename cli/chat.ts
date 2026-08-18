@@ -11,6 +11,7 @@ import { getDataPaths } from '../lib/paths.js';
 import { createLogger } from '../lib/logger.js';
 import { readJson } from '../lib/util.js';
 import { seedDataDir } from '../lib/templates.js';
+import { reportProblems } from '../scripts/doctors/index.js';
 
 export async function chat(): Promise<void> {
   const here = path.dirname(fileURLToPath(import.meta.url));
@@ -41,6 +42,10 @@ export async function chat(): Promise<void> {
       } catch { /* chat still works without MCP */ }
     }
   } catch { /* skip MCP setup on any issue */ }
+
+  // pi treats an MCP server that fails to spawn as fatal, so name the missing
+  // prerequisite here rather than letting the session die on a bare ENOENT.
+  await reportProblems(createLogger('doctor'));
 
   execSync(`node "${piCliPath}" --session-dir "${dataDir}/sessions/cli"`, {
     stdio: 'inherit',

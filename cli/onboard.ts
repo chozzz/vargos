@@ -13,6 +13,7 @@ import * as p from '@clack/prompts';
 import { getDataPaths } from '../lib/paths.js';
 import { writeJson } from '../lib/util.js';
 import { registerChannel } from './channels.js';
+import { runDoctors } from '../scripts/doctors/index.js';
 
 // ── Provider presets ──────────────────────────────────────────────────────────
 
@@ -358,6 +359,11 @@ export async function onboard(): Promise<void> {
       );
     }
   }
+
+  // ── Environment checks ───────────────────────────────────────────────────────
+  // Last, so doctors see the MCP servers configured above.
+
+  await runDoctors();
 
   // ── Done ─────────────────────────────────────────────────────────────────
 

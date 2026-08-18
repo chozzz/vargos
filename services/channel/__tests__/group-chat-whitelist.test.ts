@@ -194,7 +194,6 @@ describe('Group chat whitelist enforcement', () => {
         fromUser: 'Alice',
         chatType: 'group',
         isMentioned: true,
-        botName: 'MyBot',
         channelType: 'telegram',
       };
 

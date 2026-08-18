@@ -6,6 +6,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import type {
   AdapterDeps,
+  ChannelAdapter,
   InboundMediaSource,
   MediaKind,
   NormalizedInboundMessage,
@@ -221,6 +222,7 @@ describe('BaseChannelAdapter outbound', () => {
   });
 
   it('leaves react undefined for channels that do not support it', () => {
-    expect(new TestAdapter().react).toBeUndefined();
+    const adapter: ChannelAdapter = new TestAdapter();
+    expect(adapter.react).toBeUndefined();
   });
 });

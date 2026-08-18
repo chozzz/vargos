@@ -20,8 +20,10 @@
    - Remove any broken links or outdated topics
    - Consolidate overlapping topic files
 
-4. **Bootstrap hygiene** (keep each <6000 chars)
-   - Review staleness: ${WORKSPACE_DIR}/AGENTS.md, SOUL.md, TOOLS.md only
+4. **Bootstrap & persona hygiene** (keep each <6000 chars)
+   - Review staleness: ${WORKSPACE_DIR}/AGENTS.md, SOUL.md, TOOLS.md
+   - Review personas: ${DATA_DIR}/agents/*.md — keep to identity + response style; diffuse everything else to the bootstrap files or memory/<topic>.md
+   - Consolidate duplication across personas into the single shared home
    - Move reference data to ${WORKSPACE_DIR}/memory/<topic>.md files as needed
    - Note any findings in daily summary
 
@@ -35,4 +37,8 @@
    - If a pattern would help future agents, recommend creating or updating a skill instead of bloating AGENTS.md, SOUL.md, or TOOLS.md
    - Do not create or update skills during heartbeat unless the user already asked for it; include a concise recommendation in the heartbeat output instead
    - Keep skills focused on repeatable procedures, not one-off notes
+
+7. **Template drift**
+   - Diff ${DATA_DIR}/agents/*.md and ${WORKSPACE_DIR}/*.md against the bundled .templates/ in the VARGOS install
+   - Flag durable live edits for promotion back to the source templates; never auto-sync user-managed files
 

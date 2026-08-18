@@ -199,7 +199,7 @@ export const TelegramFixtures = {
       update_id: 206,
       message: buildTelegramMessage({
         message_id: 26,
-        chat: buildTelegramChat({ id: -1001234567890, type: 'channel', title: 'Test Channel' }),
+        chat: buildTelegramChat({ id: -1001234567890, type: 'channel' }),
         text: 'Channel message',
       }),
     }),

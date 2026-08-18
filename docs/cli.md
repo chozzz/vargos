@@ -20,6 +20,7 @@ one-shot.
 | `vargos chat` | Hand off to the pi coding-agent REPL bound to `~/.vargos/agent`. The interactive way to talk to the agent. |
 | `vargos sync` | Diff bundled `.templates/` against `~/.vargos/`, prompt to overwrite. |
 | `vargos migrate` | Run pending data migrations. `--dry-run` to preview. |
+| `vargos doctor` | Check external prerequisites (uv, Playwright browsers) and offer to install what's missing. |
 | `vargos --version` / `-v` | Print version. |
 | `vargos --help` / `-h` | Usage + live service overview. |
 

@@ -36,7 +36,7 @@ describe('channel.send auto-injection', () => {
 
   it('does not inject for other events', () => {
     const paramsObj: Record<string, unknown> = { task: 'Do something' };
-    const eventName = 'agent.execute';
+    const eventName: string = 'agent.execute';
     const sessionKey = 'telegram:12345';
 
     // Simulate the auto-injection logic (only for channel.send)
