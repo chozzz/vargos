@@ -119,9 +119,24 @@ process.on('uncaughtException', (err) => {
   log.error(`uncaughtException: ${err.stack ?? err.message ?? err}`);
 });
 
+let shuttingDown = false;
 const shutdown = async () => {
+  if (shuttingDown) return; // a second signal must not re-enter drain()
+  shuttingDown = true;
   log.info('shutting down');
-  await drain();
+  // Bound the drain: a wedged dispose() or a lingering RPC socket must never
+  // hold the process past this — systemd/`vargos start` expect a prompt exit.
+  const force = setTimeout(() => {
+    log.warn('shutdown timed out after 5s — forcing exit');
+    process.exit(0);
+  }, 5000);
+  force.unref();
+  try {
+    await drain();
+  } catch (err) {
+    log.error(`drain failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  clearTimeout(force);
   process.exit(0);
 };
 process.on('SIGTERM', shutdown);

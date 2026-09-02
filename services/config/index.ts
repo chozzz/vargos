@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { readFileSync } from 'node:fs';
-import path from 'node:path';
 import type { Bus, Service } from '../../core/types.js';
 import { formatZodIssues } from '../../core/errors.js';
 import {
@@ -101,12 +100,12 @@ export class ConfigService implements Service {
   private readonly agentAuthFile: string;
 
   constructor() {
-    const { configFile, dataDir } = getDataPaths();
-    this.configFile = configFile;
-    this.agentDir = path.join(dataDir, 'agent');
-    this.agentModelsFile = path.join(this.agentDir, 'models.json');
-    this.agentSettingsFile = path.join(this.agentDir, 'settings.json');
-    this.agentAuthFile = path.join(this.agentDir, 'auth.json');
+    const p = getDataPaths();
+    this.configFile = p.configFile;
+    this.agentDir = p.agentDir;
+    this.agentModelsFile = p.agentModelsFile;
+    this.agentSettingsFile = p.agentSettingsFile;
+    this.agentAuthFile = p.agentAuthFile;
   }
 
   init(bus: Bus): void {

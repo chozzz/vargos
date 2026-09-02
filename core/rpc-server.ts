@@ -28,9 +28,12 @@ function authorize(_req: JsonRpcRequest, _socket: Socket): string | null {
 
 export function startRpcServer(bus: Bus, host: string, port: number, socketTimeoutMs = 35 * 60 * 1000): Promise<() => Promise<void>> {
   return new Promise((resolve, reject) => {
+    const sockets = new Set<Socket>();
     const server: Server = createServer({ allowHalfOpen: true }, (socket) => {
       let buffer = '';
       let pending = 0;            // in-flight bus.call()s
+      sockets.add(socket);
+      socket.on('close', () => sockets.delete(socket));
       socket.setTimeout(socketTimeoutMs, () => socket.destroy());
       socket.on('error', (err) => log.debug(`socket error: ${err.message}`));
       // When the remote sends FIN (half-close), allowHalfOpen keeps our side
@@ -59,7 +62,12 @@ export function startRpcServer(bus: Bus, host: string, port: number, socketTimeo
     server.on('error', reject);
     server.listen(port, host, () => {
       log.info(`JSON-RPC listening on ${host}:${port}`);
-      resolve(() => new Promise<void>((res) => server.close(() => res())));
+      resolve(() => new Promise<void>((res) => {
+        // Stop accepting, then hard-close every live connection so `close`'s
+        // callback fires now instead of waiting out each socket's idle timeout.
+        server.close(() => res());
+        for (const s of sockets) s.destroy();
+      }));
     });
   });
 }

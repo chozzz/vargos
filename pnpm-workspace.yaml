@@ -1,0 +1,13 @@
+# The repo is a single pnpm workspace: the root package (@chozzz/vargos, the
+# daemon + CLI that gets published) plus the private web console in ./web.
+# One `pnpm install` at the root installs and links everything.
+packages:
+  - web
+
+# Dependencies allowed to run install scripts (native builds). Moved here from
+# the root package.json `pnpm` field, which pnpm 10 no longer reads.
+onlyBuiltDependencies:
+  - better-sqlite3
+  - esbuild
+  - sharp
+  - unrs-resolver

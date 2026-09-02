@@ -36,6 +36,7 @@ import type {
 import { shouldExecute } from './access.js';
 import { deliverReply } from './delivery.js';
 import { extractMediaPaths } from './media-paths.js';
+import { WhatsAppPairing, type PairStatus } from './providers/whatsapp/pairing.js';
 import {
   InboundMessagePipeline,
   type AgentToolPayload,
@@ -62,6 +63,7 @@ export class ChannelService implements Service {
   private bus!: Bus;
   private config!: AppConfig;
   private pipeline!: InboundMessagePipeline;
+  private waPairing = new WhatsAppPairing((id) => void this.repairAfterPairing(id));
 
   async init(bus: Bus): Promise<void> {
     this.bus = bus;
@@ -81,6 +83,7 @@ export class ChannelService implements Service {
   }
 
   async dispose(): Promise<void> {
+    this.waPairing.disposeAll();
     for (const adapter of this.adapters.values()) {
       try { await adapter.stop(); } catch { /* best effort */ }
     }
@@ -147,6 +150,89 @@ export class ChannelService implements Service {
       cli: { positional: ['type', 'id'] },
       live: true,
     }, (p) => this.registerChannel(p));
+
+    bus.register('channel.pairStart', {
+      description: 'Begin WhatsApp QR pairing for a registered channel. Returns { phase, qr? }; poll channel.pairStatus. Pass reset:true to wipe stale auth first.',
+      schema: z.object({ id: z.string(), reset: z.boolean().optional() }),
+      cli: { positional: ['id'] },
+      live: true,
+    }, (p) => this.pairStart(p));
+
+    bus.register('channel.pairStatus', {
+      description: 'Poll WhatsApp pairing progress: { phase: idle|connecting|qr|connected|saved|expired|error, qr?, name?, error? }.',
+      schema: z.object({ id: z.string() }),
+      cli: { positional: ['id'] },
+      live: true,
+    }, (p) => this.waPairing.status(p.id));
+
+    bus.register('channel.pairCancel', {
+      description: 'Abort an in-progress WhatsApp pairing session.',
+      schema: z.object({ id: z.string() }),
+      cli: { positional: ['id'] },
+      live: true,
+    }, (p) => this.pairCancel(p));
+
+    bus.register('channel.unregister', {
+      description: 'Stop a channel adapter and remove its entry from config. Auth state under ~/.vargos/channels/<id> is left in place.',
+      schema: z.object({ id: z.string() }),
+      cli: { positional: ['id'] },
+      live: true,
+    }, (p) => this.unregisterChannel(p));
+  }
+
+  // ── WhatsApp pairing ─────────────────────────────────────────────────────────
+
+  private async pairStart(p: { id: string; reset?: boolean }): Promise<PairStatus> {
+    if (!this.providers.has('whatsapp')) throw new Error('whatsapp provider is not loaded');
+    const cfg = await this.bus.call<AppConfig>('config.get', {});
+    const entry = cfg.channels.find(c => c.id === p.id);
+    if (!entry) throw new Error(`No channel registered with id "${p.id}" — register it first.`);
+    if (entry.type !== 'whatsapp') throw new Error(`Channel "${p.id}" is ${entry.type}, not whatsapp.`);
+
+    // The unpaired adapter is inert (repair state, no socket), but stop it anyway
+    // so the auth dir is unambiguously free for the pairing socket.
+    await this.adapters.get(p.id)?.stop().catch(() => {});
+    return this.waPairing.start(p.id, { reset: p.reset });
+  }
+
+  private async pairCancel(p: { id: string }): Promise<{ cancelled: boolean }> {
+    await this.waPairing.cancel(p.id);
+    await this.adapters.get(p.id)?.start().catch(() => {});
+    return { cancelled: true };
+  }
+
+  private async unregisterChannel(p: { id: string }): Promise<{ removed: boolean; id: string }> {
+    await this.waPairing.cancel(p.id);
+    const adapter = this.adapters.get(p.id);
+    if (adapter) {
+      try { await adapter.stop(); } catch { /* best effort */ }
+      this.adapters.delete(p.id);
+    }
+
+    const cfg = await this.bus.call<AppConfig>('config.get', {});
+    const next = cfg.channels.filter(c => c.id !== p.id);
+    const removed = next.length !== cfg.channels.length;
+    if (removed) await this.bus.call('config.set', { ...cfg, channels: next });
+
+    this.bus.emit('channel.onDisconnected', { instanceId: p.id });
+    log.info(`unregistered channel: ${p.id}`);
+    return { removed, id: p.id };
+  }
+
+  /** Fired by WhatsAppPairing once creds are on disk — bring the real adapter online. */
+  private async repairAfterPairing(id: string): Promise<void> {
+    try {
+      if (this.adapters.has(id)) {
+        await this.restart({ id });
+      } else {
+        const cfg = await this.bus.call<AppConfig>('config.get', {});
+        const entry = cfg.channels.find(c => c.id === id);
+        if (entry) await this.startChannel(entry);
+      }
+      log.info(`${id}: adapter online after pairing`);
+    } catch (err) {
+      log.error(`${id}: adapter failed to come up after pairing: ${toMessage(err)}`);
+    }
   }
 
   // ── Callable handlers ────────────────────────────────────────────────────────

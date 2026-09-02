@@ -26,7 +26,9 @@ export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    ignores: ["node_modules/**", "dist/**", "out/**", "apps/**", "packages/**", ".templates/**"],
+    // web/ is its own package (@chozzz/vargos-web) with its own eslint config and
+    // lint step — the root lint must not try to parse it.
+    ignores: ["node_modules/**", "dist/**", "out/**", "apps/**", "packages/**", ".templates/**", "web/**"],
   },
   {
     rules: {

@@ -96,11 +96,11 @@ export class AgentService implements Service {
     this.config = await bus.call<AppConfig>('config.get', {});
 
     const paths = getDataPaths();
-    this.agentDir = path.join(paths.dataDir, 'agent');
+    this.agentDir = paths.agentDir;
 
     // Use ~/.vargos/agent for auth and models (override PiAgent defaults)
-    const authJsonPath = path.join(this.agentDir, 'auth.json');
-    const modelsJsonPath = path.join(this.agentDir, 'models.json');
+    const authJsonPath = paths.agentAuthFile;
+    const modelsJsonPath = paths.agentModelsFile;
 
     this.modelRuntime = await ModelRuntime.create({ authPath: authJsonPath, modelsPath: modelsJsonPath });
     this.modelRegistry = new ModelRegistry(this.modelRuntime);

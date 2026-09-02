@@ -17,7 +17,6 @@
 
 import { z } from 'zod';
 import { existsSync, readFileSync } from 'node:fs';
-import path from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import type { Tool, CallToolResult } from '@modelcontextprotocol/sdk/types.js';
@@ -71,28 +70,51 @@ export class McpClientService implements Service {
   async init(bus: Bus): Promise<void> {
     this.bus = bus;
     this.config = await bus.call<AppConfig>('config.get', {});
+
+    bus.register('mcp.list', {
+      description: 'List configured MCP servers (config.mcpServers + agent/mcp.json) with live connection status.',
+      schema: z.object({}),
+    }, () => this.list());
+
     await this.start();
   }
 
-  private async start(): Promise<void> {
-    const { dataDir } = getDataPaths();
-    const mcpConfigPath = path.join(dataDir, 'agent', 'mcp.json');
-
-    let mcpServers: Record<string, McpServerEntry> = this.config.mcpServers ?? {};
-
-    // Load from agent/mcp.json if it exists (merged with config.mcpServers)
+  /** config.mcpServers merged with agent/mcp.json (the file wins on key clash). */
+  private mergedServers(): Record<string, McpServerEntry> {
+    let servers: Record<string, McpServerEntry> = this.config.mcpServers ?? {};
+    const mcpConfigPath = getDataPaths().agentMcpFile;
     if (existsSync(mcpConfigPath)) {
       try {
-        const content = readFileSync(mcpConfigPath, 'utf8');
-        const mcpConfig = JSON.parse(content) as { mcpServers?: Record<string, McpServerEntry> };
-        if (mcpConfig.mcpServers) {
-          mcpServers = { ...mcpServers, ...mcpConfig.mcpServers };
-          log.info(`loaded MCP servers from agent/mcp.json`);
-        }
+        const parsed = JSON.parse(readFileSync(mcpConfigPath, 'utf8')) as {
+          mcpServers?: Record<string, McpServerEntry>;
+        };
+        if (parsed.mcpServers) servers = { ...servers, ...parsed.mcpServers };
       } catch (err) {
         log.warn(`failed to load agent/mcp.json: ${toMessage(err)}`);
       }
     }
+    return servers;
+  }
+
+  private list() {
+    return Object.entries(this.mergedServers()).map(([name, entry]) => {
+      const c = normalizeEntry(entry);
+      const conn = this.servers.get(name);
+      return {
+        name,
+        command: c.command ?? null,
+        args: c.args ?? [],
+        transport: c.transport ?? 'stdio',
+        enabled: c.enabled !== false,
+        connected: !!conn,
+        toolCount: conn ? conn.tools.size : 0,
+      };
+    });
+  }
+
+  private async start(): Promise<void> {
+    const mcpServers = this.mergedServers();
+    if (Object.keys(mcpServers).length) log.info('loaded MCP servers');
 
     if (!mcpServers || Object.keys(mcpServers).length === 0) {
       log.debug('no MCP servers configured');

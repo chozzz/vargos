@@ -15,5 +15,5 @@
     "sourceMap": true
   },
   "include": ["./**/*", ".migrations/**/*"],
-  "exclude": ["node_modules", "dist", "**/__tests__", "**/*.test.ts"]
+  "exclude": ["node_modules", "dist", "web", "**/__tests__", "**/*.test.ts"]
 }
