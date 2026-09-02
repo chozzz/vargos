@@ -158,7 +158,10 @@ Pi-SDK-powered runtime (`@earendil-works/pi-coding-agent`) with Vargos-managed c
 
 | Feature | Status |
 |---------|--------|
-| `pnpm start` — boot the daemon (bus + all services) | ✅ |
+| `pnpm start` / `vargos start` — boot the daemon + web console (one process, `edge/web` spawns the Next child) | ✅ |
+| `vargos setup` — one folded first-run command (seed → migrate → provider → prerequisites → optional channels/MCP); auto-run by bare `vargos` and by `vargos start` only when the config is empty; one Q&A writes all config files; `${PROVIDER}_API_KEY` auto-detected; headless + unconfigured exits non-zero with guidance | ✅ `cli/ready.ts` |
+| `vargos config` — interactive editor (provider/model, channels, MCP, environment, migrations); `vargos config show` prints merged JSON | ✅ |
+| Data migrations auto-applied on boot, silent when clean | ✅ `lib/migrate.ts` |
 | `vargos <service> [method]` — registry-driven dispatch (daemon proxy or local stack) | ✅ |
 | `pnpm chat` — Pi SDK CLI bound to `~/.vargos/agent` and sessions in `sessions/cli/` | ✅ |
 
@@ -167,16 +170,30 @@ Pi-SDK-powered runtime (`@earendil-works/pi-coding-agent`) with Vargos-managed c
 | Feature | Status |
 |---------|--------|
 | MCP **client** (external MCP servers loaded as bus tools) | ✅ `services/mcp/` |
-| MCP **server** (HTTP, port 9001, expose Vargos as MCP) | 🟧 commented out in `boot.ts` |
+| MCP **server** (HTTP, port 9001, expose Vargos as MCP) | ✅ `edge/mcp/` |
 
 ## Webhooks
 
 | Feature | Status |
 |---------|--------|
-| HTTP webhook receiver (port 9002) | 🟧 commented out in `boot.ts` |
-| HMAC token auth | 🟧 |
-| Custom JS/TS transforms | 🟧 |
-| `notify` delivery via `channel.send` with `fromSessionKey` | ✅ when re-enabled |
+| HTTP webhook receiver (port 9002) | ✅ `edge/webhooks/` |
+| HMAC token auth | ✅ |
+| Custom JS/TS transforms | ✅ |
+| `notify` delivery via `channel.send` with `fromSessionKey` | ✅ |
+
+## Web Console
+
+The `edge/web` service — starts with the daemon (`vargos start` / `npx` / systemd). Next child on `:9003` (HTTP + `/api/*`); live-update WebSocket in the daemon process on `:9004`. Source in `web/` (`@chozzz/vargos-web`, private); `pnpm build` stages a Next standalone bundle into `dist/web/`.
+
+| Feature | Status |
+|---------|--------|
+| Dashboard, session/transcript viewer, channels, cron, models, MCP, agents, memory — read from data dir + gateway | ✅ `edge/web/` |
+| Live updates over WebSocket — in-daemon `fs.watch` + bus-direct status poll | ✅ |
+| Next child supervised: piped logs, crash-restart with backoff, killed on `dispose()` | ✅ |
+| Write actions: `bus.restart`, `channel.restart`, `cron.run`, `agent.execute`, `memory.reindex` (POST `/api/rpc` allow-list) | ✅ |
+| `web.status` bus method | ✅ |
+| Bearer-token auth (localhost-only today) | 📋 |
+| Per-run streaming deltas; `cron.add`/`cron.update` editor | 📋 |
 
 ## Security
 
@@ -197,11 +214,10 @@ Pi-SDK-powered runtime (`@earendil-works/pi-coding-agent`) with Vargos-managed c
 | Voice integration (STT/TTS via LocalAI) | 📋 |
 | Twilio phone channel adapter + outbound voice calls | 📋 |
 | Slack channel adapter | 📋 |
-| Web UI / Observability service | 📋 |
+| Web console — bearer auth, streaming deltas, cron editor (base shipped, see [Web Console](#web-console)) | 📋 |
 | Session cost tracking | 📋 |
 | Image description fallback (for non-vision models) | 📋 |
 | Session export/import | 📋 |
-| Re-enable `edge/webhooks/` and `edge/mcp/` at boot | 📋 |
 
 ## Known Limitations
 

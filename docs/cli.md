@@ -15,14 +15,18 @@ one-shot.
 
 | Command | Behavior |
 |---|---|
-| `vargos start` | Boot the daemon: bus + all services + JSON-RPC `:9000`. Long-running. |
-| `vargos onboard` | Interactive setup wizard (provider/model/API key, optional channel). Writes `~/.vargos/`. |
+| `vargos setup` | The one folded first-run command: seed → migrate → provider setup → environment check → (fresh only) offer channels + MCP. Idempotent; safe to re-run. |
+| `vargos` | Runs `setup` automatically when the install isn't ready; otherwise prints usage. |
+| `vargos start` | Boot the daemon: bus + all services + JSON-RPC `:9000`. Runs `setup` first *only* when unconfigured (fresh / empty); a normal restart boots straight through. Long-running. |
+| `vargos config` | Interactive editor — change provider/model, add a channel, install the MCP adapter, re-check the environment, run pending migrations. `vargos config show` (or `get`) prints the merged config as JSON. |
 | `vargos chat` | Hand off to the pi coding-agent REPL bound to `~/.vargos/agent`. The interactive way to talk to the agent. |
 | `vargos sync` | Diff bundled `.templates/` against `~/.vargos/`, prompt to overwrite. |
-| `vargos migrate` | Run pending data migrations. `--dry-run` to preview. |
-| `vargos doctor` | Check external prerequisites (uv, Playwright browsers) and offer to install what's missing. |
 | `vargos --version` / `-v` | Print version. |
 | `vargos --help` / `-h` | Usage + live service overview. |
+
+Data migrations run automatically on every boot (silent when there's nothing pending);
+environment prerequisites (uv, Playwright browsers) are checked during the first-run
+journey and reported advisory-only on `vargos start` / `vargos chat`.
 
 ## Registry methods
 

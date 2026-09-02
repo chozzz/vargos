@@ -5,15 +5,28 @@ This file provides context for AI assistants working on this project.
 ## Commands
 
 ```bash
-pnpm install          # install deps
-pnpm start            # boot gateway + all services
+pnpm install          # install deps (pnpm workspace: root daemon + web/ console)
+pnpm start            # boot gateway + all services + web console (edge/web)
 pnpm chat             # Pi SDK CLI bound to ~/.vargos/agent (interactive REPL)
 pnpm cli              # run the CLI entrypoint directly (tsx cli.ts)
 pnpm seed             # manual `seedDataDir()` — copy missing templates into ~/.vargos/
-pnpm run typecheck    # tsc --noEmit
+pnpm run typecheck    # tsc --noEmit (root; `web` is excluded — it has its own)
+pnpm run build        # tsc → dist/, then build+stage the web console into dist/web/
 pnpm run test:run     # single test run
 pnpm lint             # eslint + typecheck
 ```
+
+The repo is one pnpm workspace: the published root package (`@chozzz/vargos`) plus the
+private `web/` console (`@chozzz/vargos-web`). The **`edge/web` service** brings the console
+up as part of the daemon — `vargos start` / `npx` / systemd all serve it:
+
+- Next server (HTTP + `/api/*`) — a child process on `WEB_PORT` (9003). Dev: `next dev`.
+  Prod: the Next **standalone** bundle that `pnpm build` stages into `dist/web/`.
+- Live-update WebSocket — **in the daemon process**, `VARGOS_WEB_WS_PORT` (9004), so it
+  reads gateway state straight off the bus and outlives the Next child.
+
+`web/`'s own source imports shared logic from the daemon (`@vargos/lib/*`), never copies it.
+Nothing in `web/` is published — `files` ships only `dist/` (which now includes `dist/web/`).
 
 ## Conventions
 

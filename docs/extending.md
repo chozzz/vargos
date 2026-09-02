@@ -14,7 +14,7 @@ Write a service method, get a tool for free.
 
 ### Anatomy of a service method
 
-The simplest reference is any existing service — read [`services/web/index.ts`](../services/web/index.ts) for a single-method example, [`services/cron/index.ts`](../services/cron/index.ts) for multiple methods + scheduled work, or [`services/agent/index.ts`](../services/agent/index.ts) for the most elaborate.
+The simplest reference is any existing service — read [`services/media/index.ts`](../services/media/index.ts) for a compact one, [`services/cron/index.ts`](../services/cron/index.ts) for multiple methods + scheduled work, or [`services/agent/index.ts`](../services/agent/index.ts) for the most elaborate.
 
 Pattern in short:
 - In `init(bus)`, call `bus.register('service.method', { description, schema, cli? }, handler)` (a method + agent tool) or `bus.on('event', fn)` (event listener).

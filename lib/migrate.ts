@@ -2,7 +2,7 @@
  * Run-once data migrations. Migration modules live in `.migrations/` (compiled to
  * `dist/.migrations/`), each a default-exported { id, description, run }. Applied ids
  * are tracked in `~/.vargos/.migrations.json`, so each runs exactly once — on boot
- * (automatic) or via `vargos migrate` / `pnpm migrate`.
+ * (automatic) or from the `vargos config` menu.
  *
  * To add one: drop `NNN-name.ts` into `.migrations/`. Order is filename order.
  */
@@ -104,4 +104,18 @@ export async function runMigrations(
   const ledgerFile = path.join(paths.dataDir, '.migrations.json');
   const migrations = await loadMigrations(root);
   await applyMigrations(migrations, ledgerFile, { paths, log }, opts);
+}
+
+/** Ids of migrations not yet in the ledger — cheap check for the first-run journey. */
+export async function pendingMigrations(): Promise<string[]> {
+  const root = findMigrationsRoot();
+  if (!root) return [];
+
+  const ledgerFile = path.join(getDataPaths().dataDir, '.migrations.json');
+  const ledger: Ledger = await fs.readFile(ledgerFile, 'utf-8')
+    .then(c => JSON.parse(c) as Ledger)
+    .catch(() => ({ applied: [] }));
+  const done = new Set(ledger.applied);
+
+  return (await loadMigrations(root)).filter(m => !done.has(m.id)).map(m => m.id);
 }

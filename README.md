@@ -24,12 +24,18 @@ npx @chozzz/vargos
 git clone https://github.com/chozzz/vargos.git
 cd vargos
 pnpm install
-pnpm start
+pnpm run setup        # guided first run
+pnpm start            # boot the daemon + web console
 ```
 
-First run launches an interactive setup wizard (provider, model, API key). Config is saved to `~/.vargos/`.
+First run — `npx @chozzz/vargos` (bare), `vargos setup`, or `pnpm run setup` from a clone —
+walks one guided journey: seed, migrate, pick a provider + model, enter the key, check
+prerequisites. It doesn't finish until the agent can run. One Q&A writes every config file;
+a `${PROVIDER}_API_KEY` in the environment is used automatically.
 
-After setup: `vargos start` boots the server, `vargos onboard` re-runs the wizard, `vargos config` shows current settings.
+After that: `vargos start` boots the daemon (and re-runs `setup` only if the config is
+still empty); `vargos config` changes the provider, adds channels, or installs the MCP
+adapter (`vargos config show` prints the merged config).
 
 ## Architecture
 
@@ -77,26 +83,32 @@ Messages go through a simple pipeline: **receive → process → execute → res
 ## Usage
 
 ```bash
-vargos                 # First-run wizard or help
-vargos start           # Boot the daemon (bus + all services + JSON-RPC :9000)
+vargos                 # First-run journey, or usage once configured
+vargos start           # Boot the daemon + web console (bus, services, JSON-RPC :9000, UI :9003)
+vargos config          # Change provider/model, add channels, MCP, re-check environment
 vargos <service>       # List a service's methods (e.g. vargos channel)
 vargos <service> --help        # Methods, descriptions, arg shapes
 vargos <service> <method> …    # Invoke a method (e.g. vargos channel send <to> "<msg>")
-vargos onboard         # Re-run setup wizard
 ```
 
 ## Development
 
 ```bash
-pnpm install          # Install deps
-pnpm start            # Boot the daemon (alias: vargos start)
+pnpm install          # Install deps (workspace: daemon + web/ console)
+pnpm start            # Boot the daemon + web console (alias: vargos start)
 pnpm chat             # Pi SDK interactive REPL bound to ~/.vargos/agent
 pnpm cli              # Run the CLI entrypoint directly (tsx cli.ts)
 pnpm run test:run     # Tests (single run)
 pnpm run typecheck    # TypeScript check
 pnpm lint             # ESLint + typecheck
-pnpm build            # Clean + compile + copy templates → dist/
+pnpm build            # Compile → dist/ + build the web console into dist/web/
 ```
+
+The **web console** comes up with the daemon — `vargos start`, `npx @chozzz/vargos`, and
+systemd all serve it. It's the `edge/web` service: a Next child on **:9003** (HTTP + `/api/*`)
+plus a live-update WebSocket on **:9004** that runs inside the daemon. A live read/observe UI
+over sessions, channels, cron, models, MCP, agents and memory, with a few write actions
+(restart, run cron, dispatch agent). See [`web/README.md`](./web/README.md).
 
 ## Contributing
 

@@ -43,11 +43,37 @@ function spawnBoot(): void {
 }
 
 function forward(sig: NodeJS.Signals): void {
+  if (shuttingDown) return;
   shuttingDown = true;
-  if (child && !child.killed) child.kill(sig);
+  if (!child || child.killed) { process.exit(0); return; }
+  child.kill(sig);
+  // boot.ts bounds its own drain to 5s; if the child is truly wedged past that,
+  // SIGKILL it and leave — never let systemd fall through to TimeoutStopSec.
+  const hard = setTimeout(() => {
+    if (child && !child.killed) {
+      log.warn('child did not exit after SIGTERM — sending SIGKILL');
+      child.kill('SIGKILL');
+    }
+    process.exit(0);
+  }, 8000);
+  hard.unref();
 }
 
 process.on('SIGTERM', () => forward('SIGTERM'));
 process.on('SIGINT', () => forward('SIGINT'));
+
+// Config gate. The interactive first-run journey lives in `vargos setup` (and is
+// triggered by `vargos start` / bare `vargos` only when not ready) — never from
+// here, so a normal restart just boots. This is the last-resort guard for the
+// `pnpm start` / `node index.js` paths: refuse to boot a daemon that can't serve
+// the agent, and say how to fix it. boot.ts still seeds + migrates on every boot.
+const { isReady } = await import('./cli/ready.js');
+if (!isReady()) {
+  process.stderr.write(
+    '\n  ⚡ Vargos is not configured — run "vargos setup" first.\n' +
+    '  (or set a provider key in the environment, e.g. ANTHROPIC_API_KEY)\n\n',
+  );
+  process.exit(1);
+}
 
 spawnBoot();

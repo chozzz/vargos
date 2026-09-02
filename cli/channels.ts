@@ -1,5 +1,5 @@
 /**
- * Channel setup helpers for the onboard wizard. Writes config.json directly because
+ * Channel setup helpers for first-run enrichment / `vargos config`. Writes config.json directly because
  * onboarding runs before any daemon exists. Live channel ops go through the bus
  * (`vargos channel …` / RpcClient), not here.
  */

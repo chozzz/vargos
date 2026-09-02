@@ -20,16 +20,17 @@ Inbound and outbound voice support.
 
 ## Web UI / Observability
 
-`WebService` exposing agent runs, sessions, cron, channels, config via HTTP + SSE. Real-time streaming deltas, tool execution visibility, session history viewer, cron management. Bearer-token auth like the MCP bridge.
+The observability **console shipped** as the [`edge/web`](../edge/web/) service — it comes
+up with the daemon (`vargos start` / `npx` / systemd), spawning the Next UI on `:9003` and
+running its live-update WebSocket in-process on `:9004`. Dashboard, session/transcript
+viewer, channels, cron, models, MCP, agents, memory, plus write actions (restart,
+`cron.run`, `agent.execute`, `memory.reindex`). Source in [`web/`](../web/); see
+[`web/README.md`](../web/README.md).
 
-## Re-enable disabled edge services
-
-Both currently commented out in [`boot.ts`](../boot.ts):
-
-- [`edge/mcp/`](../edge/mcp/) — MCP server (HTTP, port 9001)
-- [`edge/webhooks/`](../edge/webhooks/) — webhook receiver (HTTP, port 9002)
-
-Bring them back when the surface stabilizes.
+Still open:
+- **Auth** — bearer-token gate like the MCP bridge (today it's localhost-only, unauthenticated).
+- **Streaming deltas** — the console refetches on `fs_change`; per-run token/tool-call streaming would be tighter.
+- **Cron editing** — `cron.add` / `cron.update` forms (the RPC allow-list already permits them).
 
 ## Session cost tracking
 

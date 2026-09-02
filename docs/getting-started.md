@@ -5,9 +5,10 @@
 - pnpm
 
 Some MCP servers need tooling that npm won't install for you — `uvx` (from [uv](https://astral.sh/uv))
-for Python-packaged servers, downloaded browsers for `@playwright/mcp`. `vargos doctor` detects
-what your configured servers actually need and offers to install it; it runs as the last step of
-`vargos onboard`, and reports (without prompting) on `vargos start` and `vargos chat`.
+for Python-packaged servers, downloaded browsers for `@playwright/mcp`. The first-run journey
+detects what your configured servers actually need and offers to install it; afterwards it
+reports (without prompting) on `vargos start` and `vargos chat`, and you can revisit it from
+`vargos config`.
 
 ## Install
 
@@ -20,28 +21,35 @@ pnpm install
 ## First run
 
 ```bash
-# Quick: npx runs the setup wizard automatically on first run
-npx @chozzz/vargos
-
-# Or boot the server directly (wizard runs automatically if unconfigured)
-pnpm start
+npx @chozzz/vargos        # bare invocation runs the guided journey
+# or, from a clone:
+pnpm run setup            # the same one command
 ```
 
-This boots the gateway and all services. On first run, the interactive setup wizard prompts for provider, model, and API key, then writes config to `~/.vargos/`. [`lib/templates.ts`](../lib/templates.ts) also seeds defaults from [`.templates/`](../.templates/) into `~/.vargos/`.
+`vargos setup` runs one guided journey and doesn't finish until Vargos can actually run:
 
-You'll need at minimum:
-- A provider entry in `~/.vargos/agent/models.json` and credentials in `~/.vargos/agent/auth.json` (or the matching `${PROVIDER}_API_KEY` env var)
-- `defaultProvider` + `defaultModel` set in `~/.vargos/agent/settings.json`
+1. seed `~/.vargos/` from [`.templates/`](../.templates/) ([`lib/templates.ts`](../lib/templates.ts))
+2. apply pending data migrations (silent when there are none)
+3. **pick a provider + model, enter the API key** — this one Q&A writes all three files
+   (`agent/models.json`, `agent/auth.json`, `agent/settings.json`); a `${PROVIDER}_API_KEY`
+   in the environment is picked up automatically
+4. check external prerequisites for anything you configured (uv, Playwright browsers)
+5. optionally connect a channel or install the MCP adapter — always skippable
 
-Supported providers (registered out of the box, configure as needed): Anthropic, OpenAI, Google, OpenRouter, Ollama, LM Studio, Groq, Together, DeepSeek, Mistral, Fireworks, Perplexity, vLLM.
+Presets: Anthropic, OpenAI, Google, OpenRouter, Groq, DeepSeek, Ollama. Any other
+OpenAI-compatible endpoint works — add it later with `vargos config`.
+
+Headless (no TTY) and unconfigured: `vargos setup` / `vargos start` print what's missing
+and exit non-zero instead of booting a daemon that can't serve the agent.
 
 ## CLI management
 
 ```bash
-vargos                 # First-run wizard or help
-vargos start           # Boot the server
-vargos onboard         # Re-run setup wizard
-vargos config          # Show current configuration
+vargos setup           # the guided first-run pass (idempotent)
+vargos                 # runs setup if unconfigured, else prints usage
+vargos start           # boot the daemon (runs setup first only if config is empty)
+vargos config          # change provider/model, add channels, MCP, re-check environment
+vargos config show     # print the merged config as JSON
 ```
 
 ## Pi CLI mode

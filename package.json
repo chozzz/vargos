@@ -36,7 +36,8 @@
     "vargos": "./dist/cli.js"
   },
   "scripts": {
-    "start": "tsx index.ts",
+    "start": "tsx cli.ts start",
+    "setup": "tsx cli.ts setup",
     "seed": "tsx scripts/seed.ts",
     "cli": "tsx cli.ts",
     "chat": "tsx scripts/seed.ts && PI_CODING_AGENT_DIR=\"${VARGOS_DATA_DIR:-$HOME/.vargos}/agent\" pi --session-dir \"${VARGOS_DATA_DIR:-$HOME/.vargos}/sessions/cli\"",

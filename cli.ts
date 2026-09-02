@@ -9,7 +9,11 @@
  * Connects to a running daemon on :9000 first and proxies over JSON-RPC; if the port
  * is refused, boots a local stack with only the needed service(s), runs, and disposes.
  *
- * Built-in commands (not registry methods): start, onboard, chat, sync, migrate.
+ * Built-in commands (not registry methods): start, setup, config, chat, sync.
+ *
+ * `vargos setup` is the one folded first-run command (seed + migrate + provider +
+ * doctors + optional extras). Bare `vargos` and `vargos start` run it automatically
+ * only when the install isn't ready yet. Post-install changes live in `vargos config`.
  */
 
 import { existsSync, readFileSync, rmSync } from 'node:fs';
@@ -48,13 +52,14 @@ async function usage(): Promise<void> {
     vargos <service> <method> …  Invoke a method            (e.g. vargos channel send <sessionKey> "<msg>")
 
   Built-ins:
-    onboard                      Interactive setup wizard
+    setup                        First-run setup — provider, migrations, prerequisites (guided)
+    config                       Edit setup — provider, channels, MCP, environment  (config show → JSON)
     chat                         Interactive chat session with the agent
     sync                         Update bundled templates
-    migrate                      Run pending data migrations
-    doctor                       Check external prerequisites and offer fixes
     --version, -v                Show version
-    --help, -h                   Show this help`);
+    --help, -h                   Show this help
+
+  First run: just run "vargos" (or "vargos start") — setup runs automatically.`);
 
   console.log(await renderServices());
   console.log();
@@ -124,29 +129,55 @@ function print(result: unknown): void {
   else console.log(JSON.stringify(result, null, 2));
 }
 
+/** `vargos config show` — merged config as JSON, from the daemon or a local config stack. */
+async function printConfig(): Promise<void> {
+  const { host, port } = gatewayAddress();
+  const client = new RpcClient(host, port);
+  if (await client.isUp()) {
+    print(await client.call('config.get', {}));
+    return;
+  }
+  const stack = await bootLocal(['config'], here, ext);
+  try {
+    print(await stack.bus.call('config.get', {}));
+  } finally {
+    await stack.dispose();
+  }
+}
+
 // ── Built-in commands ────────────────────────────────────────────────────────────
 
 async function runBuiltin(cmd: string): Promise<boolean> {
   switch (cmd) {
     case '--version': case '-v': console.log(VERSION); return true;
     case '--help': case '-h': usage(); return true;
-    case 'start':
+    case 'setup': {
+      const { runSetup } = await import('./cli/ready.js');
+      await runSetup({ interactive: !!process.stdout.isTTY });
+      return true;
+    }
+    case 'start': {
+      // Only run the guided journey when the install genuinely isn't ready
+      // (fresh / empty config). A normal restart boots straight through —
+      // index.ts has a non-interactive guard, boot.ts seeds + migrates silently.
+      const { isReady, runSetup } = await import('./cli/ready.js');
+      if (!isReady()) {
+        // interactive → walk setup, then boot; headless → guidance + exit 1
+        await runSetup({ interactive: !!process.stdout.isTTY });
+      }
       await import('./index.js');
       await new Promise(() => {}); // TCP server keeps the loop alive
       return true;
-    case 'onboard': {
-      const { onboard } = await import('./cli/onboard.js');
-      await onboard();
-      return true;
     }
-    case 'migrate': {
-      const { runMigrations } = await import('./lib/migrate.js');
-      await runMigrations(console, { dryRun: process.argv.includes('--dry-run') });
-      return true;
-    }
-    case 'doctor': {
-      const { runDoctors } = await import('./scripts/doctors/index.js');
-      await runDoctors();
+    case 'config': {
+      const sub = process.argv[3];
+      if (sub === 'show' || sub === 'get') { await printConfig(); return true; }
+      if (!process.stdout.isTTY) {
+        console.error('  "vargos config" is interactive — run it in a terminal.\n  For output: vargos config show');
+        return false;
+      }
+      const { configMenu } = await import('./cli/config-menu.js');
+      await configMenu();
       return true;
     }
     case 'sync': {
@@ -289,10 +320,9 @@ const parsed = parseCli(argv);
 
 if (!parsed.service) {
   if (parsed.help || argv.includes('--help') || argv.includes('-h')) { await usage(); process.exit(0); }
-  if (!existsSync(getDataPaths().configFile)) {
-    console.log(`  ⚡ Vargos v${VERSION} — first run.\n`);
-    const { onboard } = await import('./cli/onboard.js');
-    await onboard();
+  const { isReady, runSetup } = await import('./cli/ready.js');
+  if (!isReady()) {
+    await runSetup({ interactive: !!process.stdout.isTTY });
     console.log('\n  Next: run "vargos start" to boot the daemon.\n');
   } else {
     await usage();

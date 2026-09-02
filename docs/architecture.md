@@ -46,7 +46,9 @@ bus.register('channel.send', {
 
 `boot.ts` discovers services by scanning `services/*/index.<ext>` — no manifest; drop a folder
 in and it loads. `config` and `log` load first (others read config during `init`); the rest are
-sorted. `edge/` (`mcp-edge`, `webhook`) is migrated but not auto-discovered.
+sorted. `edge/*/index.<ext>` (external bridges: `edge-mcp`, `edge-webhooks`, `edge-web`) is
+discovered the same way but loaded *after* core services, so the bus is fully wired first;
+an edge service that fails to load is a warning, not fatal.
 
 ## Surfaces
 
@@ -60,6 +62,13 @@ sorted. `edge/` (`mcp-edge`, `webhook`) is migrated but not auto-discovered.
   ```bash
   echo '{"jsonrpc":"2.0","method":"memory.search","params":{"query":"..."}}' | nc localhost 9000
   ```
+- **Web console** — the [`edge/web`](../edge/web/) service. Loads with the daemon (so
+  `vargos start` / `npx` / systemd all serve it), spawns the Next UI as a child on
+  `WEB_PORT` (9003) and runs the live-update WebSocket in-process on `VARGOS_WEB_WS_PORT`
+  (9004) — the WS reads gateway state straight off the bus. Source lives in
+  [`web/`](../web/) (`@chozzz/vargos-web`, private); `pnpm build` compiles it to a Next
+  standalone bundle staged into `dist/web/`. Degrades to filesystem-only when the gateway
+  is still starting.
 
 ## Hot reload & supervision
 
@@ -69,6 +78,12 @@ re-imports, and runs `init()` again — other services keep running and retain s
 
 `bus.restartProcess` exits with code 42; the supervisor [`index.ts`](../index.ts) respawns
 `boot.ts`, reloading all code and transitive deps from disk (`git pull && bus.restartProcess`).
+
+Before the first spawn the supervisor runs `ensureReady()` ([`cli/ready.ts`](../cli/ready.ts)):
+seed templates, apply migrations, and — with a TTY — walk provider setup until the install
+can serve an agent. No TTY and unconfigured → it prints what's missing and exits non-zero
+rather than booting. `vargos` (bare) runs the same gate; post-install edits live in
+`vargos config`.
 
 > **Known limitation.** Cache-busting `import('./svc.ts?v=' + Date.now())` leaks the prior
 > module generation in memory each reload (ESM has no cache invalidation). `dispose()`

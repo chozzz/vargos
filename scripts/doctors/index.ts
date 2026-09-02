@@ -1,7 +1,7 @@
 /**
  * Environment doctors — detect unmet external prerequisites (uv, Playwright browsers)
- * and offer the fix. Run interactively by `vargos doctor` and `vargos onboard`;
- * detect-only on daemon boot and before `vargos chat` hands off to pi.
+ * and offer the fix. Run interactively by the first-run journey (`cli/ready.ts`) and
+ * `vargos config`; detect-only on daemon boot and before `vargos chat` hands off to pi.
  *
  * Unlike migrations, doctors are not run-once: the condition can come back (a purged
  * cache, a reinstalled Node, a newly added MCP server), so they re-check every run.
@@ -118,7 +118,7 @@ export async function diagnose(): Promise<Diagnosis[]> {
 export async function reportProblems(log: { warn(s: string): void }): Promise<void> {
   for (const { doctor, status } of await diagnose()) {
     if (status.state !== 'missing') continue;
-    log.warn(`${doctor.title}: ${status.detail} — run "vargos doctor" to fix`);
+    log.warn(`${doctor.title}: ${status.detail} — run "vargos config" to fix`);
   }
 }
 
@@ -144,7 +144,7 @@ export async function runDoctors(): Promise<void> {
 
     const consent = await p.confirm({ message: 'Run this command now?', initialValue: true });
     if (p.isCancel(consent) || !consent) {
-      p.log.warn(`Skipped — run "vargos doctor" when you want it.`);
+      p.log.warn(`Skipped — run "vargos config" to revisit.`);
       continue;
     }
 
