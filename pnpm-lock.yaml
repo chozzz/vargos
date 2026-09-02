@@ -120,9 +120,6 @@ importers:
       '@base-ui/react':
         specifier: ^1.7.0
         version: 1.7.0(@types/react@19.2.18)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      better-sqlite3:
-        specifier: ^13.0.3
-        version: 13.0.3
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -172,9 +169,6 @@ importers:
       '@tailwindcss/postcss':
         specifier: ^4
         version: 4.3.3
-      '@types/better-sqlite3':
-        specifier: ^9.6.0
-        version: 9.6.0
       '@types/node':
         specifier: ^20
         version: 20.19.43
@@ -1845,9 +1839,6 @@ packages:
   '@types/better-sqlite3@7.6.13':
     resolution: {integrity: sha512-NMv9ASNARoKksWtsq/SHakpYAYnhBrQgGD8zkLYk/jaK8jUGn08CfEdTRgYhMypUQAfzSP8W6gNLe0q19/t4VA==}
 
-  '@types/better-sqlite3@9.6.0':
-    resolution: {integrity: sha512-ZEEwBSgMu7GYJOynoagg5X9JbxfL6dTJDsgViJIqh67jV44kyOr9RXfmFjLK5rzC4MWssP06t9hu/JwGDnUbCg==}
-
   '@types/chai@5.2.3':
     resolution: {integrity: sha512-Mw558oeA9fFbv65/y4mHtXDs9bPnFMZAL/jxdPFUpOHHIXX91mcgEHbS5Lahr+pwZFR8A7GQleRWeI6cGFC2UA==}
 
@@ -2292,10 +2283,6 @@ packages:
 
   better-sqlite3@13.0.1:
     resolution: {integrity: sha512-LYpmOXdkpQYf4wmlxkdzW01XGlOXNIbjLg45yNkh0FQ4814VbK9PdOFmhZpYbej+EZtR/i3FDdhEG98HqZdgnA==}
-    engines: {node: '>=22'}
-
-  better-sqlite3@13.0.3:
-    resolution: {integrity: sha512-RbOBxmLBG8uvFUc15X9+9SFemKcQ0WBuISBVkpuiaUB2qblC8UWlHEjdWVoZ8AdhSwmoEgsiXKfopX0CQxaACQ==}
     engines: {node: '>=22'}
 
   bignumber.js@9.3.1:
@@ -6606,10 +6593,6 @@ snapshots:
     dependencies:
       '@types/node': 25.6.0
 
-  '@types/better-sqlite3@9.6.0':
-    dependencies:
-      '@types/node': 20.19.43
-
   '@types/chai@5.2.3':
     dependencies:
       '@types/deep-eql': 4.0.2
@@ -7130,10 +7113,6 @@ snapshots:
   baseline-browser-mapping@2.11.20: {}
 
   better-sqlite3@13.0.1:
-    dependencies:
-      node-addon-api: 8.9.0
-
-  better-sqlite3@13.0.3:
     dependencies:
       node-addon-api: 8.9.0
 
