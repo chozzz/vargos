@@ -108,6 +108,7 @@ class StubAdapter implements ChannelAdapter {
 describe('WhatsApp normalizer: group mention detection', () => {
   const context = {
     botJid: '6282123123373@s.whatsapp.net',
+    botLid: '176136675979485@lid',
   };
 
   it('marks private messages as mentioned (always true)', () => {
@@ -157,6 +158,26 @@ describe('WhatsApp normalizer: group mention detection', () => {
     const result = normalizeWhatsAppMessage(msg, context);
     expect(result).not.toBeNull();
     expect(result!.isMentioned).toBe(true);
+  });
+
+  it('regression: pinging ANOTHER member (@84486737895451) is not a bot mention', () => {
+    // Incident 2026-09-02 03:21: user typed "@84486737895451 HBD Aldoo 🥳🥳" in the group.
+    // The old loose /@\d{5,}/ fallback treated ANY @number as a bot mention, so the bot
+    // ran a full agent execution and replied in the group. Only the bot's own identities
+    // (phone number / LID) count as a hand-typed mention.
+    const msg = createWhatsAppMessage({
+      isGroup: true,
+      text: '@84486737895451 HBD Aldoo 🥳🥳',
+    });
+    const result = normalizeWhatsAppMessage(msg, context);
+    expect(result).not.toBeNull();
+    expect(result!.isMentioned).toBe(false);
+
+    const msg2 = createWhatsAppMessage({
+      isGroup: true,
+      text: 'Happy birthday @84486737895451',
+    });
+    expect(normalizeWhatsAppMessage(msg2, context)!.isMentioned).toBe(false);
   });
 
   it('does NOT mark as mentioned for short @numbers (<5 digits)', () => {
@@ -450,7 +471,7 @@ describe('Edge cases', () => {
       isGroup: true,
       text: '@176136675979485! help',
     });
-    const result = normalizeWhatsAppMessage(msg, { botJid: '6282123123373@s.whatsapp.net' });
+    const result = normalizeWhatsAppMessage(msg, { botJid: '6282123123373@s.whatsapp.net', botLid: '176136675979485@lid' });
     expect(result?.isMentioned).toBe(true);
   });
 

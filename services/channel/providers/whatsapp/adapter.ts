@@ -21,6 +21,7 @@ export class WhatsAppAdapter extends BaseChannelAdapter<WhatsAppInboundMessage> 
 
   private sock: WASocket | null = null;
   private botJid = '';
+  private botLid = '';
   private reconnector = new Reconnector();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private authDir = '';
@@ -60,6 +61,7 @@ export class WhatsAppAdapter extends BaseChannelAdapter<WhatsAppInboundMessage> 
         },
         onConnected: (name) => {
           this.botJid = this.sock?.user?.id || '';
+          this.botLid = this.sock?.user?.lid || '';
           this.log.debug(`connected as ${name}`);
           this.status = 'connected';
           this.reconnector.reset();
@@ -97,7 +99,7 @@ export class WhatsAppAdapter extends BaseChannelAdapter<WhatsAppInboundMessage> 
   }
 
   protected normalize(msg: WhatsAppInboundMessage): NormalizedInboundMessage | null {
-    return normalizeWhatsAppMessage(msg, { botJid: this.botJid });
+    return normalizeWhatsAppMessage(msg, { botJid: this.botJid, botLid: this.botLid || undefined });
   }
 
   protected async sendText(chatId: string, text: string): Promise<void> {

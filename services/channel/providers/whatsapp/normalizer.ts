@@ -8,6 +8,8 @@ import type { WhatsAppInboundMessage } from './types.js';
 
 export interface WhatsAppNormalizerContext {
   botJid: string;
+  /** The bot's LID (when the account has one) — a hand-typed @<lid> also counts as a mention. */
+  botLid?: string;
 }
 
 export function normalizeWhatsAppMessage(
@@ -23,7 +25,7 @@ export function normalizeWhatsAppMessage(
     chatId: msg.sessionJid,        // group JID for groups, user JID for private
     fromUserId: msg.jid,           // sender, for whitelist checking
     chatType: msg.isGroup ? 'group' : 'private',
-    isMentioned: msg.isGroup ? isMentionedInGroup(msg, context.botJid) : true,
+    isMentioned: msg.isGroup ? isMentionedInGroup(msg, context) : true,
     text: msg.text,
     mediaKind: toMediaKind(msg.mediaType),
   };
@@ -35,7 +37,9 @@ function toMediaKind(mediaType: WhatsAppInboundMessage['mediaType']): MediaKind 
   return mediaType === 'sticker' ? 'image' : mediaType;
 }
 
-function isMentionedInGroup(msg: WhatsAppInboundMessage, botJid: string): boolean {
+function isMentionedInGroup(msg: WhatsAppInboundMessage, context: WhatsAppNormalizerContext): boolean {
+  const { botJid, botLid } = context;
+
   // areJidsSameUser handles @lid vs @s.whatsapp.net format differences
   if (msg.mentionedJids?.some(jid => areJidsSameUser(jid, botJid))) return true;
 
@@ -43,7 +47,19 @@ function isMentionedInGroup(msg: WhatsAppInboundMessage, botJid: string): boolea
   if (msg.quotedSenderJid && areJidsSameUser(msg.quotedSenderJid, botJid)) return true;
 
   // Fallback: mentionedJids is only populated when the sender used the mention menu.
-  // Typing "@<number>" by hand leaves a bare number in the text, so treat that as a
-  // mention too — deliberately loose, since the whitelist still gates execution.
-  return !!msg.text && /@\d{5,}/.test(msg.text);
+  // Hand-typing "@<number>" leaves a bare number in the text. Only treat it as a
+  // mention when that number identifies the bot (its phone number or its LID) —
+  // pinging another group member (@<other-number>) must NOT trigger the bot.
+  const text = msg.text;
+  if (!text) return false;
+  const identities = [bareUser(botJid), bareUser(botLid)]
+    .filter((u): u is string => !!u && /^\d+$/.test(u));
+  return identities.some(id => new RegExp(`@${id}(?!\\d)`).test(text));
+}
+
+/** '6282123123373:28@s.whatsapp.net' → '6282123123373'; '176136675979485@lid' → '176136675979485' */
+function bareUser(jid: string | undefined): string | undefined {
+  if (!jid) return undefined;
+  const user = jid.split('@')[0];
+  return user.split(':')[0];
 }
