@@ -13,24 +13,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v2
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: pnpm
           registry-url: 'https://registry.npmjs.org'
 
-      - run: pnpm install
+      - run: pnpm install --frozen-lockfile
       - run: pnpm run build
 
       - name: Publish to npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
+          # pnpm in workspace mode does not read setup-node's userconfig .npmrc,
+          # so write the registry credential into the workspace-root .npmrc
+          # ourselves. (.npmrc is not in package.json "files" — never in the tarball.)
+          npm config set --location project "//registry.npmjs.org/:_authToken" "$NODE_AUTH_TOKEN"
           VERSION=$(node -p "require('./package.json').version")
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "Publishing version: $VERSION"
-          pnpm publish --access public
+          # --no-git-checks: pnpm 10 refuses to publish from a detached HEAD (CI checkout)
+          pnpm publish --access public --no-git-checks
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
