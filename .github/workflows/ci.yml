@@ -25,4 +25,14 @@ jobs:
       - run: pnpm lint
       - run: pnpm run build
       - name: Smoke test (boot + timeout)
-        run: timeout 10 node dist/index.js || [ $? -eq 124 ]
+        run: |
+          # Seed a minimal, provider-configured data dir so the first-run gate in
+          # index.ts lets the daemon boot; then confirm it stays up (killed by the
+          # timeout → exit 124) rather than crashing (any other non-zero).
+          export VARGOS_DATA_DIR="$RUNNER_TEMP/vargos-smoke"
+          mkdir -p "$VARGOS_DATA_DIR/agent"
+          printf '{"gateway":{}}' > "$VARGOS_DATA_DIR/config.json"
+          printf '{"defaultProvider":"anthropic","defaultModel":"claude-sonnet-4-20250514"}' > "$VARGOS_DATA_DIR/agent/settings.json"
+          printf '{"anthropic":{"type":"api_key","key":"ci-smoke"}}' > "$VARGOS_DATA_DIR/agent/auth.json"
+          printf '{"providers":{"anthropic":{"baseUrl":"https://api.anthropic.com/v1","api":"anthropic"}}}' > "$VARGOS_DATA_DIR/agent/models.json"
+          timeout 10 node dist/index.js || [ $? -eq 124 ]
