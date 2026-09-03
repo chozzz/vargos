@@ -134,7 +134,7 @@ export class InboundMessagePipeline {
     });
   }
 
-  /** Tool activity drives the reaction emoji and keeps the typing indicator alive. */
+  /** Tool activity keeps the typing indicator alive; the reaction stays a stable 🤔. */
   onTool(payload: AgentToolPayload): void {
     const session = this.sessions.get(payload.sessionKey);
     if (!session) return;
@@ -146,12 +146,12 @@ export class InboundMessagePipeline {
 
     log.debug(formatToolLog(payload));
 
+    // One stable "working" reaction for the whole run (idempotent). Only the
+    // typing indicator tracks per-tool activity.
+    session.reactionController?.setWorking();
     if (payload.phase === 'start') {
-      session.reactionController?.setTool();
       session.adapter.startTyping(payload.sessionKey); // resumes if the TTL paused it
-      return;
     }
-    session.reactionController?.setThinking();
   }
 
   /** The one cleanup anchor for a run, and where a channel-triggered reply is delivered. */
@@ -225,7 +225,7 @@ export class InboundMessagePipeline {
       sessionKey,
       messageId,
     );
-    controller.setThinking();
+    controller.setWorking();
     return controller;
   }
 

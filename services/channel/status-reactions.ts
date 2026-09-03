@@ -1,28 +1,27 @@
 /**
  * Status reaction controller
- * Maps agent phases to emoji reactions on the triggering message.
- * Debounces transient states (thinking, tool) and seals on terminal ones (done, error).
+ * Maps an agent run to a single emoji reaction on the triggering message:
+ * one stable "working" mark for the whole run (no thinking/tool churn — the
+ * typing indicator already signals live activity), then a terminal done/error
+ * that seals it. Every transition is deduped, so a long or steered run reacts
+ * at most twice.
  */
 
-export type ReactionPhase = 'queued' | 'thinking' | 'tool' | 'done' | 'error';
+export type ReactionPhase = 'working' | 'done' | 'error';
 
 export interface ReactionAdapter {
   react(recipientId: string, messageId: string, emoji: string): Promise<void>;
 }
 
 const EMOJI: Record<ReactionPhase, string> = {
-  queued:   '👀',
-  thinking: '🤔',
-  tool:     '🔧',
-  done:     '👍',
-  error:    '❗',
+  working: '🤔',
+  done:    '👍',
+  error:   '❗',
 };
 
-const DEBOUNCE_MS = 500;
-
 export class StatusReactionController {
+  private lastPhase: ReactionPhase | null = null;
   private sealed = false;
-  private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private chain: Promise<void> = Promise.resolve();
 
   constructor(
@@ -31,38 +30,17 @@ export class StatusReactionController {
     private readonly messageId: string,
   ) {}
 
-  setThinking(): void { this.debounced('thinking'); }
-  setTool(): void     { this.debounced('tool'); }
-  setDone(): void     { this.immediate('done'); }
-  setError(): void    { this.immediate('error'); }
+  /** Run is active. Idempotent — only the first call actually reacts. */
+  setWorking(): void { this.set('working'); }
+  setDone(): void    { this.set('done'); }
+  setError(): void   { this.set('error'); }
 
-  dispose(): void {
-    if (this.debounceTimer) {
-      clearTimeout(this.debounceTimer);
-      this.debounceTimer = null;
-    }
-  }
+  dispose(): void { /* no timers to clear */ }
 
-  private debounced(phase: ReactionPhase): void {
-    if (this.sealed) return;
-    if (this.debounceTimer) clearTimeout(this.debounceTimer);
-    this.debounceTimer = setTimeout(() => {
-      this.debounceTimer = null;
-      this.enqueue(phase);
-    }, DEBOUNCE_MS);
-  }
-
-  private immediate(phase: ReactionPhase): void {
-    if (this.sealed) return;
-    if (this.debounceTimer) {
-      clearTimeout(this.debounceTimer);
-      this.debounceTimer = null;
-    }
+  private set(phase: ReactionPhase): void {
+    if (this.sealed || phase === this.lastPhase) return;
+    this.lastPhase = phase;
     if (phase === 'done' || phase === 'error') this.sealed = true;
-    this.enqueue(phase);
-  }
-
-  private enqueue(phase: ReactionPhase): void {
     const emoji = EMOJI[phase];
     this.chain = this.chain.then(() =>
       this.adapter.react(this.recipientId, this.messageId, emoji)
