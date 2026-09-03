@@ -4,7 +4,6 @@ import * as path from 'node:path';
 import { tmpdir } from 'node:os';
 import { MemoryContext } from '../context.js';
 import { MemorySQLiteStorage } from '../providers/sqlite.js';
-import type { MemoryChunk } from '../types.js';
 
 interface TestResources {
   tmpDir: string;
@@ -71,7 +70,7 @@ describe('MemoryContext.reindex', () => {
     await fs.writeFile(file2Path, '# Test Document 2\n\nSecond test document.\nWith additional information.');
     
     // Force initial sync to index these files
-    await (resources.context as any).sync.call(resources.context, { force: true });
+    await (resources.context as unknown as { sync: (o?: { force?: boolean; reason?: string }) => Promise<void> }).sync.call(resources.context, { force: true });
   });
 
   afterEach(async () => {
@@ -87,7 +86,7 @@ describe('MemoryContext.reindex', () => {
     await fs.unlink(path.join(resources.memoryDir, 'test1.md'));
     
     // Get initial chunk count for verification
-    let _initialChunks = resources.context['chunks'].size;
+    const _initialChunks = resources.context['chunks'].size;
     
     // Call reindex - this should detect that test1.md no longer exists
     const result = await resources.context.reindex();
@@ -145,7 +144,7 @@ describe('MemoryContext.reindex', () => {
     await fs.writeFile(sessionFile, sessionContent);
     
     // Force sync to ensure session chunks are loaded
-    await (resources.context as any).sync.call(resources.context, { force: true });
+    await (resources.context as unknown as { sync: (o?: { force?: boolean; reason?: string }) => Promise<void> }).sync.call(resources.context, { force: true });
     
     // Get stats before reindexing
     const _statsBefore = resources.context.getStats();
@@ -169,7 +168,7 @@ describe('MemoryContext.reindex', () => {
     await fs.writeFile(subFile, '# Nested File\nContent in subdirectory\nMultiple lines\nFor testing.');
     
     // Sync after adding new file
-    await (resources.context as any).sync.call(resources.context, { force: true });
+    await (resources.context as unknown as { sync: (o?: { force?: boolean; reason?: string }) => Promise<void> }).sync.call(resources.context, { force: true });
     
     const beforeStats = resources.context.getStats();
     expect(beforeStats.files).toBe(3); // test1.md, test2.md, subdir/nested.md

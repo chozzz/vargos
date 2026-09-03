@@ -94,7 +94,7 @@ describe('MemoryContext - Configuration handling', () => {
     await writeFile(testFile, content);
     
     // Call sync to index the file
-    await (context as any).sync.call(context, { force: true });
+    await (context as unknown as { sync: (o?: { force?: boolean; reason?: string }) => Promise<void> }).sync.call(context, { force: true });
     
     // This verifies that context accepts and uses the custom sizing
     const stats = context.getStats();
@@ -117,7 +117,7 @@ describe('MemoryContext - Configuration handling', () => {
     await writeFile(testFile, content);
     
     // Sync to index
-    await (context as any).sync.call(context, { force: true });
+    await (context as unknown as { sync: (o?: { force?: boolean; reason?: string }) => Promise<void> }).sync.call(context, { force: true });
     
     // Perform a search to trigger the hybrid algorithm
     const results = await context.search('search weighting');
@@ -156,7 +156,7 @@ describe('MemoryContext - Configuration handling', () => {
     });
     await context.initialize();
     
-    const watcherEnabledContext = context as any;
+    const watcherEnabledContext = context as unknown as { fileWatcher: unknown };
     expect(watcherEnabledContext.fileWatcher).toBeDefined(); // Should initialize with watcher
     
     await context.close();
@@ -170,7 +170,7 @@ describe('MemoryContext - Configuration handling', () => {
     });
     await context.initialize();
     
-    const watcherDisabledContext = context as any;
+    const watcherDisabledContext = context as unknown as { fileWatcher: unknown };
     expect(watcherDisabledContext.fileWatcher).toBeNull(); // Should not initialize watcher
     
     await context.close();

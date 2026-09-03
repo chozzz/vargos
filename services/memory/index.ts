@@ -37,9 +37,9 @@ export class MemoryService implements Service {
     // Extract embedding-related configs with proper type checking
     let embeddingProvider: 'openai' | 'local' | 'none' = 'none';
     if (config.agent && 'memoryEmbeddingProvider' in config.agent && typeof config.agent.memoryEmbeddingProvider === 'string') {
-      embeddingProvider = config.agent.memoryEmbeddingProvider as any as 'openai' | 'local' | 'none';
+      embeddingProvider = config.agent.memoryEmbeddingProvider as 'openai' | 'local' | 'none';
     } else if ('embeddingProvider' in config && typeof config.embeddingProvider === 'string') {
-      embeddingProvider = config.embeddingProvider as any as 'openai' | 'local' | 'none';
+      embeddingProvider = config.embeddingProvider as 'openai' | 'local' | 'none';
     }
     
     let openaiApiKey: string | undefined;
@@ -72,12 +72,12 @@ export class MemoryService implements Service {
                  (typeof config.chunkOverlap === 'number' ? config.chunkOverlap : 80),
       hybridWeight: (config.agent && config.agent.memoryHybridWeight &&
                typeof config.agent.memoryHybridWeight === 'object' &&
-               typeof (config.agent.memoryHybridWeight as any).vector === 'number' &&
-               typeof (config.agent.memoryHybridWeight as any).text === 'number') ? (config.agent.memoryHybridWeight as { vector: number; text: number }) :
+               typeof (config.agent.memoryHybridWeight as { vector?: unknown }).vector === 'number' &&
+               typeof (config.agent.memoryHybridWeight as { text?: unknown }).text === 'number') ? (config.agent.memoryHybridWeight as { vector: number; text: number }) :
                (config.hybridWeight &&
                typeof config.hybridWeight === 'object' &&
-               typeof (config.hybridWeight as any).vector === 'number' &&
-               typeof (config.hybridWeight as any).text === 'number') ? (config.hybridWeight as { vector: number; text: number }) : { vector: 0.7, text: 0.3 },
+               typeof (config.hybridWeight as { vector?: unknown }).vector === 'number' &&
+               typeof (config.hybridWeight as { text?: unknown }).text === 'number') ? (config.hybridWeight as { vector: number; text: number }) : { vector: 0.7, text: 0.3 },
     });
 
     await this.context.initialize();

@@ -113,7 +113,7 @@ Last line of nested.`);
 
   it('properly chunks and indexes documents', async () => {
     // Initial sync happens in constructor, force it again
-    await (resources.context as any).sync.call(resources.context, { force: true });
+    await (resources.context as unknown as { sync: (o?: { force?: boolean; reason?: string }) => Promise<void> }).sync.call(resources.context, { force: true });
     
     const stats = resources.context.getStats();
     expect(stats.files).toBe(3); // document1.md, document2.md, nested.md
@@ -134,7 +134,7 @@ Last line of nested.`);
   });
 
   it('search finds relevant content based on query', async () => {
-    await (resources.context as any).sync.call(resources.context, { force: true });
+    await (resources.context as unknown as { sync: (o?: { force?: boolean; reason?: string }) => Promise<void> }).sync.call(resources.context, { force: true });
     
     const results = await resources.context.search('sample content');
     expect(results.length).toBeGreaterThan(0);
@@ -174,7 +174,7 @@ Check if indexing works automatically.`;
     expect(readResult.text).toContain('test content');
     
     // After writing, sync should have happened, so searching should find it
-    await (resources.context as any as { sync: (options?:{reason?: string; force?: boolean})=>Promise<void> }).sync.call(resources.context, { force: true });
+    await (resources.context as unknown as { sync: (options?:{reason?: string; force?: boolean})=>Promise<void> }).sync.call(resources.context, { force: true });
     
     const searchResults = await resources.context.search('test content');
     const foundNewDoc = searchResults.some(r => r.citation.includes(newFilePath));
@@ -208,7 +208,7 @@ Check if indexing works automatically.`;
   });
 
   it('returns correct statistics', async () => {
-    await (resources.context as any).sync.call(resources.context, { force: true });
+    await (resources.context as unknown as { sync: (o?: { force?: boolean; reason?: string }) => Promise<void> }).sync.call(resources.context, { force: true });
     
     const stats = resources.context.getStats();
     expect(stats.files).toBe(3); // 3 markdown files
@@ -217,7 +217,7 @@ Check if indexing works automatically.`;
   });
 
   it('handles search with custom parameters', async () => {
-    await (resources.context as any).sync.call(resources.context, { force: true });
+    await (resources.context as unknown as { sync: (o?: { force?: boolean; reason?: string }) => Promise<void> }).sync.call(resources.context, { force: true });
     
     // Test with custom max results
     const limitedResults = await resources.context.search('content', { 
