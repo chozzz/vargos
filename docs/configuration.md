@@ -16,6 +16,14 @@ All four are `0o600` (owner-only). The config service merges them at runtime. Ov
 
 Each entry in `config.json#channels[]` matches [`services/config/schemas/channels.ts`](../services/config/schemas/channels.ts). Keys: `type` (`telegram` | `whatsapp`), `id` (unique instance id, used as sessionKey prefix), `enabled`, `model?` (per-channel override), `cwd?`, `debounceMs?`, `allowFrom?` (whitelist), plus `botToken` for telegram.
 
+**`cwd` — terminal backend spec.** A plain path is the session's local working directory. The value also accepts an SSH terminal spec to route the session's shell + file tools (bash/read/write/edit/find/ls) to a remote host:
+
+```json
+"cwd": "ssh -i ~/.ssh/id_remote root@192.0.2.10:/root/dev/myapp"
+```
+
+Grammar: `ssh [-i KEY] [-p PORT] [user@]HOST[:PATH]` (port only via `-p`; no PATH → remote `$HOME`; `~` in KEY expands locally, remote `~` resolves on the host). Key auth only (BatchMode — no password prompts). The daemon keeps a multiplexed `ssh2` connection per remote session (SFTP for file ops, exec for bash/grep); sessions, skills, and AGENTS.md loading stay local on the gateway, and the model's tool set (read/bash/edit/write/find/ls/grep) is identical to a local session's — only the execution host differs. See [ROADMAP — Terminal backends](./ROADMAP.md#terminal-backends-ssh--docker-per-channel).
+
 The old `instructionsFile` field has been removed — channel system-prompt overrides live in [persona files](./usage.md) at `~/.vargos/agents/<id>.md`.
 
 ## Cron tasks

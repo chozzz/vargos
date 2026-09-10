@@ -7,6 +7,8 @@
  * - Every tool closes over the parent sessionKey from getCustomTools().
  * - For agent.execute specifically, a unique `:subagent:<id>` suffix is generated
  *   so each delegation gets its own isolated session (supports parallel subagents).
+ * - The parent session's cwd (including an SSH terminal spec) is forwarded to
+ *   agent.execute so subagents inherit the parent's working host/directory.
  * - Other tools inherit the parent sessionKey for context-aware operations.
  *
  * Subagent tool filtering:
@@ -44,6 +46,7 @@ function wrapEventAsToolDefinition(
   parameters: Record<string, unknown>,
   sessionKey: string,
   bus: Bus,
+  inheritedCwd?: string,
 ): ToolDefinition {
   // Sanitize tool name for anthropic: replace dots with dashes (e.g., agent.execute → agent-execute)
   const sanitizedName = eventName.replace(/\./g, '-');
@@ -65,8 +68,14 @@ function wrapEventAsToolDefinition(
       try {
         // Auto-inject sessionKey for agent.execute subagent calls.
         // Each delegation gets a unique session key to support parallel subagents.
+        // The parent's cwd (an SSH terminal spec included) is inherited so a
+        // remote session's subagents run on the same host, and the schema's
+        // advertised default ("workspace dir") never wins for subagents.
         if (eventName === 'agent.execute') {
           paramsObj.sessionKey = subagentSessionKey(sessionKey);
+          if (inheritedCwd !== undefined && paramsObj.cwd === undefined) {
+            paramsObj.cwd = inheritedCwd;
+          }
         }
 
         // Auto-inject sessionKey for channel.send if not provided.
@@ -123,10 +132,10 @@ function wrapEventAsToolDefinition(
  * `allowedTools` glob whitelist in `agents/subagent.md` frontmatter, applied
  * by `AgentService.getCustomTools()` via `matchesGlob`.
  */
-export function createCustomTools(sessionKey: string, bus: Bus): ToolDefinition[] {
+export function createCustomTools(sessionKey: string, bus: Bus, inheritedCwd?: string): ToolDefinition[] {
   return bus.list()
     .filter(m => !m.internal)
     .map(m =>
-      wrapEventAsToolDefinition(m.name, m.description, (m.schema as Record<string, unknown>) || {}, sessionKey, bus),
+      wrapEventAsToolDefinition(m.name, m.description, (m.schema as Record<string, unknown>) || {}, sessionKey, bus, inheritedCwd),
     );
 }
