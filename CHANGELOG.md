@@ -2,6 +2,19 @@
 
 All notable changes to Vargos will be documented in this file.
 
+## [3.2.17] - 2026-09-11
+
+### Added
+- Webhooks: a transform may now return `null`/`undefined` to skip the agent run (and `notify` delivery) for that event — info-logged as `skipped: <id> — transform returned no task`. Use it for dedup, debounce, or rate-limiting in the transform instead of no-op prompts.
+
+### Fixed
+- Webhooks: relative `transform` paths now resolve against `dataDir` and import correctly. Previously the path was validated against `dataDir` but `import()`ed raw, so relative paths always failed to load.
+
+### Changed
+- Docs: added webhook transform-module caveats to `docs/configuration.md` (skip signal, body-only/headers unavailable, absolute-path-in-dataDir requirement, module-state lifetime, no interpolation, own logging, steer semantics for concurrent fires).
+
+[3.2.17]: https://github.com/chozzz/vargos/releases/tag/v3.2.17
+
 ## [3.2.16] - 2026-09-11
 
 ### Changed
