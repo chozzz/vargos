@@ -23,6 +23,12 @@ import { parseSessionKey, isSubagentSession, rootSessionKey } from '../../lib/se
 // Pi SDK imports
 import {
   createAgentSession,
+  createBashToolDefinition,
+  createEditToolDefinition,
+  createFindToolDefinition,
+  createLsToolDefinition,
+  createReadToolDefinition,
+  createWriteToolDefinition,
   SessionManager,
   SettingsManager,
   ModelRuntime,
@@ -45,6 +51,9 @@ import { loadChannelPersona, loadSubagentPersona } from './persona.js';
 import { resolveSkillPaths } from './skills.js';
 import { matchesGlob } from '../../lib/glob-match.js';
 import { toMessage } from '../../lib/error.js';
+import { parseTerminalSpec } from '../../lib/terminal.js';
+import { createRemoteGrepToolDefinition } from './terminal/remote-grep.js';
+import { createTerminalBackend, type TerminalBackend } from './terminal/index.js';
 
 const log = createLogger('agent');
 const DEFAULT_EXECUTION_TIMEOUT_MS = 300 * 60 * 1000; // 5 hours
@@ -84,6 +93,8 @@ export class AgentService implements Service {
   protected sessions = new Map<string, AgentSession>();
   /** sessionKey → epoch ms when the session entered the cache (for agent.status). */
   protected sessionMeta = new Map<string, number>();
+  /** sessionKey → terminal backend for sessions running on a remote host (ssh cwd spec). */
+  protected backends = new Map<string, TerminalBackend>();
   protected activeRuns = new Set<string>();
 
   protected agentDir!: string;
@@ -131,7 +142,7 @@ export class AgentService implements Service {
       // direct callers) alive through validation without advertising it as a tool param.
       schema: z.object({
         task: z.string().describe('The task to execute.'),
-        cwd: z.string().optional().describe('Working directory for the agent — defaults to workspace dir.'),
+        cwd: z.string().optional().describe('Working directory for the agent — defaults to workspace dir. Also accepts an SSH terminal spec: "ssh [-i KEY] [-p PORT] [user@]HOST[:PATH]" to run the session\'s shell + file tools on a remote host.'),
         model: z.string().optional().describe('Optional model override as "provider:modelId" (e.g. "anthropic:claude-opus-4"). Omit to use the agent default.'),
       }).passthrough(),
       cli: { positional: ['task'] },
@@ -155,6 +166,10 @@ export class AgentService implements Service {
     this.sessions.forEach((session) => session.dispose());
     this.sessions.clear();
     this.sessionMeta.clear();
+    for (const backend of this.backends.values()) {
+      backend.dispose().catch(() => { });
+    }
+    this.backends.clear();
   }
 
   /**
@@ -276,6 +291,7 @@ export class AgentService implements Service {
       session.dispose();
       this.sessions.delete(params.sessionKey);
       this.sessionMeta.delete(params.sessionKey);
+      this.disposeBackend(params.sessionKey);
     }
   }
 
@@ -318,18 +334,30 @@ export class AgentService implements Service {
     const paths = getDataPaths();
     const effectiveCwd = options?.cwd ?? paths.dataDir;
 
+    // Terminal backend: an `ssh …` cwd spec routes this session's shell + file tools
+    // to the remote host. The SDK session itself keeps a LOCAL cwd (workspace dir) so
+    // session files, skill discovery, and bootstrap merging never stat remote paths.
+    let backend: TerminalBackend | undefined;
+    let remoteCwd: string | undefined;
+    const spec = parseTerminalSpec(effectiveCwd);
+    if (spec.kind !== 'local') {
+      backend = await this.createBackend(spec, sessionKey);
+      remoteCwd = await backend.resolveCwd();
+    }
+    const sdkCwd = backend ? paths.workspaceDir : effectiveCwd;
+
     const sessionDir = path.join(paths.sessionsDir, sessionKey.replace(/:/g, path.sep));
     // Use continueRecent to find and load the latest session file (preserves history).
     // Falls back to create() if no existing session file is found.
     let sessionManager: ReturnType<typeof SessionManager.create>;
     try {
-      sessionManager = SessionManager.create(effectiveCwd, sessionDir);
+      sessionManager = SessionManager.create(sdkCwd, sessionDir);
     } catch (err: unknown) {
       if (err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'EEXIST') {
         // File was created by another code path (e.g. concurrent message for same session).
         // Fall back to continueRecent which opens existing files gracefully.
         log.debug(`[${sessionKey}] session create hit EEXIST; using continueRecent`);
-        sessionManager = SessionManager.continueRecent(effectiveCwd, sessionDir);
+        sessionManager = SessionManager.continueRecent(sdkCwd, sessionDir);
       } else {
         throw err;
       }
@@ -339,22 +367,23 @@ export class AgentService implements Service {
     await fs.mkdir(this.agentDir, { recursive: true });
 
     const persona = await this.loadPersonaIfChannel(sessionKey);
-    const customTools = await this.getCustomTools(sessionKey, persona?.meta.allowedTools);
+    const customTools = await this.getCustomTools(sessionKey, persona?.meta.allowedTools, effectiveCwd);
+    const remoteTools = backend && remoteCwd ? this.buildRemoteToolDefinitions(backend, remoteCwd) : [];
     const rawSystemPrompt = await this.getSystemPrompt(sessionKey, persona?.body);
-    const resourceLoader = await this.createResourceLoader(rawSystemPrompt, effectiveCwd, sessionKey);
+    const resourceLoader = await this.createResourceLoader(rawSystemPrompt, sdkCwd, sessionKey);
 
-    log.debug(`[${sessionKey}] session created tools=${customTools.length} promptChars=${rawSystemPrompt?.length ?? 0}`);
+    log.debug(`[${sessionKey}] session created tools=${customTools.length + remoteTools.length} promptChars=${rawSystemPrompt?.length ?? 0}${backend ? ` backend=ssh remoteCwd=${remoteCwd}` : ''}`);
 
     // Apply the per-call/channel model override at creation time, when provided and known.
     const model = this.resolveModel(options?.model);
 
     const { session } = await this.createPiSession({
-      cwd: effectiveCwd,
+      cwd: sdkCwd,
       agentDir: this.agentDir,
       sessionManager,
       settingsManager: this.settings,
       modelRuntime: this.modelRuntime,
-      customTools,
+      customTools: [...customTools, ...remoteTools],
       resourceLoader,
       ...(model && { model }),
     });
@@ -373,7 +402,54 @@ export class AgentService implements Service {
 
     this.sessions.set(sessionKey, session);
     this.sessionMeta.set(sessionKey, Date.now());
+    if (backend) this.backends.set(sessionKey, backend);
     return session;
+  }
+
+  /**
+   * Create a terminal backend for a remote (ssh) terminal spec and fail fast if the
+   * host is unreachable — the channel gets a clean error instead of a hung run.
+   * Seam: tests can substitute a fake backend without a real SSH transport.
+   */
+  protected async createBackend(spec: Parameters<typeof createTerminalBackend>[0], sessionKey: string): Promise<TerminalBackend> {
+    const backend = createTerminalBackend(spec);
+    try {
+      await backend.connect();
+    } catch (err) {
+      await backend.dispose();
+      const message = toMessage(err);
+      log.error(`[${sessionKey}] terminal backend connect failed: ${message}`);
+      throw new Error(`terminal backend unreachable: ${message}`, { cause: err });
+    }
+    return backend;
+  }
+
+  /** Release + drop a session's terminal backend (idempotent). */
+  private disposeBackend(sessionKey: string): void {
+    const backend = this.backends.get(sessionKey);
+    if (!backend) return;
+    this.backends.delete(sessionKey);
+    backend.dispose().catch(() => { });
+  }
+
+  /**
+   * Build the Pi built-in tool definitions backed by a remote terminal backend.
+   * Registered as custom tools (same names) so they shadow the local built-ins in
+   * the session's tool registry — including grep, whose execute is replaced to run
+   * `rg` on the remote host (the SDK's built-in grep always spawns a local rg; see
+   * docs/ROADMAP.md "Terminal backends"). The model's tool context is therefore
+   * identical to a local session's.
+   */
+  private buildRemoteToolDefinitions(backend: TerminalBackend, remoteCwd: string): ToolDefinition[] {
+    return [
+      createReadToolDefinition(remoteCwd, { operations: backend.read, autoResizeImages: true }) as ToolDefinition,
+      createBashToolDefinition(remoteCwd, { operations: backend.bash }) as ToolDefinition,
+      createWriteToolDefinition(remoteCwd, { operations: backend.write }) as ToolDefinition,
+      createEditToolDefinition(remoteCwd, { operations: backend.edit }) as ToolDefinition,
+      createFindToolDefinition(remoteCwd, { operations: backend.find }) as ToolDefinition,
+      createLsToolDefinition(remoteCwd, { operations: backend.ls }) as ToolDefinition,
+      createRemoteGrepToolDefinition(backend, remoteCwd),
+    ];
   }
 
   /**
@@ -596,9 +672,12 @@ export class AgentService implements Service {
    * Load custom tools from bus callable events. When `allowedPatterns` is provided
    * (from a channel persona), filter the tool list down to names matching at least
    * one glob pattern. Empty/undefined patterns = all tools allowed.
+   *
+   * `inheritedCwd` is forwarded to subagent `agent.execute` calls so a remote
+   * (ssh) parent session's terminal spec is inherited by its subagents.
    */
-  protected async getCustomTools(sessionKey: string, allowedPatterns?: string[]): Promise<ToolDefinition[]> {
-    const tools = createCustomTools(sessionKey, this.bus);
+  protected async getCustomTools(sessionKey: string, allowedPatterns?: string[], inheritedCwd?: string): Promise<ToolDefinition[]> {
+    const tools = createCustomTools(sessionKey, this.bus, inheritedCwd);
     if (!allowedPatterns?.length) return tools;
     // Match on `label` (original event name with dots, e.g. "memory.search")
     // rather than `name` (sanitized with dashes, e.g. "memory-search"),

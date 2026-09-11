@@ -218,6 +218,13 @@ The `edge/web` service — starts with the daemon (`vargos start` / `npx` / syst
 | Session cost tracking | 📋 |
 | Image description fallback (for non-vision models) | 📋 |
 | Session export/import | 📋 |
+| Terminal backends — channel `cwd` accepts `ssh [-i KEY] [-p PORT] [user@]HOST[:PATH]`; all shell+file tools (incl. grep) route over a multiplexed SSH session (SFTP + exec); Docker backend open ([ROADMAP](docs/ROADMAP.md#terminal-backends-ssh--docker-per-channel)) | ✅ `services/agent/terminal/` |
+| Learning loop (post-session curator: staged skill/memory proposals) | 🗣️ needs discussion — [ROADMAP](docs/ROADMAP.md#learning-loop-post-session-curator-pass) |
+| Fallback provider chain (per-channel/global failover) | 🗣️ needs discussion — [ROADMAP](docs/ROADMAP.md#fallback-provider-chain) |
+| Approval gates for unattended bots (writes/commands) | 🗣️ needs discussion — [ROADMAP](docs/ROADMAP.md#approval-gates-for-unattended-bots) |
+| Usage & cost analytics (`/usage`, provider actuals) | 🗣️ needs discussion — extends session cost tracking — [ROADMAP](docs/ROADMAP.md#usage--cost-analytics-usage) |
+| Trajectory export for CPT/SFT training corpus | 🗣️ needs discussion — [ROADMAP](docs/ROADMAP.md#trajectory-export-for-cpt-sft) |
+| Web console — embedded chat tab (WS attach to live session) | 🗣️ needs discussion — [ROADMAP](docs/ROADMAP.md#web-console-embedded-chat-tab) |
 
 ## Known Limitations
 

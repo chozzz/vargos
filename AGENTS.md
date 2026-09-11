@@ -62,6 +62,20 @@ Nothing in `web/` is published — `files` ships only `dist/` (which now include
 
 PRs go from a feature branch into `dev`. The maintainer merges `dev` → `main` via squash-only. Status checks (`lint-and-typecheck`, `test`, `codeql`) must pass. Pre-push hook blocks `git push origin main`. Full workflow + ruleset details in [CONTRIBUTING.md](./CONTRIBUTING.md).
 
+## Backlog (needs discussion & direction from choz before implementation)
+
+Proposed 2026-09-09 after running Nous Hermes alongside Vargos for a multi-channel
+Telegram homelab migration. Detailed designs + open questions per item:
+[`docs/ROADMAP.md` → "Needs Discussion"](docs/ROADMAP.md#needs-discussion-proposals--do-not-implement-before-direction-is-given).
+
+- [ ] **Terminal backends (SSH/Docker per channel)** — the channel `cwd` value doubles as a terminal spec: `ssh [-i KEY] [-p PORT] [user@]HOST[:PATH]`, anything else stays a local path. SDK session keeps a local cwd (skills/AGENTS.md/session files); all built-in tools (incl. grep) are rebuilt per session with the remote cwd + SSH operations and shadow the local built-ins — the model's tool set is identical for local/remote sessions. Only the Docker backend remains open. Details: [ROADMAP](docs/ROADMAP.md#terminal-backends-ssh--docker-per-channel)
+- [ ] **Learning loop (post-session curator pass)** — background cheap-model review of long/tool-heavy sessions; staged skill + MEMORY.md proposals; approval via channel command / web console; seed prompt from existing `distill-jsonl-conversation` skill
+- [ ] **Fallback provider chain** — `fallback: [provider/model, ...]` per channel or global; advance on 429/529/503/connection failure; one-shot per session
+- [ ] **Approval gates for unattended bots** — per-channel `approval: { writes, commands: allowlist, dangerous }` in tool dispatch; inline-keyboard approvals; root-remote channels default stricter
+- [ ] **Usage & cost analytics** — extends session cost tracking: per-session rollups, `/usage` command, web-console page, provider/fallback actuals
+- [ ] **Trajectory export for CPT/SFT** — `vargos export <session|channel|date-range> → clean CPT/SFT markdown` built on the distill pipeline; Vargos as data generator for the homelab training loop
+- [ ] **Web console embedded chat tab** — WS attach to a live channel/session so the console is a client, not just a monitor
+
 ## Release Workflow (Maintainer Only)
 
 1. **Bump version** in `package.json`
