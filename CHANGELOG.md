@@ -2,6 +2,14 @@
 
 All notable changes to Vargos will be documented in this file.
 
+## [3.2.16] - 2026-09-11
+
+### Changed
+- Webhooks: `token` is now optional. When omitted, the hook's `Bearer` auth check is bypassed entirely (any client that can reach the port can fire the hook) and a warning is logged at boot. Hooks with a set token still require `Authorization: Bearer <token>`.
+- Docs: refreshed the Webhooks section of `docs/configuration.md` with the field reference and token semantics.
+
+[3.2.16]: https://github.com/chozzz/vargos/releases/tag/v3.2.16
+
 ## [3.1.4] - 2026-06-06
 
 ### Changed

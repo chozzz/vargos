@@ -41,6 +41,11 @@ export class WebhooksEdge implements Service {
     this.bus = bus;
     const config = await bus.call<AppConfig>('config.get', {});
     this.hooks = new Map(config.webhooks.map(h => [h.id, h]));
+    for (const hook of this.hooks.values()) {
+      if (!hook.token) {
+        log.warn(`webhook ${hook.id} has no token configured — auth is bypassed; any client that can reach the port can fire it`);
+      }
+    }
 
     bus.register('webhook.list', {
       description: 'List registered webhook endpoints.',
@@ -125,14 +130,17 @@ export class WebhooksEdge implements Service {
       return;
     }
 
-    // Timing-safe comparison (hash prevents length leakage)
-    const auth = req.headers.authorization ?? '';
-    const expectedHash = createHash('sha256').update(`Bearer ${hook.token}`).digest();
-    const authHash = createHash('sha256').update(auth).digest();
-    if (!timingSafeEqual(authHash, expectedHash)) {
-      res.writeHead(401, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Unauthorized' }));
-      return;
+    // No token configured for this hook → auth is bypassed entirely
+    if (hook.token) {
+      // Timing-safe comparison (hash prevents length leakage)
+      const auth = req.headers.authorization ?? '';
+      const expectedHash = createHash('sha256').update(`Bearer ${hook.token}`).digest();
+      const authHash = createHash('sha256').update(auth).digest();
+      if (!timingSafeEqual(authHash, expectedHash)) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Unauthorized' }));
+        return;
+      }
     }
 
     const chunks: Buffer[] = [];
