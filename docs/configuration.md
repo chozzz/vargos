@@ -55,7 +55,15 @@ The MCP **server** (Vargos exposing itself as an MCP server) lives in [`edge/mcp
 
 ## Webhooks
 
-Configured under `webhooks[]` in `config.json`. Receiver lives in [`edge/webhooks/`](../edge/webhooks/) and is currently commented out in `index.ts` — only `webhook.list` introspection is registered.
+Configured under `webhooks[]` in `config.json`. Receiver lives in [`edge/webhooks/`](../edge/webhooks/); inbound flow is `POST /hooks/:id` → auth → transform → agent run → optional `notify` delivery.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | string | URL segment (`/hooks/:id`) and session key (`webhook:<id>:<ms>`) |
+| `name` | string | Display name |
+| `token` | string | **Optional.** When set, requests must send `Authorization: Bearer <token>` (timing-safe compared). When omitted, auth is bypassed — any client that can reach the port can fire the hook — and the daemon logs a warning at boot. |
+| `transform` | string | Optional path to a JS/TS transform file |
+| `notify` | string[] | Optional session keys to deliver the response to via `channel.send` |
 
 ## See also
 
