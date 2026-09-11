@@ -2,6 +2,11 @@
 
 All notable changes to Vargos will be documented in this file.
 
+## [3.2.18] - 2026-09-11
+
+### Fixed
+- Webhooks: a transform returning an empty string now skips the agent run (and `notify` delivery) instead of firing an empty prompt and delivering the model's reply. `null`/`undefined` skip already worked; the guard now matches the documented `non-empty string` contract. [3.2.18]: https://github.com/chozzz/vargos/releases/tag/v3.2.18
+
 ## [3.2.17] - 2026-09-11
 
 ### Added

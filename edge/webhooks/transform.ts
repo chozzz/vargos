@@ -12,9 +12,9 @@ export function passthroughTransform(payload: unknown): string {
  * Load a transform module. Path must resolve within baseDir.
  * Caches loaded modules to avoid re-importing.
  *
- * Return value: a non-empty string becomes the agent task; `null`/`undefined`
- * skips the agent run (and notify delivery) for that event — use for dedup,
- * debounce, or rate-limiting in the transform.
+ * Return value: a non-empty string becomes the agent task; `null`/`undefined`/
+ * empty string skips the agent run (and notify delivery) for that event — use
+ * for dedup, debounce, or rate-limiting in the transform.
  */
 export async function loadTransform(modulePath: string, baseDir?: string): Promise<TransformFn> {
   const cached = cache.get(modulePath);

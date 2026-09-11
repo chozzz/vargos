@@ -5,7 +5,7 @@
  * Subscribes: agent.onCompleted (delivery to notify targets)
  *
  * Inbound flow: POST /hooks/:id → validate token → transform payload
- *   → (null/undefined transform result skips) session create/addMessage
+ *   → (null/undefined/empty transform result skips) session create/addMessage
  *   → agent.execute → deliver to notify targets
  */
 
@@ -196,9 +196,9 @@ export class WebhooksEdge implements Service {
       ? await loadTransform(hook.transform, dataDir).then(fn => fn(payload))
       : passthroughTransform(payload);
 
-    // Transform returned null/undefined → intentional skip (dedup / debounce /
-    // rate-limit); no agent run, no notify delivery.
-    if (task === null || task === undefined) {
+    // Transform returned null/undefined/empty string → intentional skip (dedup /
+    // debounce / rate-limit); no agent run, no notify delivery.
+    if (!task) {
       log.info(`skipped: ${hook.id} — transform returned no task`);
       return;
     }

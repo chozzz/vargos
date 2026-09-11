@@ -50,6 +50,14 @@ describe('webhook transform — null/undefined skip', () => {
     expect(calls).toHaveLength(0);
   });
 
+  it('skips when transform returns an empty string', async () => {
+    writeFileSync(path.join(dataDir, 'skip-empty.js'), 'export default () => "";');
+    const calls: Call[] = [];
+    const edge = stubEdge(calls);
+    await edge.fireHook({ id: 'skip-empty', name: 'x', transform: 'skip-empty.js' }, {});
+    expect(calls).toHaveLength(0);
+  });
+
   it('still executes and notifies when transform returns a string', async () => {
     writeFileSync(path.join(dataDir, 'keep.js'), 'export default () => "DO THE THING";');
     const calls: Call[] = [];
