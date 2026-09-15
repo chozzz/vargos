@@ -506,6 +506,7 @@ export class AgentService implements Service {
       agentDir: this.agentDir,
       settingsManager: this.settings,
       extensionFactories: [],
+      noExtensions: true,
       additionalSkillPaths: skillPaths,
       noSkills: false,
       ...(systemPromptOverride && { systemPrompt: systemPromptOverride }),
