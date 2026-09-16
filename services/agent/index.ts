@@ -66,6 +66,14 @@ function randomCompactionMessage(): string {
   return COMPACTION_MESSAGES[Math.floor(Math.random() * COMPACTION_MESSAGES.length)];
 }
 
+/**
+ * Overflow-compaction loop guard: max no-progress overflow compactions per burst before
+ * the "Compaction complete" follow-up nudge stops (which is what pumps the loop — each
+ * nudge 400s on the unchanged over-limit prompt, re-triggering compaction). See
+ * subscribeToSessionEvents (compaction_start / compaction_end).
+ */
+const OVERFLOW_COMPACTION_BREAK_AFTER = 3;
+
 /** Narrow read-only view of a Pi SDK assistant message (see extractFinalAssistant). */
 interface AssistantMessageView {
   role: string;
@@ -85,6 +93,8 @@ export class AgentService implements Service {
   /** sessionKey → epoch ms when the session entered the cache (for agent.status). */
   protected sessionMeta = new Map<string, number>();
   protected activeRuns = new Set<string>();
+  /** sessionKey → consecutive overflow-compaction burst (loop guard, see subscribeToSessionEvents). */
+  protected overflowBursts = new Map<string, { ends: number; noticed: boolean; broken: boolean }>();
 
   protected agentDir!: string;
   protected modelRuntime!: ModelRuntime;
@@ -452,6 +462,7 @@ export class AgentService implements Service {
             log.error(`[${sessionKey}] event agent_end error model=${model}: ${error}`);
             this.bus.emit('agent.onCompleted', { sessionKey, success: false, error });
           } else {
+            this.overflowBursts.delete(sessionKey);
             log.debug(`[${sessionKey}] event agent_end emitted chars=${content.length}`);
             this.bus.emit('agent.onCompleted', { sessionKey, success: true, response: content });
           }
@@ -459,11 +470,26 @@ export class AgentService implements Service {
         }
         case 'compaction_start': {
           log.info(`[${sessionKey}] compaction start reason=${event.reason}`);
+          const isOverflow = event.reason === 'overflow';
+          let burst: { ends: number; noticed: boolean; broken: boolean } | undefined;
+          if (isOverflow) {
+            burst = this.overflowBursts.get(sessionKey) ?? { ends: 0, noticed: false, broken: false };
+            this.overflowBursts.set(sessionKey, burst);
+            if (burst.broken) {
+              log.error(`[${sessionKey}] overflow compaction recurred after loop break — prompt is still over context; session history needs a fresh start to recover`);
+            }
+          }
           const { type } = parseSessionKey(sessionKey);
           const isChannel = this.config.channels.some(c => c.id === type);
           if (isChannel) {
-            this.bus.call('channel.send', { sessionKey, text: randomCompactionMessage() })
-              .catch(err => log.debug(`[${sessionKey}] compaction notice send failed: ${toMessage(err)}`));
+            // During an overflow burst the SDK re-compacts every failed inference; without
+            // this guard each one sent the user another "compacting memory" notice (194 in
+            // one 16-minute loop, Sep 16). Notify once per burst instead.
+            if (!burst || !burst.noticed) {
+              if (burst) burst.noticed = true;
+              this.bus.call('channel.send', { sessionKey, text: randomCompactionMessage() })
+                .catch(err => log.debug(`[${sessionKey}] compaction notice send failed: ${toMessage(err)}`));
+            }
           }
           break;
         }
@@ -475,6 +501,25 @@ export class AgentService implements Service {
           } else {
             const before = event.result?.tokensBefore;
             log.info(`[${sessionKey}] compaction done${before !== undefined ? ` tokensBefore=${before}` : ''}`);
+            // Overflow loop guard: a recent message (e.g. binary bytes injected as text)
+            // that compaction cannot summarize keeps the prompt over the model's context
+            // limit. Without a break, every "Compaction complete" follow-up nudge 400s and
+            // re-triggers compaction forever. After N no-progress overflow compactions in
+            // one burst, stop nudging and surface it.
+            const burst = this.overflowBursts.get(sessionKey);
+            if (burst) {
+              if (burst.broken) {
+                // Loop already broken — skip the nudge (it just 400s and re-triggers compaction).
+                log.debug(`[${sessionKey}] overflow compaction end after loop break; skipping follow-up nudge`);
+                break;
+              }
+              if (burst.ends + 1 >= OVERFLOW_COMPACTION_BREAK_AFTER) {
+                burst.broken = true;
+                log.error(`[${sessionKey}] overflow compaction loop broken after ${burst.ends + 1} compactions without progress — prompt is still over context. Next agent run on this session will likely fail until the history is trimmed or the session is started fresh.`);
+                break;
+              }
+              burst.ends += 1;
+            }
             // Use prompt (not followUp): followUp throws when the agent is idle (e.g. a
             // pre-prompt threshold check), silently dropping the nudge. prompt with
             // streamingBehavior:'followUp' works in both states — queues a follow-up turn
@@ -506,6 +551,7 @@ export class AgentService implements Service {
       agentDir: this.agentDir,
       settingsManager: this.settings,
       extensionFactories: [],
+      noExtensions: true,
       additionalSkillPaths: skillPaths,
       noSkills: false,
       ...(systemPromptOverride && { systemPrompt: systemPromptOverride }),
