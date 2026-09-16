@@ -16,6 +16,14 @@ const log = createLogger('media');
 
 const MAX_DOCUMENT_SIZE = 50 * 1024 * 1024; // 50 MB
 const MAX_TEXT_SIZE = 1 * 1024 * 1024; // 1 MB for text files (token cost)
+const MAX_FALLBACK_TEXT_CHARS = 100_000; // cap for unknown-format fallback reads (token cost)
+const BINARY_MIME_PREFIXES = ['image/', 'audio/', 'video/'];
+const BINARY_EXTS = new Set([
+  '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tif', '.tiff', '.heic', '.heif', '.avif', '.ico',
+  '.mp3', '.wav', '.ogg', '.oga', '.opus', '.m4a', '.flac', '.aac', '.webm',
+  '.mp4', '.mov', '.avi', '.mkv', '.wmv',
+  '.zip', '.rar', '.7z', '.gz', '.bz2', '.xz', '.tar', '.bin', '.exe', '.dll', '.so',
+]);
 
 /**
  * Validate and resolve document path to prevent traversal attacks
@@ -92,8 +100,24 @@ export async function extractDocument(
       return { text: texts.join('\n') };
     }
 
-    // Fallback: try to read as text
-    const text = await readFile(validatedPath, 'utf-8');
+    // Fallback: try to read as text — but reject binary payloads first. A WhatsApp
+    // image arriving as a "document" (mime text/* or application/octet-stream) used to
+    // end up here, and its raw bytes became agent message text (~1MB = ~230k tokens),
+    // pinning the session over the model context limit in an overflow-compaction loop.
+    const buffer = await readFile(validatedPath);
+    const looksBinary =
+      BINARY_MIME_PREFIXES.some(p => normalizedMime.startsWith(p)) ||
+      BINARY_EXTS.has(ext) ||
+      buffer.subarray(0, 8192).includes(0); // NUL byte = binary
+    if (looksBinary) {
+      return {
+        text: `[binary file: ${path.basename(validatedPath)} (${buffer.length} bytes, ${normalizedMime || ext || 'unknown type'}) — not text-extractable; file on disk at ${validatedPath}]`,
+      };
+    }
+    let text = buffer.toString('utf-8');
+    if (text.length > MAX_FALLBACK_TEXT_CHARS) {
+      text = `${text.slice(0, MAX_FALLBACK_TEXT_CHARS)}\n…[truncated: ${text.length - MAX_FALLBACK_TEXT_CHARS} more characters]`;
+    }
     return { text };
   } catch (err) {
     const errorMsg = toMessage(err);
