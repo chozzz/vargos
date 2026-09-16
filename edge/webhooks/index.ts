@@ -18,7 +18,7 @@ import { toMessage } from '../../lib/error.js';
 import { getDataPaths } from '../../lib/paths.js';
 import { webhookSessionKey, parseSessionKey } from '../../lib/session-key.js';
 import { filterPaginate, ListSchema, type ListParams } from '../../lib/paginate.js';
-import { passthroughTransform, loadTransform } from './transform.js';
+import { loadTransform } from './transform.js';
 
 const log = createLogger('webhooks');
 
@@ -192,9 +192,25 @@ export class WebhooksEdge implements Service {
   private async fireHook(hook: WebhookEntry, payload: unknown): Promise<void> {
     const { dataDir } = getDataPaths();
 
-    const task = hook.transform
-      ? await loadTransform(hook.transform, dataDir).then(fn => fn(payload))
-      : passthroughTransform(payload);
+    if ( typeof hook.transform !== 'string' || hook.transform.length === 0 ) {
+      throw new Error(`Invalid transform for hook "${hook.id}". Expected a non-empty string — a relative path to a transform module in "${dataDir}" — got ${hook.transform === undefined ? 'undefined' : JSON.stringify(hook.transform)}`);
+    }
+
+    const transformOutput = await loadTransform(hook.transform, dataDir).then(fn => fn(payload));
+    const sessionKey = webhookSessionKey(hook.id);
+
+    let task = '',
+      cwd = '',
+      model = '';
+
+    if (typeof transformOutput === 'string') {
+      task = transformOutput;
+    }
+    else if (transformOutput && typeof transformOutput === 'object') {
+      task = transformOutput.task ?? '';
+      cwd = transformOutput.cwd ?? '';
+      model = transformOutput.model ?? '';
+    }
 
     // Transform returned null/undefined/empty string → intentional skip (dedup /
     // debounce / rate-limit); no agent run, no notify delivery.
@@ -203,12 +219,17 @@ export class WebhooksEdge implements Service {
       return;
     }
 
-    const sessionKey = webhookSessionKey(hook.id);
-
     log.info(`fired: ${hook.id} → ${sessionKey}`);
     this.activeHooks.add(hook.id);
 
-    const result = await this.bus.call<{ response: string }>('agent.execute', { sessionKey, task });
+    // Only pass overrides when set: an empty `cwd` would flow through
+    // `options?.cwd ?? dataDir` as "" ("" is not nullish) and the SDK would
+    // resolve it to the daemon's process.cwd() instead of the data dir.
+    const result = await this.bus.call<{ response: string }>('agent.execute', {
+      sessionKey, task,
+      ...(cwd && { cwd }),
+      ...(model && { model }),
+    });
 
     if (result.response && hook.notify?.length) {
       log.info(`${hook.id} delivering response to ${hook.notify.length} targets`);

@@ -66,4 +66,41 @@ describe('webhook transform — null/undefined skip', () => {
     expect(calls.map(c => c.method)).toEqual(['agent.execute', 'channel.send']);
     expect(calls[0].params).toMatchObject({ task: 'DO THE THING' });
   });
+
+  it('propagates task/cwd/model when transform returns an object', async () => {
+    writeFileSync(path.join(dataDir, 'obj.js'), 'export default () => ({ task: "OBJ TASK", cwd: "/tmp/somewhere", model: "vargos-110:vllm" });');
+    const calls: Call[] = [];
+    const edge = stubEdge(calls);
+    await edge.fireHook({ id: 'obj', name: 'x', transform: 'obj.js' }, {});
+    expect(calls.map(c => c.method)).toEqual(['agent.execute']);
+    expect(calls[0].params).toMatchObject({ task: 'OBJ TASK', cwd: '/tmp/somewhere', model: 'vargos-110:vllm' });
+  });
+
+  it('omits cwd/model from agent.execute when the object return leaves them unset', async () => {
+    writeFileSync(path.join(dataDir, 'obj-min.js'), 'export default () => ({ task: "OBJ MIN" });');
+    const calls: Call[] = [];
+    const edge = stubEdge(calls);
+    await edge.fireHook({ id: 'obj-min', name: 'x', transform: 'obj-min.js' }, {});
+    expect(calls.map(c => c.method)).toEqual(['agent.execute']);
+    expect(calls[0].params).toMatchObject({ task: 'OBJ MIN' });
+    // "" would resolve to the daemon's process.cwd() in the SDK — the keys must be absent, not empty.
+    expect(calls[0].params).not.toHaveProperty('cwd');
+    expect(calls[0].params).not.toHaveProperty('model');
+  });
+
+  it('skips when transform returns an object with an empty task', async () => {
+    writeFileSync(path.join(dataDir, 'obj-empty.js'), 'export default () => ({ task: "" });');
+    const calls: Call[] = [];
+    const edge = stubEdge(calls);
+    await edge.fireHook({ id: 'obj-empty', name: 'x', transform: 'obj-empty.js' }, {});
+    expect(calls).toHaveLength(0);
+  });
+
+  it('skips when transform returns an object without a task', async () => {
+    writeFileSync(path.join(dataDir, 'obj-notask.js'), 'export default () => ({});');
+    const calls: Call[] = [];
+    const edge = stubEdge(calls);
+    await edge.fireHook({ id: 'obj-notask', name: 'x', transform: 'obj-notask.js' }, {});
+    expect(calls).toHaveLength(0);
+  });
 });

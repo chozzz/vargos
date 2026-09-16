@@ -1,19 +1,24 @@
 import path from 'node:path';
 
-export type TransformFn = (payload: unknown) => string | null | undefined;
+type WebhookTransformObjectReturnType = {
+  task: string;
+  cwd?: string;
+  model?: string;
+}
+
+export type TransformFn = (payload: unknown) => WebhookTransformObjectReturnType | string | null | undefined;
 
 const cache = new Map<string, TransformFn>();
-
-export function passthroughTransform(payload: unknown): string {
-  return JSON.stringify(payload, null, 2);
-}
 
 /**
  * Load a transform module. Path must resolve within baseDir.
  * Caches loaded modules to avoid re-importing.
  *
- * Return value: a non-empty string becomes the agent task; `null`/`undefined`/
- * empty string skips the agent run (and notify delivery) for that event — use
+ * Return value: a non-empty string becomes the agent task; an object
+ * `{ task, cwd?, model? }` does the same plus optionally overrides the
+ * session's working directory and model (omitted/empty values keep the
+ * defaults). `null`/`undefined`/empty string (or an object with an empty
+ * task) skips the agent run (and notify delivery) for that event — use
  * for dedup, debounce, or rate-limiting in the transform.
  */
 export async function loadTransform(modulePath: string, baseDir?: string): Promise<TransformFn> {
